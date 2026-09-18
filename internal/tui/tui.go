@@ -1764,6 +1764,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.refreshVP()
 		return m, nil
 
+	case promptEditedMsg:
+		m.applyPromptEdit(msg)
+		return m, nil
+
 	case meEditedMsg:
 		if msg.err != nil {
 			m.append(errStyle.Render("/me: editor failed: " + msg.err.Error()))
@@ -2162,6 +2166,8 @@ func (m *model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	switch msg.Type {
+	case tea.KeyCtrlG:
+		return m, m.openPromptEditor()
 	case tea.KeyCtrlT:
 
 		if len(m.dockTasks()) == 0 {
@@ -3355,7 +3361,7 @@ func busyCmd(text string) bool {
 		return false
 	}
 	switch fields[0] {
-	case "/copy", "/diff", "/prompts", "/help", "/theme", "/mouse", "/effort", "/subagents", "/tasks", "/subagent", "/cd", "/pwd", "/report", "/export", "/fork", "/context", "/context-doctor", "/doctor", "/info", "/mcps", "/mcp", "/new", "/plan", "/session-info", "/status", "/title", "/undo", "/rewind", "/view-plan":
+	case "/editor", "/copy", "/diff", "/prompts", "/help", "/theme", "/mouse", "/effort", "/subagents", "/tasks", "/subagent", "/cd", "/pwd", "/report", "/export", "/fork", "/context", "/context-doctor", "/doctor", "/info", "/mcps", "/mcp", "/new", "/plan", "/session-info", "/status", "/title", "/undo", "/rewind", "/view-plan":
 		return true
 	case "/auth":
 		return true
@@ -3399,6 +3405,12 @@ func (m *model) command(text string) (tea.Model, tea.Cmd) {
 		m.memoryCommand(fields[1:])
 	case "/schedule":
 		m.scheduleCommand(fields[1:])
+	case "/editor":
+		if len(fields) != 1 {
+			m.append(errStyle.Render("usage: /editor (Ctrl+G edits the current draft)"))
+			return m, nil
+		}
+		return m, m.openPromptEditor()
 	case "/me":
 		return m, m.openMe()
 	case "/compact":

@@ -43,7 +43,7 @@ curl -fsSL https://raw.githubusercontent.com/Stack-Cairn/K-brain/main/install.sh
 
 发布资源使用 `k-brain-<os>-<arch>` 命名，Windows 带 `.exe`；`os` 为 `windows`、`linux` 或 `darwin`，`arch` 为 `x64` 或 `arm64`。下载后将主程序重命名为 `kn`（Windows 为 `kn.exe`），放到 PATH 中；Linux/macOS 还需赋予执行权限。
 
-Computer-use helper 使用 `k-brain-computer-<os>-<arch>` 命名，重命名为 `k-brain-computer`（Windows 带 `.exe`）并与主程序放在同一目录。运行依赖见 [Computer-use](COMPUTER_USE.md)。
+Computer-use helper 使用 `k-brain-computer-<os>-<arch>` 命名，重命名为 `k-brain-computer`（Windows 带 `.exe`）并与主程序放在同一目录。运行依赖见 [平台说明](#平台说明)。
 
 </details>
 
@@ -140,6 +140,10 @@ argument-hint: "<模块> [关注点]"
 
 </details>
 
+### 外部提示词编辑器
+
+按 `Ctrl+G` 编辑当前草稿，或用 `/editor` 在外部编辑器中新建提示词。依次读取 `VISUAL`、`EDITOR`，默认 Windows 使用 `notepad.exe`，Linux/macOS 使用 `vi`。支持带引号的路径和参数（如 `code --wait`），不展开 shell 表达式。保存并关闭编辑器后回填输入框，再按 Enter 发送；任务执行中不可打开。编辑失败或内容超限时保留临时文件用于恢复。
+
 ### 无界面运行与后端集成
 
 ```sh
@@ -162,7 +166,20 @@ kn run --format json --quiet --max-turns 8 --timeout 5m "定位并修复构建�
 ### 平台说明
 
 - **Windows shell**：优先 PowerShell 7，回退 Windows PowerShell。`K_BRAIN_SHELL` 可指定 `pwsh`、`powershell`、`bash`、`wsl`、`cmd` 或程序路径；原生 Windows 不支持 Unix PTY 式交互转发。
-- **Computer-use**：Windows 使用 PowerShell/UIA；macOS 使用 Python/PyObjC；Linux 使用 Python/AT-SPI2。Linux X11 已通过 GTK/Xvfb 集成验证；macOS 尚待真机验证，Wayland 通用桌面输入 portal 尚未接入。详见[依赖与支持范围](COMPUTER_USE.md)。
+- **Computer-use**：Windows 使用 PowerShell/UIA；macOS 使用 Python/PyObjC；Linux 使用 Python/AT-SPI2。Linux X11 已通过 GTK/Xvfb 集成验证；macOS 尚待真机验证，Wayland 通用桌面输入 portal 尚未接入。运行依赖见下方说明。
+
+Computer-use 运行依赖：Windows 使用系统 PowerShell；macOS 需为终端/解释器授予辅助功能和屏幕录制权限；Linux 需在具有 DISPLAY 与 D-Bus 的图形会话中运行。`K_BRAIN_COMPUTER_BIN` 可覆盖 helper 路径。
+
+```sh
+# macOS
+python3 -m venv ~/.k-brain/computer-venv
+~/.k-brain/computer-venv/bin/python -m pip install pyobjc-framework-Cocoa pyobjc-framework-Quartz pyobjc-framework-ApplicationServices
+export K_BRAIN_COMPUTER_PYTHON="$HOME/.k-brain/computer-venv/bin/python"
+
+# Debian / Ubuntu (X11)
+sudo apt-get install python3-pyatspi python3-pil python3-pil.imagetk xdotool
+export K_BRAIN_COMPUTER_PYTHON=/usr/bin/python3
+```
 
 ## 源码构建
 
@@ -185,8 +202,6 @@ Windows 使用 `go build -o kn.exe ./cmd/kn`，随后运行 `.\kn.exe`。需要 
 
 ## 文档
 
-- [Computer-use 配置、平台范围与验证](COMPUTER_USE.md)
-- [功能对齐记录与尚未实现项](FEATURE_PARITY.md)
 - [构建和发布工作流](.github/workflows/build.yml)
 - 命令行帮助：`kn --help`、`kn run --help`；TUI 帮助：`/help`
 

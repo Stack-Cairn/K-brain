@@ -43,7 +43,7 @@ The installers download platform binaries from [GitHub Releases](https://github.
 
 Main assets are named `k-brain-<os>-<arch>`, with `.exe` on Windows. `os` is `windows`, `linux`, or `darwin`; `arch` is `x64` or `arm64`. Rename the main binary to `kn` (`kn.exe` on Windows), put it on PATH, and make it executable on Linux/macOS.
 
-For computer-use, rename `k-brain-computer-<os>-<arch>` to `k-brain-computer` (with `.exe` on Windows) and place it beside the main binary. See [Computer-use](COMPUTER_USE.md) for runtime dependencies.
+For computer-use, rename `k-brain-computer-<os>-<arch>` to `k-brain-computer` (with `.exe` on Windows) and place it beside the main binary. See [Platform notes](#platform-notes) for runtime dependencies.
 
 </details>
 
@@ -140,6 +140,10 @@ Supported substitutions: `$1`, `$2`, `$@`, `$ARGUMENTS`, `${1:-default}`, `${@:-
 
 </details>
 
+### External prompt editor
+
+Press `Ctrl+G` to edit the current draft, or `/editor` to start a new prompt in an external editor. K-brain uses `VISUAL`, then `EDITOR`, falling back to `notepad.exe` on Windows or `vi` on Linux/macOS. Commands accept quoted paths and arguments, such as `code --wait`; shell expressions are not expanded. Save and close the editor to return to the TUI, then press Enter to send. Editing is disabled during an active turn. Failed or oversized edits are retained in a temporary file for recovery.
+
 ### Headless use and backend integration
 
 ```sh
@@ -162,7 +166,20 @@ The execution core is separate from the TUI and shares model adapters, tool loop
 ### Platform notes
 
 - **Windows shell**: prefers PowerShell 7, falling back to Windows PowerShell. Set `K_BRAIN_SHELL` to `pwsh`, `powershell`, `bash`, `wsl`, `cmd`, or an executable path. Native Windows does not support Unix-style interactive PTY forwarding.
-- **Computer-use**: Windows uses PowerShell/UIA, macOS uses Python/PyObjC, and Linux uses Python/AT-SPI2. Linux X11 has GTK/Xvfb integration coverage. macOS awaits real-desktop validation; a general Wayland desktop-input portal is not implemented. See [dependencies and platform coverage](COMPUTER_USE.md).
+- **Computer-use**: Windows uses PowerShell/UIA, macOS uses Python/PyObjC, and Linux uses Python/AT-SPI2. Linux X11 has GTK/Xvfb integration coverage. macOS awaits real-desktop validation; a general Wayland desktop-input portal is not implemented. See the runtime setup below.
+
+Computer-use runtime setup: Windows uses the built-in PowerShell. macOS requires Accessibility and Screen Recording permissions for the terminal/interpreter. Linux requires an active graphical session with DISPLAY and D-Bus. Set `K_BRAIN_COMPUTER_BIN` to override the helper path.
+
+```sh
+# macOS
+python3 -m venv ~/.k-brain/computer-venv
+~/.k-brain/computer-venv/bin/python -m pip install pyobjc-framework-Cocoa pyobjc-framework-Quartz pyobjc-framework-ApplicationServices
+export K_BRAIN_COMPUTER_PYTHON="$HOME/.k-brain/computer-venv/bin/python"
+
+# Debian / Ubuntu (X11)
+sudo apt-get install python3-pyatspi python3-pil python3-pil.imagetk xdotool
+export K_BRAIN_COMPUTER_PYTHON=/usr/bin/python3
+```
 
 ## Building from source
 
@@ -185,8 +202,6 @@ On Windows, use `go build -o kn.exe ./cmd/kn`, then `.\kn.exe`. Build or install
 
 ## Documentation
 
-- [Computer-use setup, platform coverage, and validation](COMPUTER_USE.md) (Chinese)
-- [Feature parity and remaining work](FEATURE_PARITY.md) (Chinese)
 - [Build and release workflow](.github/workflows/build.yml)
 - CLI help: `kn --help`, `kn run --help`; TUI help: `/help`
 
