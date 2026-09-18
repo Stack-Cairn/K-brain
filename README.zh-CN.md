@@ -225,6 +225,9 @@ GitHub Actions 的发布构建**仅在推送 `v*` tag 时触发**，交叉编译
 氪脑参考了 [context-labs/whip](https://github.com/context-labs/whip/) 的架构设计与实现思路，同时借鉴 [OpenAI Codex](https://github.com/openai/codex)、[Grok Build](https://x.ai/cli)、[Pi](https://github.com/badlogic/pi-mono) 和 [Claude Code](https://github.com/anthropics/claude-code) 的终端交互、执行内核及模块组织。README 的组织方式参考 Codex 与 Grok Build。
 
 本项目独立维护，不代表上述项目或其开发者。
+## 社区
+
+[LINUX DO](https://linux.do)
 
 ## 许可证
 
