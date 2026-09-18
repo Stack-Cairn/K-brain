@@ -242,7 +242,7 @@ func staleCatalogs(cfg *config.Config, cats map[string]config.Catalog) []string 
 func (m *model) openModelPicker(sessionOnly bool) {
 	items := buildModelItems(m.cfg)
 	if len(items) == 0 {
-		m.append(errStyle.Render("no models configured in ~/.k-brain/config.json"))
+		m.append(errStyle.Render(m.tr("no models configured in ~/.k-brain/config.json")))
 		return
 	}
 	mp := &modelPicker{items: items, staleHints: staleCatalogs(m.cfg, config.LoadCatalogs()), sessionOnly: sessionOnly}
@@ -310,7 +310,7 @@ func (m *model) modelPickerView() string {
 		}
 		cur := ""
 		if it.model == m.modelName && it.provider == m.provName {
-			cur = dimStyle.Render("  (current)")
+			cur = dimStyle.Render(m.tr("  (current)"))
 		}
 		line := fmt.Sprintf("%-12s  ", it.provider) + dimStyle.Render(it.url)
 		if it.fromCatalog {
@@ -324,11 +324,11 @@ func (m *model) modelPickerView() string {
 		}
 	}
 	if len(view) == 0 {
-		rows = append(rows, dimStyle.Render("  no models match "+strconv.Quote(p.filter.query)))
+		rows = append(rows, dimStyle.Render(m.tr("  no models match ")+strconv.Quote(p.filter.query)))
 	}
-	rows = append(rows, dimStyle.Render(fmt.Sprintf("  (%d/%d) type to filter · ↑/↓ select · enter switch · esc cancel", p.idx+1, len(view))))
+	rows = append(rows, dimStyle.Render(fmt.Sprintf(m.tr("  (%d/%d) type to filter · ↑/↓ select · enter switch · esc cancel"), p.idx+1, len(view))))
 	if len(p.staleHints) > 0 {
-		rows = append(rows, dimStyle.Render("  catalog stale for "+strings.Join(p.staleHints, ", ")+" — /model refresh to pull newly announced models"))
+		rows = append(rows, dimStyle.Render(fmt.Sprintf(m.tr("  catalog stale for %s — /model refresh to pull newly announced models"), strings.Join(p.staleHints, ", "))))
 	}
 	avail := m.height - 1
 	if avail < 1 {

@@ -3361,7 +3361,7 @@ func busyCmd(text string) bool {
 		return false
 	}
 	switch fields[0] {
-	case "/editor", "/copy", "/diff", "/prompts", "/help", "/theme", "/mouse", "/effort", "/subagents", "/tasks", "/subagent", "/cd", "/pwd", "/report", "/export", "/fork", "/context", "/context-doctor", "/doctor", "/info", "/mcps", "/mcp", "/new", "/plan", "/session-info", "/status", "/title", "/undo", "/rewind", "/view-plan":
+	case "/language", "/editor", "/copy", "/diff", "/prompts", "/help", "/theme", "/mouse", "/effort", "/subagents", "/tasks", "/subagent", "/cd", "/pwd", "/report", "/export", "/fork", "/context", "/context-doctor", "/doctor", "/info", "/mcps", "/mcp", "/new", "/plan", "/session-info", "/status", "/title", "/undo", "/rewind", "/view-plan":
 		return true
 	case "/auth":
 		return true
@@ -3658,8 +3658,10 @@ func (m *model) command(text string) (tea.Model, tea.Cmd) {
 		m.exportCommand(strings.TrimSpace(strings.TrimPrefix(text, "/export")))
 	case "/report":
 		m.append(m.reportBlock())
+	case "/language":
+		m.languageCommand(fields[1:])
 	case "/help":
-		m.append(dimStyle.Render(helpText()))
+		m.append(dimStyle.Render(helpTextFor(m.language())))
 	case "/auth":
 		m.append(errStyle.Render("auth was removed; configure baseUrl and apiKey in ~/.k-brain/config.json"))
 	case "/model", "/model-for-session":
@@ -3943,14 +3945,14 @@ func (m *model) viewBody() string {
 		left += fmt.Sprintf(" · ⚙ %d sub", n)
 	}
 
-	right := "✦ " + effortLabel(m.agent.Effort)
+	right := "✦ " + m.tr(effortLabel(m.agent.Effort))
 	if m.showThinking {
-		right = "◌ thinking  ·  " + right
+		right = m.tr("◌ thinking  ·  ") + right
 	}
-	m.effortX = max(m.width-len(right)-2, 0)
-	left = truncLine(left, max(m.width-len(right)-4, 0))
+	m.effortX = max(m.width-lipgloss.Width(right)-2, 0)
+	left = truncLine(left, max(m.width-lipgloss.Width(right)-4, 0))
 	{
-		b.WriteString(grokHeader(m.width, left, right) + "\n")
+		b.WriteString(grokHeaderLabel(m.width, left, right, m.tr("commands")) + "\n")
 	}
 	if m.palette != nil {
 
@@ -4050,7 +4052,7 @@ func (m *model) viewBody() string {
 	if dock := m.tasksDock(); dock != "" {
 		b.WriteString("\n" + dock)
 	}
-	b.WriteString("\n" + shortcutStyle.Render("shift+tab mode  ·  ctrl+c cancel  ·  ctrl+p menu") + "\n\n" + m.statusView())
+	b.WriteString("\n" + shortcutStyle.Render(m.tr("shift+tab mode  ·  ctrl+c cancel  ·  ctrl+p menu")) + "\n\n" + m.statusView())
 	return b.String()
 }
 
@@ -4062,11 +4064,11 @@ func (m *model) syncInputPlaceholder() {
 	}
 	switch {
 	case !m.busy:
-		m.input.Placeholder = inputPlaceholder
+		m.input.Placeholder = m.tr(inputPlaceholder)
 	case m.agent != nil && m.agent.WaitingOnSubagents():
-		m.input.Placeholder = "waiting on subagents — type to steer this turn"
+		m.input.Placeholder = m.tr("waiting on subagents — type to steer this turn")
 	default:
-		m.input.Placeholder = "busy — type to queue (sent when the turn ends)"
+		m.input.Placeholder = m.tr("busy — type to queue (sent when the turn ends)")
 	}
 }
 
@@ -4074,7 +4076,7 @@ func (m *model) statusView() string {
 
 	model := m.modelName
 	if e := effortLabel(m.agent.Effort); e != "off" {
-		model += " (" + e + ")"
+		model += " (" + m.tr(e) + ")"
 	}
 	u := m.agent.TotalUsage()
 	spend := fmtUsage(u)
@@ -4083,7 +4085,7 @@ func (m *model) statusView() string {
 	}
 
 	if last := m.lastResp; last.PromptTokens > 0 || last.CompletionTokens > 0 {
-		spend += " · last " + fmtUsage(last)
+		spend += m.tr(" · last ") + fmtUsage(last)
 	}
 
 	const lead = " "
@@ -4147,7 +4149,7 @@ func (m *model) pickerView() string {
 		meta := p.metas[i]
 		title := meta.Title
 		if title == "" {
-			title = "(untitled)"
+			title = m.tr("(untitled)")
 		}
 		line := fmt.Sprintf("%s  %s · %s · %s @ %s", meta.ID, title, ago(meta.UpdatedAt), meta.Model, meta.Provider)
 		if i != p.idx {
@@ -4159,7 +4161,7 @@ func (m *model) pickerView() string {
 		rows = append(rows, previewBlock(youStyle.Render(glyphUser), prev[0], m.width)...)
 		rows = append(rows, previewBlock(botStyle.Render(glyphAssistant), prev[1], m.width)...)
 	}
-	rows = append(rows, dimStyle.Render(fmt.Sprintf("  (%d/%d) ↑ older · ↓ newer · enter resume · esc cancel", p.idx+1, len(p.metas))))
+	rows = append(rows, dimStyle.Render(fmt.Sprintf(m.tr("  (%d/%d) ↑ older · ↓ newer · enter resume · esc cancel"), p.idx+1, len(p.metas))))
 
 	for len(rows) < m.height-1 {
 		rows = append(rows, "")
@@ -4215,16 +4217,16 @@ func (m *model) menuView() string {
 
 	nameW := 0
 	for _, c := range m.menu.cands[start:end] {
-		nameW = max(nameW, len(c.Text))
+		nameW = max(nameW, lipgloss.Width(c.Text))
 	}
 
 	var b strings.Builder
 	for i := start; i < end; i++ {
 		c := m.menu.cands[i]
-		line := fmt.Sprintf("%-*s  ", nameW, c.Text)
+		line := c.Text + strings.Repeat(" ", max(nameW-lipgloss.Width(c.Text), 0)+2)
 		var row string
 		if i == m.menu.idx {
-			row = botStyle.Render("→ "+line) + dimStyle.Render(c.Desc)
+			row = botStyle.Render("→ " + line + c.Desc)
 		} else {
 			row = "  " + line + dimStyle.Render(c.Desc)
 		}

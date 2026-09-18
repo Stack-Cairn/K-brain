@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"github.com/Stack-Cairn/K-brain/internal/i18n"
 	"sort"
 	"strings"
 )
@@ -20,7 +21,7 @@ var registry = []registryEntry{
 	{Name: "/cd", Hint: "[dir] — change working directory (bare prints it)", Category: "Session"},
 	{Name: "/clear", Hint: "— reset conversation", Category: "Session"},
 	{Name: "/compact", Hint: "[model]|off|retry|log — compact the conversation now", Category: "Session"},
-	{Name: "/computer-use", Hint: "[task] — drive this Mac; allow|deny <app>", Category: "Agent"},
+	{Name: "/computer-use", Hint: "[task] — drive the desktop; allow|deny <app>", Category: "Agent"},
 	{Name: "/context", Hint: "— show context sources and token estimates", Category: "Session"},
 	{Name: "/context-doctor", Hint: "— audit fresh-session injections and their token cost", Category: "Session"},
 	{Name: "/doctor", Hint: "— inspect terminal and session diagnostics", Category: "App"},
@@ -30,6 +31,7 @@ var registry = []registryEntry{
 	{Name: "/fork", Hint: "[name] — copy the conversation into a new session", Category: "Session"},
 	{Name: "/goal", Hint: "<text> — keep working until the goal is met (resume | clear)", Category: "Session"},
 	{Name: "/goal-from-context", Hint: "[n] — form a goal from recent messages and pursue it", Category: "Session"},
+	{Name: "/language", Hint: "[zh_cn|en] — choose the interface language", Category: "Display"},
 	{Name: "/help", Hint: "— show all commands and keybindings", Category: "App"},
 	{Name: "/info", Hint: "— show session details (alias: /session-info)", Category: "Session"},
 	{Name: "/mcp", Hint: "[name] [reconnect|enable|disable] — MCP server status", Category: "Session"},
@@ -94,15 +96,18 @@ func (m *model) dispatches(name string) bool {
 	return true
 }
 
-func helpText() string {
+func helpText() string { return helpTextFor(i18n.English) }
+
+func helpTextFor(language string) string {
+	tr := func(s string) string { return i18n.Text(language, s) }
 	var b strings.Builder
 	for _, e := range slashRegistry() {
-		b.WriteString(e.Name + " " + e.Hint + "\n")
+		b.WriteString(e.Name + " " + tr(e.Hint) + "\n")
 	}
-	b.WriteString(palHintRewind + " — " + palDescRewind + "\n")
-	b.WriteString("!cmd " + registryFind("!cmd").Hint + "\n")
-	b.WriteString("!!cmd " + registryFind("!!cmd").Hint + "\n")
-	b.WriteString("tab — complete")
+	b.WriteString(tr(palHintRewind+" — "+palDescRewind) + "\n")
+	b.WriteString("!cmd " + tr(registryFind("!cmd").Hint) + "\n")
+	b.WriteString("!!cmd " + tr(registryFind("!!cmd").Hint) + "\n")
+	b.WriteString(tr("tab — complete"))
 	for _, hint := range []string{
 		"ctrl+k — clear the conversation",
 		"ctrl+t — focus the subagents dock (↑/↓ select, enter opens, esc backs out)",
@@ -117,7 +122,7 @@ func helpText() string {
 		"PgUp/PgDn — scroll · wheel — scroll · drag — select/copy text",
 		palHintQuit + " — quit",
 	} {
-		b.WriteString(" · " + hint)
+		b.WriteString(" · " + tr(hint))
 	}
 	return b.String()
 }

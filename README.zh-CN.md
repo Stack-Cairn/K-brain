@@ -53,6 +53,7 @@ Computer-use helper 使用 `k-brain-computer-<os>-<arch>` 命名，重命名为 
 
 ```json
 {
+  "language": "en",
   "defaultModel": "model1",
   "providers": {
     "demo": {
@@ -105,6 +106,7 @@ TUI 使用当前终端的全屏界面，输入区固定在底部。首轮对话�
 
 | 输入 | 功能 |
 | --- | --- |
+| `/language` · `/language zh_cn` · `/language en` | 选择界面语言（简体中文 / English） |
 | `/model` · `/effort` | 切换模型、调整推理强度 |
 | `/context` · `/compact` | 查看上下文、手动压缩 |
 | `/rewind` · `/fork` | 回退到先前轮次、创建会话分支 |
@@ -139,6 +141,12 @@ argument-hint: "<模块> [关注点]"
 支持 `$1`、`$2`、`$@`、`$ARGUMENTS`、`${1:-默认值}`、`${@:-默认值}`、`${ARGUMENTS:-默认值}`、`${@:N}`、`${@:N:L}`；参数支持单双引号，不执行 shell 或环境变量替换。元数据仅支持简单单行字段，不是完整 YAML。单文件上限 1 MiB。
 
 </details>
+
+### 界面语言
+
+输入 `/language` 打开选择器，↑/↓ 选择、Enter 应用、Esc 取消；也可以直接执行 `/language zh_cn` 或 `/language en`。设置保存到 `~/.k-brain/config.json` 的 `language` 字段，默认英文，未知值回退为英文。
+
+命令菜单说明、帮助、输入提示、主要导航标签及语言/模型选择器操作提示即时切换。命令名称、模型与提供商标识、对话内容和工具输出保持原样。此设置不控制模型回复语言；部分详细诊断与次级面板仍使用英文。
 
 ### 外部提示词编辑器
 

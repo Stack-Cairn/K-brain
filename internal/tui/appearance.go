@@ -12,7 +12,7 @@ func (m *model) applyAppearance() {
 	invalidateMDRenderer()
 	m.spin = spinner.New(spinner.WithSpinner(spinner.Dot))
 	m.input.Prompt = "› "
-	m.input.Placeholder = defaultPlaceholder
+	m.input.Placeholder = m.tr(defaultPlaceholder)
 	m.input.FocusedStyle.Text = lipgloss.NewStyle()
 	m.input.FocusedStyle.CursorLine = lipgloss.NewStyle()
 	m.input.FocusedStyle.Placeholder = dimStyle

@@ -11,8 +11,9 @@ import (
 )
 
 type cfgSyncMsg struct {
-	mod   time.Time
-	theme string
+	mod      time.Time
+	theme    string
+	language *string
 }
 
 type cfgSyncTick struct{}
@@ -38,13 +39,20 @@ func (m *model) cfgSync() (tea.Model, tea.Cmd) {
 		return m, m.watchConfig()
 	}
 	return m, tea.Sequence(
-		func() tea.Msg { return cfgSyncMsg{mod: fi.ModTime(), theme: cfg.Theme} },
+		func() tea.Msg { return cfgSyncMsg{mod: fi.ModTime(), theme: cfg.Theme, language: &cfg.Language} },
 		m.watchConfig(),
 	)
 }
 
 func (m *model) applyCfgSync(msg cfgSyncMsg) {
 	m.cfgMod = msg.mod
+	if msg.language != nil && m.cfg != nil && m.cfg.Language != *msg.language {
+		m.cfg.Language = *msg.language
+		m.input.Placeholder = m.tr(inputPlaceholder)
+		m.syncInputPlaceholder()
+		m.menu = nil
+		m.refreshVP()
+	}
 	if _, pinned := m.cfgExtra["theme"]; pinned {
 		return
 	}

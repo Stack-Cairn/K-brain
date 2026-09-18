@@ -122,6 +122,11 @@ func (m *model) promptCompletions(val string) (string, []cand) {
 		}
 		sort.Slice(cands, func(i, j int) bool { return cands[i].Text < cands[j].Text })
 	}
+	for i := range cands {
+		if e := registryFind(cands[i].Text); head == "" && e != nil {
+			cands[i].Desc = m.tr(e.Hint)
+		}
+	}
 	return head, cands
 }
 

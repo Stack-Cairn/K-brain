@@ -81,6 +81,7 @@ const DefaultTaskModel = DefaultCompactModel
 const DefaultCompactPct = 50
 
 type Config struct {
+	Language        string `json:"language,omitempty"`
 	DefaultModel    string `json:"defaultModel"`
 	DefaultProvider string `json:"defaultProvider,omitempty"`
 	DefaultEffort   string `json:"defaultEffort,omitempty"`
@@ -339,10 +340,16 @@ func Load() (*Config, error) {
 				if restored.MCPImport == nil {
 					restored.MCPImport = cfg.MCPImport
 				}
+				if cfg.Language != "" {
+					restored.Language = cfg.Language
+				}
 				return &restored, restored.Save()
 			}
 		}
 		def := Default()
+		if cfg.Language != "" {
+			def.Language = cfg.Language
+		}
 		def.MCPServers = cfg.MCPServers
 		def.MCPImport = cfg.MCPImport
 		logf("config.load", "no usable .bak; regenerated defaults (%s), keeping %d mcp entries", def.fingerprint(), len(cfg.MCPServers))
@@ -554,6 +561,7 @@ func keys[V any](m map[string]V) string {
 
 func Default() *Config {
 	return &Config{
+		Language:     "en",
 		DefaultModel: "model1",
 		CompactModel: DefaultCompactModel,
 		Providers: map[string]Provider{

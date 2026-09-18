@@ -8,6 +8,10 @@ import (
 )
 
 func grokHeader(width int, left, right string) string {
+	return grokHeaderLabel(width, left, right, "commands")
+}
+
+func grokHeaderLabel(width int, left, right, label string) string {
 	width = max(width, 1)
 	leftCell := accentStyle.Render("◆") + chromeStyle.Render(left)
 	rightText := strings.TrimSpace(ansi.Strip(right))
@@ -17,7 +21,8 @@ func grokHeader(width int, left, right string) string {
 	line = ansi.Truncate(line, width, "…")
 	rule := strings.Repeat("─", width)
 	if width > 24 {
-		rule = ansi.Truncate(rule, width-22, "") + "  ctrl+p  ·  commands"
+		hint := "  ctrl+p  ·  " + label
+		rule = ansi.Truncate(rule, max(width-lipgloss.Width(hint), 0), "") + hint
 	}
 	return line + "\n" + chromeStyle.Render(rule)
 }

@@ -39,6 +39,7 @@ const (
 	panelGoal
 	panelCompact
 	panelTheme
+	panelLanguage
 	panelBrowser
 	panelMCP
 )
@@ -95,13 +96,14 @@ const (
 
 func slashHint(m *model, name string) string {
 	if e := registryFind(name); e != nil {
-		return e.Hint
+		return m.tr(e.Hint)
 	}
 	return name
 }
 
 func (m *model) paletteItems() []paletteItem {
 	return []paletteItem{
+		{title: "Language", category: "Display", dynDesc: func(m *model) string { return slashHint(m, "/language") }, dynHint: func(m *model) string { return "/language" }, panel: func(m *model) *ppanel { return m.languagePanel() }},
 		{
 			title: "Model", category: "Agent", suggested: true,
 
@@ -302,7 +304,7 @@ func (m *model) paletteItems() []paletteItem {
 		},
 		{
 			title: "Theme", category: "Display",
-			dynDesc: func(m *model) string { return "current: " + CurrentTheme() },
+			dynDesc: func(m *model) string { return m.tr("current: ") + CurrentTheme() },
 			dynHint: func(m *model) string { return "/theme " + slashHint(m, "/theme") },
 			panel: func(m *model) *ppanel {
 				list := []string{"auto", "light", "dark"}
@@ -414,6 +416,12 @@ func paletteFilterMatch(query, hay string) bool {
 
 func itemHaystack(m *model, it paletteItem) string {
 	s := it.title + " " + it.category
+	if title := m.tr(it.title); title != it.title {
+		s += " " + title
+	}
+	if category := m.tr(it.category); category != it.category {
+		s += " " + category
+	}
 	if it.dynHint != nil {
 		if f := strings.Fields(it.dynHint(m)); len(f) > 0 && strings.HasPrefix(f[0], "/") {
 			s += " " + f[0]
@@ -651,6 +659,20 @@ func (m *model) panelKey(msg tea.KeyMsg, pp *ppanel) (tea.Model, tea.Cmd) {
 			}
 		}
 
+	case panelLanguage:
+		switch msg.Type {
+		case tea.KeyEsc, tea.KeyCtrlC:
+			pop()
+		case tea.KeyUp, tea.KeyCtrlP, tea.KeyShiftTab:
+			pp.midx = (pp.midx - 1 + len(pp.list)) % len(pp.list)
+		case tea.KeyDown, tea.KeyCtrlN, tea.KeyTab:
+			pp.midx = (pp.midx + 1) % len(pp.list)
+		case tea.KeyEnter:
+			if m.setLanguage(pp.list[pp.midx]) {
+				pop()
+			}
+		}
+
 	case panelTheme:
 		switch msg.Type {
 		case tea.KeyEsc, tea.KeyCtrlC:
@@ -777,13 +799,13 @@ func prevEffort(levels []string, cur string) string {
 func (m *model) paletteView() string {
 	p := m.palette
 	var b strings.Builder
-	title := " Commands"
+	title := " " + m.tr("Commands")
 	if pp := p.top(); pp != nil {
-		title = " Commands › " + pp.title
+		title = " " + m.tr("Commands") + " › " + m.tr(pp.title)
 	}
 	b.WriteString(botStyle.Render(title))
 	if p.top() == nil && p.filter != "" {
-		b.WriteString(dimStyle.Render("  — type to filter"))
+		b.WriteString(dimStyle.Render(m.tr("  — type to filter")))
 	}
 	b.WriteString("\n\n")
 
@@ -807,7 +829,7 @@ func (m *model) paletteView() string {
 			if lastCat != "" {
 				b.WriteString("\n")
 			}
-			b.WriteString(dimStyle.Render("  " + it.category))
+			b.WriteString(dimStyle.Render("  " + m.tr(it.category)))
 			b.WriteString("\n")
 			lastCat = it.category
 		}
@@ -815,9 +837,9 @@ func (m *model) paletteView() string {
 		if it.dynHint != nil {
 			hint = dimStyle.Render(fmt.Sprintf("%*s", hintW, it.dynHint(m)))
 		}
-		line := " " + it.title
+		line := " " + m.tr(it.title)
 		if it.dynDesc != nil {
-			line += dimStyle.Render("  — " + it.dynDesc(m))
+			line += dimStyle.Render("  — " + m.tr(it.dynDesc(m)))
 		}
 		state := paletteState(m, it)
 		if i == p.idx {
@@ -828,10 +850,10 @@ func (m *model) paletteView() string {
 		b.WriteString("\n")
 	}
 	if len(p.items) == 0 {
-		b.WriteString(dimStyle.Render("  (no matches)"))
+		b.WriteString(dimStyle.Render(m.tr("  (no matches)")))
 		b.WriteString("\n")
 	}
-	b.WriteString("\n" + dimStyle.Render(fmt.Sprintf("  (%d/%d) ↑/↓ select · enter open/apply · ←/→ change · esc close",
+	b.WriteString("\n" + dimStyle.Render(fmt.Sprintf(m.tr("  (%d/%d) ↑/↓ select · enter open/apply · ←/→ change · esc close"),
 		min(p.idx+1, len(p.items)), len(p.items))))
 	return b.String()
 }
@@ -884,7 +906,7 @@ func (m *model) panelView(pp *ppanel) string {
 			}
 			cur := ""
 			if it.model == m.modelName && it.provider == m.provName {
-				cur = dimStyle.Render("  (current)")
+				cur = dimStyle.Render(m.tr("  (current)"))
 			}
 			line := fmt.Sprintf("%-12s  ", it.provider) + dimStyle.Render(it.url)
 			if it.fromCatalog {
@@ -903,13 +925,13 @@ func (m *model) panelView(pp *ppanel) string {
 			lo, hi = viewportWindow(len(rows), selRow, avail)
 		}
 		if lo > 0 {
-			b.WriteString(dimStyle.Render(fmt.Sprintf("   ↑ %d more", lo)) + "\n")
+			b.WriteString(dimStyle.Render(fmt.Sprintf(m.tr("   ↑ %d more"), lo)) + "\n")
 		}
 		for _, r := range rows[lo:hi] {
 			b.WriteString(r + "\n")
 		}
 		if hi < len(rows) {
-			b.WriteString(dimStyle.Render(fmt.Sprintf("   ↓ %d more", len(rows)-hi)) + "\n")
+			b.WriteString(dimStyle.Render(fmt.Sprintf(m.tr("   ↓ %d more"), len(rows)-hi)) + "\n")
 		}
 		b.WriteString("\n" + dimStyle.Render(fmt.Sprintf("  (%d/%d) ↑/↓ preview · enter switch · esc back", pp.idx+1, len(pp.items))))
 
@@ -934,7 +956,7 @@ func (m *model) panelView(pp *ppanel) string {
 			lo, hi = viewportWindow(len(view), pp.midx, avail)
 		}
 		if lo > 0 {
-			b.WriteString(dimStyle.Render(fmt.Sprintf("   ↑ %d more", lo)) + "\n")
+			b.WriteString(dimStyle.Render(fmt.Sprintf(m.tr("   ↑ %d more"), lo)) + "\n")
 		}
 		for i := lo; i < hi; i++ {
 			row := view[i]
@@ -949,7 +971,7 @@ func (m *model) panelView(pp *ppanel) string {
 				}
 			}
 			if isCur {
-				line += dimStyle.Render("  (current)")
+				line += dimStyle.Render(m.tr("  (current)"))
 			}
 			if i == pp.midx {
 				b.WriteString(botStyle.Render(" → "+line) + "\n")
@@ -958,7 +980,7 @@ func (m *model) panelView(pp *ppanel) string {
 			}
 		}
 		if hi < len(view) {
-			b.WriteString(dimStyle.Render(fmt.Sprintf("   ↓ %d more", len(view)-hi)) + "\n")
+			b.WriteString(dimStyle.Render(fmt.Sprintf(m.tr("   ↓ %d more"), len(view)-hi)) + "\n")
 		}
 		if len(view) == 0 {
 			b.WriteString(dimStyle.Render("  no models match "+strconv.Quote(pp.filter.query)) + "\n")
@@ -969,7 +991,21 @@ func (m *model) panelView(pp *ppanel) string {
 		if pp.note != "" {
 			b.WriteString(dimStyle.Render("  "+pp.note) + "\n")
 		}
-		b.WriteString("\n" + dimStyle.Render(fmt.Sprintf("  (%d/%d) type to filter · ↑/↓ select · enter/←/→ apply · esc back", pp.midx+1, len(view))))
+		b.WriteString("\n" + dimStyle.Render(fmt.Sprintf(m.tr("  (%d/%d) type to filter · ↑/↓ select · enter/←/→ apply · esc back"), pp.midx+1, len(view))))
+
+	case panelLanguage:
+		for i, language := range pp.list {
+			line := languageLabel(language)
+			if language == m.language() {
+				line += m.tr("  (current)")
+			}
+			if i == pp.midx {
+				b.WriteString(botStyle.Render(" → "+line) + "\n")
+			} else {
+				b.WriteString("   " + line + "\n")
+			}
+		}
+		b.WriteString("\n" + dimStyle.Render(m.tr("  ↑/↓ select · enter apply · esc back")))
 
 	case panelTheme:
 		cur := m.cfg.Theme
@@ -979,7 +1015,7 @@ func (m *model) panelView(pp *ppanel) string {
 		for i, name := range pp.list {
 			mark := ""
 			if name == cur {
-				mark = dimStyle.Render("  (current)")
+				mark = dimStyle.Render(m.tr("  (current)"))
 			}
 			if i == pp.midx {
 				b.WriteString(botStyle.Render(" → "+name) + mark + "\n")
@@ -987,13 +1023,13 @@ func (m *model) panelView(pp *ppanel) string {
 				b.WriteString("   " + name + mark + "\n")
 			}
 		}
-		b.WriteString("\n" + dimStyle.Render("  ↑/↓ select · enter/←/→ apply · esc back"))
+		b.WriteString("\n" + dimStyle.Render(m.tr("  ↑/↓ select · enter/←/→ apply · esc back")))
 
 	case panelBrowser:
 		for i, name := range pp.list {
 			mark := ""
 			if name == browser.Driver {
-				mark = dimStyle.Render("  (current)")
+				mark = dimStyle.Render(m.tr("  (current)"))
 			}
 			if i == pp.midx {
 				b.WriteString(botStyle.Render(" → "+name) + mark + "\n")
@@ -1001,7 +1037,7 @@ func (m *model) panelView(pp *ppanel) string {
 				b.WriteString("   " + name + mark + "\n")
 			}
 		}
-		b.WriteString("\n" + dimStyle.Render("  ↑/↓ select · enter/←/→ apply · esc back"))
+		b.WriteString("\n" + dimStyle.Render(m.tr("  ↑/↓ select · enter/←/→ apply · esc back")))
 
 	case panelGoal:
 		b.WriteString(" " + youStyle.Render(glyphUser) + pp.prepare + dimStyle.Render("█"))

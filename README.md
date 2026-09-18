@@ -53,6 +53,7 @@ Edit `~/.k-brain/config.json`, or `$HOME\.k-brain\config.json` on Windows. The f
 
 ```json
 {
+  "language": "en",
   "defaultModel": "model1",
   "providers": {
     "demo": {
@@ -105,6 +106,7 @@ The TUI uses a full-screen terminal view with a bottom-anchored input area. The 
 
 | Input | Action |
 | --- | --- |
+| `/language` · `/language zh_cn` · `/language en` | Choose the interface language (Simplified Chinese / English) |
 | `/model` · `/effort` | Switch models and adjust reasoning effort |
 | `/context` · `/compact` | Inspect context and compact it manually |
 | `/rewind` · `/fork` | Rewind to an earlier turn or branch a session |
@@ -139,6 +141,12 @@ Run `/prompts refresh`, then enter `/audit "internal/agent" "concurrency"`. The 
 Supported substitutions: `$1`, `$2`, `$@`, `$ARGUMENTS`, `${1:-default}`, `${@:-default}`, `${ARGUMENTS:-default}`, `${@:N}`, and `${@:N:L}`. Arguments accept single or double quotes. Templates do not perform shell or environment-variable expansion. Metadata supports simple single-line fields, not full YAML. Files are limited to 1 MiB.
 
 </details>
+
+### Interface language
+
+Run `/language` to open the language picker, then use ↑/↓ and Enter to apply or Esc to cancel. `/language zh_cn` and `/language en` switch directly and save `language` to `~/.k-brain/config.json`. English is the default; unknown values fall back to English.
+
+The slash-command descriptions, help, input hints, primary navigation labels, and language/model picker controls switch immediately. Command names, model/provider identifiers, conversation content, and tool output remain unchanged. This setting does not instruct the model to reply in a specific language; some detailed diagnostics and secondary panels still use English.
 
 ### External prompt editor
 
