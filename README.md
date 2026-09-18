@@ -225,6 +225,9 @@ The GitHub Actions release workflow runs **only on pushed `v*` tags**. It cross-
 K-brain references the architecture and implementation ideas of [context-labs/whip](https://github.com/context-labs/whip/). Its terminal interaction, execution core, and module organization also draw on [OpenAI Codex](https://github.com/openai/codex), [Grok Build](https://x.ai/cli), [Pi](https://github.com/badlogic/pi-mono), and [Claude Code](https://github.com/anthropics/claude-code). This README's organization is inspired by Codex and Grok Build.
 
 K-brain is independently maintained and does not represent those projects or their developers.
+## community
+
+[LINUX DO](https://linux.do)
 
 ## License
 
