@@ -129,7 +129,7 @@ func bashTool() Tool {
 			if a.Timeout <= 0 {
 				a.Timeout = 120
 			}
-			if deny := checkGate("bash", a.Command); deny != "" {
+			if deny := checkGate(ctx, "bash", a.Command); deny != "" {
 				return "", errors.New(deny)
 			}
 			if a.Interactive && runtime.GOOS == "windows" {
@@ -242,7 +242,7 @@ func writeTool() Tool {
 			if err := json.Unmarshal(args, &a); err != nil {
 				return "", err
 			}
-			if deny := checkGate("write", a.Path); deny != "" {
+			if deny := checkGate(ctx, "write", a.Path); deny != "" {
 				return "", errors.New(deny)
 			}
 
@@ -282,7 +282,7 @@ func editTool() Tool {
 			if err := json.Unmarshal(args, &a); err != nil {
 				return "", err
 			}
-			if deny := checkGate("edit", a.Path); deny != "" {
+			if deny := checkGate(ctx, "edit", a.Path); deny != "" {
 				return "", errors.New(deny)
 			}
 			data, err := os.ReadFile(a.Path)

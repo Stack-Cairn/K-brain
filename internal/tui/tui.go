@@ -219,9 +219,11 @@ type model struct {
 	irunner *interactiveRunner
 	iactive *interactive
 
-	perms      permRules
-	permDialog *permDialog
-	askDialog  *askDialog
+	perms          permRules
+	permDialog     *permDialog
+	askDialog      *askDialog
+	permissionMode string
+	permissionDone chan struct{}
 
 	tasksFocus   bool
 	taskSel      int
@@ -346,9 +348,14 @@ func Run(cfg *config.Config, modelName, provName, sysPrompt, resumeID string, ca
 	tools.ComputerApprover = m.computerConsent
 	m.installAskHook()
 
+	m.permissionMode = "always"
 	if cautious {
-		m.installPermGate()
+		m.permissionMode = "normal"
 	}
+	m.permissionDone = make(chan struct{})
+	previousGate := tools.Gate
+	m.installPermGate()
+	defer func() { close(m.permissionDone); tools.Gate = previousGate }()
 	if dir, derr := config.Dir(); derr == nil {
 		if st, serr := session.Open(dir + "/sessions.db"); serr == nil {
 			m.store = st
@@ -1546,7 +1553,13 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case permRequest:
-		m.permDialog = &permDialog{req: msg.req, reply: msg.reply}
+		m.receivePermission(msg)
+		return m, nil
+
+	case permClose:
+		if m.permDialog != nil && m.permDialog.reply == msg.reply {
+			m.permDialog = nil
+		}
 		return m, nil
 
 	case askRequest:
@@ -2332,6 +2345,7 @@ func (m *model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.menuCycle(-1)
 			return m, nil
 		}
+		m.cyclePermissionMode()
 		return m, nil
 
 	case tea.KeySpace:
@@ -2591,6 +2605,9 @@ func csiUKey(rendered string) (tea.KeyMsg, bool) {
 	case code == 13 && !ctrl:
 		return tea.KeyMsg{Type: tea.KeyEnter, Alt: alt}, true
 	case code == 9 && !ctrl:
+		if shift {
+			return tea.KeyMsg{Type: tea.KeyShiftTab, Alt: alt}, true
+		}
 		return tea.KeyMsg{Type: tea.KeyTab, Alt: alt}, true
 	case code == 127 && !ctrl:
 		return tea.KeyMsg{Type: tea.KeyBackspace, Alt: alt}, true
@@ -2803,6 +2820,7 @@ func (m *model) applyCompactModel() {
 }
 
 func (m *model) wireTasks() {
+	m.agent.SetPlanMode(m.permissionMode == "plan")
 
 	st := m.store
 	m.agent.Tasks().OnRecord = func(sessionID string, t *agent.BackgroundTask) {
@@ -3361,7 +3379,7 @@ func busyCmd(text string) bool {
 		return false
 	}
 	switch fields[0] {
-	case "/language", "/editor", "/copy", "/diff", "/prompts", "/help", "/theme", "/mouse", "/effort", "/subagents", "/tasks", "/subagent", "/cd", "/pwd", "/report", "/export", "/fork", "/context", "/context-doctor", "/doctor", "/info", "/mcps", "/mcp", "/new", "/plan", "/session-info", "/status", "/title", "/undo", "/rewind", "/view-plan":
+	case "/permissions", "/language", "/editor", "/copy", "/diff", "/prompts", "/help", "/theme", "/mouse", "/effort", "/subagents", "/tasks", "/subagent", "/cd", "/pwd", "/report", "/export", "/fork", "/context", "/context-doctor", "/doctor", "/info", "/mcps", "/mcp", "/new", "/plan", "/session-info", "/status", "/title", "/undo", "/rewind", "/view-plan":
 		return true
 	case "/auth":
 		return true
@@ -3401,6 +3419,8 @@ func (m *model) command(text string) (tea.Model, tea.Cmd) {
 		m.agent.SetSessionID("")
 		m.saved = 1
 		m.append(dimStyle.Render("(conversation cleared)"))
+	case "/permissions":
+		m.permissionCommand(fields[1:])
 	case "/memory":
 		m.memoryCommand(fields[1:])
 	case "/schedule":
@@ -4030,7 +4050,7 @@ func (m *model) viewBody() string {
 				inputView = m.highlightInput(sanitizeInputView(m.input.View()))
 			}
 		} else {
-			inputView = m.highlightInput(sanitizeInputView(m.input.View()))
+			inputView = m.inputArgumentView(m.highlightInput(sanitizeInputView(m.input.View())))
 		}
 		frameWidth := max(m.width-2, 1)
 		b.WriteString(grokPromptFrame(m.height).Width(frameWidth).Render(inputView))
@@ -4052,7 +4072,7 @@ func (m *model) viewBody() string {
 	if dock := m.tasksDock(); dock != "" {
 		b.WriteString("\n" + dock)
 	}
-	b.WriteString("\n" + shortcutStyle.Render(m.tr("shift+tab mode  ·  ctrl+c cancel  ·  ctrl+p menu")) + "\n\n" + m.statusView())
+	b.WriteString("\n" + accentStyle.Render(m.permissionModeLabel()) + "  ·  " + shortcutStyle.Render(m.tr("shift+tab mode  ·  ctrl+c cancel  ·  ctrl+p menu")) + "\n\n" + m.statusView())
 	return b.String()
 }
 
@@ -4205,37 +4225,6 @@ func ago(t time.Time) string {
 	default:
 		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
 	}
-}
-
-func (m *model) menuView() string {
-
-	start := 0
-	if m.menu.idx >= menuRows {
-		start = m.menu.idx - menuRows + 1
-	}
-	end := min(start+menuRows, len(m.menu.cands))
-
-	nameW := 0
-	for _, c := range m.menu.cands[start:end] {
-		nameW = max(nameW, lipgloss.Width(c.Text))
-	}
-
-	var b strings.Builder
-	for i := start; i < end; i++ {
-		c := m.menu.cands[i]
-		line := c.Text + strings.Repeat(" ", max(nameW-lipgloss.Width(c.Text), 0)+2)
-		var row string
-		if i == m.menu.idx {
-			row = botStyle.Render("→ " + line + c.Desc)
-		} else {
-			row = "  " + line + dimStyle.Render(c.Desc)
-		}
-
-		b.WriteString(ansi.Truncate(row, max(m.width, 8), "…"))
-		b.WriteByte('\n')
-	}
-	b.WriteString(dimStyle.Render(fmt.Sprintf("  (%d/%d)", m.menu.idx+1, len(m.menu.cands))))
-	return b.String()
 }
 
 func wrap(s string, width int) string {

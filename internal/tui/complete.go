@@ -43,6 +43,22 @@ func completions(val string, models, providers, skillCands, efforts []cand) (hea
 		cands = filterFuzzy(append([]cand{{"refresh", "refetch provider model catalogs"}}, models...), token)
 	case len(fields) == 2 && (fields[0] == "/model" || fields[0] == "/model-for-session") && fields[1] != "refresh":
 		cands = filterFuzzy(providers, token)
+	case len(fields) >= 1 && fields[0] == "/diff":
+		options := []cand{{"--staged", "show staged changes"}, {"--stat", "show change statistics"}}
+		for _, option := range options {
+			used := false
+			for _, field := range fields[1:] {
+				if field == option.Text {
+					used = true
+					break
+				}
+			}
+			if !used && strings.HasPrefix(option.Text, token) {
+				cands = append(cands, option)
+			}
+		}
+	case len(fields) == 1 && fields[0] == "/permissions":
+		cands = filterPrefix([]cand{{"normal", "Confirm commands and file changes"}, {"plan", "Read-only planning"}, {"always", "Always allow tool execution"}}, token)
 	case len(fields) == 1 && fields[0] == "/language":
 		cands = filterPrefix([]cand{{"zh_cn", "简体中文"}, {"en", "English"}}, token)
 	case len(fields) == 1 && fields[0] == "/effort":

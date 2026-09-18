@@ -114,9 +114,6 @@ func (m *model) promptCompletions(val string) (string, []cand) {
 		for _, tpl := range m.promptCatalog.items {
 			if strings.HasPrefix("/"+tpl.Name, val) {
 				desc := tpl.Description
-				if tpl.ArgumentHint != "" {
-					desc = tpl.ArgumentHint + " — " + desc
-				}
 				cands = append(cands, cand{Text: "/" + tpl.Name, Desc: desc})
 			}
 		}
@@ -125,6 +122,8 @@ func (m *model) promptCompletions(val string) (string, []cand) {
 	for i := range cands {
 		if e := registryFind(cands[i].Text); head == "" && e != nil {
 			cands[i].Desc = m.tr(e.Hint)
+		} else {
+			cands[i].Desc = m.tr(cands[i].Desc)
 		}
 	}
 	return head, cands

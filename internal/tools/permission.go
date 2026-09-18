@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"context"
 	"strings"
 )
 
@@ -13,6 +14,7 @@ const (
 )
 
 type GateRequest struct {
+	Context context.Context
 	Tool    string
 	Command string
 	Rule    string
@@ -61,11 +63,11 @@ func CommandRule(command string) string {
 	return tokens[0]
 }
 
-func checkGate(tool, command string) string {
+func checkGate(ctx context.Context, tool, command string) string {
 	if Gate == nil {
 		return ""
 	}
-	decision, redirect := Gate(GateRequest{Tool: tool, Command: command, Rule: CommandRule(command)})
+	decision, redirect := Gate(GateRequest{Context: ctx, Tool: tool, Command: command, Rule: CommandRule(command)})
 	if decision == GateReject {
 		if redirect == "" {
 			redirect = "the user rejected this action"

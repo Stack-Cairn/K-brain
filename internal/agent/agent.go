@@ -70,6 +70,7 @@ func (a *Agent) reportRetries(ev Events) func() {
 }
 
 type Agent struct {
+	planMode  *atomic.Bool
 	Client    ai.Client
 	Model     string
 	ModelName string
@@ -299,6 +300,7 @@ func copyUsageMap(m map[string]ai.Usage) map[string]ai.Usage {
 
 func New(client ai.Client, model string, maxTokens int, systemPrompt string, opts ...Option) *Agent {
 	a := &Agent{
+		planMode:  &atomic.Bool{},
 		Client:    client,
 		Model:     model,
 		MaxTokens: maxTokens,
@@ -382,7 +384,7 @@ func (a *Agent) suggest(name string) []string {
 func (a *Agent) AllTools() []tools.Tool {
 	a.toolsMu.Lock()
 	defer a.toolsMu.Unlock()
-	return append(append([]tools.Tool(nil), a.Tools...), a.mcpTools...)
+	return a.modeTools(append(append([]tools.Tool(nil), a.Tools...), a.mcpTools...))
 }
 
 func (a *Agent) Turn(ctx context.Context, input string, ev Events) (string, error) {
@@ -439,7 +441,7 @@ func (a *Agent) turn(ctx context.Context, input string, parts []ai.ContentPart, 
 		clearRetry := a.reportRetries(ev)
 		msg, usage, err := a.Client.Stream(ctx, ai.Request{
 			Model:           a.Model,
-			Messages:        msgs,
+			Messages:        a.modeMessages(msgs),
 			Tools:           tools.Defs(a.AllTools()),
 			MaxTokens:       a.MaxTokens,
 			ReasoningEffort: a.Effort,
@@ -917,7 +919,7 @@ func (a *Agent) finalAnswer(ctx context.Context, ev Events) (string, error) {
 	clearRetry := a.reportRetries(ev)
 	msg, usage, err := a.Client.Stream(ctx, ai.Request{
 		Model:           a.Model,
-		Messages:        msgs,
+		Messages:        a.modeMessages(msgs),
 		Tools:           nil,
 		ReasoningEffort: a.Effort,
 		Temperature:     a.Temperature,
