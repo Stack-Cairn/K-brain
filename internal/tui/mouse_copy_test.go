@@ -1,0 +1,46 @@
+package tui
+
+import (
+	"strings"
+	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
+)
+
+func TestShiftMousePassesThrough(t *testing.T) {
+	m := compactCmdModel()
+	m.Update(mkWinSize(80, 30))
+	m.appendRaw(blockTool, "line1\nline2")
+	m.refreshVP()
+	before := m.blocks[0].expanded
+	rowY := blockRowY(m, m.blocks[0].y0)
+
+	tm, _ := m.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, Shift: true, X: 5, Y: rowY})
+	m = tm.(*model)
+	if m.blocks[0].expanded != before {
+		t.Fatal("shift+click must not toggle the block — it belongs to native selection")
+	}
+
+	tm, _ = m.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: 5, Y: rowY})
+	m = tm.(*model)
+	tm, _ = m.Update(tea.MouseMsg{Action: tea.MouseActionRelease, Button: tea.MouseButtonLeft, X: 5, Y: rowY})
+	m = tm.(*model)
+	if m.blocks[0].expanded == before {
+		t.Fatal("plain click should toggle the block")
+	}
+}
+
+func TestThemeAutoReportsSource(t *testing.T) {
+	m := compactCmdModel()
+	m.setTheme("light")
+	m.command("/theme auto")
+	var note string
+	for _, b := range m.blocks {
+		if strings.Contains(b.text, "◐ theme:") {
+			note = b.text
+		}
+	}
+	if !strings.Contains(note, "(auto:") {
+		t.Fatalf("auto should report the detection source, got %q", note)
+	}
+}

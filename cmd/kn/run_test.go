@@ -1,0 +1,509 @@
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/Stack-Cairn/K-brain/internal/ai"
+	"github.com/Stack-Cairn/K-brain/internal/session"
+)
+
+func runFixture(t *testing.T, reply string, reqs *[]ai.Request) {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req ai.Request
+		json.NewDecoder(r.Body).Decode(&req)
+		if reqs != nil {
+			*reqs = append(*reqs, req)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		body, _ := json.Marshal(reply)
+		fmt.Fprintf(w, `data: {"choices":[{"delta":{"content":%s},"finish_reason":"stop"}]}`+"\n\n", body)
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	t.Cleanup(srv.Close)
+
+	home := t.TempDir()
+	t.Setenv("K_BRAIN_HOME", home)
+	cfg := fmt.Sprintf(`{
+  "defaultModel": "test",
+  "providers": {
+    "testprov": {
+      "baseUrl": %q,
+      "api": "openai-completions",
+      "apiKey": "k",
+      "models": [
+        {
+          "id": "test",
+          "maxTokens": 100
+        }
+      ]
+    }
+  }
+}`, srv.URL)
+	if err := os.WriteFile(filepath.Join(home, "config.json"), []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func runCapture(t *testing.T, stdinData string, args ...string) (string, error) {
+	t.Helper()
+
+	oldIn := os.Stdin
+	inR, inW, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := inW.WriteString(stdinData); err != nil {
+		t.Fatal(err)
+	}
+	inW.Close()
+	os.Stdin = inR
+	defer func() { os.Stdin = oldIn; inR.Close() }()
+
+	oldOut := os.Stdout
+	outR, outW, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = outW
+	defer func() { os.Stdout = oldOut }()
+	var buf bytes.Buffer
+	done := make(chan struct{})
+	go func() { io.Copy(&buf, outR); close(done) }()
+
+	runErr := runCLI(args)
+
+	outW.Close()
+	<-done
+	outR.Close()
+	return buf.String(), runErr
+}
+
+func TestRunTextOutput(t *testing.T) {
+	runFixture(t, "hello world", nil)
+
+	out, err := runCapture(t, "", "say hi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "hello world") {
+		t.Fatalf("stdout should stream the reply, got %q", out)
+	}
+}
+
+func TestRunJSONStream(t *testing.T) {
+	runFixture(t, "all done", nil)
+
+	out, err := runCapture(t, "", "--format", "json", "go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sawText, sawDone bool
+	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
+		var ev map[string]string
+		if err := json.Unmarshal([]byte(line), &ev); err != nil {
+			t.Fatalf("line not JSON: %q: %v", line, err)
+		}
+		switch ev["type"] {
+		case "text":
+			sawText = true
+		case "done":
+			sawDone = true
+			if ev["text"] != "all done" {
+				t.Fatalf("done text: %q", ev["text"])
+			}
+		}
+	}
+	if !sawText || !sawDone {
+		t.Fatalf("want a text event and a done event, got:\n%s", out)
+	}
+}
+
+func TestRunStdinAppendsToPrompt(t *testing.T) {
+	var reqs []ai.Request
+	runFixture(t, "ok", &reqs)
+
+	if _, err := runCapture(t, "piped context\n", "summarize this"); err != nil {
+		t.Fatal(err)
+	}
+	if len(reqs) != 1 {
+		t.Fatalf("requests: %d", len(reqs))
+	}
+	var user string
+	for _, m := range reqs[0].Messages {
+		if m.Role == "user" {
+			user = m.Content
+		}
+	}
+	if !strings.Contains(user, "summarize this") || !strings.Contains(user, "piped context") {
+		t.Fatalf("user message should combine the arg prompt and stdin, got %q", user)
+	}
+}
+
+func TestRunResume(t *testing.T) {
+	var reqs []ai.Request
+	runFixture(t, "first reply", &reqs)
+	if _, err := runCapture(t, "", "first question"); err != nil {
+		t.Fatal(err)
+	}
+
+	dir, _ := configDir()
+	st, err := sessionOpen(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metas, _ := st.Recent(10)
+	if len(metas) != 1 {
+		t.Fatalf("one session should exist, got %d", len(metas))
+	}
+	id := metas[0].ID
+	st.Close()
+
+	if _, err := runCapture(t, "", "-resume", id, "follow up"); err != nil {
+		t.Fatal(err)
+	}
+	last := reqs[len(reqs)-1]
+	var sawFirst bool
+	for _, m := range last.Messages {
+		if m.Role == "user" && strings.Contains(m.TextContent(), "first question") {
+			sawFirst = true
+		}
+	}
+	if !sawFirst {
+		t.Fatal("a resumed run should carry the prior conversation")
+	}
+}
+
+func TestRunResumeUnknown(t *testing.T) {
+	runFixture(t, "x", nil)
+	if _, err := runCapture(t, "", "-resume", "nosuchsession", "hi"); err == nil || !strings.Contains(err.Error(), "no session") {
+		t.Fatalf("unknown session should error clearly, got %v", err)
+	}
+}
+
+func TestRunSystemOverride(t *testing.T) {
+	var reqs []ai.Request
+	runFixture(t, "ok", &reqs)
+	if _, err := runCapture(t, "", "-system", "You are a pirate.", "hi"); err != nil {
+		t.Fatal(err)
+	}
+	if got := reqs[len(reqs)-1].Messages[0].Content; got != "You are a pirate." {
+		t.Fatalf("-system should replace the prompt, got %q", got)
+	}
+
+	f := filepath.Join(t.TempDir(), "sys.md")
+	os.WriteFile(f, []byte("You are a poet."), 0o644)
+	runFixture(t, "ok", &reqs)
+	if _, err := runCapture(t, "", "-system", "pirate", "-system-file", f, "hi"); err != nil {
+		t.Fatal(err)
+	}
+	if got := reqs[len(reqs)-1].Messages[0].Content; got != "You are a poet." {
+		t.Fatalf("-system-file should win over -system, got %q", got)
+	}
+}
+
+func TestRunMaxTurns(t *testing.T) {
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req ai.Request
+		json.NewDecoder(r.Body).Decode(&req)
+		w.Header().Set("Content-Type", "text/event-stream")
+		if len(req.Tools) == 0 {
+			fmt.Fprint(w, `data: {"choices":[{"delta":{"content":"final answer"},"finish_reason":"stop"}]}`+"\n\n")
+		} else {
+			fmt.Fprint(w, `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"t1","type":"function","function":{"name":"read","arguments":"{\"path\":\"/tmp/x\"}"}}]}}]}`+"\n\n")
+			fmt.Fprint(w, `data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}`+"\n\n")
+		}
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+	home := t.TempDir()
+	t.Setenv("K_BRAIN_HOME", home)
+	cfg := fmt.Sprintf(`{
+  "defaultModel": "test",
+  "providers": {
+    "testprov": {
+      "baseUrl": %q,
+      "api": "openai-completions",
+      "apiKey": "k",
+      "models": [
+        {
+          "id": "test",
+          "maxTokens": 100
+        }
+      ]
+    }
+  }
+}`, srv.URL)
+	os.WriteFile(filepath.Join(home, "config.json"), []byte(cfg), 0o600)
+
+	out, err := runCapture(t, "", "-max-turns", "2", "-no-session", "loop forever")
+	if err != nil {
+		t.Fatalf("a capped run should finalize, not error: %v", err)
+	}
+	if !strings.Contains(out, "final answer") {
+		t.Fatalf("capped run should return the forced final answer, got %q", out)
+	}
+}
+
+func TestRunTimeout(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(3 * time.Second)
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+	home := t.TempDir()
+	t.Setenv("K_BRAIN_HOME", home)
+	cfg := fmt.Sprintf(`{
+  "defaultModel": "test",
+  "providers": {
+    "testprov": {
+      "baseUrl": %q,
+      "api": "openai-completions",
+      "apiKey": "k",
+      "models": [
+        {
+          "id": "test",
+          "maxTokens": 100
+        }
+      ]
+    }
+  }
+}`, srv.URL)
+	os.WriteFile(filepath.Join(home, "config.json"), []byte(cfg), 0o600)
+
+	_, err := runCapture(t, "", "-timeout", "200ms", "-no-session", "hi")
+	if err == nil || !strings.Contains(err.Error(), "timed out") {
+		t.Fatalf("a timed-out run should say so, got %v", err)
+	}
+}
+
+func TestRunNoSession(t *testing.T) {
+	runFixture(t, "ok", nil)
+	if _, err := runCapture(t, "", "-no-session", "one-off"); err != nil {
+		t.Fatal(err)
+	}
+	dir, _ := configDir()
+	st, _ := sessionOpen(dir)
+	defer st.Close()
+	metas, _ := st.Recent(10)
+	if len(metas) != 0 {
+		t.Fatalf("-no-session should leave no sessions, got %d", len(metas))
+	}
+}
+
+func TestRunQuietJSON(t *testing.T) {
+	runFixture(t, "quiet reply", nil)
+	out, err := runCapture(t, "", "-quiet", "-format", "json", "go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
+		var ev map[string]string
+		if err := json.Unmarshal([]byte(line), &ev); err != nil {
+			t.Fatalf("stdout should be clean NDJSON, got line %q: %v", line, err)
+		}
+	}
+}
+
+func configDir() (string, error) { return os.Getenv("K_BRAIN_HOME"), nil }
+
+func sessionOpen(dir string) (*session.Store, error) { return session.Open(dir + "/sessions.db") }
+
+func TestRunArgValidation(t *testing.T) {
+	runFixture(t, "never used", nil)
+
+	for _, c := range []struct {
+		name, want string
+		args       []string
+	}{
+		{"unknown flag", "not defined", []string{"-nosuchflag"}},
+		{"bad format", "unknown --format", []string{"--format", "xml", "hi"}},
+		{"no prompt", "no prompt given", nil},
+	} {
+		_, err := runCapture(t, "", c.args...)
+		if err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: got %v, want an error containing %q", c.name, err, c.want)
+		}
+	}
+}
+
+func TestRunResolveErrors(t *testing.T) {
+	runFixture(t, "never used", nil)
+
+	if _, err := runCapture(t, "", "-m", "nosuchmodel", "hi"); err == nil {
+		t.Error("an unroutable model should error")
+	}
+	missing := filepath.Join(t.TempDir(), "absent.md")
+	_, err := runCapture(t, "", "-system-file", missing, "hi")
+	if err == nil || !strings.Contains(err.Error(), "-system-file") {
+		t.Errorf("a missing -system-file should name the flag, got %v", err)
+	}
+
+	home := t.TempDir()
+	t.Setenv("K_BRAIN_HOME", home)
+	cfg := `{
+  "defaultModel": "test",
+  "providers": {
+    "testprov": {
+      "baseUrl": "https://example.invalid",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "test",
+          "maxTokens": 100
+        }
+      ]
+    }
+  }
+}`
+	if werr := os.WriteFile(filepath.Join(home, "config.json"), []byte(cfg), 0o600); werr != nil {
+		t.Fatal(werr)
+	}
+	if _, err := runCapture(t, "", "hi"); err == nil || !strings.Contains(err.Error(), "no API key") {
+		t.Errorf("a keyless provider should error, got %v", err)
+	}
+}
+
+func TestRunUnreadableConfig(t *testing.T) {
+	unusableHome(t)
+	if _, err := runCapture(t, "", "hi"); err == nil {
+		t.Error("an unusable K_BRAIN_HOME should error")
+	}
+}
+
+func TestRunJSONToolEvents(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "target.txt")
+	if err := os.WriteFile(target, []byte("file body"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req ai.Request
+		json.NewDecoder(r.Body).Decode(&req)
+		w.Header().Set("Content-Type", "text/event-stream")
+		if len(req.Tools) == 0 {
+			fmt.Fprint(w, `data: {"choices":[{"delta":{"content":"done"},"finish_reason":"stop"}]}`+"\n\n")
+			fmt.Fprint(w, "data: [DONE]\n\n")
+			return
+		}
+		args, _ := json.Marshal(map[string]string{"path": target})
+		call, _ := json.Marshal(string(args))
+		fmt.Fprintf(w, `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"t1","type":"function","function":{"name":"read","arguments":%s}}]}}]}`+"\n\n", call)
+		fmt.Fprint(w, `data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}`+"\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	home := t.TempDir()
+	t.Setenv("K_BRAIN_HOME", home)
+	cfg := fmt.Sprintf(`{
+  "defaultModel": "test",
+  "providers": {
+    "testprov": {
+      "baseUrl": %q,
+      "api": "openai-completions",
+      "apiKey": "k",
+      "models": [
+        {
+          "id": "test",
+          "maxTokens": 100
+        }
+      ]
+    }
+  }
+}`, srv.URL)
+	if err := os.WriteFile(filepath.Join(home, "config.json"), []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runCapture(t, "", "-format", "json", "-max-turns", "2", "-quiet", "-no-session", "read it")
+	if err != nil {
+		t.Fatalf("a capped run should finalize, not error: %v", err)
+	}
+	seen := map[string]string{}
+	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
+		var ev map[string]string
+		if uerr := json.Unmarshal([]byte(line), &ev); uerr != nil {
+			t.Fatalf("stdout should be NDJSON, got %q: %v", line, uerr)
+		}
+		seen[ev["type"]] = ev["name"] + ev["result"] + ev["error"] + ev["text"]
+	}
+	if seen["tool_start"] != "read" {
+		t.Errorf("a tool call should emit tool_start for the tool, got %q", seen["tool_start"])
+	}
+	if !strings.Contains(seen["tool_end"], "file body") {
+		t.Errorf("tool_end should carry the tool result, got %q", seen["tool_end"])
+	}
+	if _, ok := seen["done"]; !ok {
+		t.Errorf("a finalized run should end with a done event, got %v", seen)
+	}
+}
+
+func TestRunJSONReasoning(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, `data: {"choices":[{"delta":{"reasoning_content":"let me think"}}]}`+"\n\n")
+		fmt.Fprint(w, `data: {"choices":[{"delta":{"content":"answer"},"finish_reason":"stop"}]}`+"\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	t.Cleanup(srv.Close)
+
+	home := t.TempDir()
+	t.Setenv("K_BRAIN_HOME", home)
+	cfg := fmt.Sprintf(`{
+  "defaultModel": "test",
+  "providers": {
+    "testprov": {
+      "baseUrl": %q,
+      "api": "openai-completions",
+      "apiKey": "k",
+      "models": [
+        {
+          "id": "test",
+          "maxTokens": 100
+        }
+      ]
+    }
+  }
+}`, srv.URL)
+	if err := os.WriteFile(filepath.Join(home, "config.json"), []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runCapture(t, "", "--format", "json", "go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var reasoning string
+	var sawText bool
+	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
+		var ev map[string]string
+		if err := json.Unmarshal([]byte(line), &ev); err != nil {
+			t.Fatalf("line not JSON: %q: %v", line, err)
+		}
+		switch ev["type"] {
+		case "reasoning":
+			reasoning += ev["delta"]
+		case "text":
+			sawText = true
+		}
+	}
+	if reasoning != "let me think" {
+		t.Fatalf("want reasoning event with thinking tokens, got %q", reasoning)
+	}
+	if !sawText {
+		t.Fatalf("want a text event too, got:\n%s", out)
+	}
+}

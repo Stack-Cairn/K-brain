@@ -1,0 +1,130 @@
+name: Build K-brain
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  computer-tests:
+    name: Computer protocol tests (${{ matrix.os }})
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - run: go test ./internal/computer/... -count=1
+      - name: Linux desktop integration
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y python3-pyatspi python3-pil python3-pil.imagetk python3-gi gir1.2-gtk-3.0 xdotool openbox xvfb dbus-x11
+          go build -o /tmp/k-brain-computer ./cmd/k-brain-computer
+          export K_BRAIN_TEST_COMPUTER_BIN=/tmp/k-brain-computer
+          export K_BRAIN_COMPUTER_PYTHON=/usr/bin/python3
+          xvfb-run -a dbus-run-session -- sh -c '
+            export XDG_SESSION_TYPE=x11 GDK_BACKEND=x11
+            unset WAYLAND_DISPLAY
+            openbox > /tmp/k-brain-openbox.log 2>&1 &
+            wm=$!
+            trap "kill $wm 2>/dev/null || true" EXIT
+            sleep 1
+            /usr/bin/python3 internal/computer/driver/desktop_integration.py
+          '
+
+  build:
+    name: ${{ matrix.goos }}-${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: windows
+            goarch: amd64
+            asset_arch: x64
+            extension: .exe
+          - goos: windows
+            goarch: arm64
+            asset_arch: arm64
+            extension: .exe
+          - goos: linux
+            goarch: amd64
+            asset_arch: x64
+            extension: ''
+          - goos: linux
+            goarch: arm64
+            asset_arch: arm64
+            extension: ''
+          - goos: darwin
+            goarch: amd64
+            asset_arch: x64
+            extension: ''
+          - goos: darwin
+            goarch: arm64
+            asset_arch: arm64
+            extension: ''
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build
+        shell: bash
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
+        run: |
+          mkdir -p dist
+          go build -trimpath -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" \
+            -o "dist/k-brain-${GOOS}-${{ matrix.asset_arch }}${{ matrix.extension }}" ./cmd/kn
+          go build -trimpath -ldflags "-s -w" \
+            -o "dist/k-brain-computer-${GOOS}-${{ matrix.asset_arch }}${{ matrix.extension }}" ./cmd/k-brain-computer
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: k-brain-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: |
+            dist/k-brain-${{ matrix.goos }}-${{ matrix.asset_arch }}${{ matrix.extension }}
+            dist/k-brain-computer-${{ matrix.goos }}-${{ matrix.asset_arch }}${{ matrix.extension }}
+          if-no-files-found: error
+
+  release:
+    name: Publish release assets
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build, computer-tests]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: k-brain-*
+          merge-multiple: true
+
+      - name: Generate checksums
+        working-directory: dist
+        run: sha256sum k-brain-* > SHA256SUMS
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

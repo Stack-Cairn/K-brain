@@ -1,0 +1,112 @@
+version: "3"
+
+vars:
+  VERSION:
+    sh: git describe --tags --always --dirty 2>/dev/null || echo dev
+  EXE_EXT: '{{if eq OS "windows"}}.exe{{end}}'
+  LDFLAGS: -X main.version={{.VERSION}}
+
+tasks:
+  default:
+    cmds: [task --list]
+    silent: true
+
+  run:
+    desc: "Run k-brain locally from source (pass flags via CLI_ARGS: task run -- -m model1)"
+    interactive: true
+    cmds:
+      - go run -ldflags "{{.LDFLAGS}}" ./cmd/kn {{.CLI_ARGS}}
+
+  build:
+    desc: Build the kn binary into ./kn (kn.exe on Windows)
+    cmds:
+      - go build -ldflags "{{.LDFLAGS}}" -o kn{{.EXE_EXT}} ./cmd/kn
+
+  install:
+    desc: Install kn to $GOPATH/bin (~/go/bin)
+    cmds:
+      - go install -ldflags "{{.LDFLAGS}}" ./cmd/kn
+
+  benchmark:
+    desc: "Benchmark startup: binary boot (--version) and full init (-bench: config, routing, key, agent)"
+    deps: [build]
+    cmds:
+      - |
+        if command -v hyperfine >/dev/null 2>&1; then
+          hyperfine -N --warmup 5 './kn --version' './kn -bench'
+        else
+          for cmd in "./kn --version" "./kn -bench"; do
+            start=$(date +%s%N)
+            for i in $(seq 1 50); do $cmd >/dev/null; done
+            end=$(date +%s%N)
+            echo "$cmd: $(( (end - start) / 50 / 1000000 )).$(( (end - start) / 50 / 100000 % 10 )) ms avg (50 runs)"
+          done
+        fi
+
+  test:
+    desc: Run all tests
+    cmds:
+      - go test ./...
+
+  check:
+    desc: "Format + vet + test (what the pre-commit hook runs, plus golangci-lint when installed)"
+    cmds:
+      - |
+        unformatted=$(gofmt -s -l .)
+        if [ -n "$unformatted" ]; then
+          echo "needs gofmt -s:"; echo "$unformatted"; exit 1
+        fi
+      - go vet ./...
+      - go run ./cmd/k-brain-vet ./...
+      - go test ./...
+
+  lint:
+    desc: "golangci-lint with the repo's .golangci.yml (the CI lint gate)"
+    cmds:
+      - golangci-lint run ./...
+
+  lint-fix:
+    desc: "golangci-lint with auto-fix"
+    cmds:
+      - golangci-lint run --fix ./...
+
+  vuln:
+    desc: "govulncheck: reachable known-vulnerability scan (the CI security gate)"
+    cmds:
+      - go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+  ci:
+    desc: "Run the full local CI gate: check + lint + vuln (what CI runs)"
+    deps: [check, lint, vuln]
+
+  coverage:
+    desc: Run tests with per-package coverage report
+    cmds:
+      - go test -cover ./...
+
+  fmt:
+    desc: Format code
+    cmds:
+      - gofmt -s -w .
+
+  vet:
+    desc: Vet code (go vet + k-brain-vet, the TUI event-loop deadlock analyzer)
+    cmds:
+      - go vet ./...
+      - go run ./cmd/k-brain-vet ./...
+
+  tidy:
+    desc: Tidy go.mod
+    cmds:
+      - go mod tidy
+
+  driver:
+    desc: "Build the cross-platform Go computer-use driver"
+    cmds:
+      - go build -trimpath -ldflags "-s -w" -o k-brain-computer{{.EXE_EXT}} ./cmd/k-brain-computer
+      - echo "driver built → k-brain-computer"
+
+  driver-test:
+    desc: "Run the Go computer-use driver tests"
+    cmds:
+      - go test ./cmd/k-brain-computer ./internal/computer/...

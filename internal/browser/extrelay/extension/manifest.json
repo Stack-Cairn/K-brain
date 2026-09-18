@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "k-brain browser",
+  "version": "0.1.0",
+  "description": "Lets k-brain drive the tab you pin via the toolbar icon. Off until you click the icon on a tab.",
+  "permissions": ["debugger", "tabs"],
+  "background": { "service_worker": "background.js" },
+  "action": {
+    "default_title": "k-brain: click to let k-brain drive this tab (click again to detach)"
+  }
+}

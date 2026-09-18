@@ -1,0 +1,134 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  enable:
+
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+    - errorlint
+    - nilerr
+    - nilnil
+    - copyloopvar
+    - predeclared
+    - reassign
+    - usestdlibvars
+    - unconvert
+    - perfsprint
+    - misspell
+    - dupword
+    - durationcheck
+    - wastedassign
+    - makezero
+    - mirror
+    - canonicalheader
+    - gocheckcompilerdirectives
+    - prealloc
+
+    - intrange
+    - modernize
+    - exptostd
+
+    - gosec
+    - bidichk
+    - asciicheck
+    - bodyclose
+    - noctx
+    - fatcontext
+    - rowserrcheck
+    - sqlclosecheck
+
+    - usetesting
+    - thelper
+    - tparallel
+
+    - nolintlint
+
+  disable:
+    - funlen
+    - gocyclo
+    - nestif
+    - dupl
+    - goconst
+    - wsl_v5
+    - whitespace
+    - godot
+    - revive
+    - gocritic
+    - testifylint
+    - paralleltest
+    - wrapcheck
+    - err113
+    - mnd
+    - varnamelen
+    - exhaustruct
+    - gochecknoglobals
+    - gochecknoinits
+
+    - exhaustive
+    - unparam
+    - forcetypeassert
+    - containedctx
+    - gocognit
+    - maintidx
+    - tagalign
+    - importas
+    - godox
+    - decorder
+    - promlinter
+    - protogetter
+    - spancheck
+
+    - nakedret
+    - dogsled
+
+  settings:
+    errcheck:
+      exclude-functions:
+        - (*net.Conn).Close
+        - (*net/http.Response).Body.Close
+        - (*os.File).Close
+        - (*os.Process).Kill
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - fmt.Sscanf
+    dupword:
+
+      ignore:
+        - ctrl+c
+        - esc
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+    gosec:
+      excludes:
+
+        - G204
+  exclusions:
+    rules:
+
+      - path: _test\.go
+        linters: [errcheck, gosec, prealloc]
+
+      - path: internal/browser
+        linters: [noctx, bodyclose]
+
+      - path: internal/config
+        linters: [gosec]
+        text: G304
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    gofumpt:
+      extra:
+        group-params: true

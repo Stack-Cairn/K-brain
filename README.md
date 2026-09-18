@@ -1,0 +1,231 @@
+<div align="center">
+
+# K-brain · 氪脑
+
+**A terminal coding agent built in Go, with a reusable backend for other frontends.**
+
+Read code, edit files, run commands, and verify results in one session.
+
+Start with **`kn`**, short for **K**e **N**ao, the Chinese name 氪脑.
+
+[![Go](https://img.shields.io/badge/Go-1.27%2B-00ADD8?logo=go&logoColor=white)](go.mod)
+[![Platforms](https://img.shields.io/badge/Windows%20%7C%20Linux%20%7C%20macOS-x64%20%7C%20ARM64-555)](https://github.com/Stack-Cairn/K-brain/releases)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+
+[简体中文](README.zh-CN.md) · **English**
+
+[Quickstart](#quickstart) · [Usage](#usage) · [Building from source](#building-from-source) · [Documentation](#documentation) · [Repository layout](#repository-layout)
+
+</div>
+
+---
+
+## Quickstart
+
+### 1. Install
+
+**macOS / Linux**
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Stack-Cairn/K-brain/main/install.sh | sh
+```
+
+**Windows PowerShell**
+
+```powershell
+& ([scriptblock]::Create((Invoke-WebRequest -UseBasicParsing https://raw.githubusercontent.com/Stack-Cairn/K-brain/main/install.ps1).Content))
+```
+
+The installers download platform binaries from [GitHub Releases](https://github.com/Stack-Cairn/K-brain/releases) and verify SHA-256 checksums. Windows installs to `%LOCALAPPDATA%\Programs\k-brain` by default; open a new terminal for PATH changes to take effect. If a suitable release is not available, [build from source](#building-from-source).
+
+<details>
+<summary>Manual downloads: Windows, Linux, macOS × x64, ARM64</summary>
+
+Main assets are named `k-brain-<os>-<arch>`, with `.exe` on Windows. `os` is `windows`, `linux`, or `darwin`; `arch` is `x64` or `arm64`. Rename the main binary to `kn` (`kn.exe` on Windows), put it on PATH, and make it executable on Linux/macOS.
+
+For computer-use, rename `k-brain-computer-<os>-<arch>` to `k-brain-computer` (with `.exe` on Windows) and place it beside the main binary. See [Computer-use](COMPUTER_USE.md) for runtime dependencies.
+
+</details>
+
+### 2. Configure an API
+
+Edit `~/.k-brain/config.json`, or `$HOME\.k-brain\config.json` on Windows. The file supports JSONC comments and trailing commas. Set `K_BRAIN_HOME` to use another configuration directory.
+
+```json
+{
+  "defaultModel": "model1",
+  "providers": {
+    "demo": {
+      "name": "demo",
+      "api": "openai-completions",
+      "baseUrl": "https://api.example.com/v1",
+      "apiKey": "YOUR_API_KEY",
+      "models": [
+        {"id": "model1", "contextWindow": 128000, "maxTokens": 8192},
+        {"id": "model2", "contextWindow": 128000, "maxTokens": 8192}
+      ]
+    }
+  }
+}
+```
+
+Replace `baseUrl`, `apiKey`, `model1`, and `model2` with your provider's values. K-brain supports third-party API-key connections only, with no built-in account login, OAuth, or subscription authentication.
+
+| `api` | Protocol |
+| --- | --- |
+| `openai-completions` | OpenAI Chat Completions |
+| `openai-responses` | OpenAI Responses |
+| `anthropic-messages` | Anthropic Messages |
+
+- Use an API prefix such as `https://api.example.com/v1` for `baseUrl`, not a complete `/chat/completions` endpoint.
+- Declare models inside each provider's `models` array. The legacy top-level `models` format is not supported.
+- `contextWindow` is the context token limit; `maxTokens` is the output token limit. Set them to the model's actual limits. Explicit configuration takes precedence over the model catalog.
+- `/model refresh` fetches `baseUrl + "/models"`, which is `/v1/models` in this example. Use `/model` to select a model.
+- Restart after editing the file. The TUI can open without API credentials, but model requests require a valid configuration.
+
+### 3. Start a task
+
+Run this in your project directory:
+
+```sh
+kn
+```
+
+Describe the task directly:
+
+```text
+Read this project, find the cause of the failing tests, fix it, run the relevant tests, and summarize the changes.
+```
+
+The TUI uses a full-screen terminal view with a bottom-anchored input area. The session title appears at the bottom right after the first turn. Use `kn -c` to continue the latest session in the current directory, or `kn --resume` to open the session picker.
+
+## Usage
+
+### Interactive sessions
+
+| Input | Action |
+| --- | --- |
+| `/model` · `/effort` | Switch models and adjust reasoning effort |
+| `/context` · `/compact` | Inspect context and compact it manually |
+| `/rewind` · `/fork` | Rewind to an earlier turn or branch a session |
+| `/title` · `/resume` | Rename or resume a session |
+| `/diff [--staged] [--stat]` | Inspect tracked Git changes locally, without a model request |
+| `/copy [N] [file]` | Copy the Nth latest assistant message with text, or save it to a new file |
+| `/prompts [refresh]` | List or reload Markdown prompt templates |
+| `/mcp` · `/tasks` | Manage MCP connections and inspect background tasks |
+| `!command` · `!!command` | Run a shell command; the first adds output to the conversation, the second stays local |
+| `/help` | Show all commands and keyboard shortcuts |
+
+Use `Ctrl+P` for the command palette, `Ctrl+J` for a newline, `Esc` to interrupt the current task, and `PgUp/PgDn` to scroll. Launch with `kn -cautious` to request confirmation before commands or file writes.
+
+<details>
+<summary>Markdown prompt templates</summary>
+
+Put global templates in `~/.k-brain/prompts/` and project templates in a trusted project's `.k-brain/prompts/`. Discovery is non-recursive. Project templates override global templates of the same name; built-in commands take precedence.
+
+Example `audit.md`:
+
+```markdown
+---
+description: Review a module
+argument-hint: "<module> [focus]"
+---
+Review $1, focusing on ${2:-correctness and test coverage}.
+Additional requirements: ${@:3}
+```
+
+Run `/prompts refresh`, then enter `/audit "internal/agent" "concurrency"`. The template expands into the input area; press Enter again to send it.
+
+Supported substitutions: `$1`, `$2`, `$@`, `$ARGUMENTS`, `${1:-default}`, `${@:-default}`, `${ARGUMENTS:-default}`, `${@:N}`, and `${@:N:L}`. Arguments accept single or double quotes. Templates do not perform shell or environment-variable expansion. Metadata supports simple single-line fields, not full YAML. Files are limited to 1 MiB.
+
+</details>
+
+### Headless use and backend integration
+
+```sh
+kn run "Explain this project's structure"
+git diff | kn run "Review these changes"
+kn run --format json --quiet --max-turns 8 --timeout 5m "Find and fix the build failure"
+```
+
+`--format json` emits newline-delimited JSON events (NDJSON), not one JSON document.
+
+| Entry point | Purpose |
+| --- | --- |
+| `kn acp` | Connect ACP editors over standard input/output |
+| `kn mcp serve` | Expose built-in file and command tools to other clients |
+| `kn sessions` | List saved sessions |
+| `kn update` | Update the installed version |
+
+The execution core is separate from the TUI and shares model adapters, tool loops, context compaction, background subtasks, and SQLite session storage. Current backend entry points are CLI, ACP, and MCP—not a standalone HTTP service. This repository does not include a Desktop frontend.
+
+### Platform notes
+
+- **Windows shell**: prefers PowerShell 7, falling back to Windows PowerShell. Set `K_BRAIN_SHELL` to `pwsh`, `powershell`, `bash`, `wsl`, `cmd`, or an executable path. Native Windows does not support Unix-style interactive PTY forwarding.
+- **Computer-use**: Windows uses PowerShell/UIA, macOS uses Python/PyObjC, and Linux uses Python/AT-SPI2. Linux X11 has GTK/Xvfb integration coverage. macOS awaits real-desktop validation; a general Wayland desktop-input portal is not implemented. See [dependencies and platform coverage](COMPUTER_USE.md).
+
+## Building from source
+
+Requires Git and **Go 1.27+**. The version requirement is recorded in [`go.mod`](go.mod).
+
+```sh
+git clone https://github.com/Stack-Cairn/K-brain.git
+cd K-brain
+go install ./cmd/kn ./cmd/k-brain-computer
+```
+
+Ensure Go's binary directory, usually `~/go/bin`, is on PATH. To run or build directly from the repository:
+
+```sh
+go run ./cmd/kn
+go build -o kn ./cmd/kn
+```
+
+On Windows, use `go build -o kn.exe ./cmd/kn`, then `.\kn.exe`. Build or install `cmd/k-brain-computer` separately when using computer-use.
+
+## Documentation
+
+- [Computer-use setup, platform coverage, and validation](COMPUTER_USE.md) (Chinese)
+- [Feature parity and remaining work](FEATURE_PARITY.md) (Chinese)
+- [Build and release workflow](.github/workflows/build.yml)
+- CLI help: `kn --help`, `kn run --help`; TUI help: `/help`
+
+## Repository layout
+
+| Path | Responsibility |
+| --- | --- |
+| `cmd/kn` | Main binary, TUI, headless execution, and protocol entry points |
+| `cmd/k-brain-computer` | Computer-use RPC helper |
+| `internal/agent` | Model/tool loop and subtask coordination |
+| `internal/ai` · `internal/routing` | Protocol adapters, streaming, and model routing |
+| `internal/config` | Configuration, model catalogs, and local settings |
+| `internal/tools` | Shell, file access, and editing tools |
+| `internal/prompts` · `internal/skills` | Prompts, templates, and skill loading |
+| `internal/session` · `internal/memory` | Session persistence and durable memory |
+| `internal/mcp` · `internal/acp` · `internal/lsp` | Tool, editor, and language-server protocols |
+| `internal/browser` · `internal/computer` | Browser and desktop automation |
+| `internal/tui` | Terminal layout, input, and event presentation |
+
+## Development
+
+Start with tests for the changed packages, then run broader checks:
+
+```sh
+go test ./internal/computer/... -count=1
+go vet ./internal/computer/...
+go test ./...
+```
+
+Some integration tests need platform tools, a graphical session, or explicit environment opt-ins. A successful build does not imply a passing full test suite. Additional tasks are in [`Taskfile.yaml`](Taskfile.yaml).
+
+The GitHub Actions release workflow runs **only on pushed `v*` tags**. It cross-compiles Windows, Linux, and macOS for x64 / ARM64, generates checksums, and publishes release assets. Ordinary branch pushes do not trigger this workflow.
+
+## References and acknowledgments
+
+K-brain references the architecture and implementation ideas of [context-labs/whip](https://github.com/context-labs/whip/). Its terminal interaction, execution core, and module organization also draw on [OpenAI Codex](https://github.com/openai/codex), [Grok Build](https://x.ai/cli), [Pi](https://github.com/badlogic/pi-mono), and [Claude Code](https://github.com/anthropics/claude-code). This README's organization is inspired by Codex and Grok Build.
+
+K-brain is independently maintained and does not represent those projects or their developers.
+
+## License
+
+[Apache License 2.0](LICENSE).

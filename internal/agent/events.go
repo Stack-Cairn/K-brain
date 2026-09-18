@@ -1,0 +1,78 @@
+package agent
+
+import "github.com/Stack-Cairn/K-brain/internal/ai"
+
+func FanIn(evs ...Events) Events {
+	return Events{
+		OnText: func(s string) {
+			for _, e := range evs {
+				if e.OnText != nil {
+					e.OnText(s)
+				}
+			}
+		},
+		OnThink: func(s string) {
+			for _, e := range evs {
+				if e.OnThink != nil {
+					e.OnThink(s)
+				}
+			}
+		},
+		OnToolStart: func(id, name, args string) {
+			for _, e := range evs {
+				if e.OnToolStart != nil {
+					e.OnToolStart(id, name, args)
+				}
+			}
+		},
+		OnToolCall: func(id, name, args string) {
+			for _, e := range evs {
+				if e.OnToolCall != nil {
+					e.OnToolCall(id, name, args)
+				}
+			}
+		},
+		OnToolEnd: func(id, name, result string) {
+			for _, e := range evs {
+				if e.OnToolEnd != nil {
+					e.OnToolEnd(id, name, result)
+				}
+			}
+		},
+		OnSteer: func(text string) {
+			for _, e := range evs {
+				if e.OnSteer != nil {
+					e.OnSteer(text)
+				}
+			}
+		},
+		OnCompact: func(took, kept int) {
+			for _, e := range evs {
+				if e.OnCompact != nil {
+					e.OnCompact(took, kept)
+				}
+			}
+		},
+		OnCompacted: func(sum string, cutoff int, info CompactInfo) {
+			for _, e := range evs {
+				if e.OnCompacted != nil {
+					e.OnCompacted(sum, cutoff, info)
+				}
+			}
+		},
+		OnCompactStart: func(took, est int) {
+			for _, e := range evs {
+				if e.OnCompactStart != nil {
+					e.OnCompactStart(took, est)
+				}
+			}
+		},
+		OnUsage: func(u ai.Usage) {
+			for _, e := range evs {
+				if e.OnUsage != nil {
+					e.OnUsage(u)
+				}
+			}
+		},
+	}
+}
