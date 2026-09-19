@@ -25,9 +25,14 @@ type ScanProblem struct {
 }
 
 func DefaultDirs() []string {
+	wd, _ := os.Getwd()
+	return DirsFor(wd)
+}
+
+func DirsFor(project string) []string {
 	var dirs []string
-	if wd, err := os.Getwd(); err == nil {
-		dirs = append(dirs, filepath.Join(wd, ".agents", "skills"))
+	if project != "" {
+		dirs = append(dirs, filepath.Join(project, ".agents", "skills"))
 	}
 	if home, err := os.UserHomeDir(); err == nil {
 		dirs = append(dirs, filepath.Join(home, ".k-brain", "skills"))

@@ -3,16 +3,23 @@ package tui
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Stack-Cairn/K-brain/internal/fileuri"
 )
 
 func existsAll(string) bool  { return true }
 func existsNone(string) bool { return false }
 
 func TestLinkifyFilePaths(t *testing.T) {
+	absoluteURI := "file:///etc/hostname"
+	if runtime.GOOS == "windows" {
+		absoluteURI = "file:///" + filepath.VolumeName(mustWd(t)) + "/etc/hostname"
+	}
 	tests := []struct {
 		name   string
 		in     string
@@ -21,7 +28,7 @@ func TestLinkifyFilePaths(t *testing.T) {
 	}{
 		{"relative path", "see internal/tui/tui.go now", existsAll, "]8;;file://"},
 		{"dot-relative", "see ./docs/features.md now", existsAll, "]8;;file://"},
-		{"absolute", "see /etc/hostname now", existsAll, "file:///etc/hostname"},
+		{"absolute", "see /etc/hostname now", existsAll, absoluteURI},
 		{"line ref kept", "see internal/tui/tui.go:42 now", existsAll, "]8;;file://"},
 		{"line ref in uri", "internal/tui/tui.go:42", existsAll, "tui.go:42\x07"},
 		{"missing file untouched", "see internal/tui/tui.go now", existsNone, ""},
@@ -57,6 +64,35 @@ func TestLinkifyFilePathsWidthNeutral(t *testing.T) {
 	}
 	if ansi.StringWidth(got) != ansi.StringWidth(in) {
 		t.Errorf("width changed: %d vs %d", ansi.StringWidth(got), ansi.StringWidth(in))
+	}
+}
+
+func TestLinkifyNativeUnicodePaths(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "中文", "入口.go")
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("package main"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	in := "open " + path + ":42 please"
+	want := ansi.SetHyperlink(fileuri.FromPath(path + ":42"))
+	for name, linkify := range map[string]func(string, func(string) bool) string{"plain": linkifyFilePaths, "rendered": linkifyRenderedFilePaths} {
+		got := linkify(in, realFileExists)
+		if !strings.Contains(got, want) || ansi.Strip(got) != in || ansi.StringWidth(got) != ansi.StringWidth(in) {
+			t.Errorf("%s file link lost path or changed layout: %q", name, got)
+		}
+	}
+}
+
+func TestFileLinkDestinationWithSpacesAndSymbols(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "截图 100% #1.png")
+	if err := os.WriteFile(path, []byte("image"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	got := targetURI(path, realFileExists)
+	if got == "" || fileuri.Path(got) != path || strings.ContainsAny(got, "\\ #") {
+		t.Fatalf("file destination is not a valid reversible URI: %q", got)
 	}
 }
 

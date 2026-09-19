@@ -19,6 +19,17 @@ type Policy struct {
 	ReadOnly []string
 }
 
+func (p *Policy) ForRoot(root string) *Policy {
+	if p == nil {
+		return nil
+	}
+	copy := *p
+	copy.Root = root
+	copy.Writable = append([]string(nil), p.Writable...)
+	copy.ReadOnly = append([]string(nil), p.ReadOnly...)
+	return &copy
+}
+
 type contextKey struct{}
 
 func WithPolicy(ctx context.Context, policy *Policy) context.Context {
@@ -69,7 +80,8 @@ func (p *Policy) wrapWindowsWSL(ctx context.Context, cmd *exec.Cmd, root string)
 	if err != nil {
 		return nil, fmt.Errorf("sandbox requires WSL2 with bubblewrap: %w", err)
 	}
-	rootLinux, err := windowsToWSLPath(root)
+	dir := commandDir(cmd, root)
+	dirLinux, err := windowsToWSLPath(dir)
 	if err != nil {
 		return nil, err
 	}
@@ -110,10 +122,10 @@ func (p *Policy) wrapWindowsWSL(ctx context.Context, cmd *exec.Cmd, root string)
 	if converted, convErr := windowsToWSLPath(program); convErr == nil {
 		program = converted
 	}
-	args = append(args, "--chdir", rootLinux, "--", program)
+	args = append(args, "--chdir", dirLinux, "--", program)
 	args = append(args, cmd.Args[1:]...)
 	w := exec.CommandContext(ctx, wsl, args...)
-	w.Dir = root
+	w.Dir = dir
 	w.Env = cmd.Env
 	return w, nil
 }
@@ -158,11 +170,12 @@ func (p *Policy) wrapBubblewrap(ctx context.Context, cmd *exec.Cmd, root string)
 		}
 		args = append(args, "--ro-bind", path, path)
 	}
-	args = append(args, "--chdir", root, "--", cmd.Path)
+	dir := commandDir(cmd, root)
+	args = append(args, "--chdir", dir, "--", cmd.Path)
 	args = append(args, cmd.Args[1:]...)
 	wrapped := exec.CommandContext(ctx, bwrap, args...)
 	wrapped.Env = cmd.Env
-	wrapped.Dir = root
+	wrapped.Dir = dir
 	return wrapped, nil
 }
 
@@ -191,8 +204,18 @@ func (p *Policy) wrapSandboxExec(ctx context.Context, cmd *exec.Cmd, root string
 	args = append(args, cmd.Args[1:]...)
 	wrapped := exec.CommandContext(ctx, sandboxExec, args...)
 	wrapped.Env = cmd.Env
-	wrapped.Dir = root
+	wrapped.Dir = commandDir(cmd, root)
 	return wrapped, nil
+}
+
+func commandDir(cmd *exec.Cmd, root string) string {
+	if cmd.Dir == "" {
+		return root
+	}
+	if filepath.IsAbs(cmd.Dir) {
+		return cmd.Dir
+	}
+	return filepath.Join(root, cmd.Dir)
 }
 
 func resolvePath(root, path string) (string, error) {

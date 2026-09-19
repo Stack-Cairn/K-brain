@@ -81,7 +81,7 @@ func runComputerCode(ctx context.Context, code string) (string, error) {
 		return "", err
 	}
 	var out strings.Builder
-	var shots [][]byte
+	attached := 0
 	for _, st := range prog {
 		res, shot, err := execComputerStmt(ctx, st)
 		if err != nil {
@@ -90,13 +90,12 @@ func runComputerCode(ctx context.Context, code string) (string, error) {
 		if res != "" {
 			fmt.Fprintln(&out, res)
 		}
-		if shot != nil {
-			shots = append(shots, shot)
+		if AttachScreenshot(ctx, shot) {
+			attached++
 		}
 	}
-	if len(shots) > 0 && ScreenshotSink != nil {
-		ScreenshotSink(shots)
-		fmt.Fprintf(&out, "\n(%d screenshot(s) attached to your context — inspect directly with your vision)", len(shots))
+	if attached > 0 {
+		fmt.Fprintf(&out, "\n(%d screenshot(s) attached to this tool result)", attached)
 	}
 	return out.String(), nil
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -13,6 +14,9 @@ import (
 func TestBashToolSpillOnTruncation(t *testing.T) {
 
 	cmd := `printf 'HEADMARKER\n'; head -c 60000 /dev/zero | tr '\0' 'x'; printf '\nTAILMARKER\n'`
+	if runtime.GOOS == "windows" {
+		cmd = `Write-Output 'HEADMARKER'; Write-Output ('x' * 60000); Write-Output 'TAILMARKER'`
+	}
 	out := run(t, "bash", fmt.Sprintf(`{"command":%q}`, cmd))
 
 	if !strings.Contains(out, "truncated") {

@@ -2,6 +2,7 @@ package config
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"maps"
@@ -43,8 +44,12 @@ func (p Provider) Key() string {
 }
 
 func (p Provider) ResolveKey() (string, error) {
+	return p.ResolveKeyContext(context.Background())
+}
+
+func (p Provider) ResolveKeyContext(ctx context.Context) (string, error) {
 	if p.APIKey != "" {
-		k, err := ResolveSecret(p.APIKey)
+		k, err := ResolveSecretContext(ctx, p.APIKey)
 		if err != nil {
 			return "", fmt.Errorf("provider %q apiKey: %w", p.Name, err)
 		}
@@ -78,8 +83,6 @@ func (m Model) ContextWindow() int {
 
 const DefaultCompactModel = "model1"
 
-const DefaultTaskModel = DefaultCompactModel
-
 const DefaultCompactPct = 50
 
 type Config struct {
@@ -108,8 +111,6 @@ type Config struct {
 	Models         map[string]Model `json:"-"`
 
 	MCPServers map[string]MCPServer `json:"mcp,omitempty"`
-
-	MCPImport *MCPImport `json:"mcpImport,omitempty"`
 
 	LSPServers map[string]LSPServer `json:"lsp,omitempty"`
 
@@ -171,17 +172,6 @@ type LSPServer struct {
 	RootMarkers []string          `json:"rootMarkers,omitempty"`
 	Env         map[string]string `json:"env,omitempty"`
 	Enabled     *bool             `json:"enabled,omitempty"`
-}
-
-type MCPImport struct {
-	Claude *MCPImportSource `json:"claude,omitempty"`
-	Codex  *MCPImportSource `json:"codex,omitempty"`
-}
-
-type MCPImportSource struct {
-	Enabled *bool    `json:"enabled,omitempty"`
-	Only    []string `json:"only,omitempty"`
-	Exclude []string `json:"exclude,omitempty"`
 }
 
 type MCPServer struct {
@@ -390,9 +380,6 @@ func Load() (*Config, error) {
 				if len(restored.MCPServers) == 0 && len(cfg.MCPServers) > 0 {
 					restored.MCPServers = cfg.MCPServers
 				}
-				if restored.MCPImport == nil {
-					restored.MCPImport = cfg.MCPImport
-				}
 				if cfg.Language != "" {
 					restored.Language = cfg.Language
 				}
@@ -404,7 +391,6 @@ func Load() (*Config, error) {
 			def.Language = cfg.Language
 		}
 		def.MCPServers = cfg.MCPServers
-		def.MCPImport = cfg.MCPImport
 		logf("config.load", "no usable .bak; regenerated defaults (%s), keeping %d mcp entries", def.fingerprint(), len(cfg.MCPServers))
 		return def, def.Save()
 	}

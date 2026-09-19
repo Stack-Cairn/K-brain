@@ -1,9 +1,13 @@
 package tui
 
 import (
+	"fmt"
 	"net/url"
+	"os"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestEnvReportCollectsWhitelist(t *testing.T) {
@@ -53,7 +57,14 @@ func TestEnvReportCollectsWhitelist(t *testing.T) {
 	if !strings.HasSuffix(got["theme"], " (COLORFGBG)") {
 		t.Errorf("theme row %q should carry the detection source", got["theme"])
 	}
-	for _, k := range []string{"os", "go", "uname"} {
+	platformRow := "uname"
+	if runtime.GOOS == "windows" {
+		platformRow = "Windows"
+		if _, ok := got["uname"]; ok {
+			t.Error("Windows diagnostics should not rely on uname")
+		}
+	}
+	for _, k := range []string{"os", "go", platformRow} {
 		if got[k] == "" {
 			t.Errorf("row %q missing", k)
 		}
@@ -168,5 +179,44 @@ func TestReportCommandAppendsOneBlock(t *testing.T) {
 func TestReportIsBusySafe(t *testing.T) {
 	if !busyCmd("/report") {
 		t.Error("/report should be safe while busy")
+	}
+}
+
+func TestReportCommandOutput(t *testing.T) {
+	if mode := os.Getenv("K_BRAIN_REPORT_TEST_HELPER"); mode != "" {
+		switch mode {
+		case "success":
+			fmt.Print("\n  diagnostic\tversion\r\n  123 \n")
+		case "failure":
+			fmt.Print("incomplete")
+			os.Exit(1)
+		case "timeout":
+			time.Sleep(30 * time.Second)
+		}
+		os.Exit(0)
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, mode := range []string{"success", "failure", "timeout"} {
+		t.Run(mode, func(t *testing.T) {
+			t.Setenv("K_BRAIN_REPORT_TEST_HELPER", mode)
+			start := time.Now()
+			got := reportCommandOutput(executable, "-test.run=^TestReportCommandOutput$")
+			want := ""
+			if mode == "success" {
+				want = "diagnostic version 123"
+			}
+			if got != want {
+				t.Fatalf("output = %q, want %q", got, want)
+			}
+			if mode == "timeout" && time.Since(start) > 5*time.Second {
+				t.Fatal("diagnostic command did not terminate at its deadline")
+			}
+		})
+	}
+	if got := reportCommandOutput("k-brain-nonexistent-diagnostic-command"); got != "" {
+		t.Fatalf("missing command output = %q", got)
 	}
 }

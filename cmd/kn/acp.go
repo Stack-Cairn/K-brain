@@ -18,7 +18,6 @@ import (
 	"github.com/Stack-Cairn/K-brain/internal/hooks"
 	"github.com/Stack-Cairn/K-brain/internal/lsp"
 	"github.com/Stack-Cairn/K-brain/internal/mcp"
-	"github.com/Stack-Cairn/K-brain/internal/memory"
 	"github.com/Stack-Cairn/K-brain/internal/plugins"
 	"github.com/Stack-Cairn/K-brain/internal/session"
 	"github.com/Stack-Cairn/K-brain/internal/skills"
@@ -52,13 +51,15 @@ func acpCLI(args []string) error {
 	vision := acpSupportsVision(cfg, route.ModelName, route.APIModel, route.ProviderName)
 	acp.SetEventLog(func(format string, args ...any) { config.LogEvent("acp", fmt.Sprintf(format, args...)) })
 
-	var store *session.Store
-	if dir, derr := config.Dir(); derr == nil {
-		if st, serr := session.OpenHome(dir); serr == nil {
-			store = st
-			defer func() { _ = st.Close() }()
-		}
+	dir, err := config.Dir()
+	if err != nil {
+		return fmt.Errorf("session storage: %w", err)
 	}
+	store, err := session.OpenProjectHome(dir)
+	if err != nil {
+		return fmt.Errorf("session storage: %w", err)
+	}
+	defer func() { _ = store.Close() }()
 
 	lspMgr := lsp.NewManager(lsp.FromConfigMap(cfg.LSPServers))
 	tools.LSP = lspMgr
@@ -69,14 +70,15 @@ func acpCLI(args []string) error {
 
 	factory := func(ctx context.Context, wd string, servers map[string]mcp.ServerConfig) (*agent.Agent, *mcp.Manager, error) {
 		ag := agent.New(route.Client.Clone(), route.APIModel, route.MaxOutput, sysprompt.Build(wd, time.Now()), agent.WithExperimental(cfg.Experimental))
+		ag.WorkingDir = wd
+		ag.WorktreeSubagents = cfg.WorktreeSubagents != nil && *cfg.WorktreeSubagents
 		ag.Hooks = hooks.New(cfg.Hooks)
-		if err := ag.Hooks.Run(ctx, hooks.Event{Name: "SessionStart", CWD: wd}); err != nil {
-			return nil, nil, err
-		}
 		ag.ModelName, ag.Provider = route.ModelName, route.ProviderName
+		ag.Vision = route.Vision
 		ag.ComputerDisabled = true
 		ag.ContextLimit = route.ContextLimit
 		if pm, _ := plugins.New(wd); pm != nil {
+			ag.PluginHook = pm.RunHook
 			ag.SetPluginTools(pluginTools(pm))
 			ag.Messages[0].Content += pm.PromptBlock()
 		}
@@ -84,12 +86,14 @@ func acpCLI(args []string) error {
 
 		ag.Effort = routing.DefaultEffortFor(config.LoadCatalogs(), route.ProviderName, ag.Model, cfg.DefaultEffort)
 
-		ag.Messages[0].Content += skills.PromptBlock(skills.Scan(skills.DefaultDirs()...))
-		ag.Messages[0].Content += memory.PromptBlock(memory.Installation(), memory.Session("acp"))
+		ag.Messages[0].Content += skills.PromptBlock(skills.Scan(skills.DirsFor(wd)...))
 
+		if err := ctx.Err(); err != nil {
+			return nil, nil, err
+		}
 		mgr := mcp.NewManager(servers)
 		mgr.SetOnChange(func() { ag.SetMCPTools(mgr.Tools()) })
-		mgr.Start(ctx)
+		mgr.Start(context.WithoutCancel(ctx))
 		ag.SetMCPTools(mgr.Tools())
 		if ib := mgr.InstructionsBlock(); ib != "" {
 			ag.Messages[0].Content += ib
@@ -115,21 +119,9 @@ func acpCLI(args []string) error {
 }
 
 func acpSupportsVision(cfg *config.Config, modelName, modelID, provName string) bool {
-	if cat, ok := config.LoadCatalogs()[provName]; ok {
-		if vision, found := cat.SupportsVision(modelID); found {
-			return vision
-		}
-	}
-	if mc, ok := cfg.Models[modelName]; ok {
-		return mc.Vision
-	}
-	return false
+	return routing.SupportsVision(cfg, modelName, modelID, config.LoadCatalogs(), provName)
 }
 
 func acpBaseMCP(cfg *config.Config) map[string]mcp.ServerConfig {
-	disc := mcp.LoadConfigured(mcp.FromConfigMap(cfg.MCPServers))
-	for src, err := range disc.Errs {
-		config.LogEvent("acp", fmt.Sprintf("mcp discovery: %s: %s", src, err))
-	}
-	return disc.Merged
+	return mcp.FromConfigMap(cfg.MCPServers)
 }

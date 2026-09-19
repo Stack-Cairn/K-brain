@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/Stack-Cairn/K-brain/internal/ai"
 	"strings"
 	"testing"
 
@@ -359,22 +360,35 @@ func TestRunBrowserCodeStatementError(t *testing.T) {
 	}
 }
 
-func TestRunBrowserCodeScreenshotSink(t *testing.T) {
-	var got [][]byte
-	old := ScreenshotSink
-	ScreenshotSink = func(jpegs [][]byte) { got = jpegs }
-	defer func() { ScreenshotSink = old }()
-
-	b := &fakeBackend{mode: browser.ModeHeadless, shot: []byte("jpeg")}
-	out, err := runBrowserCode(t.Context(), b, "screenshot(); screenshot()", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(got) != 2 || string(got[0]) != "jpeg" {
-		t.Fatalf("sink got %d shots: %q", len(got), got)
-	}
-	if !strings.Contains(out, "(2 screenshot(s) attached") {
-		t.Errorf("missing attach note: %q", out)
+func TestRunBrowserCodeAttachments(t *testing.T) {
+	for _, vision := range []bool{false, true} {
+		for _, fail := range []bool{false, true} {
+			b := &fakeBackend{mode: browser.ModeHeadless, shot: []byte("jpeg")}
+			code := "screenshot(); screenshot()"
+			if fail {
+				code += `; box("x")`
+			}
+			tool := Tool{Def: ai.NewTool("capture", "", `{}`), Run: func(ctx context.Context, _ json.RawMessage) (string, error) {
+				return runBrowserCode(ctx, b, code, "")
+			}}
+			result := ExecuteResult(t.Context(), []Tool{tool}, "capture", nil, vision)
+			want := 0
+			if vision {
+				want = 2
+			}
+			if len(result.Parts) != want {
+				t.Fatalf("vision=%v fail=%v: %+v", vision, fail, result)
+			}
+			if vision && result.Parts[0].ImageURL.URL != ai.ImagePart("jpg", []byte("jpeg")).ImageURL.URL {
+				t.Fatal("wrong screenshot")
+			}
+			if strings.HasPrefix(result.Text, "Error:") != fail {
+				t.Fatalf("failure lost: %q", result.Text)
+			}
+			if strings.Contains(result.Text, "screenshot(s) attached") != (vision && !fail) {
+				t.Fatalf("incorrect attach note: %q", result.Text)
+			}
+		}
 	}
 }
 

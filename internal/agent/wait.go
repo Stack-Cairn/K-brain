@@ -6,11 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/Stack-Cairn/K-brain/internal/ai"
+	"github.com/Stack-Cairn/K-brain/internal/sandbox"
 	"github.com/Stack-Cairn/K-brain/internal/tools"
 	"github.com/Stack-Cairn/K-brain/internal/tools/bashrun"
 )
@@ -28,6 +30,7 @@ const (
 type waitTask struct {
 	ID        string
 	Command   string
+	Shell     string
 	Until     string
 	Interval  time.Duration
 	Timeout   time.Duration
@@ -77,6 +80,7 @@ func (a *Agent) waits() *waitRegistry {
 
 type WaitTaskSpec struct {
 	Command  string
+	Shell    string
 	Until    string
 	Interval time.Duration
 	Timeout  time.Duration
@@ -90,8 +94,21 @@ const (
 )
 
 func (a *Agent) StartWait(spec WaitTaskSpec) (*waitTask, error) {
-	if spec.Command == "" {
+	return a.StartWaitContext(context.Background(), spec)
+}
+
+func (a *Agent) StartWaitContext(ctx context.Context, spec WaitTaskSpec) (*waitTask, error) {
+	if strings.TrimSpace(spec.Command) == "" {
 		return nil, errors.New("command is required")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if a.PlanMode() {
+		return nil, errors.New("Plan mode blocks background commands")
 	}
 	var untilRe *regexp.Regexp
 	if spec.Until != "" {
@@ -101,7 +118,9 @@ func (a *Agent) StartWait(spec WaitTaskSpec) (*waitTask, error) {
 		}
 		untilRe = re
 	}
-	if spec.Interval < waitMinInterval {
+	if spec.Interval <= 0 {
+		spec.Interval = 10 * time.Second
+	} else if spec.Interval < waitMinInterval {
 		spec.Interval = waitMinInterval
 	}
 	if spec.Timeout <= 0 {
@@ -110,13 +129,27 @@ func (a *Agent) StartWait(spec WaitTaskSpec) (*waitTask, error) {
 	if spec.Timeout > waitMaxTimeout {
 		spec.Timeout = waitMaxTimeout
 	}
+	if a.WorkingDir != "" {
+		ctx = tools.WithWorkingDir(ctx, a.WorkingDir)
+	}
+	if a.SandboxPolicy != nil && sandbox.FromContext(ctx) == nil {
+		ctx = sandbox.WithPolicy(ctx, a.SandboxPolicy)
+	}
+	if err := tools.Authorize(ctx, "bash", spec.Command); err != nil {
+		return nil, err
+	}
 	r := a.waits()
 	r.mu.Lock()
+	if err := r.ctx.Err(); err != nil {
+		r.mu.Unlock()
+		return nil, errors.New("wait registry is closed")
+	}
 	id := taskSlug(spec.Command, waitIDCounter.Add(1))
 	id = "wait-" + id
-	ctx, cancel := context.WithCancel(r.ctx)
+	ctx, cancel := context.WithTimeout(ctx, spec.Timeout)
+	stop := context.AfterFunc(r.ctx, cancel)
 	w := &waitTask{
-		ID: id, Command: spec.Command, Until: spec.Until,
+		ID: id, Command: spec.Command, Shell: spec.Shell, Until: spec.Until,
 		Interval: spec.Interval, Timeout: spec.Timeout,
 		Started: time.Now(), Done: make(chan struct{}),
 		cancel: cancel,
@@ -124,19 +157,28 @@ func (a *Agent) StartWait(spec WaitTaskSpec) (*waitTask, error) {
 	r.waits[id] = w
 	r.mu.Unlock()
 
-	go r.poll(ctx, w, untilRe)
+	go func() {
+		defer stop()
+		defer cancel()
+		r.poll(ctx, w, untilRe)
+	}()
 	return w, nil
 }
 
 func (r *waitRegistry) poll(ctx context.Context, w *waitTask, until *regexp.Regexp) {
 	ticker := time.NewTicker(w.Interval)
 	defer ticker.Stop()
-	deadline := time.NewTimer(w.Timeout)
-	defer deadline.Stop()
+	defer func() {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			r.deliver(w, WaitTimeout, fmt.Sprintf("[wait %s timeout] deadline elapsed without the condition being met:\n$ %s", w.ID, w.Command))
+		} else if ctx.Err() != nil {
+			r.settle(w, WaitKilled, "", false)
+		}
+	}()
 	strikes := 0
 	check := func() (done bool) {
 
-		res := bashrun.Run(ctx, bashrun.Options{Command: w.Command, Timeout: min(max(w.Interval, 30*time.Second), 60*time.Second)})
+		res := bashrun.Run(ctx, bashrun.Options{Command: w.Command, Shell: w.Shell, Timeout: min(max(w.Interval, 30*time.Second), 60*time.Second)})
 		if ctx.Err() != nil {
 			return true
 		}
@@ -165,10 +207,6 @@ func (r *waitRegistry) poll(ctx context.Context, w *waitTask, until *regexp.Rege
 		select {
 		case <-ctx.Done():
 			return
-		case <-deadline.C:
-			r.deliver(w, WaitTimeout, fmt.Sprintf("[wait %s timeout] %s elapsed without the condition being met:\n$ %s",
-				w.ID, w.Timeout, w.Command))
-			return
 		case <-ticker.C:
 			if check() {
 				return
@@ -178,29 +216,44 @@ func (r *waitRegistry) poll(ctx context.Context, w *waitTask, until *regexp.Rege
 }
 
 func (r *waitRegistry) deliver(w *waitTask, status WaitStatus, msg string) {
+	r.settle(w, status, msg, true)
+}
+
+func (r *waitRegistry) settle(w *waitTask, status WaitStatus, msg string, notify bool) bool {
 	if !w.delivered.CompareAndSwap(false, true) {
-		return
+		return false
 	}
-	w.setStatus(status)
 	w.Detail = msg
-
-	if r.agent.TurnRunning() {
-		r.agent.Steer(msg)
-	} else if r.OnWake != nil {
-		r.OnWake(msg)
-	}
-
-	close(w.Done)
+	w.setStatus(status)
 	w.cancel()
-
 	r.mu.Lock()
 	delete(r.waits, w.ID)
 	r.mu.Unlock()
+
+	if notify {
+		if r.agent.TurnRunning() {
+			r.agent.Steer(msg)
+		} else if r.OnWake != nil {
+			r.OnWake(msg)
+		}
+	}
+
+	close(w.Done)
+	return true
 }
 
 func (r *waitRegistry) Close() {
 	if r.stop != nil {
 		r.stop()
+	}
+	r.mu.Lock()
+	waits := make([]*waitTask, 0, len(r.waits))
+	for _, w := range r.waits {
+		waits = append(waits, w)
+	}
+	r.mu.Unlock()
+	for _, w := range waits {
+		r.settle(w, WaitKilled, "", false)
 	}
 }
 
@@ -212,16 +265,7 @@ func (r *waitRegistry) CancelWait(id string) bool {
 	if !running {
 		return false
 	}
-	if !w.delivered.CompareAndSwap(false, true) {
-		return false
-	}
-	w.setStatus(WaitKilled)
-	close(w.Done)
-	w.cancel()
-	r.mu.Lock()
-	delete(r.waits, id)
-	r.mu.Unlock()
-	return true
+	return r.settle(w, WaitKilled, "", false)
 }
 
 func tailLines(s string, n int) string {
@@ -243,10 +287,11 @@ func waitTool(a *Agent) tools.Tool {
 	return tools.Tool{
 		Def: ai.NewTool("wait",
 			"Wait for an external condition without burning LLM turns: a background poller re-runs the shell command on the given interval (no model involvement while waiting) and you are notified EXACTLY ONCE when the condition is met, the timeout elapses, or the command keeps failing. Use this instead of `sleep N && check` loops (those spend a full turn per poll). Typical uses: CI finishing (`gh pr checks 55 | grep -q pass` or until the command exits 0), a deploy going live, a server coming up. The notification arrives as a message — do NOT poll for it.",
-			`{"type":"object","properties":{"command":{"type":"string","description":"Shell command to run repeatedly; success means exit 0"},"until":{"type":"string","description":"Optional regex the command's output must match (in addition to exit 0) to count as met"},"interval":{"type":"number","description":"Seconds between runs (default 10, min 2)"},"timeout":{"type":"number","description":"Seconds before giving up (default 600, max 3600)"}},"required":["command"]}`),
+			`{"type":"object","properties":{"command":{"type":"string","description":"Shell command to run repeatedly; success means exit 0"},"shell":{"type":"string","description":"Shell executable: powershell, pwsh, bash, wsl, or cmd; defaults to the platform shell"},"until":{"type":"string","description":"Optional regex the command's output must match (in addition to exit 0) to count as met"},"interval":{"type":"number","description":"Seconds between runs (default 10, min 2)"},"timeout":{"type":"number","description":"Seconds before giving up (default 600, max 3600)"}},"required":["command"]}`),
 		Run: func(ctx context.Context, args json.RawMessage) (string, error) {
 			var spec struct {
 				Command  string  `json:"command"`
+				Shell    string  `json:"shell"`
 				Until    string  `json:"until"`
 				Interval float64 `json:"interval"`
 				Timeout  float64 `json:"timeout"`
@@ -254,8 +299,9 @@ func waitTool(a *Agent) tools.Tool {
 			if err := json.Unmarshal(args, &spec); err != nil {
 				return "", err
 			}
-			w, err := a.StartWait(WaitTaskSpec{
+			w, err := a.StartWaitContext(ctx, WaitTaskSpec{
 				Command:  spec.Command,
+				Shell:    spec.Shell,
 				Until:    spec.Until,
 				Interval: time.Duration(spec.Interval * float64(time.Second)),
 				Timeout:  time.Duration(spec.Timeout * float64(time.Second)),

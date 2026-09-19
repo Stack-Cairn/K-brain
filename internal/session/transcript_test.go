@@ -43,7 +43,11 @@ func TestFileStoreReopen(t *testing.T) {
 	must(st.SetPinned(id, true))
 	must(st.SetEffort(id, "high"))
 	usage := ai.Usage{PromptTokens: 23, CompletionTokens: 7}
-	must(st.SetUsage(id, 23, 5, 7, map[string]ai.Usage{"model2": usage}))
+	models := map[string]ai.Usage{
+		"model1 @ demo": {PromptTokens: 10, CompletionTokens: 3},
+		"model2 @ demo": {PromptTokens: 13, CompletionTokens: 4},
+	}
+	must(st.SetUsage(id, ai.UsageSummary{Total: ai.Usage{PromptTokens: 23, PromptCacheHitTokens: 5, CompletionTokens: 7}, Models: models, Subagents: map[string]ai.Usage{"model2": usage}}))
 	task := Task{ID: "task-1", Description: "task", Status: "done", StartedAt: time.Now().UTC(), EndedAt: time.Now().UTC()}
 	must(st.SaveTask(id, task))
 	must(st.SetSnapshot(id, 1, "stash-ref"))
@@ -83,6 +87,9 @@ func TestFileStoreReopen(t *testing.T) {
 	must(err)
 	if !reflect.DeepEqual(meta, gotMeta) || !reflect.DeepEqual(loaded, gotLoaded) {
 		t.Fatal("reopen lost metadata/context")
+	}
+	if !reflect.DeepEqual(gotMeta.ModelUsage, models) {
+		t.Fatalf("reopen lost model usage: %+v", gotMeta.ModelUsage)
 	}
 	if !reflect.DeepEqual(st.RawMessages(id), msgs) {
 		t.Fatal("reopen lost raw messages")

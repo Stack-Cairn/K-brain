@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"time"
 )
 
 var Version = "dev"
@@ -54,8 +55,8 @@ func (m *model) envReport() envReport {
 	add("COLORFGBG", os.Getenv("COLORFGBG"))
 	if tm := os.Getenv("TMUX"); tm != "" {
 		v := tm
-		if out, err := exec.CommandContext(context.Background(), "tmux", "-V").Output(); err == nil {
-			v = strings.TrimSpace(string(out))
+		if out := reportCommandOutput("tmux", "-V"); out != "" {
+			v = out
 		}
 		add("tmux", v)
 	}
@@ -73,19 +74,31 @@ func (m *model) envReport() envReport {
 	}
 
 	add("os", runtime.GOOS+"/"+runtime.GOARCH)
-	if out, err := exec.CommandContext(context.Background(), "uname", "-srm").Output(); err == nil {
-		add("uname", strings.TrimSpace(string(out)))
+	if runtime.GOOS == "windows" {
+		add("Windows", reportCommandOutput("cmd.exe", "/d", "/c", "ver"))
+	} else {
+		add("uname", reportCommandOutput("uname", "-srm"))
 	}
 	if runtime.GOOS == "darwin" {
-		if out, err := exec.CommandContext(context.Background(), "sw_vers", "-productVersion").Output(); err == nil {
-			add("macOS", strings.TrimSpace(string(out)))
-		}
+		add("macOS", reportCommandOutput("sw_vers", "-productVersion"))
 	}
 	add("go", runtime.Version())
 
 	r.snippet = r.snippetText()
 	r.link = issueURL(r.snippet)
 	return r
+}
+
+func reportCommandOutput(name string, args ...string) string {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.WaitDelay = 100 * time.Millisecond
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.Join(strings.Fields(string(out)), " ")
 }
 
 func (r envReport) snippetText() string {

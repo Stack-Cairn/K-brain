@@ -48,7 +48,7 @@ func (r *Runner) Run(ctx context.Context, event Event) error {
 		return err
 	}
 	for _, hook := range list {
-		if err := runOne(ctx, hook, payload, event.Name); err != nil {
+		if err := runOne(ctx, hook, payload, event); err != nil {
 			return err
 		}
 	}
@@ -71,7 +71,7 @@ func hookError(result bashrun.Result) string {
 	return "unknown error"
 }
 
-func runOne(ctx context.Context, hook config.Hook, payload []byte, name string) error {
+func runOne(ctx context.Context, hook config.Hook, payload []byte, event Event) error {
 	timeout := 10 * time.Second
 	if hook.Timeout > 0 {
 		timeout = time.Duration(hook.Timeout) * time.Second
@@ -82,9 +82,9 @@ func runOne(ctx context.Context, hook config.Hook, payload []byte, name string) 
 	hctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	command := hook.Command
-	result := bashrun.Run(hctx, bashrun.Options{Command: command, Shell: hook.Shell, Timeout: timeout, Env: []string{"K_BRAIN_HOOK_EVENT=" + string(payload)}})
+	result := bashrun.Run(hctx, bashrun.Options{Command: command, Shell: hook.Shell, Dir: event.CWD, Timeout: timeout, Env: []string{"K_BRAIN_HOOK_EVENT=" + string(payload)}})
 	if result.Exit != "" || result.TimedOut || result.Killed {
-		return fmt.Errorf("hook %s failed: %s", name, hookError(result))
+		return fmt.Errorf("hook %s failed: %s", event.Name, hookError(result))
 	}
 	return nil
 }

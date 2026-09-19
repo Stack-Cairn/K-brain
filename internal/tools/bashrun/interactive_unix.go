@@ -27,7 +27,7 @@ func runInteractive(ctx context.Context, cmd *exec.Cmd, opts Options) Result {
 		return runPiped(ctx, cmd, nil)
 	}
 	defer ptmx.Close()
-	track(cmd)
+	state := track(cmd)
 	defer untrack(cmd)
 
 	stop := sync.OnceFunc(func() {
@@ -104,7 +104,7 @@ func runInteractive(ctx context.Context, cmd *exec.Cmd, opts Options) Result {
 
 			if !ok || chunk == nil {
 				waitErr := cmd.Wait()
-				res := Result{Output: buf.String(), Interactive: true}
+				res := Result{Output: buf.String(), Interactive: true, Killed: state.finish(waitErr)}
 				if ctx.Err() == context.DeadlineExceeded {
 					res.TimedOut = true
 					res.Killed = true
@@ -131,7 +131,7 @@ func runInteractive(ctx context.Context, cmd *exec.Cmd, opts Options) Result {
 
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				stop()
-				_ = cmd.Wait()
+				state.finish(cmd.Wait())
 				res := Result{Output: buf.String(), Killed: true, Interactive: true}
 				if errors.Is(ctxErr, context.DeadlineExceeded) {
 					res.TimedOut = true
@@ -143,7 +143,7 @@ func runInteractive(ctx context.Context, cmd *exec.Cmd, opts Options) Result {
 			}
 			if idle >= opts.InactivityTimeout {
 				stop()
-				_ = cmd.Wait()
+				state.finish(cmd.Wait())
 				res := Result{
 					Output:      buf.String(),
 					Exit:        "timed out waiting for input",

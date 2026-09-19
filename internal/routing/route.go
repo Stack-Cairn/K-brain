@@ -1,6 +1,7 @@
 package routing
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -17,13 +18,18 @@ type Route struct {
 	Client       ai.Client
 	ContextLimit int
 	MaxOutput    int
+	Vision       bool
 }
 
 func ResolveRoute(cfg *config.Config, modelName, providerName string, optional bool) (Route, error) {
+	return ResolveRouteContext(context.Background(), cfg, modelName, providerName, optional)
+}
+
+func ResolveRouteContext(ctx context.Context, cfg *config.Config, modelName, providerName string, optional bool) (Route, error) {
 	if cfg == nil {
 		return Route{}, fmt.Errorf("configuration is nil")
 	}
-	prov, mdl, apiID, err := ResolveWithRefresh(cfg, modelName, providerName)
+	prov, mdl, apiID, err := ResolveWithRefreshContext(ctx, cfg, modelName, providerName)
 	if err != nil {
 		return Route{}, err
 	}
@@ -36,9 +42,9 @@ func ResolveRoute(cfg *config.Config, modelName, providerName string, optional b
 	}
 	var client ai.Client
 	if optional {
-		client, err = ClientForProviderOptional(prov, providerName, cfg.MaxRetries)
+		client, err = ClientForProviderOptionalContext(ctx, prov, providerName, cfg.MaxRetries)
 	} else {
-		client, err = ClientForProvider(prov, providerName, cfg.MaxRetries)
+		client, err = ClientForProviderContext(ctx, prov, providerName, cfg.MaxRetries)
 	}
 	if err != nil {
 		return Route{}, err
@@ -49,6 +55,7 @@ func ResolveRoute(cfg *config.Config, modelName, providerName string, optional b
 		ModelName: modelName, ProviderName: providerName,
 		Provider: prov, Model: mdl, APIModel: apiID,
 		Client: client, ContextLimit: ctxLimit, MaxOutput: maxOut,
+		Vision: SupportsVision(cfg, modelName, apiID, catalogs, providerName),
 	}, nil
 }
 

@@ -24,7 +24,10 @@ type selection struct {
 }
 
 func (m *model) selPoint(x, y int, clamp bool) (selPos, bool) {
-	if len(m.blocks) == 0 || m.viewH == 0 {
+	if len(m.blocks) == 0 || m.viewH == 0 || m.viewportRows == 0 {
+		return selPos{}, false
+	}
+	if !clamp && (y < max(m.viewportTop, 0) || y >= m.viewportTop+m.viewportRows || x < 0 || x >= m.width) {
 		return selPos{}, false
 	}
 	row := y - m.viewTop - m.vpTopRows() - m.contentPad() + m.vp.YOffset + m.vpLead
@@ -45,9 +48,7 @@ func (m *model) inputPoint(x, y int, clamp bool) (selPos, bool) {
 	if m.inputTop < 0 || len(m.inputLines) == 0 {
 		return selPos{}, false
 	}
-	{
-		x -= m.vpXOff() + 3
-	}
+	x -= m.inputLeft
 	row := y - m.inputTop
 	if !clamp && (row < 0 || row >= len(m.inputLines)) {
 		return selPos{}, false
@@ -139,7 +140,7 @@ func (m *model) highlightInput(iv string) string {
 }
 
 func (m *model) highlightSelection(view string) string {
-	if m.sel == nil {
+	if m.sel == nil || m.sel.anchor.input {
 		return view
 	}
 	lines := strings.Split(view, "\n")
@@ -267,9 +268,7 @@ func (m *model) handleMouseSelect(msg tea.MouseMsg) (handled bool, cmd tea.Cmd) 
 		if m.sel.anchor != m.sel.cur {
 			m.sel.done = true
 			copyText(m.selText(*m.sel))
-			{
-				return true, m.showNotice("Copied to clipboard")
-			}
+			return true, m.showNotice("Copied to clipboard")
 
 		}
 		inputClick := m.sel.anchor.input
@@ -287,8 +286,8 @@ func (m *model) selEdgeScroll() tea.Cmd {
 	if m.sel == nil || m.sel.done {
 		return nil
 	}
-	top := m.viewTop + m.vpTopRows()
-	bottom := top + m.vp.Height - 1
+	top := max(m.viewportTop, 0)
+	bottom := m.viewportTop + m.viewportRows - 1
 	switch {
 	case m.selDragY < top && m.vp.YOffset > 0:
 		m.vp.SetYOffset(m.vp.YOffset - 1)
@@ -305,15 +304,14 @@ func (m *model) selEdgeScroll() tea.Cmd {
 }
 
 func (m *model) clickAt(x, y int) {
-	y -= m.viewTop
-	if y <= m.vpTopRows()-2 || m.palette != nil || m.menu != nil || m.viewH == 0 {
+	if m.palette != nil || m.menu != nil || m.viewH == 0 {
 		return
 	}
-
-	if x < m.vpXOff() || x >= m.vpXOff()+m.width {
+	p, ok := m.selPoint(x, y, false)
+	if !ok {
 		return
 	}
-	row := y - m.vpTopRows() - m.contentPad() + m.vp.YOffset + m.vpLead
+	row := p.row
 	for i := range m.blocks {
 		if row < m.blocks[i].y0 || row > m.blocks[i].y1 {
 			continue

@@ -3,6 +3,7 @@ package tui
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -64,6 +65,9 @@ func TestDisplayRole(t *testing.T) {
 }
 
 func TestExportFilePerms(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits are not supported on Windows")
+	}
 	path := filepath.Join(t.TempDir(), "out.md")
 	if err := exportTranscript(path, []ai.Message{{Role: "user", Content: "x"}}); err != nil {
 		t.Fatal(err)

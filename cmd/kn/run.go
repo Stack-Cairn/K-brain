@@ -4,11 +4,9 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"os"
 	"os/signal"
 	"strings"
@@ -16,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Stack-Cairn/K-brain/internal/agent"
+	"github.com/Stack-Cairn/K-brain/internal/ai"
 	"github.com/Stack-Cairn/K-brain/internal/config"
 	"github.com/Stack-Cairn/K-brain/internal/hooks"
 	"github.com/Stack-Cairn/K-brain/internal/plugins"
@@ -23,6 +22,7 @@ import (
 	"github.com/Stack-Cairn/K-brain/internal/routing"
 	"github.com/Stack-Cairn/K-brain/internal/sandbox"
 	"github.com/Stack-Cairn/K-brain/internal/session"
+	"github.com/Stack-Cairn/K-brain/internal/session/recording"
 )
 
 func resolveCacheKey(explicit, sessionID string) string {
@@ -43,7 +43,18 @@ func randHex(n int) string {
 	return hex.EncodeToString(b)
 }
 
-func runCLI(args []string) error {
+type runTimeoutError struct {
+	after time.Duration
+	cause error
+}
+
+func (e *runTimeoutError) Error() string {
+	return fmt.Sprintf("run timed out after %s: %s", e.after, e.cause)
+}
+
+func (e *runTimeoutError) Unwrap() error { return e.cause }
+
+func runCLI(args []string) (runErr error) {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	format := fs.String("format", "text", "output format: text (stream the reply) or json (newline-delimited event stream)")
 	modelFlag := fs.String("m", "", "model name from ~/.k-brain/config.json (default: defaultModel)")
@@ -68,17 +79,54 @@ func runCLI(args []string) error {
 	default:
 		return fmt.Errorf("unknown --format %q (want text|json)", *format)
 	}
+	outputCtx, cancelOutput := context.WithCancel(context.Background())
+	defer cancelOutput()
+	output := &runOutput{writer: os.Stdout, json: *format == "json", cancel: cancelOutput}
+	var final string
+	var stopReason ai.StopReason
+	defer func() {
+		runErr = errors.Join(runErr, output.finish(final, stopReason, runErr))
+	}()
+
+	if *maxTurnsFlag < 0 {
+		return errors.New("--max-turns must be non-negative")
+	}
+	if *timeoutFlag < 0 {
+		return errors.New("--timeout must be non-negative")
+	}
+	if *noSessionFlag && *resumeFlag != "" {
+		return errors.New("--resume cannot be combined with --no-session")
+	}
+	ctx, stop := signal.NotifyContext(outputCtx, os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if *timeoutFlag > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, *timeoutFlag)
+		defer cancel()
+	}
+	defer func() {
+		var timeout *runTimeoutError
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) && !errors.As(runErr, &timeout) {
+			runErr = &runTimeoutError{*timeoutFlag, errors.Join(context.DeadlineExceeded, runErr)}
+		}
+	}()
 
 	prompt := strings.Join(fs.Args(), " ")
 
-	if fi, err := os.Stdin.Stat(); err == nil && fi.Mode()&os.ModeCharDevice == 0 {
-		if data, err := io.ReadAll(os.Stdin); err == nil {
-			if piped := strings.TrimSpace(string(data)); piped != "" {
-				if prompt != "" {
-					prompt += "\n\n"
-				}
-				prompt += piped
+	fi, err := os.Stdin.Stat()
+	if err != nil {
+		return fmt.Errorf("stdin: %w", err)
+	}
+	if fi.Mode()&os.ModeCharDevice == 0 {
+		data, err := readRunInput(ctx, os.Stdin)
+		if err != nil {
+			return fmt.Errorf("stdin: %w", err)
+		}
+		if piped := strings.TrimSpace(string(data)); piped != "" {
+			if prompt != "" {
+				prompt += "\n\n"
 			}
+			prompt += piped
 		}
 	}
 	if prompt == "" {
@@ -90,7 +138,7 @@ func runCLI(args []string) error {
 	if err != nil {
 		return err
 	}
-	route, err := routing.ResolveRoute(cfg, *modelFlag, *providerFlag, false)
+	route, err := routing.ResolveRouteContext(ctx, cfg, *modelFlag, *providerFlag, false)
 	if err != nil {
 		return err
 	}
@@ -108,8 +156,11 @@ func runCLI(args []string) error {
 	}
 
 	ag := agent.New(route.Client, route.APIModel, route.MaxOutput, sys, agent.WithExperimental(cfg.Experimental))
+	ag.WorkingDir = cwd()
+	ag.WorktreeSubagents = cfg.WorktreeSubagents != nil && *cfg.WorktreeSubagents
 	ag.Hooks = hooks.New(cfg.Hooks)
 	ag.ModelName, ag.Provider = route.ModelName, route.ProviderName
+	ag.Vision = route.Vision
 
 	ag.ComputerDisabled = true
 	ag.ContextLimit = route.ContextLimit
@@ -118,6 +169,7 @@ func runCLI(args []string) error {
 	ag.MaxTurns = *maxTurnsFlag
 	if project, perr := os.Getwd(); perr == nil {
 		if pm, _ := plugins.New(project); pm != nil {
+			ag.PluginHook = pm.RunHook
 			ag.SetPluginTools(pluginTools(pm))
 			ag.Messages[0].Content += pm.PromptBlock()
 		}
@@ -126,100 +178,74 @@ func runCLI(args []string) error {
 
 	var store *session.Store
 	var sessionID string
+	var recorder *recording.Recorder
 	if !*noSessionFlag {
-		if dir, derr := config.Dir(); derr == nil {
-			if st, serr := session.OpenHome(dir); serr == nil {
-				store = st
-				defer func() { _ = st.Close() }()
-			}
+		dir, err := config.Dir()
+		if err != nil {
+			return fmt.Errorf("session storage: %w", err)
 		}
-	}
-	if store != nil {
+		store, err = session.OpenProjectHome(dir)
+		if err != nil {
+			return fmt.Errorf("session storage: %w", err)
+		}
+		defer func() { _ = store.Close() }()
 		if *resumeFlag != "" {
-			meta, msgs, lerr := store.Load(*resumeFlag)
-			if lerr != nil {
-				return fmt.Errorf("-resume: %w", lerr)
+			meta, _, err := store.Load(*resumeFlag)
+			if err != nil {
+				return fmt.Errorf("-resume: %w", err)
 			}
 			sessionID = meta.ID
-			ag.Messages = append(ag.Messages[:1], msgs[1:]...)
-		} else if cwd, cerr := os.Getwd(); cerr == nil {
-			if id, ierr := store.Create(cwd, route.ModelName, route.ProviderName); ierr == nil {
-				sessionID = id
+		} else {
+			sessionID, err = store.Create(ag.WorkingDir, route.ModelName, route.ProviderName)
+			if err != nil {
+				return fmt.Errorf("session create: %w", err)
+			}
+			if err := store.Save(sessionID, 0, ag.MessagesSnapshot(), route.ModelName, route.ProviderName); err != nil {
+				return fmt.Errorf("session initialize: %w", err)
 			}
 		}
+		recorder, err = recording.Open(store, sessionID, ag)
+		if err != nil {
+			return fmt.Errorf("session restore: %w", err)
+		}
 	}
-	if err := ag.Hooks.Run(context.Background(), hooks.Event{Name: "SessionStart", SessionID: sessionID}); err != nil {
+	ctx = sandbox.WithPolicy(ctx, ag.SandboxPolicy)
+	ag.SetSessionID(sessionID)
+	if err := ag.StartSession(ctx); err != nil {
 		return err
 	}
 
 	ag.SetCacheKey(resolveCacheKey(*cacheKeyFlag, sessionID))
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-	ctx = sandbox.WithPolicy(ctx, cfg.Sandbox.Policy(cwd()))
-	if *timeoutFlag > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, *timeoutFlag)
-		defer cancel()
-	}
-
-	ev := agent.Events{}
-	var emit func(any)
 	note := func(format string, a ...any) {
 		if !*quietFlag {
 			fmt.Fprintf(os.Stderr, format+"\n", a...)
 		}
 	}
-	if *format == "json" {
-		enc := json.NewEncoder(os.Stdout)
-		emit = func(v any) {
-			if err := enc.Encode(v); err != nil {
-				fmt.Fprintln(os.Stderr, "kn: json encode:", err)
-			}
-		}
-		ev.OnText = func(d string) { emit(map[string]string{"type": "text", "delta": d}) }
-		ev.OnThink = func(d string) {
-			emit(map[string]string{"type": "reasoning", "delta": d})
-		}
-		ev.OnToolStart = func(_, name, args string) {
-			emit(map[string]string{"type": "tool_start", "name": name, "args": args})
-		}
-		ev.OnToolEnd = func(_, name, result string) {
-			emit(map[string]string{"type": "tool_end", "name": name, "result": result})
-		}
-	} else {
-		ev.OnText = func(d string) { fmt.Fprint(os.Stdout, d) }
-		ev.OnToolStart = func(_, name, args string) { note("⚒ %s", name) }
-	}
+	ev := agent.FanIn(recorder.Events(), output.events(note))
 
 	ag.ResolveModel = func(model, provider string) (agent.SubModel, error) {
-		return routing.SubModelFor(cfg, model, provider)
+		return routing.SubModelForContext(ctx, cfg, model, provider)
 	}
-	if o, terr := routing.TaskDefaultFor(cfg, route.ProviderName); terr == nil {
+	if o, terr := routing.TaskDefaultForContext(ctx, cfg); terr == nil {
 		ag.TaskDefault = o
 	} else {
 		note("task model: %v — subagents use the run's model", terr)
 	}
 
-	final, err := ag.Turn(ctx, prompt, ev)
+	final, err = ag.Turn(ctx, prompt, ev)
+	stopReason = ag.LastStopReason()
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		err = fmt.Errorf("run timed out after %s", *timeoutFlag)
+		err = &runTimeoutError{*timeoutFlag, errors.Join(context.DeadlineExceeded, err)}
 	}
-	if emit != nil {
-		if err != nil {
-			emit(map[string]string{"type": "error", "error": err.Error()})
+	if store != nil && sessionID != "" {
+		if serr := recorder.Save(); serr != nil {
+			config.LogEvent("session.save", "run FAILED id="+sessionID+": "+serr.Error())
+			err = errors.Join(err, fmt.Errorf("session save: %w", serr))
 		} else {
-			emit(map[string]string{"type": "done", "text": final})
+			note("session %s — resume with: kn run -resume %s \"…\" · or interactively: kn --resume %s", sessionID, sessionID, sessionID)
 		}
-	} else {
-		fmt.Fprintln(os.Stdout)
 	}
 
-	if store != nil && sessionID != "" {
-		if serr := store.Save(sessionID, 0, ag.MessagesSnapshot(), route.ModelName, route.ProviderName); serr != nil {
-			config.LogEvent("session.save", "run FAILED id="+sessionID+": "+serr.Error())
-		}
-		note("session %s — resume with: kn run -resume %s \"…\" · or interactively: kn --resume %s", sessionID, sessionID, sessionID)
-	}
 	return err
 }

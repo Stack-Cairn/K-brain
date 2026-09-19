@@ -2,6 +2,8 @@ package acp
 
 import (
 	"context"
+	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -72,10 +74,14 @@ func TestPromptPersistsToStore(t *testing.T) {
 func TestLoadSessionReplaysHistory(t *testing.T) {
 	st := testStore(t)
 	dir := t.TempDir()
-	target := dir + "/f.txt"
+	target := filepath.Join(dir, "f.txt")
+	args, err := json.Marshal(map[string]string{"path": target, "content": "v1"})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	srv1 := scriptServer(t, []step{
-		{toolName: "write", toolArgs: `{"path":"` + target + `","content":"v1"}`},
+		{toolName: "write", toolArgs: string(args)},
 		{text: "written"},
 	})
 	f1 := newFixture(t, nil, st, factoryFor(srv1, tools.All()))
@@ -97,6 +103,9 @@ func TestLoadSessionReplaysHistory(t *testing.T) {
 	}
 	if !init2.AgentCapabilities.LoadSession {
 		t.Fatal("loadSession should be advertised with a store")
+	}
+	if init2.AgentCapabilities.SessionCapabilities.Resume == nil {
+		t.Fatal("resume should be advertised with a store")
 	}
 
 	_, err = f2.conn.LoadSession(context.Background(), acp.LoadSessionRequest{

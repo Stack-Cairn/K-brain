@@ -3,6 +3,7 @@ package bashrun
 import (
 	"context"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -94,7 +95,7 @@ func TestSpill(t *testing.T) {
 		t.Fatalf("spill file content mismatch: got %d bytes, want %d", len(data), len(full))
 	}
 
-	if fi, err := os.Stat(path); err != nil || fi.Mode().Perm() != 0o600 {
+	if fi, err := os.Stat(path); err != nil || (runtime.GOOS != "windows" && fi.Mode().Perm() != 0o600) {
 		t.Fatalf("spill file perms wrong: %v %v", fi, err)
 	}
 }

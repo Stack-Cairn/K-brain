@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -37,6 +38,12 @@ func TestInitializeCapabilities(t *testing.T) {
 	if !caps.McpCapabilities.Http {
 		t.Error("mcp http should be true")
 	}
+	if caps.SessionCapabilities.Resume != nil {
+		t.Error("resume should be absent without a session store")
+	}
+	if caps.SessionCapabilities.List != nil {
+		t.Error("list should be absent without a session store")
+	}
 	if resp.AgentInfo == nil || resp.AgentInfo.Name != "k-brain" || resp.AgentInfo.Version != "test" {
 		t.Errorf("agentInfo = %+v", resp.AgentInfo)
 	}
@@ -57,16 +64,20 @@ func TestNewSessionAdvertisesModes(t *testing.T) {
 	if resp.SessionId == "" {
 		t.Fatal("empty sessionId")
 	}
-	if resp.Modes == nil || resp.Modes.CurrentModeId != ModeAuto || len(resp.Modes.AvailableModes) != 2 {
+	if resp.Modes == nil || resp.Modes.CurrentModeId != ModeAuto || len(resp.Modes.AvailableModes) != 3 {
 		t.Fatalf("modes = %+v", resp.Modes)
 	}
 }
 
 func TestPromptStreamsTextAndToolCards(t *testing.T) {
 	dir := t.TempDir()
-	target := dir + "/note.txt"
+	target := filepath.Join(dir, "note.txt")
+	args, err := json.Marshal(map[string]string{"path": target, "content": "hello acp"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	srv := scriptServer(t, []step{
-		{toolName: "write", toolArgs: `{"path":"` + target + `","content":"hello acp"}`},
+		{toolName: "write", toolArgs: string(args)},
 		{text: "all done"},
 	})
 	f := newFixture(t, nil, nil, factoryFor(srv, tools.All()))
@@ -82,6 +93,9 @@ func TestPromptStreamsTextAndToolCards(t *testing.T) {
 	}
 
 	ups := f.client.snapshot()
+	if len(ups) == 0 {
+		t.Fatal("no session updates received")
+	}
 	kinds := summarizeUpdates(ups)
 	if !strings.Contains(kinds, "tool_call(") || !strings.Contains(kinds, "tool_call_update(") {
 		t.Errorf("missing tool cards: %s", kinds)
@@ -151,6 +165,47 @@ func TestPromptCancelledMidTurn(t *testing.T) {
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("prompt did not return after cancel")
+	}
+}
+
+func TestPromptRejectsCancelledRequestBeforeDispatch(t *testing.T) {
+	started := make(chan struct{}, 1)
+	srv := scriptServer(t, nil)
+	srv.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		started <- struct{}{}
+		http.Error(w, "unexpected model request", http.StatusBadRequest)
+	})
+	f := newFixture(t, nil, nil, factoryFor(srv, nil))
+	f.initialize(t)
+	id := f.newSession(t, t.TempDir())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	done := make(chan struct{})
+	var resp acp.PromptResponse
+	var err error
+	go func() {
+		resp, err = f.bridge.Prompt(ctx, acp.PromptRequest{
+			SessionId: id,
+			Prompt:    []acp.ContentBlock{acp.TextBlock("cancelled before dispatch")},
+		})
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("prompt ignored caller cancellation")
+	}
+	if err != nil {
+		t.Fatalf("prompt returned error: %v", err)
+	}
+	if resp.StopReason != acp.StopReasonCancelled {
+		t.Fatalf("stop reason = %v, want cancelled", resp.StopReason)
+	}
+	select {
+	case <-started:
+		t.Fatal("cancelled request reached the model server")
+	default:
 	}
 }
 

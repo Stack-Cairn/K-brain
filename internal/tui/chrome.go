@@ -32,5 +32,6 @@ func kbrainPromptFrame(height int) lipgloss.Style {
 	if height > 0 && height < 28 {
 		border = lipgloss.Border{Left: "│", Right: "│"}
 	}
-	return lipgloss.NewStyle().Border(border).BorderForeground(lipgloss.AdaptiveColor{Light: "240", Dark: "238"}).Padding(0, 1)
+	full := height <= 0 || height >= 28
+	return lipgloss.NewStyle().Border(border, full, true, full, true).BorderForeground(lipgloss.AdaptiveColor{Light: "240", Dark: "238"}).Padding(0, 1)
 }

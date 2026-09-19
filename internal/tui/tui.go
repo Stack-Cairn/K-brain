@@ -13,7 +13,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -31,7 +30,6 @@ import (
 	"github.com/Stack-Cairn/K-brain/internal/hooks"
 	"github.com/Stack-Cairn/K-brain/internal/lsp"
 	"github.com/Stack-Cairn/K-brain/internal/mcp"
-	"github.com/Stack-Cairn/K-brain/internal/memory"
 	"github.com/Stack-Cairn/K-brain/internal/plugins"
 	"github.com/Stack-Cairn/K-brain/internal/routing"
 	"github.com/Stack-Cairn/K-brain/internal/sandbox"
@@ -84,28 +82,27 @@ type (
 	}
 )
 
-type goalFromContextMsg struct {
-	goal string
-	err  error
-}
-
 type compactMsg struct {
-	took, kept int
-	summary    string
-	cutoff     int
-	info       agent.CompactInfo
-	err        error
+	before, after []ai.Message
+	turnAt        *int
+	preserved     bool
+	took, kept    int
+	summary       string
+	cutoff        int
+	info          agent.CompactInfo
+	err           error
 }
 
 type compactStartMsg struct {
 	took, est int
 }
 type turnDoneMsg struct {
-	final string
-	err   error
-	at    int
-	snap  string
-	clean bool
+	final      string
+	stopReason ai.StopReason
+	err        error
+	at         int
+	snap       string
+	clean      bool
 }
 type (
 	catalogsMsg    map[string]config.Catalog
@@ -175,12 +172,18 @@ type model struct {
 	mpicker      *modelPicker
 	palette      *palette
 	cancel       context.CancelFunc
+	goalRequest  *goalFormulation
 	prog         *tea.Program
 
-	store     *session.Store
-	sessionID string
-	saved     int
-	snapshots map[int]string
+	store           *session.Store
+	sessionID       string
+	saved           int
+	snapshots       map[int]string
+	history         *session.History
+	historyID       string
+	historyEvents   []compactMsg
+	historyErr      error
+	turnSnapshotSeq *int
 
 	hist     []string
 	pasteBuf string
@@ -209,18 +212,23 @@ type model struct {
 	selDragX int
 	selDragY int
 
-	inputBodyOff int
-	inputTop     int
-	inputLines   []string
-	vpLead       int
-	viewTop      int
-	viewH        int
-	frameTop     int
-	frameH       int
-	themeHow     string
-	sessTitle    string
-	compactModel string
-	compactProv  string
+	inputBodyOff     int
+	viewportTop      int
+	viewportRows     int
+	inputLeft        int
+	inputTop         int
+	inputLines       []string
+	vpLead           int
+	viewTop          int
+	viewH            int
+	frameTop         int
+	frameH           int
+	themeHow         string
+	sessTitle        string
+	transientNotice  string
+	noticeGeneration uint64
+	compactModel     string
+	compactProv      string
 
 	updateLatest string
 	effortX      int
@@ -312,7 +320,7 @@ func Run(cfg *config.Config, modelName, provName, sysPrompt, resumeID string, ca
 		}
 	}
 
-	ag, mn, pn, err := buildAgentWithRefresh(cfg, modelName, provName, sysPrompt)
+	ag, mn, pn, err := buildAgent(cfg, modelName, provName, sysPrompt)
 	if err != nil {
 		return "", err
 	}
@@ -358,16 +366,12 @@ func Run(cfg *config.Config, modelName, provName, sysPrompt, resumeID string, ca
 	m.wireTasks()
 
 	if _, wdErr := os.Getwd(); wdErr == nil {
-		disc := mcp.LoadConfigured(mcp.FromConfigMap(cfg.MCPServers))
-		merged, mcpErrs := disc.Merged, disc.Errs
-		if len(merged) > 0 || len(mcpErrs) > 0 {
-			m.mcpMgr = mcp.NewManager(merged)
+		servers := mcp.FromConfigMap(cfg.MCPServers)
+		if len(servers) > 0 {
+			m.mcpMgr = mcp.NewManager(servers)
 			m.mcpMgr.SetOnChange(m.mcpOnChange())
 			m.mcpMgr.Start(context.Background())
 			ag.SetMCPTools(m.mcpMgr.Tools())
-			for src, derr := range mcpErrs {
-				m.append(errStyle.Render(fmt.Sprintf("mcp: %s: %s", src, derr)))
-			}
 		}
 
 		m.lspMgr = lsp.NewManager(lsp.FromConfigMap(cfg.LSPServers))
@@ -460,6 +464,7 @@ func Run(cfg *config.Config, modelName, provName, sysPrompt, resumeID string, ca
 
 	tuiRunning = true
 	_, err = p.Run()
+	m.cancelGoalFromContext()
 	tuiRunning = false
 
 	if m.mouseOn {
@@ -610,20 +615,6 @@ func (m *model) fetchCatalogs(force bool) {
 	}
 }
 
-func buildAgentWithRefresh(cfg *config.Config, modelName, provName, sysPrompt string) (*agent.Agent, string, string, error) {
-	ag, mn, pn, err := buildAgent(cfg, modelName, provName, sysPrompt)
-	var unknown *config.UnknownModelError
-	if !errors.As(err, &unknown) {
-		return ag, mn, pn, err
-	}
-	config.LogEvent("catalog.fetch", fmt.Sprintf("startup resolve missed %q — force-refreshing catalogs", unknown.Model))
-	refreshCatalogs(cfg, true)
-	if ag, mn, pn, rerr := buildAgent(cfg, modelName, provName, sysPrompt); rerr == nil {
-		return ag, mn, pn, nil
-	}
-	return nil, "", "", err
-}
-
 func (m *model) resume(id string) error {
 	meta, msgs, err := m.store.Load(id)
 	if err != nil {
@@ -639,6 +630,7 @@ func (m *model) resume(id string) error {
 	} else {
 		m.agent = agent.New(m.agent.Client, m.agent.Model, m.agent.MaxTokens, m.sysPrompt, agent.WithExperimental(m.agent.Experimental()))
 		m.agent.ModelName, m.agent.Provider = m.modelName, m.provName
+		m.agent.Vision = m.supportsVision()
 		m.agent.ContextLimit = m.contextLimitFor(m.provName, m.agent.Model)
 	}
 	m.applyCompactModel()
@@ -665,30 +657,14 @@ func (m *model) resume(id string) error {
 	} else {
 		config.LogEvent("session.task", "load failed: "+terr.Error())
 	}
-	m.agent.Messages = append(m.agent.Messages, msgs...)
+	if err := m.loadHistory(meta.ID); err != nil {
+		return err
+	}
+	msgs = m.agent.Messages[1:]
 	m.agent.LoadTodosJSON(m.store.Todos(meta.ID))
 	m.snapshots = m.store.Snapshots(meta.ID)
 
-	in, cached, out := meta.UsageIn, meta.UsageCached, meta.UsageOut
-	if in == 0 && out == 0 {
-		for _, msg := range msgs {
-			if msg.Usage != nil {
-				in += msg.Usage.PromptTokens
-				out += msg.Usage.CompletionTokens
-				cached += msg.Usage.Cached()
-			}
-		}
-	}
-	if in > 0 || out > 0 {
-		u := ai.Usage{PromptTokens: in, CompletionTokens: out}
-		if cached > 0 {
-			u.PromptTokensDetails = &struct {
-				CachedTokens int `json:"cached_tokens"`
-			}{CachedTokens: cached}
-		}
-		m.agent.SetUsage(u)
-	}
-	m.agent.SetSubUsage(meta.SubUsage)
+	m.agent.RestoreUsage(meta.UsageSummary(msgs))
 	if slices.Contains(m.effortsFor(), effort) {
 		m.agent.Effort = effort
 	}
@@ -780,47 +756,34 @@ func (m *model) seedTranscript(msgs []ai.Message, base int) {
 	m.refreshVP()
 }
 
-func (m *model) persist() {
+func (m *model) persist() bool {
 	if m.store == nil {
-		return
+		return true
 	}
-	if m.sessionID == "" {
-		if len(m.agent.Messages) <= m.saved {
-			return
-		}
-		id, err := m.store.Create(cwd(), m.modelName, m.provName)
-		if err != nil {
-			config.LogEvent("session.save", "create failed: "+err.Error())
-			m.append(errStyle.Render("session save failed: " + err.Error()))
-			return
-		}
-		m.sessionID = id
-		bashrun.SetMarkers(id, m.agent.Model)
-		m.agent.Tasks().SetSessionID(id)
-		m.agent.SetSessionID(id)
+	if m.busy {
+		return false
 	}
+	msgs := m.agent.MessagesSnapshot()
+	if m.sessionID == "" && len(msgs) <= 1 && len(m.historyEvents) == 0 {
+		return true
+	}
+	if err := m.saveHistory(msgs); err != nil {
+		config.LogEvent("session.save", "FAILED id="+m.sessionID+": "+err.Error())
+		m.append(errStyle.Render("session save failed: " + err.Error()))
+		return false
+	}
+	m.bindSessionIdentity()
 
 	_ = m.store.SetGoal(m.sessionID, m.goal)
 	_ = m.store.SetEffort(m.sessionID, m.agent.Effort)
 	_ = m.store.SetTodos(m.sessionID, m.agent.TodosJSON())
 
-	if u, subs := m.agent.Usage(), m.agent.SubUsage(); u.PromptTokens > 0 || u.CompletionTokens > 0 || len(subs) > 0 {
-		_ = m.store.SetUsage(m.sessionID, u.PromptTokens, u.Cached(), u.CompletionTokens, subs)
-	}
-	if len(m.agent.Messages) <= m.saved {
-		return
-	}
-	if err := m.store.Save(m.sessionID, m.saved, m.agent.Messages, m.modelName, m.provName); err != nil {
-		config.LogEvent("session.save", "FAILED id="+m.sessionID+": "+err.Error())
-		m.append(errStyle.Render("session save failed: " + err.Error()))
-		return
-	}
-	m.saved = len(m.agent.Messages)
 	if m.sessTitle == "" {
 		if meta, _, err := m.store.Load(m.sessionID); err == nil {
 			m.sessTitle = meta.Title
 		}
 	}
+	return true
 }
 
 func (m *model) setTheme(theme string) {
@@ -889,6 +852,7 @@ func (m *model) resetEffort(lv string) {
 }
 
 func (m *model) setGoal(goal string) {
+	m.cancelGoalFromContext()
 	m.goal = goal
 	m.goalRounds = 0
 	if m.store != nil && m.sessionID != "" {
@@ -903,16 +867,12 @@ func buildAgent(cfg *config.Config, modelName, provName, sysPrompt string) (*age
 	}
 
 	ag := agent.New(route.Client, route.APIModel, route.MaxOutput, sysPrompt, agent.WithExperimental(cfg.Experimental))
-	ag.Hooks = hooks.New(cfg.Hooks)
-	if err := ag.Hooks.Run(context.Background(), hooks.Event{Name: "SessionStart"}); err != nil {
+	if err := ag.SetModel(route.AgentModel()); err != nil {
 		return nil, "", "", err
 	}
-	ag.ModelName, ag.Provider = route.ModelName, route.ProviderName
-	ag.ContextLimit = route.ContextLimit
+	ag.WorkingDir = cwd()
+	ag.Hooks = hooks.New(cfg.Hooks)
 	ag.WorktreeSubagents = cfg.WorktreeSubagents != nil && *cfg.WorktreeSubagents
-	if sp := route.Model.SamplingParams; sp != nil {
-		ag.Temperature, ag.TopP = sp.Temperature, sp.TopP
-	}
 
 	ag.BrowserDisabled = cfg.Browser.Enabled != nil && !*cfg.Browser.Enabled
 
@@ -936,19 +896,6 @@ func buildAgent(cfg *config.Config, modelName, provName, sysPrompt string) (*age
 			_ = os.Setenv("K_BRAIN_CDP_URL", cfg.Browser.CDPURL)
 		}
 		browser.AllowPrivateURLs = cfg.Browser.AllowPrivateURLs
-	}
-	if modelSupportsVision(cfg, route.ModelName, route.APIModel, config.LoadCatalogs(), route.ProviderName) {
-		tools.ScreenshotSink = func(jpegs [][]byte) {
-			parts := make([]ai.ContentPart, 0, len(jpegs))
-			for _, j := range jpegs {
-
-				ext, data := ai.NormalizeImage("jpg", j)
-				parts = append(parts, ai.ImagePart(ext, data))
-			}
-			ag.SteerImages("browser_exec screenshots attached:", parts)
-		}
-	} else {
-		tools.ScreenshotSink = nil
 	}
 	return ag, route.ModelName, route.ProviderName, nil
 }
@@ -1719,7 +1666,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case toolCallMsg:
-
+		m.flushThink()
+		m.flushCurrent()
 		row := dimStyle.Render("⋯ " + msg.name + m.batchSuffix(msg.name, msg.id) + " " + queuedSubject(msg.name, msg.args))
 
 		for i := len(m.blocks) - 1; i >= 0; i-- {
@@ -1922,29 +1870,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case goalFromContextMsg:
-
-		m.flushThink()
-		m.flushCurrent()
-		switch {
-		case errors.Is(msg.err, context.Canceled):
-			m.busy = false
-			m.cancel = nil
-			m.append(dimStyle.Render("(interrupted)"))
-		case msg.err != nil:
-			m.busy = false
-			m.cancel = nil
-			m.append(errStyle.Render("goal-from-context failed: " + msg.err.Error()))
-		case strings.TrimSpace(msg.goal) == "":
-			m.busy = false
-			m.cancel = nil
-			m.append(errStyle.Render("goal-from-context: model returned an empty goal"))
-		default:
-			goal := strings.TrimSpace(msg.goal)
-			m.setGoal(goal)
-			m.append(dimStyle.Render("◎ goal set: " + goal))
-			return m.submit(goal)
-		}
-		return m, nil
+		return m.finishGoalFromContext(msg)
 
 	case compactStartMsg:
 		m.flushThink()
@@ -1963,27 +1889,33 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case msg.summary == "":
 
 		default:
-			recorded := false
-			if m.store != nil && m.sessionID != "" {
-
-				if err := m.store.RecordCompaction(m.sessionID, m.rawCutoff(msg.cutoff), msg.summary, msg.info.Model, msg.info.Usage); err != nil {
-					config.LogEvent("session.compact", "record failed: "+err.Error())
+			if m.store == nil {
+				snapshots := map[int]string{}
+				for index, ref := range m.snapshots {
+					if index >= msg.cutoff {
+						snapshots[2+index-msg.cutoff] = ref
+					}
+				}
+				m.snapshots = snapshots
+			}
+			if m.store != nil && msg.before != nil {
+				m.historyEvents = append(m.historyEvents, msg)
+				if err := m.saveHistory(msg.after); err != nil {
+					m.append(errStyle.Render("compaction save failed: " + err.Error()))
 				} else {
-					recorded = true
+					msg.preserved = true
 				}
 			}
+			m.future = nil
+			m.msgBlock = nil
 			m.append(m.compactResultLine(msg))
-			if recorded {
-				m.future = nil
-				m.msgBlock = nil
-				m.persist()
-			}
 		}
 		return m, nil
 
 	case turnDoneMsg:
 		m.flushThink()
 		m.flushCurrent()
+		m.clearQueuedTools()
 		m.busy = false
 		m.cancel = nil
 		m.interrupt1 = false
@@ -1998,18 +1930,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.persist()
 		m.maybeTitle()
-		switch {
-		case msg.snap != "" && msg.clean:
-			dropSnapshot(msg.snap)
-		case msg.snap != "":
-			if m.snapshots == nil {
-				m.snapshots = map[int]string{}
-			}
-			m.snapshots[msg.at] = msg.snap
-			if m.store != nil && m.sessionID != "" {
-				_ = m.store.SetSnapshot(m.sessionID, msg.at, msg.snap)
-			}
-		}
+		m.recordTurnSnapshot(msg)
 
 		if m.pendingForkID != "" {
 			m.switchToForked(m.pendingForkID)
@@ -2029,7 +1950,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if m.goal != "" && msg.err == nil {
-			if goalMet(msg.final) {
+			if msg.stopReason != ai.StopReasonLength && goalMet(msg.final) {
 				m.append(dimStyle.Render("◎ goal met after " + strconv.Itoa(m.goalRounds) + " round(s)"))
 				m.setGoal("")
 				return m, nil
@@ -2051,6 +1972,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.append(dimStyle.Render(string(msg)))
 		return m, nil
 
+	case noticeExpiredMsg:
+		if uint64(msg) == m.noticeGeneration {
+			m.transientNotice = ""
+		}
+		return m, nil
+
 	case usageMsg:
 
 		m.lastResp = ai.Usage(msg)
@@ -2068,7 +1995,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case taskUpdateMsg:
 
 		if m.taskVP != nil {
-			if t, ok := m.agent.Tasks().Get(m.taskVP.id); ok && t.Status != agent.TaskRunning && m.taskVP.live {
+			if t, ok := m.agent.Tasks().Get(m.taskVP.id); ok && t.Status != agent.TaskRunning && !t.FollowingUp && m.taskVP.live {
 				m.openTask(m.taskVP.id)
 			} else {
 				m.refreshTaskVP()
@@ -2097,10 +2024,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.mcpMgr != nil {
 			if m.palette != nil {
 				if pp := m.palette.top(); pp != nil && pp.kind == panelMCP {
-					pp.mcps = m.buildMCPRows()
-					if pp.midx >= len(pp.mcps) {
-						pp.midx = len(pp.mcps) - 1
-					}
+					m.refreshMCPPanel(pp)
 				}
 			}
 			if m.mcpSeen == nil {
@@ -2128,15 +2052,25 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case taskEventMsg:
+		if m.applyTaskEvent(msg) {
+			m.refreshTaskVP()
+		}
+		return m, nil
 
-		tv := m.taskVP
-		if tv == nil || msg.id != tv.id {
+	case taskStreamReadyMsg:
+		if msg.view == nil {
 			return m, nil
 		}
-		if msg.kind == 4 {
-			tv.busy, tv.followCancel = false, nil
+		events, dropped := msg.view.stream.drain()
+		if m.taskVP != msg.view {
+			return m, nil
 		}
-		renderTaskEvent(&tv.buf, msg.kind, msg.s, msg.s2)
+		if dropped {
+			msg.view.buf.WriteString("\n" + dimStyle.Render("[earlier live output dropped while the interface was busy]") + "\n")
+		}
+		for _, event := range events {
+			m.applyTaskEvent(event)
+		}
 		m.refreshTaskVP()
 		return m, nil
 
@@ -2819,40 +2753,6 @@ func (m *model) contextLimitFor(provName, apiID string) int {
 	return contextLimit
 }
 
-func (m *model) sessionCost() (float64, bool) {
-	if m.cfg != nil && m.cfg.Providers[m.provName].API == "openai-codex-responses" {
-		return 0, false
-	}
-	total, ok := m.usageCost(m.agent.Model, m.provName, m.agent.Usage())
-	if !ok {
-		return 0, false
-	}
-	for label, u := range m.agent.SubUsage() {
-		model, prov, _ := strings.Cut(label, " @ ")
-		c, ok := m.usageCost(model, prov, u)
-		if !ok {
-			return 0, false
-		}
-		total += c
-	}
-	return total, true
-}
-
-func (m *model) usageCost(model, prov string, u ai.Usage) (float64, bool) {
-	if cat, ok := m.catalogs[prov]; ok {
-		if in, out, cacheRead, ok := cat.Pricing(model); ok {
-			return ai.SessionCost(u, in, out, cacheRead), true
-		}
-		return 0, false
-	}
-	for _, cat := range m.catalogs {
-		if in, out, cacheRead, ok := cat.Pricing(model); ok {
-			return ai.SessionCost(u, in, out, cacheRead), true
-		}
-	}
-	return 0, false
-}
-
 func compactThresholdFor(cfg *config.Config) float64 {
 	pct := cfg.CompactPct
 	if pct == 0 {
@@ -2862,7 +2762,7 @@ func compactThresholdFor(cfg *config.Config) float64 {
 }
 
 func (m *model) applyCompactModel() {
-	m.agent.CompactClient, m.agent.CompactModel = nil, ""
+	m.agent.CompactClient, m.agent.CompactModel, m.agent.CompactProvider = nil, "", ""
 	cm := m.compactModel
 	if cm == "" {
 		cm = config.DefaultCompactModel
@@ -2874,23 +2774,41 @@ func (m *model) applyCompactModel() {
 			compactProv = mdl.Providers[0]
 		}
 	}
-	prov, _, apiID, err := m.cfg.Resolve(cm, compactProv)
+	prov, mdl, apiID, err := m.cfg.Resolve(cm, compactProv)
 	if err != nil {
 		if m.compactModel != "" {
 			m.append(errStyle.Render("compaction model: " + err.Error() + " — using current model"))
 		}
 		return
 	}
+	if compactProv == "" {
+		compactProv = m.cfg.DefaultProvider
+		if len(mdl.Providers) > 0 {
+			compactProv = mdl.Providers[0]
+		}
+	}
 	client, err := routing.ClientForProvider(prov, compactProv, m.cfg.MaxRetries)
 	if err == nil {
 		m.agent.CompactClient = client
 		m.agent.CompactModel = apiID
+		m.agent.CompactProvider = compactProv
 	} else if m.compactModel != "" {
 		m.append(errStyle.Render("compaction model: " + err.Error() + " — using current model"))
 	}
 }
 
 func (m *model) wireTasks() {
+	if m.cfg != nil {
+		m.agent.Hooks = hooks.New(m.cfg.Hooks)
+	}
+	m.agent.SandboxPolicy = m.sandboxPolicy
+	if m.agent.WorkingDir == "" {
+		m.agent.WorkingDir = cwd()
+	}
+	if m.pluginMgr != nil {
+		m.agent.PluginHook = m.pluginMgr.RunHook
+		m.agent.SetPluginTools(pluginToolAdapters(m.pluginMgr))
+	}
 	m.agent.SetPlanMode(m.permissionMode == "plan")
 
 	st := m.store
@@ -2913,7 +2831,7 @@ func (m *model) wireTasks() {
 			} else if id != "" {
 
 				u := t.SubUsage
-				_ = st.SetUsage(id, u.PromptTokens, u.Cached(), u.CompletionTokens, t.SubSubUsage)
+				_ = st.SetUsage(id, ai.UsageSummary{Total: u, Models: t.SubModelUsage, Subagents: t.SubSubUsage})
 			}
 		}
 	}
@@ -2991,21 +2909,14 @@ func (m *model) tasksView() string {
 }
 
 func (m *model) switchModel(name, prov string, persist bool) {
-	ag, mn, pn, err := buildAgent(m.cfg, name, prov, m.sysPrompt)
-	if err != nil {
+	if err := m.selectModel(name, prov); err != nil {
 		m.append(errStyle.Render(err.Error()))
 		return
 	}
-	ag.Effort = m.agent.Effort
-	ag.Messages = append(ag.Messages, m.agent.Messages[1:]...)
-	ag.CompactClient, ag.CompactModel = m.agent.CompactClient, m.agent.CompactModel
-	ag.CompactThreshold = m.agent.CompactThreshold
-	m.agent, m.modelName, m.provName = ag, mn, pn
-	m.applyTaskModel()
-	m.wireTasks()
-	if !slices.Contains(m.effortsFor(), ag.Effort) {
+	if !slices.Contains(m.effortsFor(), m.agent.Effort) {
 		m.resetEffort("")
 	}
+	mn, pn := m.modelName, m.provName
 	if persist {
 		m.cfg.DefaultModel, m.cfg.DefaultProvider = mn, pn
 		if err := m.cfg.Save(); err != nil {
@@ -3186,8 +3097,8 @@ func (m *model) prepareTurn(text string) (string, []ai.ContentPart) {
 	if m.mcpMgr != nil {
 		sys += m.mcpMgr.InstructionsBlock()
 	}
-	sys += memory.PromptBlock(memory.Installation(), memory.Session(m.sessionID))
 	m.agent.Messages[0].Content = sys
+	m.agent.RefreshMemory()
 
 	text = m.expandImageChips(text)
 	expanded := expandMentions(expandSkills(text, sk))
@@ -3204,17 +3115,7 @@ func (m *model) supportsVision() bool {
 }
 
 func modelSupportsVision(cfg *config.Config, modelName, modelID string, catalogs map[string]config.Catalog, provName string) bool {
-	if cat, ok := catalogs[provName]; ok {
-		if vision, found := cat.SupportsVision(modelID); found {
-			return vision
-		}
-	}
-	if cfg != nil {
-		if mc, ok := cfg.Models[modelName]; ok {
-			return mc.Vision
-		}
-	}
-	return false
+	return routing.SupportsVision(cfg, modelName, modelID, catalogs, provName)
 }
 
 func (m *model) appendAssistant(s string) {
@@ -3314,6 +3215,9 @@ func (m *model) submitGoal(text string) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) submitTurn(text string, authored bool) (tea.Model, tea.Cmd) {
+	m.cancelGoalFromContext()
+	m.prepareHistory()
+	m.turnSnapshotSeq = nil
 	m.busy = true
 	m.turnStart = m.nowFn()
 	prepared, parts := m.prepareTurn(text)
@@ -3344,84 +3248,53 @@ func (m *model) submitTurn(text string, authored bool) (tea.Model, tea.Cmd) {
 	m.cancel = cancel
 	p := m.prog
 
-	send := func(msg tea.Msg) {
+	stream := newTurnStream(func(msg tea.Msg) {
 		if p != nil {
 			p.Send(msg)
 		}
-	}
-
-	var mu sync.Mutex
-	var pend, thinkPend string
-	var timer *time.Timer
-	flush := func() {
-		mu.Lock()
-		if timer != nil {
-			timer.Stop()
-			timer = nil
-		}
-		text, think := pend, thinkPend
-		pend, thinkPend = "", ""
-		mu.Unlock()
-		if think != "" {
-			send(thinkMsg(think))
-		}
-		if text != "" {
-			send(textMsg(text))
-		}
-	}
-	schedule := func() {
-		if timer == nil {
-			timer = time.AfterFunc(40*time.Millisecond, flush)
-		}
-	}
-	onText := func(d string) {
-		mu.Lock()
-		pend += d
-		schedule()
-		mu.Unlock()
-	}
-	onThink := func(d string) {
-		mu.Lock()
-		thinkPend += d
-		schedule()
-		mu.Unlock()
-	}
+	})
+	send := stream.emit
 
 	go func() {
 		var compactTook, compactKept int
-		if m.pluginMgr != nil {
-			if hookErr := m.pluginMgr.Hook(ctx, "UserPromptSubmit", map[string]string{"prompt": prepared, "sessionId": m.sessionID, "cwd": cwd()}, m.sandboxPolicy); hookErr != nil {
-				send(turnDoneMsg{final: "", err: hookErr, at: userMsgIdx, snap: preSnap, clean: workspaceClean()})
-				return
-			}
-		}
+		var compactBefore []ai.Message
+		turnAt := userMsgIdx
 		events := agent.Events{
-			OnText:  onText,
-			OnThink: onThink,
+			OnText:  stream.text,
+			OnThink: stream.think,
 			OnToolStart: func(id, n, a string) {
-				flush()
 				send(toolStartMsg{id, n, a})
 			},
 			OnToolEnd: func(id, n, r string) { send(toolEndMsg{id, n, r}) },
 
-			OnToolCall: func(id, n, a string) { go send(toolCallMsg{id, n, a}) },
+			OnToolCall: func(id, n, a string) { send(toolCallMsg{id, n, a}) },
 
-			OnToolOutput: func(id, soFar string) { go send(toolOutputMsg{id, soFar}) },
+			OnToolOutput: func(id, soFar string) { send(toolOutputMsg{id, soFar}) },
 			OnSteer: func(s string) {
-				flush()
 				send(steeredMsg(s))
 			},
-			OnCompactStart: func(took, est int) { send(compactStartMsg{took, est}) },
+			OnCompactStart: func(took, est int) {
+				if rewoundFrom != "" && turnAt > 0 && turnAt < len(m.agent.Messages) {
+					m.agent.Messages[turnAt].RewoundFrom = rewoundFrom
+				}
+				compactBefore = m.agent.MessagesSnapshot()
+				send(compactStartMsg{took, est})
+			},
 
 			OnCompact: func(took, kept int) { compactTook, compactKept = took, kept },
 			OnCompacted: func(sum string, cutoff int, info agent.CompactInfo) {
-				send(compactMsg{took: compactTook, kept: compactKept, summary: sum, cutoff: cutoff, info: info})
+				at := turnAt
+				send(compactMsg{took: compactTook, kept: compactKept, summary: sum, cutoff: cutoff, info: info,
+					before: compactBefore, after: m.agent.MessagesSnapshot(), turnAt: &at})
+				if turnAt >= cutoff {
+					turnAt = 2 + turnAt - cutoff
+				} else {
+					turnAt = -1
+				}
 			},
 			OnUsage: func(u ai.Usage) { send(usageMsg(u)) },
 
-			OnDecay: func(n int) { m.saved = 1 },
 			OnRetry: func(ev ai.RetryEvent) {
-				flush()
 				send(noticeMsg(fmt.Sprintf("⚠ request failed (%s) — retrying in %s (attempt %d/%d)",
 					ev.Err, ev.Delay.Round(time.Millisecond), ev.Attempt+1, ev.Max)))
 			},
@@ -3436,12 +3309,10 @@ func (m *model) submitTurn(text string, authored bool) (tea.Model, tea.Cmd) {
 		default:
 			final, err = m.agent.Turn(ctx, prepared, events)
 		}
-		flush()
-
-		if rewoundFrom != "" && userMsgIdx < len(m.agent.Messages) {
-			m.agent.Messages[userMsgIdx].RewoundFrom = rewoundFrom
+		if rewoundFrom != "" && turnAt > 0 && turnAt < len(m.agent.Messages) {
+			m.agent.Messages[turnAt].RewoundFrom = rewoundFrom
 		}
-		send(turnDoneMsg{final: final, err: err, at: userMsgIdx, snap: preSnap, clean: workspaceClean()})
+		stream.finish(turnDoneMsg{final: final, stopReason: m.agent.LastStopReason(), err: err, at: turnAt, snap: preSnap, clean: workspaceClean()})
 	}()
 	m.appendRaw(blockUser, linkifyFilePaths(text, realFileExists))
 	if authored {
@@ -3491,6 +3362,7 @@ func (m *model) command(text string) (tea.Model, tea.Cmd) {
 		m.future = nil
 		m.setGoal("")
 		m.sessionID = ""
+		m.resetHistory()
 		m.sessTitle = ""
 		m.titled = false
 
@@ -3535,6 +3407,7 @@ func (m *model) command(text string) (tea.Model, tea.Cmd) {
 			m.append(dimStyle.Render("(busy — /compact will land after this turn)"))
 			return m, nil
 		}
+		m.prepareHistory()
 		m.busy = true
 		took := len(m.agent.Messages)
 		m.append(dimStyle.Render(fmt.Sprintf("◎ compacting %d msgs (est. %s) with %s…",
@@ -3545,6 +3418,7 @@ func (m *model) command(text string) (tea.Model, tea.Cmd) {
 		ctx = sandbox.WithPolicy(ctx, m.sandboxPolicy)
 		m.cancel = cancel
 		go func() {
+			before := ag.MessagesSnapshot()
 			var summary string
 			var cutoff int
 			var info agent.CompactInfo
@@ -3552,7 +3426,8 @@ func (m *model) command(text string) (tea.Model, tea.Cmd) {
 				OnCompacted: func(s string, c int, ci agent.CompactInfo) { summary, cutoff, info = s, c, ci },
 			})
 			if p != nil {
-				p.Send(compactMsg{took: took - len(ag.Messages), kept: len(ag.Messages), summary: summary, cutoff: cutoff, info: info, err: err})
+				p.Send(compactMsg{took: took - len(ag.Messages), kept: len(ag.Messages), summary: summary, cutoff: cutoff, info: info, err: err,
+					before: before, after: ag.MessagesSnapshot()})
 				p.Send(turnDoneMsg{})
 			}
 		}()
@@ -3632,65 +3507,7 @@ func (m *model) command(text string) (tea.Model, tea.Cmd) {
 			m.openPaletteOn("reasoning effort")
 		}
 	case "/goal-from-context":
-		if m.busy {
-			m.append(dimStyle.Render("(busy — /goal-from-context after this turn)"))
-			return m, nil
-		}
-		window := agent.GoalFromContextDefaultWindow
-		if len(fields) > 1 {
-			n, err := strconv.Atoi(fields[1])
-			if err != nil || n < 2 {
-				m.append(errStyle.Render("usage: /goal-from-context [n] — n ≥ 2 messages of context (default " + strconv.Itoa(agent.GoalFromContextDefaultWindow) + ")"))
-				return m, nil
-			}
-			window = n
-		}
-		tail, err := agent.GoalFromContextMessages(m.agent.Messages, window)
-		if err != nil {
-			m.append(errStyle.Render(err.Error()))
-			return m, nil
-		}
-
-		m.busy = true
-		m.append(dimStyle.Render(fmt.Sprintf("◎ formulating goal from the last %d messages…", len(tail))))
-		p := m.prog
-
-		ag := m.agent
-		ctx, cancel := context.WithCancel(context.Background())
-		ctx = sandbox.WithPolicy(ctx, m.sandboxPolicy)
-		m.cancel = cancel
-		prompt := agent.BuildGoalFromContextPrompt(tail)
-		formulate := func() (string, error) {
-			goal, usage, err := ag.Client.Complete(ctx, ai.Request{
-				Model:     ag.Model,
-				MaxTokens: 8192,
-				Messages:  []ai.Message{{Role: "user", Content: prompt}},
-			})
-			ag.AddUsage(usage)
-			return goal, err
-		}
-		if p == nil {
-
-			goal, err := formulate()
-			m.busy = false
-			m.cancel = nil
-			switch {
-			case err != nil && !errors.Is(err, context.Canceled):
-				m.append(errStyle.Render("goal-from-context failed: " + err.Error()))
-			case err == nil && strings.TrimSpace(goal) == "":
-				m.append(errStyle.Render("goal-from-context: model returned an empty goal"))
-			case err == nil:
-				m.setGoal(strings.TrimSpace(goal))
-				m.append(dimStyle.Render("◎ goal set: " + m.goal))
-			}
-			return m, nil
-		}
-		go func() {
-			goal, err := formulate()
-
-			p.Send(goalFromContextMsg{goal: goal, err: err})
-		}()
-		return m, m.spin.Tick
+		return m.startGoalFromContext(fields)
 	case "/computer-use", "/computer":
 		m.computerUseCommand(fields[1:], text)
 		return m, nil
@@ -4015,6 +3832,7 @@ func (m *model) View() string {
 		if dropped := m.viewH - m.height; dropped > 0 {
 			v = strings.Join(strings.Split(v, "\n")[dropped:], "\n")
 			m.inputBodyOff -= dropped
+			m.viewportTop -= dropped
 			m.vpLead += dropped
 			m.viewH = m.height
 		}
@@ -4023,8 +3841,9 @@ func (m *model) View() string {
 			v = strings.Repeat("\n", m.viewTop) + v
 		}
 	}
+	m.viewportTop += m.viewTop
 
-	if m.iactive != nil || m.height == 0 {
+	if m.iactive != nil || m.height == 0 || m.palette != nil || m.picker != nil || m.mpicker != nil || m.taskVP != nil {
 		m.inputTop = -1
 		m.inputLines = nil
 	} else {
@@ -4048,6 +3867,7 @@ func (m *model) View() string {
 
 func (m *model) viewBody() string {
 	var b strings.Builder
+	m.viewportTop, m.viewportRows = 0, 0
 	left := fmt.Sprintf(" k-brain · %s @ %s", m.modelName, m.provName)
 	if m.goal != "" {
 		left += " · ◎ " + truncLine(m.goal, 40)
@@ -4098,7 +3918,12 @@ func (m *model) viewBody() string {
 		return b.String()
 	}
 
-	b.WriteString(m.viewportView() + "\n")
+	viewport := m.viewportView()
+	m.viewportTop = strings.Count(b.String(), "\n")
+	if viewport != "" {
+		m.viewportRows = lipgloss.Height(viewport)
+	}
+	b.WriteString(viewport + "\n")
 
 	if cv := m.thinkViewCapped(); m.curThink != "" && cv != "" {
 		b.WriteString("\n" + m.ancientize(cv) + "\n")
@@ -4158,11 +3983,15 @@ func (m *model) viewBody() string {
 			inputView = m.inputArgumentView(m.highlightInput(sanitizeInputView(m.input.View())))
 		}
 		frameWidth := max(m.width-2, 1)
+		m.inputLeft = 0
 		if m.ancientInput() {
 			inputView = m.ancientize(inputView)
 			b.WriteString(inputView)
 		} else {
-			b.WriteString(kbrainPromptFrame(m.height).Width(frameWidth).Render(inputView))
+			frame := kbrainPromptFrame(m.height).Width(frameWidth)
+			m.inputBodyOff += frame.GetBorderTopSize() + frame.GetPaddingTop()
+			m.inputLeft = frame.GetBorderLeftSize() + frame.GetPaddingLeft()
+			b.WriteString(frame.Render(inputView))
 		}
 	}
 	if m.quit1 {
@@ -4182,7 +4011,8 @@ func (m *model) viewBody() string {
 	if dock := m.tasksDock(); dock != "" {
 		b.WriteString("\n" + dock)
 	}
-	footer := accentStyle.Render(m.permissionModeLabel()) + "  ·  " + shortcutStyle.Render(m.tr("shift+tab mode  ·  ctrl+c cancel  ·  ctrl+p menu")) + "\n\n" + m.statusView()
+	notice := dimStyle.Render(ansi.Truncate(m.tr(m.transientNotice), max(m.width, 0), "…"))
+	footer := accentStyle.Render(m.permissionModeLabel()) + "  ·  " + shortcutStyle.Render(m.tr("shift+tab mode  ·  ctrl+c cancel  ·  ctrl+p menu")) + "\n" + notice + "\n" + m.statusView()
 	b.WriteString("\n" + footer)
 	return b.String()
 }

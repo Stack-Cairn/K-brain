@@ -1,25 +1,28 @@
 package tui
 
 import (
-	"net/url"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Stack-Cairn/K-brain/internal/fileuri"
 )
 
+const fileNamePart = `[\p{L}\p{N}_@+~-][\p{L}\p{N}_@+~.%-]*`
+
 var fileRefRE = regexp.MustCompile(
-	`/?[\w@+~-][\w@+~.-]*(?:/[\w@+~-][\w@+~.-]*)+(?::\d+)?` +
-		`|/?[\w@+~-][\w@+~.-]*\.[A-Za-z]{2,10}(?::\d+)?` +
-		`|\.{1,2}/[\w@+~-][\w@+~.-]*(?:/[\w@+~-][\w@+~.-]*)*(?::\d+)?`,
+	`(?:[A-Za-z]:[\\/]|\\\\)` + fileNamePart + `(?:[\\/]` + fileNamePart + `)*(?::\d+)?` +
+		`|/?` + fileNamePart + `(?:[\\/]` + fileNamePart + `)+(?::\d+)?` +
+		`|/?` + fileNamePart + `\.[A-Za-z]{2,10}(?::\d+)?` +
+		`|\.{1,2}[\\/]` + fileNamePart + `(?:[\\/]` + fileNamePart + `)*(?::\d+)?`,
 )
 
 func linkifyFilePaths(s string, exists func(string) bool) string {
 	return replaceMatches(s, fileRefRE, func(m string, before byte) string {
 
-		if strings.ContainsRune("([]/:;\"`", rune(before)) {
+		if strings.ContainsRune("([]/\\:;\"`", rune(before)) {
 			return m
 		}
 		path, line := splitLineRef(m)
@@ -34,10 +37,10 @@ func isFileRef(path string) bool {
 	dot := strings.LastIndexByte(path, '.')
 	if dot < 0 {
 
-		return strings.Contains(path, "/")
+		return strings.ContainsAny(path, `/\`)
 	}
 	ext := path[dot+1:]
-	if strings.ContainsRune(ext, '/') {
+	if strings.ContainsAny(ext, `/\`) {
 		return false
 	}
 	if strings.Contains(path, "/") {
@@ -69,13 +72,6 @@ func replaceMatches(s string, re *regexp.Regexp, fn func(m string, before byte) 
 }
 
 func realFileExists(path string) bool {
-	if !filepath.IsAbs(path) {
-		wd, err := os.Getwd()
-		if err != nil {
-			return false
-		}
-		path = filepath.Join(wd, path)
-	}
 	info, err := os.Stat(path)
 	return err == nil && info.Mode().IsRegular()
 }
@@ -98,17 +94,10 @@ func isDigits(s string) bool {
 }
 
 func absFileURI(path, line string) string {
-	if !filepath.IsAbs(path) {
-		wd, err := os.Getwd()
-		if err != nil {
-			return ""
-		}
-		path = filepath.Join(wd, path)
-	}
 	if line != "" {
 		path += ":" + line
 	}
-	return "file://" + (&url.URL{Path: path}).String()
+	return fileuri.FromPath(path)
 }
 
 const (
@@ -307,7 +296,7 @@ func scanAtom(s string, start int, sgr string) (end int, text string) {
 
 func linkifyRenderedFilePaths(s string, exists func(string) bool) string {
 	return replaceMatches(s, fileRefRE, func(m string, before byte) string {
-		if before == 0x1b || strings.ContainsRune("([]/:;\"`m", rune(before)) {
+		if before == 0x1b || strings.ContainsRune("([]/\\:;\"`m", rune(before)) {
 
 			return m
 		}

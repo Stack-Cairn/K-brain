@@ -7,7 +7,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/Stack-Cairn/K-brain/internal/config"
 	"github.com/Stack-Cairn/K-brain/internal/mcp"
 )
 
@@ -19,13 +18,14 @@ func TestMCPOnChangeNeverBlocksUI(t *testing.T) {
 	m.prog = p
 
 	m.mcpMgr = mcp.NewManager(nil)
+	t.Cleanup(m.mcpMgr.Close)
 	m.mcpMgr.SetOnChange(m.mcpOnChange())
 
 	done := make(chan struct{})
 	go func() {
 
 		m.mcpMgr.AddServers(context.Background(), map[string]mcp.ServerConfig{
-			"docs": {Command: []string{"true"}},
+			"docs": {Command: []string{"unused-server"}, Enabled: new(false)},
 		})
 		close(done)
 	}()
@@ -36,26 +36,24 @@ func TestMCPOnChangeNeverBlocksUI(t *testing.T) {
 	}
 }
 
-func TestMCPLazyManagerOnChangeDetached(t *testing.T) {
+func TestMCPOnChangeDetachedAfterToggle(t *testing.T) {
 	t.Setenv("K_BRAIN_HOME", t.TempDir())
-	m := tasksModel("http://unused")
-	m.cfg = &config.Config{}
+	m := panelMCPModel(t, map[string]mcp.ServerConfig{
+		"docs": {Command: []string{"unused-server"}},
+	})
 	p := tea.NewProgram(m, tea.WithoutRenderer())
 	defer p.Kill()
 	m.prog = p
 
-	m.mcpSetImport("claude", true)
-	if m.mcpMgr == nil {
-		t.Fatal("mcpSetImport should have built a manager")
-	}
+	m.mcpMgr.SetOnChange(m.mcpOnChange())
 	done := make(chan struct{})
 	go func() {
-		m.mcpMgr.FireOnChangeForTest()
+		m.mcpMgr.Disable("docs")
 		close(done)
 	}()
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		t.Fatal("the lazily-built manager's OnChange callback blocked on Send — it must detach")
+		t.Fatal("toggling a server blocked on Send")
 	}
 }

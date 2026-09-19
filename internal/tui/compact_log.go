@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/Stack-Cairn/K-brain/internal/agent"
-	"github.com/Stack-Cairn/K-brain/internal/ai"
 	"github.com/Stack-Cairn/K-brain/internal/config"
 )
 
@@ -39,7 +38,7 @@ func (m *model) compactResultLine(msg compactMsg) string {
 	if u := msg.info.Usage; u.PromptTokens > 0 || u.CompletionTokens > 0 {
 		b.WriteString(" (" + fmtUsage(u) + ")")
 	}
-	if m.store != nil && m.sessionID != "" {
+	if msg.preserved {
 		b.WriteString(" · raw history preserved")
 	}
 	return dimStyle.Render(b.String())
@@ -51,27 +50,14 @@ func (m *model) compactCost(info agent.CompactInfo) (float64, bool) {
 	}
 
 	id, _, _ := strings.Cut(info.Model, " @ ")
-	for _, cat := range m.catalogs {
-		if in, out, cacheRead, ok := cat.Pricing(id); ok {
-			return ai.SessionCost(info.Usage, in, out, cacheRead), true
-		}
-	}
-	return 0, false
-}
-
-func (m *model) rawCutoff(cutoff int) int {
-	if m.store == nil || m.sessionID == "" {
-		return cutoff
-	}
-	events := m.store.Compactions(m.sessionID)
-	if len(events) == 0 {
-		return cutoff
-	}
-
-	return events[len(events)-1].Cutoff + cutoff - 1
+	return m.usageCost(id, info.Provider, info.Usage)
 }
 
 func (m *model) compactRetry() {
+	if m.busy {
+		m.append(dimStyle.Render("(busy — retry compaction after this turn)"))
+		return
+	}
 	if m.store == nil || m.sessionID == "" {
 		m.append(dimStyle.Render("(no session to retry a compaction in)"))
 		return
@@ -82,20 +68,21 @@ func (m *model) compactRetry() {
 		return
 	}
 	last := events[len(events)-1]
-	if err := m.store.DeleteCompaction(m.sessionID, last.Seq); err != nil {
+	if !m.persist() {
+		return
+	}
+	h, msgs, err := m.store.UndoCompaction(m.sessionID, m.agent.Messages[:1])
+	if err != nil {
 		m.append(errStyle.Render("/compact retry: " + err.Error()))
 		return
 	}
-	m.append(dimStyle.Render("⟲ compaction " + strconv.Itoa(last.Seq) + " undone — raw history restored; run /compact to re-compact"))
-
-	_, msgs, err := m.store.Load(m.sessionID)
-	if err != nil {
-		m.append(errStyle.Render("/compact retry: reload failed: " + err.Error()))
-		return
-	}
-	m.agent.Messages = append(m.agent.Messages[:1], msgs[1:]...)
-	m.saved = 1
+	m.history, m.historyID = h, m.sessionID
+	m.agent.Messages = msgs
+	m.saved = len(msgs)
+	m.future = nil
+	m.snapshots = m.store.Snapshots(m.sessionID)
 	m.rebuildTranscript()
+	m.append(dimStyle.Render("⟲ compaction " + strconv.Itoa(last.Seq) + " undone — raw history restored; run /compact to re-compact"))
 }
 
 func (m *model) compactLog() {

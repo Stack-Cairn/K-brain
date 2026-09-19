@@ -1,14 +1,19 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/Stack-Cairn/K-brain/internal/config"
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func TestAcpCLIConfigErrors(t *testing.T) {
@@ -78,10 +83,53 @@ func writeConfig(t *testing.T, home, body string) {
 	}
 }
 
+func TestAcpCLIReportsSessionStorageFailure(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("K_BRAIN_HOME", home)
+	writeConfig(t, home, `{"defaultModel":"test","providers":{"test":{"baseUrl":"http://127.0.0.1:1/v1","api":"openai-completions","apiKey":"k","models":[{"id":"test","maxTokens":100}]}}}`)
+	if err := os.WriteFile(filepath.Join(home, "sessions"), []byte("not a directory"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	empty, err := os.Open(os.DevNull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := os.Stdin
+	os.Stdin = empty
+	t.Cleanup(func() { os.Stdin = previous; _ = empty.Close() })
+	if err := acpCLI(nil); err == nil || !strings.Contains(err.Error(), "session storage") {
+		t.Fatalf("storage failure = %v", err)
+	}
+}
+
 func TestAcpCLIServeExitsOnEOF(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("K_BRAIN_HOME", home)
-	writeConfig(t, home, `{
+	initialize := make(chan struct{})
+	listed := make(chan struct{})
+	var releaseOnce, listedOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(initialize) }) }
+	srv := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "acp-mcp"}, nil)
+	srv.AddReceivingMiddleware(func(next sdkmcp.MethodHandler) sdkmcp.MethodHandler {
+		return func(ctx context.Context, method string, req sdkmcp.Request) (sdkmcp.Result, error) {
+			if method == "initialize" {
+				select {
+				case <-initialize:
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
+			}
+			result, err := next(ctx, method, req)
+			if method == "tools/list" && err == nil {
+				listedOnce.Do(func() { close(listed) })
+			}
+			return result, err
+		}
+	})
+	hs := httptest.NewServer(sdkmcp.NewStreamableHTTPHandler(func(*http.Request) *sdkmcp.Server { return srv }, nil))
+	t.Cleanup(hs.Close)
+	t.Cleanup(release)
+	writeConfig(t, home, fmt.Sprintf(`{"mcp":{"remote":{"url":%q}},`, hs.URL)+`
   "defaultModel": "test",
   "providers": {
     "testprov": {
@@ -149,6 +197,12 @@ func TestAcpCLIServeExitsOnEOF(t *testing.T) {
 	if got := readLine(); !strings.Contains(string(got), `"sessionId"`) {
 		t.Errorf("session/new response = %q", got)
 	}
+	release()
+	select {
+	case <-listed:
+	case <-time.After(10 * time.Second):
+		t.Fatal("MCP startup did not survive the session/new response")
+	}
 
 	if err := inW.Close(); err != nil {
 		t.Fatal(err)
@@ -211,19 +265,12 @@ func TestAcpBaseMCP(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("K_BRAIN_HOME", home)
 
-	off := false
-	noImport := &config.MCPImport{
-		Claude: &config.MCPImportSource{Enabled: &off},
-		Codex:  &config.MCPImportSource{Enabled: &off},
-	}
-
-	empty := acpBaseMCP(&config.Config{MCPImport: noImport})
-	if empty == nil || len(empty) != 0 {
+	empty := acpBaseMCP(&config.Config{})
+	if len(empty) != 0 {
 		t.Errorf("empty config: got %v", empty)
 	}
 
 	cfg := &config.Config{
-		MCPImport: noImport,
 		MCPServers: map[string]config.MCPServer{
 			"docs": {Command: []string{"docs-mcp", "--serve"}},
 		},

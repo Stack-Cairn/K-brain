@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"maps"
 	"sync"
-	"time"
 
 	acp "github.com/coder/acp-go-sdk"
 
@@ -14,16 +13,19 @@ import (
 	"github.com/Stack-Cairn/K-brain/internal/ai"
 	"github.com/Stack-Cairn/K-brain/internal/mcp"
 	"github.com/Stack-Cairn/K-brain/internal/session"
+	"github.com/Stack-Cairn/K-brain/internal/session/recording"
 )
 
 const (
 	ModeAuto = "auto"
 	ModeAsk  = "ask"
+	ModePlan = "plan"
 )
 
 var modes = []acp.SessionMode{
 	{Id: ModeAuto, Name: "Auto", Description: new("Run tools without asking (trusted automation)")},
 	{Id: ModeAsk, Name: "Ask", Description: new("Ask the editor before bash/write/edit calls")},
+	{Id: ModePlan, Name: "Plan", Description: new("Inspect files and prepare a plan without executing commands or changing files")},
 }
 
 type Factory func(ctx context.Context, cwd string, servers map[string]mcp.ServerConfig) (*agent.Agent, *mcp.Manager, error)
@@ -39,6 +41,11 @@ type Bridge struct {
 
 	mu       sync.Mutex
 	sessions map[acp.SessionId]*acpSession
+	starting map[acp.SessionId]bool
+	closed   bool
+	setupWG  sync.WaitGroup
+	lifetime context.Context
+	stop     context.CancelFunc
 }
 
 var (
@@ -47,12 +54,15 @@ var (
 )
 
 func NewBridge(version string, newAgent Factory, store *session.Store, vision bool, mcpBase map[string]mcp.ServerConfig) *Bridge {
+	lifetime, stop := context.WithCancel(context.Background())
 	return &Bridge{
-		version: version,
-		newAg:   newAgent,
-		store:   store,
-		vision:  vision,
-		mcpBase: mcpBase,
+		version:  version,
+		newAg:    newAgent,
+		store:    store,
+		vision:   vision,
+		mcpBase:  mcpBase,
+		lifetime: lifetime,
+		stop:     stop,
 	}
 }
 
@@ -63,7 +73,7 @@ type acpSession struct {
 	ag  *agent.Agent
 	mcp *mcp.Manager
 
-	storeFrom int
+	recorder *recording.Recorder
 
 	turnMu    sync.Mutex
 	turnCh    chan struct{}
@@ -71,27 +81,48 @@ type acpSession struct {
 	mode      string
 	titleSent bool
 	allowed   map[string]bool
+	closed    bool
+	closeOnce sync.Once
 }
 
 func newACPSession(id acp.SessionId, ag *agent.Agent, m *mcp.Manager) *acpSession {
-	s := &acpSession{id: id, ag: ag, mcp: m, mode: ModeAuto, storeFrom: 1, allowed: map[string]bool{}}
+	ag.SetSessionID(string(id))
+	ag.Tasks().SetSessionID(string(id))
+	s := &acpSession{id: id, ag: ag, mcp: m, mode: ModeAuto, allowed: map[string]bool{}}
 	s.turnCh = make(chan struct{}, 1)
 	return s
 }
 
-func (s *acpSession) close() {
+func (s *acpSession) requestClose() {
 	s.turnMu.Lock()
+	s.closed = true
 	if s.cancel != nil {
 		s.cancel()
 	}
 	s.turnMu.Unlock()
-	if s.mcp != nil {
-		s.mcp.Close()
-	}
+}
+
+func (s *acpSession) close() {
+	s.closeOnce.Do(func() {
+		s.requestClose()
+		if s.turnCh != nil {
+			s.turnCh <- struct{}{}
+			defer func() { <-s.turnCh }()
+		}
+		if s.mcp != nil {
+			s.mcp.Close()
+		}
+	})
 }
 
 func (b *Bridge) Initialize(_ context.Context, params acp.InitializeRequest) (acp.InitializeResponse, error) {
-
+	sessionCaps := acp.SessionCapabilities{
+		Close: &acp.SessionCloseCapabilities{},
+	}
+	if b.store != nil {
+		sessionCaps.List = &acp.SessionListCapabilities{}
+		sessionCaps.Resume = &acp.SessionResumeCapabilities{}
+	}
 	v := acp.ProtocolVersion(acp.ProtocolVersionNumber)
 	return acp.InitializeResponse{
 		ProtocolVersion: v,
@@ -101,11 +132,8 @@ func (b *Bridge) Initialize(_ context.Context, params acp.InitializeRequest) (ac
 				Image:           b.vision,
 				EmbeddedContext: true,
 			},
-			McpCapabilities: acp.McpCapabilities{Http: true},
-			SessionCapabilities: acp.SessionCapabilities{
-				List:  &acp.SessionListCapabilities{},
-				Close: &acp.SessionCloseCapabilities{},
-			},
+			McpCapabilities:     acp.McpCapabilities{Http: true},
+			SessionCapabilities: sessionCaps,
 		},
 		AgentInfo: &acp.Implementation{
 			Name:    "k-brain",
@@ -124,8 +152,16 @@ func (b *Bridge) Logout(context.Context, acp.LogoutRequest) (acp.LogoutResponse,
 	return acp.LogoutResponse{}, acp.NewMethodNotFound("logout")
 }
 
-func (b *Bridge) ResumeSession(context.Context, acp.ResumeSessionRequest) (acp.ResumeSessionResponse, error) {
-	return acp.ResumeSessionResponse{}, acp.NewMethodNotFound(acp.AgentMethodSessionResume)
+func (b *Bridge) ResumeSession(ctx context.Context, params acp.ResumeSessionRequest) (acp.ResumeSessionResponse, error) {
+	if b.store == nil {
+		return acp.ResumeSessionResponse{}, acp.NewMethodNotFound(acp.AgentMethodSessionResume)
+	}
+	if err := b.restoreSession(ctx, params.SessionId, params.Cwd, params.McpServers, false); err != nil {
+		return acp.ResumeSessionResponse{}, err
+	}
+	return acp.ResumeSessionResponse{Modes: &acp.SessionModeState{
+		CurrentModeId: ModeAuto, AvailableModes: modes,
+	}}, nil
 }
 
 func (b *Bridge) SetSessionConfigOption(context.Context, acp.SetSessionConfigOptionRequest) (acp.SetSessionConfigOptionResponse, error) {
@@ -135,27 +171,33 @@ func (b *Bridge) SetSessionConfigOption(context.Context, acp.SetSessionConfigOpt
 func (b *Bridge) CloseSession(_ context.Context, params acp.CloseSessionRequest) (acp.CloseSessionResponse, error) {
 	b.mu.Lock()
 	s, ok := b.sessions[params.SessionId]
-	if ok {
-		delete(b.sessions, params.SessionId)
-	}
 	b.mu.Unlock()
 	if !ok {
 		return acp.CloseSessionResponse{}, acp.NewInternalError(fmt.Sprintf("unknown session %q", params.SessionId))
 	}
 	s.close()
+	b.removeSession(s)
 	return acp.CloseSessionResponse{}, nil
 }
 
 func (b *Bridge) CloseAll() {
 	b.mu.Lock()
+	b.closed = true
+	if b.stop != nil {
+		b.stop()
+	}
 	ss := make([]*acpSession, 0, len(b.sessions))
-	for id, s := range b.sessions {
+	for _, s := range b.sessions {
 		ss = append(ss, s)
-		delete(b.sessions, id)
 	}
 	b.mu.Unlock()
 	for _, s := range ss {
+		s.requestClose()
+	}
+	b.setupWG.Wait()
+	for _, s := range ss {
 		s.close()
+		b.removeSession(s)
 	}
 }
 
@@ -199,23 +241,58 @@ func (b *Bridge) NewSession(ctx context.Context, params acp.NewSessionRequest) (
 	if params.Cwd == "" {
 		return acp.NewSessionResponse{}, acp.NewInvalidParams("cwd is required")
 	}
+	ctx, finish, err := b.beginSession(ctx, "")
+	if err != nil {
+		return acp.NewSessionResponse{}, err
+	}
+	defer finish()
 	ag, mgr, err := b.newAg(ctx, params.Cwd, b.mergeMCPServers(params.McpServers))
 	if err != nil {
 		return acp.NewSessionResponse{}, acp.NewInternalError(err.Error())
 	}
+	ag.WorkingDir = params.Cwd
 	id := acp.SessionId(newID())
 	s := newACPSession(id, ag, mgr)
+	registered := false
+	createdID := ""
+	defer func() {
+		if !registered {
+			s.close()
+			if createdID != "" {
+				if err := b.store.Delete(createdID); err != nil {
+					config_logf("remove uninitialized session %s: %v", createdID, err)
+				}
+			}
+		}
+	}()
+	if err := ctx.Err(); err != nil {
+		s.close()
+		return acp.NewSessionResponse{}, acp.NewInternalError(err.Error())
+	}
 	if b.store != nil {
-		if sid, err := b.store.Create(params.Cwd, ag.ModelName, ag.Provider); err == nil {
-			s.id = acp.SessionId(sid)
+		sid, err := b.store.Create(params.Cwd, ag.ModelName, ag.Provider)
+		if err != nil {
+			s.close()
+			return acp.NewSessionResponse{}, acp.NewInternalError(fmt.Sprintf("session storage: %v", err))
+		}
+		s.id = acp.SessionId(sid)
+		createdID = sid
+		ag.SetSessionID(sid)
+		ag.Tasks().SetSessionID(sid)
+		s.recorder, err = recording.Open(b.store, sid, ag)
+		if err != nil {
+			s.close()
+			return acp.NewSessionResponse{}, acp.NewInternalError(fmt.Sprintf("session storage: %v", err))
 		}
 	}
-	b.mu.Lock()
-	if b.sessions == nil {
-		b.sessions = make(map[acp.SessionId]*acpSession)
+	if err := ag.StartSession(ctx); err != nil {
+		return acp.NewSessionResponse{}, acp.NewInternalError(err.Error())
 	}
-	b.sessions[s.id] = s
-	b.mu.Unlock()
+	if err := b.registerSession(ctx, s); err != nil {
+		s.close()
+		return acp.NewSessionResponse{}, err
+	}
+	registered = true
 	return acp.NewSessionResponse{
 		SessionId: s.id,
 		Modes: &acp.SessionModeState{
@@ -229,95 +306,50 @@ func (b *Bridge) LoadSession(ctx context.Context, params acp.LoadSessionRequest)
 	if b.store == nil {
 		return acp.LoadSessionResponse{}, acp.NewMethodNotFound(acp.AgentMethodSessionLoad)
 	}
-	meta, msgs, err := b.store.Load(string(params.SessionId))
-	if err != nil {
-		return acp.LoadSessionResponse{}, &acp.RequestError{Code: -32002, Message: "Resource not found", Data: map[string]any{"sessionId": string(params.SessionId)}}
-	}
-
-	if meta.ID != string(params.SessionId) {
-		return acp.LoadSessionResponse{}, acp.NewInvalidParams(fmt.Sprintf("session id %q is not exact", params.SessionId))
-	}
-
-	if params.Cwd != "" && meta.CWD != "" && params.Cwd != meta.CWD {
-		return acp.LoadSessionResponse{}, acp.NewInvalidParams(fmt.Sprintf("cwd %q does not match session cwd %q", params.Cwd, meta.CWD))
-	}
-	ag, mgr, err := b.newAg(ctx, meta.CWD, b.mergeMCPServers(params.McpServers))
-	if err != nil {
-		return acp.LoadSessionResponse{}, acp.NewInternalError(err.Error())
-	}
-
-	ag.Messages = append(ag.Messages, msgs...)
-	s := newACPSession(acp.SessionId(meta.ID), ag, mgr)
-	s.storeFrom = len(ag.Messages)
-	b.mu.Lock()
-	if b.sessions == nil {
-		b.sessions = make(map[acp.SessionId]*acpSession)
-	}
-	b.sessions[s.id] = s
-	b.mu.Unlock()
-
-	for _, u := range replayUpdates(msgs) {
-		if err := b.update(ctx, s.id, u); err != nil {
-			b.mu.Lock()
-			delete(b.sessions, s.id)
-			b.mu.Unlock()
-			s.close()
-			return acp.LoadSessionResponse{}, acp.NewInternalError(err.Error())
-		}
+	if err := b.restoreSession(ctx, params.SessionId, params.Cwd, params.McpServers, true); err != nil {
+		return acp.LoadSessionResponse{}, err
 	}
 	return acp.LoadSessionResponse{
 		Modes: &acp.SessionModeState{CurrentModeId: ModeAuto, AvailableModes: modes},
 	}, nil
 }
 
-func (b *Bridge) ListSessions(_ context.Context, params acp.ListSessionsRequest) (acp.ListSessionsResponse, error) {
-	if b.store == nil {
-		return acp.ListSessionsResponse{}, acp.NewMethodNotFound(acp.AgentMethodSessionList)
+func (b *Bridge) SetSessionMode(ctx context.Context, params acp.SetSessionModeRequest) (acp.SetSessionModeResponse, error) {
+	if err := ctx.Err(); err != nil {
+		return acp.SetSessionModeResponse{}, acp.NewInternalError(err.Error())
 	}
-	metas, err := b.store.Recent(100)
-	if err != nil {
-		return acp.ListSessionsResponse{}, acp.NewInternalError(err.Error())
-	}
-	out := make([]acp.SessionInfo, 0, len(metas))
-	for _, m := range metas {
-		if params.Cwd != nil && *params.Cwd != m.CWD {
-			continue
-		}
-		info := acp.SessionInfo{SessionId: acp.SessionId(m.ID), Cwd: m.CWD}
-		if m.Title != "" {
-			info.Title = new(m.Title)
-		}
-		if !m.UpdatedAt.IsZero() {
-			info.UpdatedAt = new(m.UpdatedAt.UTC().Format(time.RFC3339))
-		}
-		out = append(out, info)
-	}
-	return acp.ListSessionsResponse{Sessions: out}, nil
-}
-
-func (b *Bridge) SetSessionMode(_ context.Context, params acp.SetSessionModeRequest) (acp.SetSessionModeResponse, error) {
 	s := b.getSession(params.SessionId)
 	if s == nil {
 		return acp.SetSessionModeResponse{}, acp.NewInternalError(fmt.Sprintf("unknown session %q", params.SessionId))
 	}
 	switch string(params.ModeId) {
-	case ModeAuto, ModeAsk:
+	case ModeAuto, ModeAsk, ModePlan:
 	default:
 		return acp.SetSessionModeResponse{}, acp.NewInvalidParams(fmt.Sprintf("unknown mode %q", params.ModeId))
 	}
 	s.turnMu.Lock()
+	if s.closed {
+		s.turnMu.Unlock()
+		return acp.SetSessionModeResponse{}, acp.NewInternalError("session is closed")
+	}
 	s.mode = string(params.ModeId)
+	s.ag.SetPlanMode(s.mode == ModePlan)
 	s.turnMu.Unlock()
-	_ = b.update(context.Background(), s.id, acp.SessionUpdate{
+	if err := b.update(ctx, s.id, acp.SessionUpdate{
 		CurrentModeUpdate: &acp.SessionCurrentModeUpdate{
 			SessionUpdate: "current_mode_update",
 			CurrentModeId: params.ModeId,
 		},
-	})
+	}); err != nil {
+		return acp.SetSessionModeResponse{}, acp.NewInternalError(err.Error())
+	}
 	return acp.SetSessionModeResponse{}, nil
 }
 
 func (b *Bridge) Prompt(ctx context.Context, params acp.PromptRequest) (acp.PromptResponse, error) {
+	if err := ctx.Err(); err != nil {
+		return acp.PromptResponse{StopReason: acp.StopReasonCancelled}, nil
+	}
 	s := b.getSession(params.SessionId)
 	if s == nil {
 		return acp.PromptResponse{}, acp.NewInternalError(fmt.Sprintf("unknown session %q", params.SessionId))
@@ -332,10 +364,14 @@ func (b *Bridge) Prompt(ctx context.Context, params acp.PromptRequest) (acp.Prom
 
 	text, parts := promptFromBlocks(params.Prompt, b.vision)
 
-	turnCtx, cancel := context.WithCancel(context.Background())
+	turnCtx, cancel := b.turnContext(ctx)
 	s.turnMu.Lock()
+	if s.closed {
+		s.turnMu.Unlock()
+		cancel()
+		return acp.PromptResponse{}, acp.NewInternalError("session is closed")
+	}
 	s.cancel = cancel
-	mode := s.mode
 	s.turnMu.Unlock()
 	defer func() {
 		cancel()
@@ -344,9 +380,7 @@ func (b *Bridge) Prompt(ctx context.Context, params acp.PromptRequest) (acp.Prom
 		s.turnMu.Unlock()
 	}()
 
-	if mode == ModeAsk {
-		defer b.installPermissionGate(s, turnCtx)()
-	}
+	turnCtx = b.permissionContext(turnCtx, s)
 
 	s.ag.SetOnTodos(func(items []agent.Todo) {
 		entries := make([]acp.PlanEntry, 0, len(items))
@@ -361,35 +395,39 @@ func (b *Bridge) Prompt(ctx context.Context, params acp.PromptRequest) (acp.Prom
 	})
 	defer s.ag.SetOnTodos(nil)
 
-	_, err := s.ag.TurnParts(turnCtx, text, parts, agent.Events{
+	_, err := s.ag.TurnParts(turnCtx, text, parts, agent.FanIn(s.recorder.Events(), agent.Events{
 		OnText:      func(d string) { _ = b.update(turnCtx, s.id, acp.UpdateAgentMessageText(d)) },
 		OnThink:     func(d string) { _ = b.update(turnCtx, s.id, updateThoughtText(d)) },
 		OnToolStart: func(id, name, args string) { _ = b.update(turnCtx, s.id, startToolCall(id, name, args)) },
 		OnToolEnd:   func(id, name, result string) { _ = b.update(turnCtx, s.id, b.endTool(s, id, name, result)) },
 		OnUsage:     func(u ai.Usage) { b.sendUsage(turnCtx, s, u) },
+	}))
 
-		OnDecay: func(int) { s.storeFrom = 1 },
-	})
-
-	if b.store != nil {
-		if serr := b.store.Save(string(s.id), s.storeFrom, s.ag.MessagesSnapshot(), s.ag.ModelName, s.ag.Provider); serr == nil {
-			s.storeFrom = len(s.ag.MessagesSnapshot())
-			b.sendTitle(turnCtx, s)
-		}
+	if persistErr := s.recorder.Save(); persistErr != nil {
+		return acp.PromptResponse{}, acp.NewInternalError(errors.Join(err, fmt.Errorf("session storage: %w", persistErr)).Error())
 	}
+	b.sendTitle(turnCtx, s)
 
 	switch {
 	case err == nil:
+		if s.ag.LastStopReason() == ai.StopReasonLength {
+			return acp.PromptResponse{StopReason: acp.StopReasonMaxTokens}, nil
+		}
 		return acp.PromptResponse{StopReason: acp.StopReasonEndTurn}, nil
-	case errors.Is(err, context.Canceled) || errors.Is(turnCtx.Err(), context.Canceled):
+	case errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || turnCtx.Err() != nil:
 
 		return acp.PromptResponse{StopReason: acp.StopReasonCancelled}, nil
-	case ai.IsContextLimit(err):
+	case ai.IsContextLimit(err), isOutputLimit(err):
 
 		return acp.PromptResponse{StopReason: acp.StopReasonMaxTokens}, nil
 	default:
 		return acp.PromptResponse{}, acp.NewInternalError(err.Error())
 	}
+}
+
+func isOutputLimit(err error) bool {
+	_, ok := errors.AsType[*ai.OutputLimitError](err)
+	return ok
 }
 
 func (b *Bridge) Cancel(_ context.Context, params acp.CancelNotification) error {

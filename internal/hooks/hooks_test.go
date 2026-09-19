@@ -21,9 +21,9 @@ func hookCommand(path string) (string, string) {
 
 func TestRunnerExportsEvent(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "event.json")
-	command, shell := hookCommand(path)
+	command, shell := hookCommand("event.json")
 	r := New(map[string][]config.Hook{"UserPromptSubmit": {{Command: command, Shell: shell}}})
-	event := Event{Name: "UserPromptSubmit", SessionID: "abc123", Prompt: "hello"}
+	event := Event{Name: "UserPromptSubmit", SessionID: "abc123", Prompt: "hello", CWD: filepath.Dir(path)}
 	if err := r.Run(context.Background(), event); err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +35,7 @@ func TestRunnerExportsEvent(t *testing.T) {
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatalf("hook payload is not JSON: %v (%q)", err, data)
 	}
-	if got.Name != event.Name || got.SessionID != event.SessionID || got.Prompt != event.Prompt {
+	if got.Name != event.Name || got.SessionID != event.SessionID || got.Prompt != event.Prompt || got.CWD != event.CWD {
 		t.Fatalf("event = %+v, want %+v", got, event)
 	}
 }

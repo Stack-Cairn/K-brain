@@ -122,13 +122,8 @@ func TestSkillsImportContinuesPastFailure(t *testing.T) {
 	if err := os.MkdirAll(sub, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	unreadable := filepath.Join(sub, "secret.md")
-	if err := os.WriteFile(unreadable, []byte("x"), 0o000); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.Chmod(unreadable, 0o600) })
-	if _, err := os.Open(unreadable); err == nil {
-		t.Skip("running with permission to read 0o000 files (root)")
+	if err := os.Symlink(filepath.Join(t.TempDir(), "missing.md"), filepath.Join(sub, "missing.md")); err != nil {
+		t.Skipf("cannot create broken symlink fixture: %v", err)
 	}
 
 	err := skillsCLI([]string{"import"})
@@ -182,10 +177,10 @@ func TestSkillsForeignDirs(t *testing.T) {
 	if len(dirs) != 2 {
 		t.Fatalf("got %d foreign dirs, want 2", len(dirs))
 	}
-	if !strings.HasSuffix(dirs[0], ".codex/skills") {
+	if !strings.HasSuffix(dirs[0], filepath.Join(".codex", "skills")) {
 		t.Errorf("first foreign dir = %q, want codex", dirs[0])
 	}
-	if !strings.HasSuffix(dirs[1], ".claude/skills") {
+	if !strings.HasSuffix(dirs[1], filepath.Join(".claude", "skills")) {
 		t.Errorf("second foreign dir = %q, want claude", dirs[1])
 	}
 }

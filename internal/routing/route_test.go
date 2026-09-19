@@ -21,7 +21,7 @@ func TestResolveRouteUsesConfiguredDefaultsAndLimits(t *testing.T) {
 			"demo": {BaseURL: srv.URL + "/v1", API: "openai-completions", APIKey: "test"},
 		},
 		Models: map[string]config.Model{
-			"model1": {Providers: []string{"demo"}, Context: 8000, MaxOut: 1000},
+			"model1": {Providers: []string{"demo"}, Context: 8000, MaxOut: 1000, Vision: true},
 		},
 	}
 	route, err := ResolveRoute(cfg, "", "", false)
@@ -36,6 +36,10 @@ func TestResolveRouteUsesConfiguredDefaultsAndLimits(t *testing.T) {
 	}
 	if !route.Configured() {
 		t.Fatal("configured route reported as unconfigured")
+	}
+	sub, err := SubModelFor(cfg, "model1", "demo")
+	if err != nil || !route.Vision || !route.AgentModel().Vision || !sub.Vision {
+		t.Fatalf("vision not propagated through route/model/task: %+v, %+v, %v", route, sub, err)
 	}
 }
 

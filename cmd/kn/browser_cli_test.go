@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -45,7 +46,7 @@ func TestBrowserInstall(t *testing.T) {
 	if serr != nil {
 		t.Fatalf("relay state missing: %v", serr)
 	}
-	if info.Mode().Perm() != 0o600 {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 		t.Errorf("relay state should be 0600, got %v", info.Mode().Perm())
 	}
 	data, _ := os.ReadFile(statePath)

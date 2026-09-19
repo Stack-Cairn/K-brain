@@ -141,9 +141,9 @@ func (m *model) rewindKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.scrollToMsg(sel().cut)
 	case tea.KeyEnter:
 		e := sel()
-		text := m.applyRewind(e.cut)
+		text, ok := m.applyRewind(e.cut)
 		m.rew = nil
-		if !e.future {
+		if ok && !e.future {
 			m.input.SetValue(text)
 			m.input.CursorEnd()
 			m.growInput()
@@ -159,47 +159,86 @@ func (m *model) rewindKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *model) applyRewind(cut int) string {
-	cut = max(cut, 1)
+func (m *model) applyRewind(cut int) (string, bool) {
+	if m.busy {
+		m.append(dimStyle.Render("(busy — rewind after this turn)"))
+		return "", false
+	}
 	base := len(m.agent.Messages)
-	restored, restoreErr := 0, error(nil)
+	if base == 0 || cut > base+len(m.future) {
+		m.append(errStyle.Render("invalid rewind position"))
+		return "", false
+	}
+	cut = max(cut, 1)
+	if !m.persist() {
+		return "", false
+	}
+	boundary := cut
+	if m.history != nil && cut <= base {
+		var err error
+		boundary, err = m.history.Boundary(cut)
+		if err != nil {
+			m.append(errStyle.Render("rewind failed: " + err.Error()))
+			return "", false
+		}
+	}
+	restored := 0
 	switch {
 	case cut > base:
 		m.agent.Messages = append(m.agent.Messages, m.future[:cut-base]...)
 		m.future = append([]ai.Message(nil), m.future[cut-base:]...)
 	case cut < base:
-		clipped := append([]ai.Message(nil), m.agent.Messages[cut:]...)
-		m.future = append(clipped, m.future...)
-		m.agent.Messages = m.agent.Messages[:cut]
-		m.saved = min(m.saved, cut)
-		if m.store != nil && m.sessionID != "" {
-			if err := m.store.DeleteFrom(m.sessionID, cut); err != nil {
-				m.append(errStyle.Render("session save failed: " + err.Error()))
-			}
-		}
-
 		best, bestIdx := "", -1
 		for idx, ref := range m.snapshots {
-			if idx >= cut && (bestIdx == -1 || idx < bestIdx) {
+			if idx >= boundary && (bestIdx == -1 || idx < bestIdx) {
 				best, bestIdx = ref, idx
 			}
 		}
 		if best != "" {
-			restored, restoreErr = restoreWorkspace(best)
-			for idx := range m.snapshots {
-				if idx >= cut {
-					delete(m.snapshots, idx)
+			var err error
+			restored, err = restoreWorkspace(best)
+			if err != nil {
+				m.append(errStyle.Render("workspace rewind failed: " + err.Error()))
+				return "", false
+			}
+		}
+		if m.store != nil && m.sessionID != "" {
+			if err := m.store.TruncateHistory(m.sessionID, m.history, cut); err != nil {
+				note := "session save failed: "
+				if best != "" {
+					note = "workspace restored, but session save failed; conversation and snapshot retained for retry: "
 				}
+				m.append(errStyle.Render(note + err.Error()))
+				return "", false
+			}
+		}
+		clipped := append([]ai.Message(nil), m.agent.Messages[cut:]...)
+		m.future = append(clipped, m.future...)
+		m.agent.Messages = m.agent.Messages[:cut]
+		m.saved = min(m.saved, cut)
+		for idx := range m.snapshots {
+			if idx >= boundary {
+				delete(m.snapshots, idx)
+			}
+		}
+		if best != "" {
+			retained := false
+			for _, ref := range m.snapshots {
+				retained = retained || ref == best
+			}
+			if !retained && m.store != nil {
+				used, err := m.store.SnapshotReferenced(best)
+				retained = used || err != nil
+			}
+			if !retained {
+				dropSnapshot(best)
 			}
 		}
 	}
 	m.persist()
 	m.rebuildTranscript()
 
-	switch {
-	case restoreErr != nil:
-		m.append(errStyle.Render("workspace rewind failed: " + restoreErr.Error()))
-	case restored > 0:
+	if restored > 0 {
 		m.append(dimStyle.Render(fmt.Sprintf("⟲ workspace rewound — %d file(s) restored", restored)))
 	}
 	text := ""
@@ -208,7 +247,7 @@ func (m *model) applyRewind(cut int) string {
 			text = msg.TextContent()
 		}
 	}
-	return text
+	return text, true
 }
 
 func (m *model) messageAt(i int) ai.Message {
@@ -257,16 +296,7 @@ func (m *model) turnUsage(cut int) (sum, last ai.Usage, ok bool) {
 		if msg.Role == "assistant" && msg.Usage != nil {
 			ok = true
 			last = *msg.Usage
-			sum.PromptTokens += msg.Usage.PromptTokens
-			sum.CompletionTokens += msg.Usage.CompletionTokens
-			if c := msg.Usage.Cached(); c > 0 {
-				if sum.PromptTokensDetails == nil {
-					sum.PromptTokensDetails = &struct {
-						CachedTokens int `json:"cached_tokens"`
-					}{}
-				}
-				sum.PromptTokensDetails.CachedTokens += c
-			}
+			sum.Add(*msg.Usage)
 		}
 	}
 	return sum, last, ok
@@ -307,31 +337,6 @@ func fmtTurn(u ai.Usage) string {
 		in += fmt.Sprintf(" (%s cached)", fmtTok(c))
 	}
 	return fmt.Sprintf("%s / %s out", in, fmtTok(u.CompletionTokens))
-}
-
-func (m *model) turnCost(cut int) (float64, bool) {
-	total := 0.0
-	for i := cut + 1; i < len(m.agent.Messages)+len(m.future); i++ {
-		msg := m.messageAt(i)
-		if msg.Role == "user" {
-			break
-		}
-		if msg.Role != "assistant" || msg.Usage == nil {
-			continue
-		}
-
-		modelID, prov, _ := strings.Cut(msg.Model, " @ ")
-		cat, ok := m.catalogs[prov]
-		if !ok {
-			continue
-		}
-		in, out, cacheRead, ok := cat.Pricing(modelID)
-		if !ok {
-			continue
-		}
-		total += ai.SessionCost(*msg.Usage, in, out, cacheRead)
-	}
-	return total, total > 0
 }
 
 func rewindWhen(t *time.Time) string {

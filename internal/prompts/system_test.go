@@ -53,3 +53,17 @@ func TestSystemPromptEnvBlock(t *testing.T) {
 		t.Fatalf("date/time should carry a UTC offset:\n%s", p)
 	}
 }
+
+func TestWithWorkingDirectoryUpdatesOnlyEnvironment(t *testing.T) {
+	t.Setenv("K_BRAIN_HOME", t.TempDir())
+	p := Build("/old", time.Now()) + "\nUser note: /old\n  Working directory: /old\n"
+	want := strings.Replace(p, "\n<env>\n  Working directory: /old\n", "\n<env>\n  Working directory: /new\n", 1)
+	if got := WithWorkingDirectory(p, "/new"); got != want {
+		t.Fatal("working directory update changed unrelated prompt content")
+	}
+	for _, custom := range []string{"", "custom instructions", "\n<env>\n  Working directory: unfinished"} {
+		if got := WithWorkingDirectory(custom, "/new"); got != custom {
+			t.Fatalf("custom prompt changed: %q", got)
+		}
+	}
+}

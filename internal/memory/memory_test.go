@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Stack-Cairn/K-brain/internal/session"
 )
 
 func TestScopeRoundTrip(t *testing.T) {
@@ -97,8 +99,17 @@ func TestScopeConstructors(t *testing.T) {
 	if inst.Path != filepath.Join(home, "memory.md") || inst.Name != "installation" {
 		t.Fatalf("Installation() = %+v", inst)
 	}
-	sess := Session("abcd1234")
-	if sess.Path != filepath.Join(home, "sessions", "abcd1234.memory.md") || sess.Name != "session" {
+	store, err := session.OpenProjectHome(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	id, err := store.Create(t.TempDir(), "model", "provider")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess := Session(id)
+	if sess.Path != filepath.Join(filepath.Dir(store.TranscriptPath(id)), "memory.md") || sess.Name != "session" {
 		t.Fatalf("Session() = %+v", sess)
 	}
 

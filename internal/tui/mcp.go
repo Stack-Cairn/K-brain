@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"maps"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -40,8 +41,8 @@ func (m *model) mcpCommand(fields []string) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) mcpSetEnabled(name string, enabled bool) {
-	if m.mcpMgr.BlockedByPolicy(name) {
-		m.append(errStyle.Render(fmt.Sprintf("mcp server %s is blocked by the mcpImport config — edit ~/.k-brain/config.json", name)))
+	if m.mcpMgr == nil {
+		m.append(errStyle.Render("no MCP server named " + name))
 		return
 	}
 	live, ok := m.mcpMgr.Config(name)
@@ -53,15 +54,26 @@ func (m *model) mcpSetEnabled(name string, enabled bool) {
 		Command: live.Command, Env: live.Env, Cwd: live.Cwd,
 		URL: live.URL, Headers: live.Headers,
 		StartupTimeout: live.StartupTimeout, ToolTimeout: live.ToolTimeout,
+		Note:    live.Note,
 		Enabled: &enabled,
 	}
-	if m.cfg.MCPServers == nil {
-		m.cfg.MCPServers = map[string]config.MCPServer{}
+	next := config.Config{}
+	if m.cfg != nil {
+		next = *m.cfg
 	}
-	m.cfg.MCPServers[name] = entry
-	if err := m.cfg.Save(); err != nil {
+	next.MCPServers = maps.Clone(next.MCPServers)
+	if next.MCPServers == nil {
+		next.MCPServers = map[string]config.MCPServer{}
+	}
+	next.MCPServers[name] = entry
+	if err := next.Save(); err != nil {
 		m.append(errStyle.Render("config save failed: " + err.Error()))
 		return
+	}
+	if m.cfg == nil {
+		m.cfg = &next
+	} else {
+		m.cfg.MCPServers = next.MCPServers
 	}
 	if enabled {
 		m.mcpMgr.Enable(name)
@@ -91,6 +103,10 @@ func (m *model) buildMCPRows() []mcpRow {
 		return rows
 	}
 	for _, s := range m.mcpMgr.Statuses() {
+		cfg, exists := m.mcpMgr.Config(s.Name)
+		if !exists {
+			continue
+		}
 		detail := s.Status.String()
 		switch s.Status {
 		case mcp.StatusReady:
@@ -98,22 +114,28 @@ func (m *model) buildMCPRows() []mcpRow {
 		case mcp.StatusFailed:
 			detail = "failed — " + s.Err
 		}
-		rows = append(rows, mcpRow{name: s.Name, on: s.Status != mcp.StatusDisabled, detail: detail})
-	}
-	for _, s := range m.mcpMgr.Blocked() {
-		rows = append(rows, mcpRow{name: s.Name, detail: "unavailable", disabled: true})
+		rows = append(rows, mcpRow{name: s.Name, on: !cfg.Disabled(), detail: detail})
 	}
 	return rows
 }
 
-func (m *model) mcpSetImport(source string, enabled bool) {
-	_ = source
-	_ = enabled
-	m.append(dimStyle.Render("MCP imports are disabled; configure servers in ~/.k-brain/config.json"))
+func (m *model) refreshMCPPanel(pp *ppanel) {
+	selected := ""
+	if pp.midx >= 0 && pp.midx < len(pp.mcps) {
+		selected = pp.mcps[pp.midx].name
+	}
+	pp.mcps = m.buildMCPRows()
+	pp.midx = max(0, min(pp.midx, len(pp.mcps)-1))
+	for i, row := range pp.mcps {
+		if row.name == selected {
+			pp.midx = i
+			break
+		}
+	}
 }
 
 func (m *model) mcpStatusView() string {
-	servers := append(m.mcpMgr.Statuses(), m.mcpMgr.Blocked()...)
+	servers := m.mcpMgr.Statuses()
 	if len(servers) == 0 {
 		return dimStyle.Render("no MCP servers")
 	}

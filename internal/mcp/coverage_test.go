@@ -2,8 +2,10 @@ package mcp
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -145,10 +147,16 @@ func TestFlattenRemainingContentTypes(t *testing.T) {
 
 func TestDefaultTransportResolvesHeaderSecrets(t *testing.T) {
 	t.Setenv("K_BRAIN_MCP_SECRET_TEST", "resolved-token")
+	t.Setenv("K_BRAIN_MCP_HEADER_HELPER", "1")
+	t.Setenv("K_BRAIN_MCP_SECRET_UNSET", "")
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	cfg := ServerConfig{URL: "https://mcp.example.com", Headers: map[string]string{
 		"Authorization": "${K_BRAIN_MCP_SECRET_TEST}",
-		"X-Cmd":         "!printf cmd-token",
+		"X-Cmd":         `!"` + exe + `" -test.run=^TestHeaderSecretCommandHelper$`,
 		"X-Literal":     "plain",
 		"X-Dropped":     "$K_BRAIN_MCP_SECRET_UNSET",
 	}}
@@ -173,4 +181,12 @@ func TestDefaultTransportResolvesHeaderSecrets(t *testing.T) {
 	if _, present := ht["X-Dropped"]; present {
 		t.Fatalf("unresolvable reference must be dropped, got %q", ht["X-Dropped"])
 	}
+}
+
+func TestHeaderSecretCommandHelper(t *testing.T) {
+	if os.Getenv("K_BRAIN_MCP_HEADER_HELPER") != "1" {
+		return
+	}
+	fmt.Print("cmd-token")
+	os.Exit(0)
 }

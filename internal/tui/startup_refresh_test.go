@@ -16,7 +16,7 @@ import (
 func modelsServer(t *testing.T, hits *atomic.Int32, ids ...string) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/models" {
+		if r.URL.Path != "/v1/models" {
 			http.NotFound(w, r)
 			return
 		}
@@ -45,12 +45,12 @@ func TestBuildAgentWithRefreshRecoversFromMissingCatalog(t *testing.T) {
 		DefaultModel:    "kimi-k3",
 		DefaultProvider: "demo",
 		Providers: map[string]config.Provider{
-			"demo": {BaseURL: srv.URL, API: "openai-completions", APIKey: "k"},
+			"demo": {BaseURL: srv.URL + "/v1", API: "openai-completions", APIKey: "k"},
 		},
 		Models: map[string]config.Model{},
 	}
 
-	ag, mn, pn, err := buildAgentWithRefresh(cfg, "", "", "")
+	ag, mn, pn, err := buildAgent(cfg, "", "", "")
 	if err != nil {
 		t.Fatalf("refresh-and-retry should recover the launch: %v", err)
 	}
@@ -80,14 +80,14 @@ func TestBuildAgentWithRefreshSkipsFetchWhenResolveSucceeds(t *testing.T) {
 		DefaultModel:    "glm-5.2-fast",
 		DefaultProvider: "demo",
 		Providers: map[string]config.Provider{
-			"demo": {BaseURL: srv.URL, API: "openai-completions", APIKey: "k"},
+			"demo": {BaseURL: srv.URL + "/v1", API: "openai-completions", APIKey: "k"},
 		},
 		Models: map[string]config.Model{
 			"glm-5.2-fast": {Providers: []string{"demo"}},
 		},
 	}
 
-	if _, _, _, err := buildAgentWithRefresh(cfg, "", "", ""); err != nil {
+	if _, _, _, err := buildAgent(cfg, "", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	if n := hits.Load(); n != 0 {
@@ -123,12 +123,12 @@ func TestBuildAgentWithRefreshStillErrorsForUnknownModel(t *testing.T) {
 		DefaultModel:    "nope",
 		DefaultProvider: "demo",
 		Providers: map[string]config.Provider{
-			"demo": {BaseURL: srv.URL, API: "openai-completions", APIKey: "k"},
+			"demo": {BaseURL: srv.URL + "/v1", API: "openai-completions", APIKey: "k"},
 		},
 		Models: map[string]config.Model{},
 	}
 
-	_, _, _, err := buildAgentWithRefresh(cfg, "", "", "")
+	_, _, _, err := buildAgent(cfg, "", "", "")
 	_, ok := errors.AsType[*config.UnknownModelError](err)
 	if !ok {
 		t.Fatalf("persistent miss should surface the original typed error, got %T (%v)", err, err)
@@ -149,7 +149,7 @@ func TestResolveWithRefreshRecoversFromMissingCatalog(t *testing.T) {
 		DefaultModel:    "kimi-k3",
 		DefaultProvider: "demo",
 		Providers: map[string]config.Provider{
-			"demo": {BaseURL: srv.URL, API: "openai-completions", APIKey: "k"},
+			"demo": {BaseURL: srv.URL + "/v1", API: "openai-completions", APIKey: "k"},
 		},
 		Models: map[string]config.Model{},
 	}
@@ -158,7 +158,7 @@ func TestResolveWithRefreshRecoversFromMissingCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if id != "kimi-k3" || prov.BaseURL != srv.URL {
+	if id != "kimi-k3" || prov.BaseURL != srv.URL+"/v1" {
 		t.Errorf("route: id=%q base=%q", id, prov.BaseURL)
 	}
 	if mdl.Context != 1000000 {
@@ -166,5 +166,31 @@ func TestResolveWithRefreshRecoversFromMissingCatalog(t *testing.T) {
 	}
 	if n := hits.Load(); n != 1 {
 		t.Errorf("want exactly 1 refresh fetch, got %d", n)
+	}
+}
+
+func TestBuildAgentCatalogFailureIsNotRepeated(t *testing.T) {
+	t.Setenv("K_BRAIN_HOME", t.TempDir())
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		if r.URL.Path != "/v1/models" || r.Header.Get("Authorization") != "Bearer key" {
+			t.Errorf("unexpected catalog request: %s", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+	cfg := &config.Config{
+		DefaultModel: "missing", DefaultProvider: "demo",
+		Providers: map[string]config.Provider{
+			"demo": {BaseURL: srv.URL + "/v1", API: "openai-completions", APIKey: "key"},
+		},
+	}
+	_, _, _, err := buildAgent(cfg, "", "", "")
+	if _, ok := errors.AsType[*config.UnknownModelError](err); !ok {
+		t.Fatalf("expected original unknown model error, got %v", err)
+	}
+	if hits.Load() != 1 {
+		t.Fatalf("failed catalog request repeated %d times", hits.Load())
 	}
 }

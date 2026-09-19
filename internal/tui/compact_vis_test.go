@@ -60,7 +60,7 @@ func TestCompactionVisibleInTranscript(t *testing.T) {
 		catalogs: map[string]config.Catalog{
 			"inference": {Models: []config.ModelInfoLite{
 
-				{ID: "kimi-k3-fast", ContextLength: 400, InPrice: 1e-6, OutPrice: 2e-6},
+				{ID: "kimi-k3-fast", ContextLength: 400, Pricing: &ai.TokenRates{Input: 1e-6, Output: 2e-6}},
 			}},
 		},
 	}
@@ -143,7 +143,7 @@ func TestCompactionNotesRenderInOrder(t *testing.T) {
 		now:       time.Now,
 		catalogs: map[string]config.Catalog{
 			"inference": {Models: []config.ModelInfoLite{
-				{ID: "kimi-k3-fast", ContextLength: 400, InPrice: 1e-6, OutPrice: 2e-6},
+				{ID: "kimi-k3-fast", ContextLength: 400, Pricing: &ai.TokenRates{Input: 1e-6, Output: 2e-6}},
 			}},
 		},
 	}

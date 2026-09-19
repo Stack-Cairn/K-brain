@@ -1,166 +1,18 @@
 package ai
 
 import (
-	"bufio"
-	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"math/rand/v2"
 	"net/http"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Stack-Cairn/K-brain/internal/privacy"
 )
-
-type Message struct {
-	Role       string        `json:"role"`
-	Content    string        `json:"content"`
-	Parts      []ContentPart `json:"-"`
-	ToolCalls  []ToolCall    `json:"tool_calls,omitempty"`
-	ToolCallID string        `json:"tool_call_id,omitempty"`
-
-	Name string `json:"name,omitempty"`
-
-	Authored bool `json:"authored,omitempty"`
-
-	SentAt *time.Time `json:"sent_at,omitempty"`
-
-	Usage *Usage `json:"usage,omitempty"`
-
-	Model string `json:"model,omitempty"`
-
-	RewoundFrom string `json:"rewound_from,omitempty"`
-}
-
-type ContentPart struct {
-	Type     string `json:"type"`
-	Text     string `json:"text,omitempty"`
-	ImageURL *struct {
-		URL string `json:"url"`
-	} `json:"image_url,omitempty"`
-	W int `json:"w,omitempty"`
-	H int `json:"h,omitempty"`
-}
-
-func (m Message) TextContent() string {
-	if m.Content != "" {
-		return m.Content
-	}
-	for _, p := range m.Parts {
-		if p.Type == "text" {
-			return p.Text
-		}
-	}
-	return ""
-}
-
-func imageDataURL(ext string, data []byte) string {
-	mime := "image/" + ext
-	if ext == "jpg" {
-		mime = "image/jpeg"
-	}
-	return "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(data)
-}
-
-func ImagePart(ext string, data []byte) ContentPart {
-	p := ContentPart{Type: "image_url"}
-	p.ImageURL = &struct {
-		URL string `json:"url"`
-	}{URL: imageDataURL(ext, data)}
-	p.W, p.H, _ = DecodeImageSize(data)
-	return p
-}
-
-func (p ContentPart) DecodeDimensions() (w, h int, ok bool) {
-	if p.ImageURL == nil {
-		return 0, 0, false
-	}
-	const prefix = ";base64,"
-	i := strings.Index(p.ImageURL.URL, prefix)
-	if i < 0 {
-		return 0, 0, false
-	}
-
-	b64 := p.ImageURL.URL[i+len(prefix):]
-	if len(b64) > 65536 {
-		b64 = b64[:65536]
-	}
-	head, err := base64.StdEncoding.DecodeString(b64)
-	if err != nil {
-		return 0, 0, false
-	}
-	return DecodeImageSize(head)
-}
-
-type messageWire struct {
-	Role        string     `json:"role"`
-	Content     any        `json:"content"`
-	ToolCalls   []ToolCall `json:"tool_calls,omitempty"`
-	ToolCallID  string     `json:"tool_call_id,omitempty"`
-	Name        string     `json:"name,omitempty"`
-	Authored    bool       `json:"authored,omitempty"`
-	SentAt      *time.Time `json:"sent_at,omitempty"`
-	Usage       *Usage     `json:"usage,omitempty"`
-	Model       string     `json:"model,omitempty"`
-	RewoundFrom string     `json:"rewound_from,omitempty"`
-}
-
-func (m Message) MarshalJSON() ([]byte, error) {
-	w := messageWire{
-		Role: m.Role, Content: m.Content, ToolCalls: m.ToolCalls, ToolCallID: m.ToolCallID,
-		Name: m.Name, Authored: m.Authored, SentAt: m.SentAt, Usage: m.Usage,
-		Model: m.Model, RewoundFrom: m.RewoundFrom,
-	}
-	if len(m.Parts) > 0 {
-		parts := m.Parts
-		if m.Content != "" {
-
-			parts = append([]ContentPart{{Type: "text", Text: m.Content}}, parts...)
-		}
-		w.Content = parts
-	}
-	return json.Marshal(w)
-}
-
-func (m *Message) UnmarshalJSON(data []byte) error {
-	var raw struct {
-		messageWire
-		Content json.RawMessage `json:"content"`
-	}
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return err
-	}
-	m.Role, m.ToolCalls, m.ToolCallID, m.Name = raw.Role, raw.ToolCalls, raw.ToolCallID, raw.Name
-	m.Authored, m.SentAt, m.Usage, m.Model, m.RewoundFrom = raw.Authored, raw.SentAt, raw.Usage, raw.Model, raw.RewoundFrom
-	if len(raw.Content) == 0 {
-		return nil
-	}
-	var s string
-	if err := json.Unmarshal(raw.Content, &s); err == nil {
-		m.Content = s
-		return nil
-	}
-	var parts []ContentPart
-	if err := json.Unmarshal(raw.Content, &parts); err != nil {
-		return err
-	}
-	for _, p := range parts {
-		switch p.Type {
-		case "text":
-			m.Content = p.Text
-		case "image_url":
-			m.Parts = append(m.Parts, p)
-		}
-	}
-	return nil
-}
 
 type ToolCall struct {
 	ID       string `json:"id"`
@@ -182,6 +34,7 @@ func stripAuthored(msgs []Message) []Message {
 		out[i].Usage = nil
 		out[i].Model = ""
 		out[i].RewoundFrom = ""
+		out[i].StopReason, out[i].RawStopReason = "", ""
 
 		if len(out[i].ToolCalls) > 0 {
 			calls := make([]ToolCall, len(out[i].ToolCalls))
@@ -262,6 +115,7 @@ func repairToolHistory(msgs []Message) []Message {
 				out = append(out, Message{
 					Role:    "user",
 					Content: "[earlier tool result]\n" + m.Content,
+					Parts:   m.Parts,
 				})
 				continue
 			}
@@ -442,67 +296,6 @@ type apiError struct {
 	Message string `json:"message"`
 }
 
-type HTTPError struct {
-	Status string
-	Body   string
-
-	RetryAfter time.Duration
-}
-
-func (e *HTTPError) Error() string { return e.Status + ": " + e.Body }
-
-const DefaultMaxAttempts = 8
-
-type RetryEvent struct {
-	Attempt int
-	Max     int
-	Delay   time.Duration
-	Err     error
-}
-
-func retryableStatus(code int) bool {
-	return code == http.StatusTooManyRequests || code >= 500
-}
-
-type nonRetryable struct{ err error }
-
-func (n nonRetryable) Error() string { return n.err.Error() }
-func (n nonRetryable) Unwrap() error { return n.err }
-
-func retryable(err error) bool {
-	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return false
-	}
-	if _, ok := errors.AsType[nonRetryable](err); ok {
-		return false
-	}
-	if he, ok := errors.AsType[*HTTPError](err); ok {
-		if he.RetryAfter > maxRetryAfter {
-			return false
-		}
-		code, _ := strconv.Atoi(strings.Fields(he.Status)[0])
-		return retryableStatus(code)
-	}
-
-	return true
-}
-
-func backoff(attempt int) time.Duration {
-	d := min(time.Second<<(attempt-1), 20*time.Second)
-	return d + time.Duration(rand.Int64N(int64(d/4)+1))
-}
-
-var sleep = func(ctx context.Context, d time.Duration) error {
-	t := time.NewTimer(d)
-	defer t.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-t.C:
-		return nil
-	}
-}
-
 var contextLimitMarkers = []string{
 	"context_length_exceeded",
 	"maximum context length",
@@ -545,29 +338,6 @@ type ModelInfo struct {
 
 func (mi ModelInfo) SupportsVision() bool {
 	return slices.Contains(mi.InputModalities, "image")
-}
-
-type Pricing struct {
-	Prompt         string `json:"prompt"`
-	Completion     string `json:"completion"`
-	InputCacheRead string `json:"input_cache_read,omitempty"`
-}
-
-func (p Pricing) Rates() (in, out, cacheRead float64) {
-	in, _ = strconv.ParseFloat(p.Prompt, 64)
-	out, _ = strconv.ParseFloat(p.Completion, 64)
-	cacheRead, _ = strconv.ParseFloat(p.InputCacheRead, 64)
-	return in, out, cacheRead
-}
-
-func SessionCost(u Usage, in, out, cacheRead float64) float64 {
-	cached := u.Cached()
-	if cacheRead == 0 {
-		cacheRead = in
-	}
-	return float64(u.PromptTokens-cached)*in +
-		float64(cached)*cacheRead +
-		float64(u.CompletionTokens)*out
 }
 
 func (c *OpenAI) Models(ctx context.Context) ([]ModelInfo, error) {
@@ -644,6 +414,11 @@ func (c *OpenAI) Stream(ctx context.Context, req Request, onText, onThink func(s
 		IncludeUsage bool `json:"include_usage"`
 	}{IncludeUsage: true}
 	req.Messages = repairToolHistory(stripAuthored(req.Messages))
+	messages, err := chatMessages(req.Messages)
+	if err != nil {
+		return Message{}, Usage{}, err
+	}
+	req.Messages = messages
 	c.applyCache(&req)
 	body, err := json.Marshal(req)
 	if err != nil {
@@ -652,79 +427,72 @@ func (c *OpenAI) Stream(ctx context.Context, req Request, onText, onThink func(s
 	var msg Message
 	var usage Usage
 	emitted := false
-	wrapText, wrapThink, wrapTool := onText, onThink, onToolCall
-	if onText != nil {
-		wrapText = func(s string) { emitted = true; onText(s) }
+	wrapText := func(text string) {
+		emitted = true
+		if onText != nil {
+			onText(text)
+		}
 	}
-	if onThink != nil {
-		wrapThink = func(s string) { emitted = true; onThink(s) }
+	wrapThink := func(text string) {
+		emitted = true
+		if onThink != nil {
+			onThink(text)
+		}
 	}
-	if onToolCall != nil {
-		wrapTool = func(id, name, args string) { emitted = true; onToolCall(id, name, args) }
+	wrapTool := func(id, name, args string) {
+		emitted = true
+		if onToolCall != nil && id != "" {
+			onToolCall(id, name, args)
+		}
 	}
 	err = c.policy().run(ctx, func() (err error) {
-		msg, usage, err = c.streamOnce(ctx, body, wrapText, wrapThink, wrapTool)
+		msg, usage, err = c.streamOnce(ctx, body, wrapText, wrapThink, wrapTool, func() { emitted = true })
 		return err
-	}, func() bool { return emitted })
+	}, func() bool { return emitted || usage.PromptTokens != 0 || usage.CompletionTokens != 0 })
 	if err != nil {
-		return Message{}, Usage{}, err
+		return Message{}, usage, err
 	}
 	return msg, usage, nil
 }
 
-func (c *OpenAI) streamOnce(ctx context.Context, body []byte, onText, onThink func(string), onToolCall func(id, name, args string)) (Message, Usage, error) {
-	hr, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/chat/completions", bytes.NewReader(body))
+func (c *OpenAI) streamOnce(ctx context.Context, body []byte, onText, onThink func(string), onToolCall func(id, name, args string), onUsage func()) (Message, Usage, error) {
+	resp, err := c.postJSONOnce(ctx, "/chat/completions", body, true, nil)
 	if err != nil {
 		return Message{}, Usage{}, err
 	}
-	hr.Header.Set("Content-Type", "application/json")
-	hr.Header.Set("Authorization", "Bearer "+c.APIKey)
-	c.applyCacheHeaders(hr)
-	resp, err := c.HTTP.Do(hr)
-	if err != nil {
-		return Message{}, Usage{}, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return Message{}, Usage{}, newHTTPError(resp, string(b))
-	}
+	defer resp.Body.Close()
 
 	msg := Message{Role: "assistant"}
 	var usage Usage
 	var calls []ToolCall
 	callPositions := make(map[int]int)
 	finish := ""
-	sawData := false
-	preview := ""
-	sc := bufio.NewScanner(resp.Body)
-	sc.Buffer(make([]byte, 0, 64*1024), 10*1024*1024)
-	for sc.Scan() {
-		line := sc.Text()
-		if !strings.HasPrefix(line, "data:") {
-			if preview == "" && strings.TrimSpace(line) != "" {
-				preview = strings.TrimSpace(line)
-				if len(preview) > 160 {
-					preview = preview[:160] + "…"
-				}
-			}
-			continue
+	completed := false
+	sse := newSSEReader(resp.Body)
+	for {
+		event, ok := sse.next()
+		if !ok {
+			break
 		}
-		sawData = true
-		data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		data := strings.TrimSpace(event.Data)
 		if data == "[DONE]" {
+			completed = true
 			break
 		}
 		var ch chunk
-		if err := json.Unmarshal([]byte(data), &ch); err != nil {
-			continue
+		if err := decodeStreamEvent(data, &ch); err != nil {
+			return Message{}, usage, err
+		}
+		if ch.Usage != nil {
+			usage = *ch.Usage
+			onUsage()
 		}
 		if ch.Error != nil {
 
 			return Message{}, usage, nonRetryable{fmt.Errorf("api error: %s", ch.Error.Message)}
 		}
-		if ch.Usage != nil {
-			usage = *ch.Usage
+		if event.Type == "error" {
+			return Message{}, usage, providerStreamError(json.RawMessage(data), "Chat Completions request failed")
 		}
 		if len(ch.Choices) == 0 {
 			continue
@@ -760,24 +528,20 @@ func (c *OpenAI) streamOnce(ctx context.Context, body []byte, onText, onThink fu
 			}
 			cur.Function.Arguments += tc.Function.Arguments
 
-			if onToolCall != nil && cur.ID != "" {
+			if onToolCall != nil {
 				onToolCall(cur.ID, cur.Function.Name, cur.Function.Arguments)
 			}
 		}
 	}
-	if err := sc.Err(); err != nil {
-		return Message{}, usage, err
+	if sse.err != nil {
+		return Message{}, usage, sse.err
 	}
-	if !sawData {
-		if preview == "" {
-			preview = "empty response"
-		}
-		return Message{}, usage, nonRetryable{fmt.Errorf("invalid streaming response from %s: expected SSE data, got %q", c.BaseURL, preview)}
+	if !completed && finish == "" {
+		return Message{}, usage, sse.endError("Chat Completions")
 	}
 
-	if finish == "length" && len(calls) > 0 {
-		calls = nil
-		msg.Content += "\n[response truncated by max_tokens; tool calls discarded]"
+	if finish == "length" {
+		return finishMessage(msg, calls, finish, onText), usage, nil
 	}
 
 	kept := make([]ToolCall, 0, len(calls))
@@ -789,18 +553,21 @@ func (c *OpenAI) streamOnce(ctx context.Context, body []byte, onText, onThink fu
 		kept = append(kept, tc)
 	}
 	calls = kept
-	msg.ToolCalls = calls
-	return msg, usage, nil
+	return finishMessage(msg, calls, finish, onText), usage, nil
 }
 
 func validToolCallArgs(s string) bool {
 	var obj map[string]any
-	return json.Unmarshal([]byte(s), &obj) == nil
+	return json.Unmarshal([]byte(s), &obj) == nil && obj != nil
 }
 
 func (c *OpenAI) Complete(ctx context.Context, req Request) (string, Usage, error) {
 	req.Stream = false
-	req.Messages = stripAuthored(req.Messages)
+	messages, err := chatMessages(repairToolHistory(stripAuthored(req.Messages)))
+	if err != nil {
+		return "", Usage{}, err
+	}
+	req.Messages = messages
 	c.applyCache(&req)
 	body, err := json.Marshal(req)
 	if err != nil {
@@ -812,46 +579,41 @@ func (c *OpenAI) Complete(ctx context.Context, req Request) (string, Usage, erro
 		text, usage, err = c.completeOnce(ctx, body)
 		return err
 	}, nil)
-	if err != nil {
-		return "", Usage{}, err
-	}
-	return text, usage, nil
+	return text, usage, err
 }
 
 func (c *OpenAI) completeOnce(ctx context.Context, body []byte) (string, Usage, error) {
-	hr, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/chat/completions", bytes.NewReader(body))
+	resp, err := c.postJSONOnce(ctx, "/chat/completions", body, false, nil)
 	if err != nil {
 		return "", Usage{}, err
 	}
-	hr.Header.Set("Content-Type", "application/json")
-	hr.Header.Set("Authorization", "Bearer "+c.APIKey)
-	c.applyCacheHeaders(hr)
-	resp, err := c.HTTP.Do(hr)
-	if err != nil {
-		return "", Usage{}, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return "", Usage{}, newHTTPError(resp, string(b))
-	}
+	defer resp.Body.Close()
+
 	var out struct {
 		Choices []struct {
 			Message struct {
 				Content string `json:"content"`
 			} `json:"message"`
+			FinishReason string `json:"finish_reason"`
 		} `json:"choices"`
-		Usage *Usage `json:"usage"`
+		Usage *Usage          `json:"usage"`
+		Error json.RawMessage `json:"error"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return "", Usage{}, err
 	}
-	if len(out.Choices) == 0 {
-		return "", Usage{}, errors.New("no choices in completion response")
-	}
 	var usage Usage
 	if out.Usage != nil {
 		usage = *out.Usage
+	}
+	if len(out.Error) > 0 && string(out.Error) != "null" {
+		return "", usage, providerStreamError(out.Error, "Chat Completions request failed")
+	}
+	if len(out.Choices) == 0 {
+		return "", usage, nonRetryable{errors.New("no choices in completion response")}
+	}
+	if out.Choices[0].FinishReason == "length" {
+		return out.Choices[0].Message.Content, usage, &OutputLimitError{Reason: "length"}
 	}
 	return out.Choices[0].Message.Content, usage, nil
 }

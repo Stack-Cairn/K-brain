@@ -112,7 +112,7 @@ func TestWindowsKillAll(t *testing.T) {
 	for time.Now().Before(deadline) {
 		trackMu.Lock()
 		for _, cmd := range tracked {
-			child = cmd
+			child = cmd.cmd
 		}
 		trackMu.Unlock()
 		if child != nil {
@@ -126,7 +126,7 @@ func TestWindowsKillAll(t *testing.T) {
 	KillAll()
 	select {
 	case res := <-done:
-		if res.Exit == "" || process.Alive(child) {
+		if res.Exit == "" || !res.Killed || res.TimedOut || process.Alive(child) {
 			t.Fatalf("child survived: %+v", res)
 		}
 	case <-time.After(5 * time.Second):

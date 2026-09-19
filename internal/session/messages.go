@@ -70,12 +70,8 @@ func (d *sessionData) rawMessages() []ai.Message {
 }
 
 func (d *sessionData) contextMessages() []ai.Message {
-	msgs := d.rawMessages()
-	keys := sortedKeys(d.Compactions)
-	if len(keys) > 0 {
-		msgs = applyCompaction(d.Compactions[keys[len(keys)-1]], msgs)
-	}
-	return answerDanglingToolCalls(msgs)
+	msgs, _ := d.contextEntries()
+	return msgs
 }
 
 func (s *Store) RawMessages(id string) []ai.Message {
@@ -118,35 +114,7 @@ func (s *Store) DeleteFrom(id string, from int) error {
 	})
 }
 
-func applyCompaction(c Compaction, msgs []ai.Message) []ai.Message {
-	cutoff, summary := c.Cutoff, c.Summary
-	if cutoff <= 1 || cutoff > len(msgs) {
-		return msgs
-	}
-	fold := len(msgs)
-	for i := cutoff; i < len(msgs); i++ {
-		if msgs[i].Role != "system" {
-			fold = i
-			break
-		}
-	}
-	out := make([]ai.Message, 0, len(msgs))
-	out = append(out, msgs[0],
-		ai.Message{Role: "system", Content: "Summary of the conversation so far:\n\n" + summary})
-
-	var prior []ai.Message
-	for i := 1; i < fold; i++ {
-		if msgs[i].Role == "system" {
-			prior = append(prior, msgs[i])
-		}
-	}
-	if len(prior) > 0 {
-		out = append(out, prior[len(prior)-1])
-	}
-	return append(out, msgs[fold:]...)
-}
-
-func answerDanglingToolCalls(msgs []ai.Message) []ai.Message {
+func answerDanglingToolCalls(msgs []ai.Message, refs []int) ([]ai.Message, []int) {
 	answered := make(map[string]bool, len(msgs))
 	dangling := false
 	for _, m := range msgs {
@@ -162,11 +130,13 @@ func answerDanglingToolCalls(msgs []ai.Message) []ai.Message {
 		}
 	}
 	if !dangling {
-		return msgs
+		return msgs, refs
 	}
 	out := make([]ai.Message, 0, len(msgs)+4)
-	for _, m := range msgs {
+	mapped := make([]int, 0, len(refs)+4)
+	for i, m := range msgs {
 		out = append(out, m)
+		mapped = append(mapped, refs[i])
 		if m.Role != "assistant" {
 			continue
 		}
@@ -178,10 +148,11 @@ func answerDanglingToolCalls(msgs []ai.Message) []ai.Message {
 					ToolCallID: tc.ID,
 					Name:       tc.Function.Name,
 				})
+				mapped = append(mapped, -1)
 			}
 		}
 	}
-	return out
+	return out, mapped
 }
 
 func truncate(s string, n int) string {

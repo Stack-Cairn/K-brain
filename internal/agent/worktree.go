@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"os"
@@ -10,30 +11,56 @@ import (
 	"strings"
 )
 
-func gitWorktreeRoot(ctx context.Context, dir string) string {
-	out, err := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "--show-toplevel").Output()
+func gitWorktreeRoot(ctx context.Context, dir string) (string, error) {
+	out, err := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "--show-toplevel").CombinedOutput()
 	if err != nil {
-		return ""
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
+		return "", fmt.Errorf("find git worktree root: %w: %s", err, strings.TrimSpace(string(out)))
 	}
-	return strings.TrimSpace(string(out))
+	return strings.TrimSpace(string(out)), nil
 }
 
 func provisionSubagentWorktree(ctx context.Context, taskID string) (path string, err error) {
-	wd, err := os.Getwd()
+	return provisionSubagentWorktreeAt(ctx, "", taskID)
+}
+
+func provisionSubagentWorktreeAt(ctx context.Context, wd, taskID string) (path string, err error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	if taskID == "" {
+		return "", errors.New("invalid worktree task id")
+	}
+	for _, ch := range taskID {
+		if !(ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z' || ch >= '0' && ch <= '9' || ch == '-' || ch == '_') {
+			return "", errors.New("invalid worktree task id")
+		}
+	}
+	if wd == "" {
+		wd, err = os.Getwd()
+		if err != nil {
+			return "", err
+		}
+	}
+	root, err := gitWorktreeRoot(ctx, wd)
 	if err != nil {
 		return "", err
 	}
-	root := gitWorktreeRoot(ctx, wd)
 	if root == "" {
-		return "", errors.New("not inside a git work tree")
+		return "", errors.New("git worktree root is empty")
 	}
-
-	branch := "subagent/" + taskID
-	dirName := filepath.Base(root) + "-wt-" + taskID
+	name := taskID[:min(len(taskID), 48)] + "-" + rand.Text()
+	branch := "subagent/" + name
+	dirName := filepath.Base(root) + "-wt-" + name
 	path = filepath.Join(filepath.Dir(root), dirName)
 	cmd := exec.CommandContext(ctx, "git", "-C", root, "worktree", "add", "-b", branch, path)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("git worktree add: %w: %s", err, strings.TrimSpace(string(out)))
+		if ctx.Err() != nil {
+			return "", fmt.Errorf("git worktree add at %s: %w", path, ctx.Err())
+		}
+		return "", fmt.Errorf("git worktree add at %s: %w: %s", path, err, strings.TrimSpace(string(out)))
 	}
 	return path, nil
 }

@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/Stack-Cairn/K-brain/internal/agent"
-	"github.com/Stack-Cairn/K-brain/internal/config"
 	"github.com/Stack-Cairn/K-brain/internal/routing"
 )
 
@@ -14,7 +13,7 @@ func (m *model) applyTaskModel() {
 	m.agent.ResolveModel = func(model, provider string) (agent.SubModel, error) {
 		return routing.SubModelFor(snap, model, provider)
 	}
-	o, err := routing.TaskDefaultFor(snap, m.provName)
+	o, err := routing.TaskDefaultFor(snap)
 	if err != nil {
 		m.agent.TaskDefault = agent.SubModel{}
 		m.append(errStyle.Render("task model: " + err.Error() + " — subagents use the current model"))
@@ -66,7 +65,7 @@ func (m *model) subagentModelCommand(args []string) {
 		if err := m.cfg.Save(); err != nil {
 			m.append(errStyle.Render("config save failed: " + err.Error()))
 		}
-		m.append(dimStyle.Render("◎ subagent model: default (" + config.DefaultTaskModel + ")"))
+		m.append(dimStyle.Render("◎ subagent model: current model"))
 		return
 	}
 	model, prov := args[0], ""

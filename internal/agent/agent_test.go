@@ -619,13 +619,16 @@ func TestCompactUsesCompactModel(t *testing.T) {
 		var req ai.Request
 		json.NewDecoder(r.Body).Decode(&req)
 		models = append(models, req.Model)
-		w.Write([]byte(`{"choices":[{"message":{"content":"sim"}}]}`))
+		w.Write([]byte(`{"choices":[{"message":{"content":"sim"}}],"usage":{"prompt_tokens":100,"completion_tokens":10,"prompt_cache_hit_tokens":60}}`))
 	}))
 	defer sum.Close()
 
 	ag := New(ai.New(main.URL, "k"), "conversation-model", 100, "sys")
 	ag.CompactClient = ai.New(sum.URL, "k")
 	ag.CompactModel = "summary-model"
+	ag.CompactProvider = "summary-provider"
+	ag.Provider = "main-provider"
+	ag.AddUsage(ai.Usage{PromptTokens: 50, CompletionTokens: 5})
 	for i := range 8 {
 		ag.Messages = append(ag.Messages,
 			ai.Message{Role: "user", Content: fmt.Sprintf("q%d", i)},
@@ -637,6 +640,10 @@ func TestCompactUsesCompactModel(t *testing.T) {
 	}
 	if len(models) != 1 || models[0] != "summary-model" {
 		t.Fatalf("summary should run on summary-model, got %v", models)
+	}
+	u := ag.UsageSummary()
+	if u.Total.PromptTokens != 150 || u.Total.Cached() != 60 || u.Models["summary-model @ summary-provider"].PromptTokens != 100 || u.Models["conversation-model @ main-provider"].PromptTokens != 50 {
+		t.Fatalf("compaction usage attributed to wrong route: %+v", u)
 	}
 }
 

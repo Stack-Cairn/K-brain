@@ -3,12 +3,14 @@ package acp
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 
 	acp "github.com/coder/acp-go-sdk"
 
 	"github.com/Stack-Cairn/K-brain/internal/mcp"
+	"github.com/Stack-Cairn/K-brain/internal/session"
 )
 
 func TestCloseSession(t *testing.T) {
@@ -60,11 +62,72 @@ func TestUnimplementedMethodsReturnMethodNotFound(t *testing.T) {
 		t.Error("logout: want method-not-found")
 	}
 	if _, err := b.ResumeSession(ctx, acp.ResumeSessionRequest{}); err == nil {
-		t.Error("session/resume: want method-not-found")
+		t.Error("session/resume without store: want method-not-found")
 	}
 	if _, err := b.SetSessionConfigOption(ctx, acp.SetSessionConfigOptionRequest{}); err == nil {
 		t.Error("session/set_config_option: want method-not-found")
 	}
+}
+
+func TestResumeSessionRestoresWithoutReplay(t *testing.T) {
+	st := testStore(t)
+	srv := scriptServer(t, []step{{text: "ok"}})
+	f := newFixture(t, nil, st, factoryFor(srv, nil))
+	f.initialize(t)
+	id := f.newSession(t, t.TempDir())
+	if _, err := f.prompt(t, id, "remember this"); err != nil {
+		t.Fatal(err)
+	}
+	before := len(f.client.snapshot())
+	if _, err := f.conn.CloseSession(context.Background(), acp.CloseSessionRequest{SessionId: id}); err != nil {
+		t.Fatal(err)
+	}
+	resp, err := f.conn.ResumeSession(context.Background(), acp.ResumeSessionRequest{
+		SessionId: id, Cwd: mustSessionCWD(t, st, id), McpServers: []acp.McpServer{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Modes == nil || resp.Modes.CurrentModeId != ModeAuto {
+		t.Fatalf("resume modes = %+v", resp.Modes)
+	}
+	if got := len(f.client.snapshot()); got != before {
+		t.Fatalf("resume replayed updates: before=%d after=%d", before, got)
+	}
+	if _, err := f.prompt(t, id, "continue"); err != nil {
+		t.Fatalf("resumed session prompt: %v", err)
+	}
+	_, msgs, err := st.Load(string(id))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 4 || msgs[0].Content != "remember this" || msgs[2].Content != "continue" {
+		t.Fatalf("resumed history duplicated or lost messages: %+v", msgs)
+	}
+}
+
+func TestResumeSessionChecksCWD(t *testing.T) {
+	st := testStore(t)
+	srv := scriptServer(t, []step{{text: "ok"}})
+	f := newFixture(t, nil, st, factoryFor(srv, nil))
+	f.initialize(t)
+	id := f.newSession(t, t.TempDir())
+	if _, err := f.prompt(t, id, "save"); err != nil {
+		t.Fatal(err)
+	}
+	_, err := f.bridge.ResumeSession(context.Background(), acp.ResumeSessionRequest{SessionId: id, Cwd: t.TempDir(), McpServers: []acp.McpServer{}})
+	if err == nil || !strings.Contains(err.Error(), "does not match") {
+		t.Fatalf("cwd mismatch = %v", err)
+	}
+}
+
+func mustSessionCWD(t *testing.T, st *session.Store, id acp.SessionId) string {
+	t.Helper()
+	meta, _, err := st.Load(string(id))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return meta.CWD
 }
 
 func TestMergeMCPServers(t *testing.T) {
@@ -151,6 +214,61 @@ func TestNewSessionRequiresCwd(t *testing.T) {
 	_, err := b.NewSession(context.Background(), acp.NewSessionRequest{Cwd: ""})
 	if err == nil {
 		t.Error("empty cwd: want an invalid-params error")
+	}
+}
+
+func TestNewSessionReportsStorageFailure(t *testing.T) {
+	st := testStore(t)
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	srv := scriptServer(t, nil)
+	f := newFixture(t, nil, st, factoryFor(srv, nil))
+	f.initialize(t)
+	_, err := f.conn.NewSession(context.Background(), acp.NewSessionRequest{Cwd: t.TempDir(), McpServers: []acp.McpServer{}})
+	if err == nil || !strings.Contains(err.Error(), "session storage") {
+		t.Fatalf("storage failure = %v", err)
+	}
+	f.bridge.mu.Lock()
+	defer f.bridge.mu.Unlock()
+	if len(f.bridge.sessions) != 0 {
+		t.Fatal("failed session was registered")
+	}
+}
+
+func TestPromptReportsStorageFailure(t *testing.T) {
+	st := testStore(t)
+	srv := scriptServer(t, []step{{text: "ok"}})
+	f := newFixture(t, nil, st, factoryFor(srv, nil))
+	f.initialize(t)
+	id := f.newSession(t, t.TempDir())
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	_, err := f.bridge.Prompt(context.Background(), acp.PromptRequest{
+		SessionId: id,
+		Prompt:    []acp.ContentBlock{acp.TextBlock("persist me")},
+	})
+	if err == nil || !strings.Contains(err.Error(), "session storage") {
+		t.Fatalf("prompt storage failure = %v", err)
+	}
+}
+
+func TestPromptReportsModelAndStorageFailure(t *testing.T) {
+	st := testStore(t)
+	srv := scriptServer(t, nil)
+	srv.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "model unavailable", http.StatusBadRequest)
+	})
+	f := newFixture(t, nil, st, factoryFor(srv, nil))
+	f.initialize(t)
+	id := f.newSession(t, t.TempDir())
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	_, err := f.prompt(t, id, "persist despite model failure")
+	if err == nil || !strings.Contains(err.Error(), "session storage") || !strings.Contains(err.Error(), "model unavailable") {
+		t.Fatalf("combined failure = %v", err)
 	}
 }
 

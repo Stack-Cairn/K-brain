@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -41,8 +40,9 @@ type Events struct {
 }
 
 type CompactInfo struct {
-	Model string
-	Usage ai.Usage
+	Model    string
+	Provider string
+	Usage    ai.Usage
 }
 
 func (a *Agent) SetOnTodos(fn func(items []Todo)) {
@@ -79,6 +79,7 @@ type Agent struct {
 	Provider  string
 	MaxTokens int
 	Effort    string
+	Vision    bool
 
 	Temperature *float64
 	TopP        *float64
@@ -87,8 +88,9 @@ type Agent struct {
 
 	ContextLimit int
 
-	CompactClient ai.Client
-	CompactModel  string
+	CompactClient   ai.Client
+	CompactModel    string
+	CompactProvider string
 
 	CompactThreshold float64
 
@@ -98,12 +100,15 @@ type Agent struct {
 
 	MaxTurns int
 
+	WorkingDir string
+
 	WorktreeSubagents bool
 
 	mu        sync.Mutex
 	pending   []pendingSteer
 	compacted bool
 	running   atomic.Bool
+	turnMu    sync.Mutex
 	waitReg   *waitRegistry
 
 	msgsMu sync.Mutex
@@ -142,10 +147,17 @@ type Agent struct {
 
 	OnOrphanedSteer func(text string)
 
-	Hooks *hooks.Runner
+	Hooks            *hooks.Runner
+	PluginHook       func(context.Context, hooks.Event) error
+	startMu          sync.Mutex
+	sessionStarted   bool
+	startedSessionID string
+	memoryBlock      string
+	memoryDisabled   bool
 
-	usageMu sync.Mutex
-	usage   ai.Usage
+	usageMu    sync.Mutex
+	usage      ai.Usage
+	modelUsage map[string]ai.Usage
 
 	clientMu sync.Mutex
 
@@ -205,12 +217,25 @@ func (a *Agent) notePrompt(u ai.Usage) {
 }
 
 func (a *Agent) AddUsage(u ai.Usage) {
+	a.clientMu.Lock()
+	label := a.usageLabel()
+	a.clientMu.Unlock()
+	a.addModelUsage(label, u)
+}
+
+func (a *Agent) addModelUsage(label string, u ai.Usage) {
 	a.usageMu.Lock()
 	addUsage(&a.usage, u)
+	if a.modelUsage == nil {
+		a.modelUsage = map[string]ai.Usage{}
+	}
+	current := a.modelUsage[label]
+	addUsage(&current, u)
+	a.modelUsage[label] = current
 	sink := a.usageSink
 	a.usageMu.Unlock()
 	if sink != nil {
-		sink(a.usageLabel(), u)
+		sink(label, u)
 	}
 }
 
@@ -232,21 +257,13 @@ func (a *Agent) AddSubUsage(model string, u ai.Usage) {
 func (a *Agent) usageLabel() string { return a.Model + " @ " + a.Provider }
 
 func addUsage(dst *ai.Usage, u ai.Usage) {
-	dst.PromptTokens += u.PromptTokens
-	dst.CompletionTokens += u.CompletionTokens
-	if u.PromptTokensDetails != nil {
-		if dst.PromptTokensDetails == nil {
-			dst.PromptTokensDetails = &struct {
-				CachedTokens int `json:"cached_tokens"`
-			}{}
-		}
-		dst.PromptTokensDetails.CachedTokens += u.PromptTokensDetails.CachedTokens
-	}
+	dst.Add(u)
 }
 
 func (a *Agent) SetUsage(u ai.Usage) {
 	a.usageMu.Lock()
 	a.usage = u
+	a.modelUsage = map[string]ai.Usage{a.usageLabel(): copyUsage(u)}
 	a.usageMu.Unlock()
 }
 
@@ -259,6 +276,7 @@ func (a *Agent) SetSubUsage(m map[string]ai.Usage) {
 func (a *Agent) ResetUsage() {
 	a.usageMu.Lock()
 	a.usage = ai.Usage{}
+	a.modelUsage = nil
 	a.subUsage = nil
 	a.usageMu.Unlock()
 }
@@ -315,20 +333,23 @@ func New(client ai.Client, model string, maxTokens int, systemPrompt string, opt
 	for _, o := range opts {
 		o(a)
 	}
-	a.Tools = append(tools.All(), tools.QuestionTool())
+	a.Tools = tools.All()
 	if !a.BrowserDisabled {
 		a.Tools = append(a.Tools, tools.BrowserExec())
 	}
 	if !a.ComputerDisabled {
 		a.Tools = append(a.Tools, tools.ComputerExec())
 	}
-	a.Tools = append(a.Tools, taskTool(a), taskSteerTool(a))
+	sessionTools := []tools.Tool{tools.QuestionTool(), taskTool(a), taskSteerTool(a)}
 	if a.experimentalEnabled(FeatureWorkflows) {
-		a.Tools = append(a.Tools, workflowTool(a))
+		sessionTools = append(sessionTools, workflowTool(a))
 	}
-	a.Tools = append(a.Tools, todoTool(a))
-	a.Tools = append(a.Tools, waitTool(a))
-	a.Tools = append(a.Tools, memoryTools(a)...)
+	sessionTools = append(sessionTools, todoTool(a), waitTool(a))
+	sessionTools = append(sessionTools, memoryTools(a)...)
+	for _, tool := range sessionTools {
+		tool.NoInherit = true
+		a.Tools = append(a.Tools, tool)
+	}
 	a.files = newFileLocks()
 	a.bg = newTaskRegistry()
 	return a
@@ -416,22 +437,35 @@ func (a *Agent) TurnWithImages(ctx context.Context, input string, parts []ai.Con
 }
 
 func (a *Agent) turn(ctx context.Context, input string, parts []ai.ContentPart, authored bool, ev Events) (string, error) {
-	if a.Hooks != nil {
-		if err := a.Hooks.Run(ctx, hooks.Event{Name: "UserPromptSubmit", Prompt: input}); err != nil {
-			return "", err
-		}
+	if !a.turnMu.TryLock() {
+		return "", ErrBusy
+	}
+	defer a.turnMu.Unlock()
+	a.running.Store(true)
+	defer func() {
+		a.running.Store(false)
+		a.drainOrphanedSteers()
+	}()
+	if a.WorkingDir != "" {
+		ctx = tools.WithWorkingDir(ctx, a.WorkingDir)
+	}
+	if a.SandboxPolicy != nil && sandbox.FromContext(ctx) == nil {
+		ctx = sandbox.WithPolicy(ctx, a.SandboxPolicy)
+	}
+	if err := a.StartSession(ctx); err != nil {
+		return "", err
+	}
+	a.RefreshMemory()
+	prompt := ai.Message{Content: input, Parts: parts}
+	if err := a.runHook(ctx, hooks.Event{Name: "UserPromptSubmit", Prompt: prompt.TextContent()}); err != nil {
+		return "", err
 	}
 
 	if n := a.decay(); n > 0 && ev.OnDecay != nil {
 		ev.OnDecay(n)
 	}
-	a.running.Store(true)
 	defer func() {
-		a.running.Store(false)
-		a.drainOrphanedSteers()
-		if a.Hooks != nil {
-			_ = a.Hooks.Run(context.Background(), hooks.Event{Name: "Stop"})
-		}
+		_ = a.runHook(context.WithoutCancel(ctx), hooks.Event{Name: "Stop"})
 	}()
 	msg := ai.Message{Role: "user", Content: input, Parts: parts, Authored: authored}
 	if authored {
@@ -497,18 +531,15 @@ func (a *Agent) turn(ctx context.Context, input string, parts []ai.ContentPart, 
 			}
 			return "", err
 		}
-		msg.Usage = &usage
-		msg.Model = a.Model + " @ " + a.Provider
-		a.msgsMu.Lock()
-		a.Messages = append(a.Messages, msg)
-		a.msgsMu.Unlock()
+		a.appendResponse(msg, usage)
 		if len(msg.ToolCalls) > 0 {
 			results := a.runTools(ctx, msg.ToolCalls, ev)
 			a.msgsMu.Lock()
 			for i, tc := range msg.ToolCalls {
 				a.Messages = append(a.Messages, ai.Message{
 					Role:       "tool",
-					Content:    results[i],
+					Content:    results[i].Text,
+					Parts:      results[i].Parts,
 					ToolCallID: tc.ID,
 					Name:       tc.Function.Name,
 				})
@@ -551,143 +582,6 @@ func (a *Agent) drainOrphanedSteers() {
 	for _, s := range a.drainPending() {
 		a.OnOrphanedSteer(s.text)
 	}
-}
-
-func (a *Agent) trackTool(name string, delta int64) {
-	if name == "subagent" {
-		a.subagentInflight.Add(delta)
-	} else {
-		a.otherInflight.Add(delta)
-	}
-}
-
-func (a *Agent) WaitingOnSubagents() bool {
-	return a.TurnRunning() && a.subagentInflight.Load() > 0 && a.otherInflight.Load() == 0
-}
-
-func (a *Agent) runTools(ctx context.Context, calls []ai.ToolCall, ev Events) []string {
-	results := make([]string, len(calls))
-	type outcome struct {
-		i    int
-		out  string
-		ms   int64
-		code int
-	}
-	outCh := make(chan outcome, len(calls))
-
-	refused := a.markDoomLoops(calls)
-
-	var wg sync.WaitGroup
-	for i, tc := range calls {
-		wg.Add(1)
-		go func(i int, tc ai.ToolCall) {
-			defer wg.Done()
-			name, args := tc.Function.Name, tc.Function.Arguments
-			if a.Hooks != nil {
-				if err := a.Hooks.Run(ctx, hooks.Event{Name: "PreToolUse", ToolID: tc.ID, ToolName: name, ToolArgs: args}); err != nil {
-					out := "Error: hook PreToolUse denied tool call: " + err.Error()
-					if ev.OnToolEnd != nil {
-						ev.OnToolEnd(tc.ID, name, out)
-					}
-					outCh <- outcome{i, out, 0, 1}
-					return
-				}
-			}
-
-			if refused[i] {
-
-				out := doomLoopRefusal(name)
-				if ev.OnToolStart != nil {
-					ev.OnToolStart(tc.ID, name, args)
-				}
-				if ev.OnToolEnd != nil {
-					ev.OnToolEnd(tc.ID, name, out)
-				}
-				outCh <- outcome{i, out, 0, 1}
-				return
-			}
-
-			var release func()
-			if path, ok := toolMutationPath(name, args); ok {
-				release = a.files.acquirePath(path)
-			} else if name == "bash" {
-				release = a.files.acquireGlobal()
-			}
-			if release != nil {
-				defer release()
-			}
-
-			if ev.OnToolStart != nil {
-				ev.OnToolStart(tc.ID, name, args)
-			}
-			a.trackTool(name, 1)
-			defer a.trackTool(name, -1)
-			start := time.Now()
-			callCtx := ctx
-			if ev.OnToolOutput != nil && name == "bash" {
-				callCtx = tools.WithOnUpdate(ctx, func(soFar string) {
-					ev.OnToolOutput(tc.ID, soFar)
-				})
-			}
-			out := tools.Execute(callCtx, a.AllTools(), name, json.RawMessage(args))
-			if a.Hooks != nil {
-				if err := a.Hooks.Run(ctx, hooks.Event{Name: "PostToolUse", ToolID: tc.ID, ToolName: name, ToolArgs: args, ToolResult: out}); err != nil {
-					out += "\nHook PostToolUse failed: " + err.Error()
-				}
-			}
-			ms := time.Since(start).Milliseconds()
-			if ev.OnToolEnd != nil {
-				ev.OnToolEnd(tc.ID, name, out)
-			}
-			outCh <- outcome{i, out, ms, toolExitCode(out)}
-		}(i, tc)
-	}
-
-	go func() {
-		wg.Wait()
-		close(outCh)
-	}()
-	for oc := range outCh {
-		results[oc.i] = oc.out
-		calls[oc.i].DurationMs = oc.ms
-		calls[oc.i].ExitCode = oc.code
-	}
-	return results
-}
-
-const doomLoopMaxRun = 3
-
-var doomLoopExempt = map[string]bool{"wait": true}
-
-func (a *Agent) markDoomLoops(calls []ai.ToolCall) []bool {
-	refused := make([]bool, len(calls))
-	a.loopMu.Lock()
-	defer a.loopMu.Unlock()
-	for i, tc := range calls {
-		key := tc.Function.Name + "\x00" + tc.Function.Arguments
-		if key == a.lastCallKey {
-			a.lastCallRun++
-		} else {
-			a.lastCallKey = key
-			a.lastCallRun = 1
-		}
-		if a.lastCallRun >= doomLoopMaxRun && !doomLoopExempt[tc.Function.Name] {
-			refused[i] = true
-		}
-	}
-	return refused
-}
-
-func doomLoopRefusal(name string) string {
-	return fmt.Sprintf("Error: refused to run %s — this exact call (same arguments) has already run %d times in a row with no other tool call in between. Repeating it will not produce new information. Change the approach: adjust the command/arguments, do the work instead of polling for it, or ask the user for guidance.",
-		name, doomLoopMaxRun)
-}
-
-func toolExitCode(out string) int {
-	if strings.HasPrefix(out, "error") || strings.HasPrefix(out, "Error") {
-		return 1
-	}
-	return 0
 }
 
 const (
@@ -748,7 +642,9 @@ func EstimateTokens(msgs []ai.Message) int {
 	for _, m := range msgs {
 		total += 4 + (len(m.TextContent())+3)/4
 		for _, p := range m.Parts {
-			total += ai.PartTokens(p)
+			if p.Type != "text" {
+				total += ai.PartTokens(p)
+			}
 		}
 		for _, tc := range m.ToolCalls {
 			total += 8 + (len(tc.Function.Name)+len(tc.Function.Arguments)+3)/4
@@ -809,9 +705,11 @@ func (a *Agent) compact(ctx context.Context) (summary string, cutoff int, info C
 	}
 	summaryPrompt := buildSummaryPrompt(history, prior)
 	cli, mdl := a.CompactClient, a.CompactModel
+	provider := a.CompactProvider
 	dedicated := cli != nil
 	if cli == nil {
 		cli = a.Client
+		provider = a.Provider
 	}
 	if mdl == "" {
 		mdl = a.Model
@@ -831,7 +729,7 @@ func (a *Agent) compact(ctx context.Context) (summary string, cutoff int, info C
 			{Role: "user", Content: summaryPrompt},
 		},
 	})
-	a.AddUsage(usage)
+	a.addModelUsage(mdl+" @ "+provider, usage)
 	if cerr != nil {
 		return "", 0, CompactInfo{}, fmt.Errorf("compaction summary failed: %w", cerr)
 	}
@@ -846,7 +744,7 @@ func (a *Agent) compact(ctx context.Context) (summary string, cutoff int, info C
 	a.usageMu.Lock()
 	a.lastPrompt = 0
 	a.usageMu.Unlock()
-	return summary, tailStart, CompactInfo{Model: label, Usage: usage}, nil
+	return summary, tailStart, CompactInfo{Model: label, Provider: provider, Usage: usage}, nil
 }
 
 const summaryPrefix = "Summary of the conversation so far:\n\n"
@@ -932,6 +830,10 @@ func truncateField(s string, n int) string {
 }
 
 func (a *Agent) ManualCompact(ctx context.Context, ev Events) error {
+	if !a.turnMu.TryLock() {
+		return ErrBusy
+	}
+	defer a.turnMu.Unlock()
 	if ev.OnCompactStart != nil {
 		ev.OnCompactStart(len(a.Messages), EstimateTokens(a.Messages))
 	}
@@ -969,6 +871,7 @@ func (a *Agent) finalAnswer(ctx context.Context, ev Events) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	a.appendResponse(msg, usage)
 	a.compacted = false
 	return msg.Content, nil
 }

@@ -81,7 +81,7 @@ func runBrowserCode(ctx context.Context, b browser.Backend, code, session string
 		return "", err
 	}
 	var out strings.Builder
-	var shots [][]byte
+	attached := 0
 	for _, st := range prog {
 		res, shot, err := st.exec(ctx, b)
 		if err != nil {
@@ -92,17 +92,16 @@ func runBrowserCode(ctx context.Context, b browser.Backend, code, session string
 		if res != "" {
 			fmt.Fprintln(&out, res)
 		}
-		if shot != nil {
-			shots = append(shots, shot)
+		if AttachScreenshot(ctx, shot) {
+			attached++
 		}
 	}
 
 	if msg := neutralizeIfBlocked(ctx, b); msg != "" {
 		fmt.Fprintln(&out, msg)
 	}
-	if len(shots) > 0 && ScreenshotSink != nil {
-		ScreenshotSink(shots)
-		fmt.Fprintf(&out, "\n(%d screenshot(s) attached to your context — inspect directly with your vision)", len(shots))
+	if attached > 0 {
+		fmt.Fprintf(&out, "\n(%d screenshot(s) attached to this tool result)", attached)
 	}
 	return out.String(), nil
 }
@@ -118,7 +117,5 @@ func neutralizeIfBlocked(ctx context.Context, b browser.Backend) string {
 	}
 	return ""
 }
-
-var ScreenshotSink func(jpegs [][]byte)
 
 func secondsDuration(f float64) time.Duration { return time.Duration(f * float64(time.Second)) }

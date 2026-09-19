@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/Stack-Cairn/K-brain/internal/agent"
 	"github.com/Stack-Cairn/K-brain/internal/ai"
 	"github.com/Stack-Cairn/K-brain/internal/config"
@@ -124,8 +126,17 @@ func goalFromContextModel(t *testing.T, status int, body string) *model {
 func goalFromContextModelCapture(t *testing.T, status int, body string, capture func([]byte)) *model {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		var req struct {
+			Stream bool `json:"stream"`
+		}
+		_ = json.Unmarshal(b, &req)
+		if req.Stream {
+			w.Header().Set("Content-Type", "text/event-stream")
+			io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"GOAL_MET done\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n")
+			return
+		}
 		if capture != nil {
-			b, _ := io.ReadAll(r.Body)
 			capture(b)
 		}
 		w.WriteHeader(status)
@@ -133,8 +144,41 @@ func goalFromContextModelCapture(t *testing.T, status int, body string, capture 
 	}))
 	t.Cleanup(srv.Close)
 	m := compactCmdModel()
-	m.agent = agent.New(ai.New(srv.URL, "k"), "kimi-k3-fast", 100, "sys")
+	client := ai.New(srv.URL, "k")
+	client.MaxRetries = 1
+	m.agent = agent.New(client, "model1", 100, "sys")
+	t.Cleanup(func() {
+		if m.cancel != nil {
+			m.cancel()
+		}
+	})
 	return m
+}
+
+func runGoalFormulation(t *testing.T, m *model, command string) {
+	t.Helper()
+	_, cmd := m.command(command)
+	if cmd == nil || !m.busy || m.goalRequest == nil {
+		t.Fatal("formulation was not scheduled")
+	}
+	batch, ok := cmd().(tea.BatchMsg)
+	if !ok {
+		t.Fatal("expected asynchronous formulation and spinner commands")
+	}
+	for _, work := range batch {
+		if msg, ok := work().(goalFromContextMsg); ok {
+			m.Update(msg)
+			return
+		}
+	}
+	t.Fatal("missing goal formulation result")
+}
+
+func pendingGoalFormulation(m *model) *goalFormulation {
+	ctx, cancel := context.WithCancel(context.Background())
+	op := &goalFormulation{ctx: ctx, cancel: cancel, agent: m.agent, sessionID: m.sessionID}
+	m.goalRequest, m.cancel, m.busy = op, cancel, true
+	return op
 }
 
 func TestGoalFromContextPrompt(t *testing.T) {
@@ -185,12 +229,12 @@ func TestGoalFromContextSetsGoal(t *testing.T) {
 		{Role: "user", Content: "tests are flaky"},
 		{Role: "assistant", Content: "I'll fix them."},
 	}
-	m.command("/goal-from-context")
+	runGoalFormulation(t, m, "/goal-from-context")
 	if m.goal != "fix the flaky test and verify with go test" {
 		t.Fatalf("goal: %q", m.goal)
 	}
-	if m.busy {
-		t.Fatal("busy must clear when the inline formulation returns")
+	if !m.busy || m.goalRequest != nil {
+		t.Fatal("formulation must finish and hand off to goal execution")
 	}
 
 	found := false
@@ -215,7 +259,7 @@ func TestGoalFromContextWindowArg(t *testing.T) {
 		{Role: "user", Content: "recent ask"},
 		{Role: "assistant", Content: "recent reply"},
 	}
-	m.command("/goal-from-context 2")
+	runGoalFormulation(t, m, "/goal-from-context 2")
 	if m.goal != "the goal" {
 		t.Fatalf("goal: %q", m.goal)
 	}
@@ -248,7 +292,7 @@ func TestGoalFromContextMaxTokens(t *testing.T) {
 		{Role: "user", Content: "u"},
 		{Role: "assistant", Content: "a"},
 	}
-	m.command("/goal-from-context")
+	runGoalFormulation(t, m, "/goal-from-context")
 	if req.MaxTokens != 8192 {
 		t.Fatalf("the formulation call must allow detailed goals, max_tokens=%d", req.MaxTokens)
 	}
@@ -261,7 +305,7 @@ func TestGoalFromContextBadCount(t *testing.T) {
 		{Role: "user", Content: "u"},
 		{Role: "assistant", Content: "a"},
 	}
-	for _, cmd := range []string{"/goal-from-context nope", "/goal-from-context 1"} {
+	for _, cmd := range []string{"/goal-from-context nope", "/goal-from-context 1", "/goal-from-context 2 extra"} {
 		m.command(cmd)
 		if m.busy {
 			t.Fatalf("%s: no formulation call should start", cmd)
@@ -279,7 +323,7 @@ func TestGoalFromContextErrorLeavesGoalUntouched(t *testing.T) {
 		{Role: "user", Content: "tests are flaky"},
 		{Role: "assistant", Content: "I'll fix them."},
 	}
-	m.command("/goal-from-context")
+	runGoalFormulation(t, m, "/goal-from-context")
 	if m.goal != "" {
 		t.Fatalf("failed formulation must not set a goal, got %q", m.goal)
 	}
@@ -305,11 +349,10 @@ func TestGoalFromContextNeedsHistory(t *testing.T) {
 
 func TestGoalFromContextMsgHandler(t *testing.T) {
 	m := goalFromContextModel(t, 200, `{"choices":[{"message":{"content":"x"}}]}`)
-	m.busy = true
-	m.cancel = func() {}
+	op := pendingGoalFormulation(m)
 	m.goal = "paused old goal"
 	m.goalRounds = 20
-	tm, cmd := m.Update(goalFromContextMsg{err: errors.New("boom")})
+	tm, cmd := m.Update(goalFromContextMsg{request: op, err: errors.New("boom")})
 	m = tm.(*model)
 	if cmd != nil {
 		t.Fatal("a failed formulation must not submit anything")
@@ -324,18 +367,17 @@ func TestGoalFromContextMsgHandler(t *testing.T) {
 		t.Fatalf("expected a failure note, got %q", out)
 	}
 
-	m.busy, m.cancel = true, func() {}
-	tm, _ = m.Update(goalFromContextMsg{err: context.Canceled})
+	op = pendingGoalFormulation(m)
+	tm, _ = m.Update(goalFromContextMsg{request: op, err: context.Canceled})
 	m = tm.(*model)
 	if m.busy || !strings.Contains(lastBlock(m), "(interrupted)") {
 		t.Fatalf("cancelled formulation should interrupt cleanly: busy=%v last=%q", m.busy, lastBlock(m))
 	}
 
 	m2 := goalFromContextModel(t, 200, `{"choices":[{"message":{"content":"x"}}]}`)
-	m2.busy = true
-	m2.cancel = func() {}
+	op2 := pendingGoalFormulation(m2)
 	m2.agent.Messages = []ai.Message{{Role: "system", Content: "sys"}}
-	tm2, cmd2 := m2.Update(goalFromContextMsg{goal: "  ship it  "})
+	tm2, cmd2 := m2.Update(goalFromContextMsg{request: op2, goal: "  ship it  "})
 	m2 = tm2.(*model)
 	if cmd2 == nil {
 		t.Fatal("a successful formulation must submit the goal (start the turn)")

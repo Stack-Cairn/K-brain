@@ -4,6 +4,7 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"time"
 )
 
 const defaultPlaceholder = "Ask k-brain anything… (/ for commands, tab completes)"
@@ -30,9 +31,14 @@ func viewportWindow(n, idx, budget int) (int, int) {
 	return max(hi-budget, 0), hi
 }
 
-func (m *model) vpTopRows() int { return 3 }
+func (m *model) vpTopRows() int { return 2 }
 func (m *model) vpXOff() int    { return 0 }
+
+type noticeExpiredMsg uint64
+
 func (m *model) showNotice(msg string) tea.Cmd {
-	m.append(dimStyle.Render(msg))
-	return nil
+	m.transientNotice = msg
+	m.noticeGeneration++
+	generation := m.noticeGeneration
+	return tea.Tick(2*time.Second, func(time.Time) tea.Msg { return noticeExpiredMsg(generation) })
 }

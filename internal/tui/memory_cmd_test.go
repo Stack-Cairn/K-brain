@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Stack-Cairn/K-brain/internal/memory"
+	"github.com/Stack-Cairn/K-brain/internal/session"
 )
 
 func TestMemoryEndToEnd(t *testing.T) {
@@ -77,14 +78,23 @@ func TestSessionMemoryScope(t *testing.T) {
 	t.Setenv("K_BRAIN_HOME", home)
 
 	m := compactCmdModel()
-	m.agent.SetSessionID("sess1")
-	if err := memory.Session("sess1").Remember("this repo uses ./scripts/ship.sh to deploy"); err != nil {
+	store, err := session.OpenProjectHome(home)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(home, "sessions", "sess1.memory.md")); err != nil {
+	defer store.Close()
+	id, err := store.Create(t.TempDir(), "model", "provider")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.agent.SetSessionID(id)
+	if err := memory.Session(id).Remember("this repo uses ./scripts/ship.sh to deploy"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(store.TranscriptPath(id)), "memory.md")); err != nil {
 		t.Fatal("session memory should live under sessions/")
 	}
-	m.sessionID = "sess1"
+	m.sessionID = id
 	m.prepareTurn("hi")
 	if !strings.Contains(m.agent.Messages[0].Content, "ship.sh") {
 		t.Fatal("session memory should inject while the session is active")

@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"context"
 	"errors"
 	"os"
 	"os/exec"
@@ -295,11 +296,9 @@ func fileExists(p string) bool {
 func TestNativeTierWithFakeHelper(t *testing.T) {
 	fakeNativeHelper(t)
 	withComputerPolicy(t, computer.NewPolicy([]string{"TestApp"}, nil, true))
-	var sunk [][]byte
-	oldSink := ScreenshotSink
-	ScreenshotSink = func(jpegs [][]byte) { sunk = jpegs }
-	t.Cleanup(func() { ScreenshotSink = oldSink })
-	ctx := t.Context()
+	shots := &attachments{enabled: true}
+	defer shots.close()
+	ctx := context.WithValue(t.Context(), attachmentKey{}, shots)
 
 	out, err := runComputerCode(ctx, `print(apps())`)
 	if err != nil || !strings.Contains(out, "com.apple.finder") {
@@ -322,8 +321,8 @@ func TestNativeTierWithFakeHelper(t *testing.T) {
 	if !strings.Contains(out, "generation=2") || !strings.Contains(out, "generation=3") {
 		t.Errorf("want fresh state folded into the mutation:\n%s", out)
 	}
-	if !strings.Contains(out, "2 screenshot(s) attached") || len(sunk) != 2 || string(sunk[0]) != "hello" {
-		t.Errorf("screenshot sink: %q, %d shots", out, len(sunk))
+	if !strings.Contains(out, "2 screenshot(s) attached") || len(shots.parts) != 2 || shots.parts[0].ImageURL.URL != "data:image/jpeg;base64,aGVsbG8=" {
+		t.Errorf("screenshot attachments: %q, %d shots", out, len(shots.parts))
 	}
 	if g := genFor("TestApp"); g != 3 {
 		t.Errorf("generation after mutation: %d", g)
