@@ -18,13 +18,13 @@ func (m *model) commandArgumentHint() string {
 	if strings.Contains(name, " ") {
 		return ""
 	}
-	if entry := registryFind(name); entry != nil {
-		return entry.Args
-	}
 	for _, template := range m.promptCatalog.items {
 		if "/"+template.Name == name {
 			return template.ArgumentHint
 		}
+	}
+	if entry := registryFind(name); entry != nil {
+		return entry.Args
 	}
 	return ""
 }

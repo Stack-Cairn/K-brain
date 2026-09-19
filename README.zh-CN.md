@@ -16,6 +16,10 @@
 
 [快速开始](#快速开始) · [使用方式](#使用方式) · [源码构建](#源码构建) · [文档](#文档) · [项目结构](#项目结构)
 
+<p align="center">
+  <img src="docs/assets/k-brain-tui.png" alt="氪脑 TUI" width="900">
+</p>
+
 </div>
 
 ---
@@ -84,6 +88,56 @@ Computer-use helper 使用 `k-brain-computer-<os>-<arch>` 命名，重命名为 
 - `/model refresh` 从 `baseUrl + "/models"` 获取目录，上例对应 `/v1/models`；`/model` 选择模型。
 - 修改文件后重新启动。未填写 API 也可进入 TUI，但发送模型请求需要有效配置。
 
+可以为 Agent 生命周期事件配置本地 Hook。命令通过 `K_BRAIN_HOOK_EVENT` 环境变量接收 JSON 事件；`PreToolUse` Hook 返回非零状态时会拒绝本次工具调用。
+
+```json
+{
+  "hooks": {
+    "SessionStart": [{"command": "echo session started"}],
+    "PreToolUse": [{"command": "echo $K_BRAIN_HOOK_EVENT", "shell": "bash", "timeout": 10}]
+  }
+}
+```
+
+支持 `SessionStart`、`UserPromptSubmit`、`PreToolUse`、`PostToolUse` 和 `Stop` 事件。Windows 可使用 `powershell`、`pwsh`、`bash`、`wsl` 或 `cmd`，其他平台使用对应系统 Shell。
+
+### 会话文件
+
+会话保存在 `~/.k-brain/sessions/<project-id>/<session-id>/session.jsonl`；设置 `K_BRAIN_HOME` 时位于该目录下的 `sessions`。项目 ID 是工作区路径的稳定哈希，会话按项目分组，同时保留完整 session ID。
+
+```text
+~/.k-brain/
+  config.json
+  brain.md
+  sessions/<project-id>/<session-id>/session.jsonl
+    <session-id>/
+      session.jsonl
+```
+
+使用 `kn sessions` 查看按项目分组的会话，使用 `kn sessions search <query>` 搜索，或用 `archive/delete` 管理；使用 `kn --resume <session-id>` 恢复会话。长期工作指令保存在 `~/.k-brain/brain.md`，通过 `/brain` 编辑；TUI 中 `/status` 显示当前会话文件路径。JSONL 记录包含元数据、消息、任务、压缩、定时任务和回退快照引用。不再支持 SQLite 存储或旧库迁移，也不会读取或修改已有数据库文件。
+
+项目授权使用 TOML 格式，保存于 `~/.k-brain/trusted_folders.toml`（Windows：`~\.k-brain\trusted_folders.toml`），每个目录使用 `[folders."<绝对路径>"]`，并记录 `trusted` 与 `decided_at`。
+
+### OS 级沙箱
+
+在 `config.json` 中配置命令隔离：
+
+```json
+{"sandbox":{"mode":"strict","backend":"auto","network":false,"writable":[],"readOnly":[]}}
+```
+
+Linux 使用 Bubblewrap namespace，macOS 使用 Seatbelt，Windows 使用 WSL2 加 Bubblewrap（`backend: "wsl"`）。严格模式缺少后端时会直接失败。Shell、插件和后台任务都会继承同一策略。
+
+### 插件
+
+项目插件放在 `.k-brain/plugins/<name>/plugin.json`，用户插件放在 `~/.k-brain/plugins/<name>/plugin.json`：
+
+```json
+{"name":"sample","version":"1.0.0","command":["sample-plugin"],"prompt":"附加指令","tools":[{"name":"lookup","description":"查询值","inputSchema":{"type":"object"}}]}
+```
+
+进程接收一行 `tool.invoke` JSONL 请求并返回一行 JSON-RPC 响应。插件必须显式启用，并继承沙箱策略。使用 `kn plugins list|install|enable|disable|remove|reload` 或 `/plugins` 管理。
+
 ### 3. 开始任务
 
 在项目目录运行：
@@ -106,10 +160,11 @@ TUI 使用当前终端的全屏界面，输入区固定在底部。首轮对话�
 
 | 输入 | 功能 |
 | --- | --- |
-| `/language` · `/language zh_cn` · `/language en` | 选择界面语言（简体中文 / English） |
+| `/language` · `/language zh_cn` · `/language zh_tw` · `/language en` | 选择界面语言（简体中文 / 繁體中文 / English） |
 | `/model` · `/effort` | 切换模型、调整推理强度 |
 | `/context` · `/compact` | 查看上下文、手动压缩 |
 | `/rewind` · `/fork` | 回退到先前轮次、创建会话分支 |
+| `/forks` · `/export` · `/import` | 查看会话树、导出 Markdown/JSONL/HTML、导入 JSONL |
 | `/title` · `/resume` | 修改标题、恢复会话 |
 | `/diff [--staged] [--stat]` | 本地查看 Git 已跟踪文件的差异，不发起模型请求 |
 | `/copy [N] [file]` | 复制倒数第 N 条助手正文，或保存到新文件 |
@@ -144,7 +199,9 @@ argument-hint: "<模块> [关注点]"
 
 ### 界面语言
 
-输入 `/language` 打开选择器，↑/↓ 选择、Enter 应用、Esc 取消；也可以直接执行 `/language zh_cn` 或 `/language en`。设置保存到 `~/.k-brain/config.json` 的 `language` 字段，默认英文，未知值回退为英文。
+输入 `/language` 打开选择器，↑/↓ 选择、Enter 应用、Esc 取消；也可以直接执行 `/language zh_cn`、`/language zh_tw` 或 `/language en`。设置保存到 `~/.k-brain/config.json` 的 `language` 字段，默认英文，未知值回退为英文。
+
+`/export` 根据扩展名生成 Markdown（`.md`）、结构化 JSONL（`.jsonl`）或 HTML（`.html`）文件；`/import <path>` 可将 JSONL 消息追加到当前会话。`/forks` 显示当前会话及其分支关系。
 
 命令菜单说明、帮助、输入提示、主要导航标签及语言/模型选择器操作提示即时切换。命令名称、模型与提供商标识、对话内容和工具输出保持原样。此设置不控制模型回复语言；部分详细诊断与次级面板仍使用英文。
 
@@ -169,7 +226,7 @@ kn run --format json --quiet --max-turns 8 --timeout 5m "定位并修复构建�
 | `kn sessions` | 列出已保存会话 |
 | `kn update` | 更新已安装版本 |
 
-执行内核与 TUI 分离，可复用模型适配、工具循环、上下文压缩、后台子任务和 SQLite 会话存储。当前后端入口是 CLI、ACP 与 MCP，不是独立 HTTP 服务，也不包含 Desktop 前端。
+执行内核与 TUI 分离，可复用模型适配、工具循环、上下文压缩、后台子任务和 JSONL 会话文件。当前后端入口是 CLI、ACP 与 MCP，不是独立 HTTP 服务，也不包含 Desktop 前端。
 
 ### 平台说明
 

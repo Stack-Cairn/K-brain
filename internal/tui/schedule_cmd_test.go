@@ -15,7 +15,7 @@ import (
 
 func TestSchedulePersistence(t *testing.T) {
 	t.Setenv("K_BRAIN_HOME", t.TempDir())
-	st, err := session.Open(filepath.Join(t.TempDir(), "s.db"))
+	st, err := session.Open(filepath.Join(t.TempDir(), "sessions"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func TestSchedulePersistence(t *testing.T) {
 func TestScheduleFiresWakeup(t *testing.T) {
 	t.Setenv("K_BRAIN_HOME", t.TempDir())
 	m := compactCmdModel()
-	st, err := session.Open(filepath.Join(t.TempDir(), "s.db"))
+	st, err := session.Open(filepath.Join(t.TempDir(), "sessions"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +112,7 @@ func TestScheduleFiresWakeup(t *testing.T) {
 func TestScheduleOneShotCompletes(t *testing.T) {
 	t.Setenv("K_BRAIN_HOME", t.TempDir())
 	m := compactCmdModel()
-	st, _ := session.Open(filepath.Join(t.TempDir(), "s.db"))
+	st, _ := session.Open(filepath.Join(t.TempDir(), "sessions"))
 	defer st.Close()
 	m.store = st
 	m.sessionID, _ = st.Create("/tmp", m.modelName, m.provName)
@@ -145,7 +145,7 @@ func TestScheduleOneShotCompletes(t *testing.T) {
 func TestScheduleDefersWhileBusy(t *testing.T) {
 	t.Setenv("K_BRAIN_HOME", t.TempDir())
 	m := compactCmdModel()
-	st, _ := session.Open(filepath.Join(t.TempDir(), "s.db"))
+	st, _ := session.Open(filepath.Join(t.TempDir(), "sessions"))
 	defer st.Close()
 	m.store = st
 	m.sessionID, _ = st.Create("/tmp", m.modelName, m.provName)

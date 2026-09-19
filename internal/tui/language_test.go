@@ -65,7 +65,7 @@ func TestLanguagePickerAndCancel(t *testing.T) {
 		t.Fatal("missing picker")
 	}
 	pp := m.palette.top()
-	if pp.midx != 1 || len(pp.list) != 2 {
+	if pp.midx != 2 || len(pp.list) != 3 {
 		t.Fatalf("%+v", pp)
 	}
 	m.paletteKey(tea.KeyMsg{Type: tea.KeyUp})
@@ -75,13 +75,14 @@ func TestLanguagePickerAndCancel(t *testing.T) {
 	}
 	m.command("/language")
 	m.paletteKey(tea.KeyMsg{Type: tea.KeyUp})
+	m.paletteKey(tea.KeyMsg{Type: tea.KeyUp})
 	m.paletteKey(tea.KeyMsg{Type: tea.KeyEnter})
 	if m.language() != "zh_cn" || m.palette != nil {
 		t.Fatal("selection did not apply")
 	}
 	m.command("/language")
 	view := ansi.Strip(m.paletteView())
-	if !strings.Contains(view, "简体中文") || !strings.Contains(view, "English") || !strings.Contains(view, "当前") {
+	if !strings.Contains(view, "简体中文") || !strings.Contains(view, "繁體中文") || !strings.Contains(view, "English") || !strings.Contains(view, "当前") {
 		t.Fatal(view)
 	}
 }
@@ -125,11 +126,11 @@ func TestLanguageRegistryCoverageAndWidth(t *testing.T) {
 		}
 	}
 	_, options := m.promptCompletions("/language ")
-	if len(options) != 2 {
+	if len(options) != 3 {
 		t.Fatal(options)
 	}
 	_, filtered := m.promptCompletions("/language zh")
-	if len(filtered) != 1 || filtered[0].Text != "zh_cn" {
+	if len(filtered) != 2 || filtered[0].Text != "zh_cn" || filtered[1].Text != "zh_tw" {
 		t.Fatal(filtered)
 	}
 	other := compactCmdModel()

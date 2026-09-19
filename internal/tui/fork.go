@@ -59,6 +59,36 @@ func (m *model) forkCommand(arg string) {
 	m.openForkPrompt(len(m.agent.Messages), false, suggest)
 }
 
+func (m *model) forksCommand() {
+	if m.store == nil || m.sessionID == "" {
+		m.append(dimStyle.Render("(no session tree yet)"))
+		return
+	}
+	meta, _, err := m.store.Load(m.sessionID)
+	if err != nil {
+		m.append(errStyle.Render("fork tree failed: " + err.Error()))
+		return
+	}
+	children, err := m.store.ForksOf(m.sessionID)
+	if err != nil {
+		m.append(errStyle.Render("fork tree failed: " + err.Error()))
+		return
+	}
+	var b strings.Builder
+	b.WriteString("session tree\n")
+	b.WriteString("└─ " + meta.ID + "  " + meta.Title)
+	if meta.ForkedFrom != "" {
+		b.WriteString("  (from " + meta.ForkedFrom + ")")
+	}
+	for _, child := range children {
+		b.WriteString("\n   ├─ " + child.ID + "  " + child.Title)
+	}
+	if len(children) == 0 {
+		b.WriteString("\n   (no forks)")
+	}
+	m.append(dimStyle.Render(b.String()))
+}
+
 func (m *model) openForkPrompt(cut int, picker bool, suggest ...string) {
 	name := ""
 	if len(suggest) > 0 {

@@ -13,7 +13,7 @@ import (
 func TestAutoTitle(t *testing.T) {
 	t.Setenv("K_BRAIN_HOME", t.TempDir())
 	m := compactCmdModel()
-	st, _ := session.Open(filepath.Join(t.TempDir(), "s.db"))
+	st, _ := session.Open(filepath.Join(t.TempDir(), "sessions"))
 	defer st.Close()
 	m.store = st
 	m.sessionID, _ = st.Create("/tmp", m.modelName, m.provName)
@@ -40,7 +40,7 @@ func TestAutoTitle(t *testing.T) {
 func TestAutoTitleRespectsRename(t *testing.T) {
 	t.Setenv("K_BRAIN_HOME", t.TempDir())
 	m := compactCmdModel()
-	st, _ := session.Open(filepath.Join(t.TempDir(), "s.db"))
+	st, _ := session.Open(filepath.Join(t.TempDir(), "sessions"))
 	defer st.Close()
 	m.store = st
 	m.sessionID, _ = st.Create("/tmp", m.modelName, m.provName)
@@ -59,7 +59,7 @@ func TestAutoTitleRespectsRename(t *testing.T) {
 func TestFirstTurnDisplaysSessionTitle(t *testing.T) {
 	t.Setenv("K_BRAIN_HOME", t.TempDir())
 	m := compactCmdModel()
-	st, err := session.Open(filepath.Join(t.TempDir(), "s.db"))
+	st, err := session.Open(filepath.Join(t.TempDir(), "sessions"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +91,7 @@ func TestFirstTurnDisplaysSessionTitle(t *testing.T) {
 func TestAutoTitleStaysWithOriginalSession(t *testing.T) {
 	t.Setenv("K_BRAIN_HOME", t.TempDir())
 	m := compactCmdModel()
-	st, err := session.Open(filepath.Join(t.TempDir(), "s.db"))
+	st, err := session.Open(filepath.Join(t.TempDir(), "sessions"))
 	if err != nil {
 		t.Fatal(err)
 	}

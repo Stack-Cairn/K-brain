@@ -53,8 +53,8 @@ Here is some useful information about the environment you are running in:
   Current date/time: ` + now.Format("Mon Jan 2, 2006 15:04:05 MST (UTC-07:00)") + `
   User: ` + username() + `
 </env>`
-	if extra := config.MeInstructions(); extra != "" {
-		prompt += "\n\nStanding instructions from the user (~/.k-brain/me.md — treat as user rules):\n" + extra
+	if extra := config.BrainInstructions(); extra != "" {
+		prompt += "\n\nStanding instructions from the user (~/.k-brain/brain.md — treat as user rules):\n" + extra
 	}
 
 	return prompt

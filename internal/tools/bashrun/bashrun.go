@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Stack-Cairn/K-brain/internal/process"
+	"github.com/Stack-Cairn/K-brain/internal/sandbox"
 )
 
 func userShell() string {
@@ -85,6 +86,10 @@ type Options struct {
 	OnAwaitInput func(secLeft int)
 
 	Keys <-chan []byte
+
+	Env []string
+
+	Sandbox *sandbox.Policy
 }
 
 func Run(ctx context.Context, opts Options) Result {
@@ -106,7 +111,20 @@ func Run(ctx context.Context, opts Options) Result {
 	if err != nil {
 		return Result{Exit: err.Error()}
 	}
+	policy := opts.Sandbox
+	if policy == nil {
+		policy = sandbox.FromContext(ctx)
+	}
+	if policy != nil && policy.Enabled() {
+		cmd, err = policy.Wrap(ctx, cmd)
+		if err != nil {
+			return Result{Exit: err.Error()}
+		}
+	}
 	cmd.Env = append(os.Environ(), ChildMarkers...)
+	if len(opts.Env) > 0 {
+		cmd.Env = append(cmd.Env, opts.Env...)
+	}
 
 	if opts.Interactive {
 		return runInteractive(ctx, cmd, opts)

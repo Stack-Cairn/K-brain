@@ -15,9 +15,11 @@ import (
 	"github.com/Stack-Cairn/K-brain/internal/acp"
 	"github.com/Stack-Cairn/K-brain/internal/agent"
 	"github.com/Stack-Cairn/K-brain/internal/config"
+	"github.com/Stack-Cairn/K-brain/internal/hooks"
 	"github.com/Stack-Cairn/K-brain/internal/lsp"
 	"github.com/Stack-Cairn/K-brain/internal/mcp"
 	"github.com/Stack-Cairn/K-brain/internal/memory"
+	"github.com/Stack-Cairn/K-brain/internal/plugins"
 	"github.com/Stack-Cairn/K-brain/internal/session"
 	"github.com/Stack-Cairn/K-brain/internal/skills"
 	"github.com/Stack-Cairn/K-brain/internal/tools"
@@ -52,7 +54,7 @@ func acpCLI(args []string) error {
 
 	var store *session.Store
 	if dir, derr := config.Dir(); derr == nil {
-		if st, serr := session.Open(dir + "/sessions.db"); serr == nil {
+		if st, serr := session.OpenHome(dir); serr == nil {
 			store = st
 			defer func() { _ = st.Close() }()
 		}
@@ -67,9 +69,18 @@ func acpCLI(args []string) error {
 
 	factory := func(ctx context.Context, wd string, servers map[string]mcp.ServerConfig) (*agent.Agent, *mcp.Manager, error) {
 		ag := agent.New(route.Client.Clone(), route.APIModel, route.MaxOutput, sysprompt.Build(wd, time.Now()), agent.WithExperimental(cfg.Experimental))
+		ag.Hooks = hooks.New(cfg.Hooks)
+		if err := ag.Hooks.Run(ctx, hooks.Event{Name: "SessionStart", CWD: wd}); err != nil {
+			return nil, nil, err
+		}
 		ag.ModelName, ag.Provider = route.ModelName, route.ProviderName
 		ag.ComputerDisabled = true
 		ag.ContextLimit = route.ContextLimit
+		if pm, _ := plugins.New(wd); pm != nil {
+			ag.SetPluginTools(pluginTools(pm))
+			ag.Messages[0].Content += pm.PromptBlock()
+		}
+		ag.SandboxPolicy = cfg.Sandbox.Policy(wd)
 
 		ag.Effort = routing.DefaultEffortFor(config.LoadCatalogs(), route.ProviderName, ag.Model, cfg.DefaultEffort)
 

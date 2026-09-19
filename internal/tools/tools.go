@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Stack-Cairn/K-brain/internal/ai"
+	"github.com/Stack-Cairn/K-brain/internal/sandbox"
 	"github.com/Stack-Cairn/K-brain/internal/tools/bashrun"
 )
 
@@ -134,6 +135,9 @@ func bashTool() Tool {
 			}
 			if a.Interactive && runtime.GOOS == "windows" {
 				return "", errors.New("interactive PTY is not available on native Windows; run non-interactively or run k-brain inside WSL")
+			}
+			if a.Interactive && func() bool { p := sandbox.FromContext(ctx); return p != nil && p.Enabled() }() {
+				return "", errors.New("interactive PTY is disabled inside the OS sandbox")
 			}
 			ctx = bashrun.WithShell(ctx, a.Shell)
 			dur := time.Duration(a.Timeout * float64(time.Second))

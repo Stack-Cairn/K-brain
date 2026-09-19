@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"github.com/Stack-Cairn/K-brain/internal/sandbox"
 )
 
 type Provider struct {
@@ -113,7 +115,34 @@ type Config struct {
 
 	Browser BrowserConfig `json:"browser,omitzero"`
 
-	Computer ComputerConfig `json:"computer,omitzero"`
+	Computer ComputerConfig    `json:"computer,omitzero"`
+	Sandbox  SandboxConfig     `json:"sandbox,omitzero"`
+	Hooks    map[string][]Hook `json:"hooks,omitempty"`
+}
+
+type SandboxConfig struct {
+	Mode     string   `json:"mode,omitempty"`
+	Backend  string   `json:"backend,omitempty"`
+	Network  *bool    `json:"network,omitempty"`
+	Writable []string `json:"writable,omitempty"`
+	ReadOnly []string `json:"readOnly,omitempty"`
+}
+
+func (s SandboxConfig) Policy(root string) *sandbox.Policy {
+	network := false
+	if s.Network != nil {
+		network = *s.Network
+	}
+	if root == "" {
+		root = sandbox.RootFromEnv()
+	}
+	return sandbox.New(s.Mode, s.Backend, root, network, s.Writable, s.ReadOnly)
+}
+
+type Hook struct {
+	Command string `json:"command"`
+	Shell   string `json:"shell,omitempty"`
+	Timeout int    `json:"timeout,omitempty"`
 }
 
 type ComputerConfig struct {
@@ -251,6 +280,30 @@ func parseConfigJSONC(data []byte, cfg *Config) error {
 		if err := decodeConfig(raw, cfg); err != nil {
 			return err
 		}
+	}
+	for event, hooks := range cfg.Hooks {
+		if strings.TrimSpace(event) == "" {
+			return fmt.Errorf("hook event name cannot be empty")
+		}
+		switch event {
+		case "SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop":
+		default:
+			return fmt.Errorf("unsupported hook event %q", event)
+		}
+		for i, hook := range hooks {
+			if strings.TrimSpace(hook.Command) == "" {
+				return fmt.Errorf("hook %s[%d] command cannot be empty", event, i)
+			}
+			if hook.Timeout < 0 {
+				return fmt.Errorf("hook %s[%d] timeout must be non-negative", event, i)
+			}
+		}
+	}
+	if cfg.Sandbox.Mode != "" && cfg.Sandbox.Mode != "off" && cfg.Sandbox.Mode != "disabled" && cfg.Sandbox.Mode != "workspace" && cfg.Sandbox.Mode != "strict" {
+		return fmt.Errorf("sandbox.mode must be off, workspace, or strict")
+	}
+	if cfg.Sandbox.Backend != "" && cfg.Sandbox.Backend != "auto" && cfg.Sandbox.Backend != "bwrap" && cfg.Sandbox.Backend != "bubblewrap" && cfg.Sandbox.Backend != "seatbelt" && cfg.Sandbox.Backend != "wsl" {
+		return fmt.Errorf("unsupported sandbox.backend %q", cfg.Sandbox.Backend)
 	}
 	cfg.Models = make(map[string]Model)
 	for _, name := range slices.Sorted(maps.Keys(cfg.Providers)) {

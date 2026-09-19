@@ -1,8 +1,8 @@
 package session
 
 import (
-	"context"
-	"database/sql"
+	"bytes"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -10,36 +10,6 @@ import (
 
 	"github.com/Stack-Cairn/K-brain/internal/ai"
 )
-
-func exec(t *testing.T, st *Store, query string, args ...any) {
-	t.Helper()
-	if _, err := st.db.ExecContext(context.Background(), query, args...); err != nil {
-		t.Fatalf("fault injection %q: %v", query, err)
-	}
-}
-
-func TestOpenRejectsIncompatibleDatabase(t *testing.T) {
-	p := filepath.Join(t.TempDir(), "s.db")
-	db, err := sql.Open("sqlite", p)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if _, err := db.ExecContext(context.Background(), `CREATE TABLE t(a); CREATE INDEX messages ON t(a)`); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Close(); err != nil {
-		t.Fatal(err)
-	}
-	st, err := Open(p)
-	if err == nil {
-		st.Close()
-		t.Fatal("Open should reject a database whose schema collides with k-brain's")
-	}
-	if !strings.Contains(err.Error(), "messages") {
-		t.Fatalf("error should name the colliding object: %v", err)
-	}
-}
 
 func TestClosedStoreDegradesGracefully(t *testing.T) {
 	st, id := seeded(t)
@@ -82,59 +52,6 @@ func TestClosedStoreDegradesGracefully(t *testing.T) {
 	}
 }
 
-func TestLoadReportsMissingMessageTable(t *testing.T) {
-	st, id := seeded(t)
-	exec(t, st, `DROP TABLE messages`)
-	if _, _, err := st.Load(id); err == nil {
-		t.Fatal("Load should report the failed message query")
-	}
-}
-
-func TestScanMetasRejectsCorruptRow(t *testing.T) {
-	st, id := seeded(t)
-	exec(t, st, `UPDATE sessions SET fork_seq='not-a-number' WHERE id=?`, id)
-
-	if _, _, err := st.Load(id); err == nil {
-		t.Error("Load should report the corrupt fork_seq")
-	}
-	if _, err := st.Recent(10); err == nil {
-		t.Error("Recent should report the corrupt fork_seq")
-	}
-
-	exec(t, st, `UPDATE sessions SET forked_from=? WHERE id=?`, id, id)
-	if _, err := st.ForksOf(id); err == nil {
-		t.Error("ForksOf should report the corrupt fork_seq")
-	}
-}
-
-func TestSaveReportsMessageWriteFailure(t *testing.T) {
-	st, id := seeded(t)
-	exec(t, st, `CREATE TRIGGER no_messages BEFORE INSERT ON messages BEGIN SELECT RAISE(ABORT,'disk full'); END`)
-
-	err := st.Save(id, 5, []ai.Message{{}, {}, {}, {}, {}, {Role: "user", Content: "new"}}, "m", "p")
-	if err == nil {
-		t.Fatal("Save should report the refused message write")
-	}
-
-	exec(t, st, `DROP TRIGGER no_messages`)
-	if _, msgs, err := st.Load(id); err != nil || len(msgs) != 4 {
-		t.Fatalf("failed Save must not commit anything: %v %d msgs", err, len(msgs))
-	}
-}
-
-func TestSaveReportsMetadataWriteFailure(t *testing.T) {
-	st, id := seeded(t)
-	exec(t, st, `CREATE TRIGGER no_meta BEFORE UPDATE ON sessions BEGIN SELECT RAISE(ABORT,'read only'); END`)
-
-	if err := st.Save(id, 5, []ai.Message{{}, {}, {}, {}, {}, {Role: "user", Content: "new"}}, "m", "p"); err == nil {
-		t.Fatal("Save should report the refused metadata update")
-	}
-	exec(t, st, `DROP TRIGGER no_meta`)
-	if _, msgs, err := st.Load(id); err != nil || len(msgs) != 4 {
-		t.Fatalf("the message insert must roll back with the metadata update: %v %d msgs", err, len(msgs))
-	}
-}
-
 func TestSaveSkipsPlaceholderRows(t *testing.T) {
 	st, id := seeded(t)
 	msgs := []ai.Message{
@@ -154,33 +71,6 @@ func TestSaveSkipsPlaceholderRows(t *testing.T) {
 	if raw[2].Content != "q2" {
 		t.Fatalf("seq 3 should keep its original content, got %q", raw[2].Content)
 	}
-}
-
-func TestForkReportsWriteFailures(t *testing.T) {
-	t.Run("session row", func(t *testing.T) {
-		st, id := seeded(t)
-		exec(t, st, `CREATE TRIGGER no_sessions BEFORE INSERT ON sessions BEGIN SELECT RAISE(ABORT,'nope'); END`)
-		if _, err := st.Fork(id, 2, "x"); err == nil {
-			t.Fatal("Fork should report the refused session insert")
-		}
-	})
-	t.Run("message rows", func(t *testing.T) {
-		st, id := seeded(t)
-		exec(t, st, `CREATE TRIGGER no_messages BEFORE INSERT ON messages BEGIN SELECT RAISE(ABORT,'nope'); END`)
-		newID, err := st.Fork(id, 2, "x")
-		if err == nil {
-			t.Fatal("Fork should report the refused message copy")
-		}
-		if newID != "" {
-			t.Fatalf("a failed fork must not report an id, got %q", newID)
-		}
-		exec(t, st, `DROP TRIGGER no_messages`)
-
-		forks, err := st.ForksOf(id)
-		if err != nil || len(forks) != 0 {
-			t.Fatalf("a failed fork must not leave a session row behind: %v %+v", err, forks)
-		}
-	})
 }
 
 func TestForkTitleUnwrapsExistingSuffix(t *testing.T) {
@@ -205,39 +95,8 @@ func TestForkTitleUnwrapsExistingSuffix(t *testing.T) {
 	}
 }
 
-func TestSchedulesSkipsCorruptRow(t *testing.T) {
-	st, id := seeded(t)
-	anchor := time.Now().Truncate(time.Second)
-	if _, err := st.AddSchedule(id, "@every 10m", "first", anchor); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := st.AddSchedule(id, "@every 20m", "second", anchor); err != nil {
-		t.Fatal(err)
-	}
-	exec(t, st, `UPDATE schedules SET id='corrupt' WHERE session_id=? AND prompt='first'`, id)
-
-	got := st.Schedules(id)
-	if len(got) != 1 || got[0].Prompt != "second" {
-		t.Fatalf("the readable schedule should survive, got %+v", got)
-	}
-}
-
-func TestUserHistorySkipsMalformedRows(t *testing.T) {
-	st, id := seeded(t)
-	exec(t, st, `INSERT INTO messages (session_id, seq, role, content) VALUES (?,?,?,?)`,
-		id, 99, "user", "{not json")
-
-	got, err := st.UserHistory(10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(got) != 2 || got[0] != "q2" || got[1] != "q1" {
-		t.Fatalf("malformed row should be skipped, got %q", got)
-	}
-}
-
 func TestApplyCompactionKeepsPriorSummary(t *testing.T) {
-	st, err := Open(filepath.Join(t.TempDir(), "s.db"))
+	st, err := Open(filepath.Join(t.TempDir(), "sessions"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,5 +134,74 @@ func TestApplyCompactionKeepsPriorSummary(t *testing.T) {
 	}
 	if got[3].Content != "a2" {
 		t.Fatalf("raw tail lost: %+v", got[3:])
+	}
+}
+
+func TestOpenRejectsFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sessions")
+	if err := os.WriteFile(path, []byte("not a directory"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if st, err := Open(path); err == nil {
+		st.Close()
+		t.Fatal("expected directory error")
+	}
+}
+
+func TestCorruptTranscriptIsNotOverwritten(t *testing.T) {
+	for _, content := range []string{"", "{bad", "{\"type\":\"message\",\"payload\":{}}\n", "{\"type\":\"session_meta\",\"payload\":null}\n"} {
+		t.Run(content, func(t *testing.T) {
+			st, id := seeded(t)
+			path := st.TranscriptPath(id)
+			if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err := st.Load(id); err == nil {
+				t.Fatal("Load accepted corruption")
+			}
+			if err := st.SetTitle(id, "overwrite"); err == nil {
+				t.Fatal("write accepted corruption")
+			}
+			if fork, err := st.Fork(id, 2, "copy"); err == nil || fork != "" {
+				t.Fatal("fork accepted corruption")
+			}
+			if _, err := st.Recent(10); err == nil {
+				t.Fatal("Recent hid corruption")
+			}
+			if _, err := st.UserHistory(10); err == nil {
+				t.Fatal("history hid corruption")
+			}
+			if st.RawMessages(id) != nil || st.Snapshots(id) != nil || st.Schedules(id) != nil {
+				t.Fatal("invalid data exposed")
+			}
+			got, err := os.ReadFile(path)
+			if err != nil || string(got) != content {
+				t.Fatal("corrupt file was overwritten")
+			}
+		})
+	}
+}
+
+func TestSaveFailurePreservesTranscript(t *testing.T) {
+	st, id := seeded(t)
+	path := st.TranscriptPath(id)
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = st.SaveTask(id, Task{ID: "bad", StartedAt: time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)})
+	if err == nil {
+		t.Fatal("expected encoding error")
+	}
+	after, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(before, after) {
+		t.Fatal("failed transaction changed file")
+	}
+	leftovers, err := filepath.Glob(filepath.Join(filepath.Dir(path), ".session-*.tmp"))
+	if err != nil || len(leftovers) != 0 {
+		t.Fatalf("temporary files: %v %v", leftovers, err)
+	}
+	if _, msgs, err := st.Load(id); err != nil || len(msgs) != 4 {
+		t.Fatalf("original session lost: %d %v", len(msgs), err)
 	}
 }

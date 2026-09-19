@@ -9,7 +9,7 @@ import (
 
 func seeded(t *testing.T) (*Store, string) {
 	t.Helper()
-	st, err := Open(filepath.Join(t.TempDir(), "s.db"))
+	st, err := Open(filepath.Join(t.TempDir(), "sessions"))
 	if err != nil {
 		t.Fatal(err)
 	}

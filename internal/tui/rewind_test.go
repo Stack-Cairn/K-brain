@@ -17,7 +17,7 @@ import (
 
 func rewindModel(t *testing.T, msgs ...ai.Message) *model {
 	t.Helper()
-	st, err := session.Open(filepath.Join(t.TempDir(), "s.db"))
+	st, err := session.Open(filepath.Join(t.TempDir(), "sessions"))
 	if err != nil {
 		t.Fatal(err)
 	}

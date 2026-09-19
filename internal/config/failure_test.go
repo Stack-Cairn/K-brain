@@ -67,13 +67,13 @@ func TestNoConfigDirIsNotFatal(t *testing.T) {
 }
 
 func TestTrustedRejectsCorruptFile(t *testing.T) {
-	t.Setenv("K_BRAIN_HOME", t.TempDir())
-	dir, _ := Dir()
-	if err := os.WriteFile(filepath.Join(dir, "trusted.json"), []byte("{ not json"), 0o600); err != nil {
+	home := t.TempDir()
+	t.Setenv("K_BRAIN_HOME", home)
+	if err := os.WriteFile(filepath.Join(home, "trusted_folders.toml"), []byte("[folders.\"/x\"]\ntrusted = nope\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if Trusted("/x") {
-		t.Fatal("a corrupt trusted.json must not grant trust")
+		t.Fatal("a corrupt trust file must not grant trust")
 	}
 
 	if err := Trust("/x"); err != nil {
@@ -87,19 +87,24 @@ func TestTrustedRejectsCorruptFile(t *testing.T) {
 func TestTrustReportsWriteFailures(t *testing.T) {
 	t.Run("staging write", func(t *testing.T) {
 		t.Setenv("K_BRAIN_HOME", t.TempDir())
-		blockedPath(t, "trusted.json", "tmp")
+		dir, _ := trustedHome()
+		if err := os.MkdirAll(filepath.Join(dir, "trusted_folders.toml.tmp", "occupied"), 0o700); err != nil {
+			t.Fatal(err)
+		}
 		if err := Trust("/x"); err == nil {
 			t.Fatal("Trust should report the failed staging write")
 		}
 	})
 	t.Run("rename", func(t *testing.T) {
 		t.Setenv("K_BRAIN_HOME", t.TempDir())
-		blockedPath(t, "trusted.json", "target")
+		dir, _ := trustedHome()
+		if err := os.MkdirAll(filepath.Join(dir, "trusted_folders.toml", "occupied"), 0o700); err != nil {
+			t.Fatal(err)
+		}
 		if err := Trust("/x"); err == nil {
 			t.Fatal("Trust should report the failed rename")
 		}
-		dir, _ := Dir()
-		if _, err := os.Stat(filepath.Join(dir, "trusted.json.tmp")); !os.IsNotExist(err) {
+		if _, err := os.Stat(filepath.Join(dir, "trusted_folders.toml.tmp")); !os.IsNotExist(err) {
 			t.Fatal("a failed rename must clean up its staging file")
 		}
 	})

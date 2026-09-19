@@ -14,7 +14,7 @@ import (
 
 func resumeBrowseModel(t *testing.T) *model {
 	t.Helper()
-	st, err := session.Open(filepath.Join(t.TempDir(), "s.db"))
+	st, err := session.Open(filepath.Join(t.TempDir(), "sessions"))
 	if err != nil {
 		t.Fatal(err)
 	}
