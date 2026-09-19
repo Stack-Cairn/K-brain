@@ -169,6 +169,7 @@ The TUI uses a full-screen terminal view with a bottom-anchored input area. The 
 | `/diff [--staged] [--stat]` | Inspect tracked Git changes locally, without a model request |
 | `/copy [N] [file]` | Copy the Nth latest assistant message with text, or save it to a new file |
 | `/prompts [refresh]` | List or reload Markdown prompt templates |
+| `/privacy on|off|toggle|status` | Enable the local masking gateway; status reports rule count, in-memory mappings, and body limit |
 | `/mcp` · `/tasks` | Manage MCP connections and inspect background tasks |
 | `!command` · `!!command` | Run a shell command; the first adds output to the conversation, the second stays local |
 | `/help` | Show all commands and keyboard shortcuts |

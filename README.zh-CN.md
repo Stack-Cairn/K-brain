@@ -169,6 +169,7 @@ TUI 使用当前终端的全屏界面，输入区固定在底部。首轮对话�
 | `/diff [--staged] [--stat]` | 本地查看 Git 已跟踪文件的差异，不发起模型请求 |
 | `/copy [N] [file]` | 复制倒数第 N 条助手正文，或保存到新文件 |
 | `/prompts [refresh]` | 查看或重新加载 Markdown 提示词模板 |
+| `/privacy on|off|toggle|status` | 开启本地隐私脱敏网关；status 显示规则数、内存映射数和请求体上限 |
 | `/mcp` · `/tasks` | 管理 MCP 连接、查看后台任务 |
 | `!命令` · `!!命令` | 执行 shell；前者将结果加入会话，后者仅在本地显示 |
 | `/help` | 查看完整命令与快捷键 |

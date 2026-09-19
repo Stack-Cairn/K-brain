@@ -62,6 +62,14 @@ var (
 	tokenCounter  atomic.Uint64
 )
 
+type Status struct {
+	Enabled         bool
+	Rules           int
+	Remembered      int
+	MaxBodyBytes    int64
+	TokenTTLSeconds int64
+}
+
 type rememberedToken struct {
 	value   string
 	key     string
@@ -69,6 +77,20 @@ type rememberedToken struct {
 }
 
 func Enabled() bool { return enabled.Load() }
+
+func Snapshot() Status {
+	rememberedValues()
+	tokenMu.Lock()
+	count := len(remembered)
+	tokenMu.Unlock()
+	return Status{
+		Enabled:         Enabled(),
+		Rules:           len(rules),
+		Remembered:      count,
+		MaxBodyBytes:    maxInspectableBody,
+		TokenTTLSeconds: int64(tokenTTL / time.Second),
+	}
+}
 
 func SetEnabled(on bool) {
 	enabled.Store(on)
