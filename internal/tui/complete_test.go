@@ -19,7 +19,7 @@ func TestCompletions(t *testing.T) {
 	provs := []cand{{"inference", ""}}
 
 	head, cs := completions("/m", models, provs, nil, nil)
-	if head != "" || len(cs) != 7 || cs[0].Text != "/mcp" || cs[1].Text != "/mcps" || cs[2].Text != "/me" || cs[3].Text != "/memory" || cs[4].Text != "/model" || cs[5].Text != "/model-for-session" || cs[6].Text != "/mouse" {
+	if head != "" || len(cs) != 6 || cs[0].Text != "/mcp" || cs[1].Text != "/mcps" || cs[2].Text != "/memory" || cs[3].Text != "/model" || cs[4].Text != "/model-for-session" || cs[5].Text != "/mouse" {
 		t.Fatalf("command completion: %q %v", head, texts(cs))
 	}
 

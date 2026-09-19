@@ -8,7 +8,7 @@ import (
 
 func TestLanguageRoundTrip(t *testing.T) {
 	t.Setenv("K_BRAIN_HOME", t.TempDir())
-	for _, language := range []string{"zh_cn", "en"} {
+	for _, language := range []string{"zh_cn", "zh_tw", "en"} {
 		cfg := Default()
 		cfg.Language = language
 		if err := cfg.Save(); err != nil {

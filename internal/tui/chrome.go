@@ -7,11 +7,11 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-func grokHeader(width int, left, right string) string {
-	return grokHeaderLabel(width, left, right, "commands")
+func kbrainHeader(width int, left, right string) string {
+	return kbrainHeaderLabel(width, left, right, "commands")
 }
 
-func grokHeaderLabel(width int, left, right, label string) string {
+func kbrainHeaderLabel(width int, left, right, label string) string {
 	width = max(width, 1)
 	leftCell := accentStyle.Render("◆") + chromeStyle.Render(left)
 	rightText := strings.TrimSpace(ansi.Strip(right))
@@ -27,7 +27,7 @@ func grokHeaderLabel(width int, left, right, label string) string {
 	return line + "\n" + chromeStyle.Render(rule)
 }
 
-func grokPromptFrame(height int) lipgloss.Style {
+func kbrainPromptFrame(height int) lipgloss.Style {
 	border := lipgloss.RoundedBorder()
 	if height > 0 && height < 28 {
 		border = lipgloss.Border{Left: "│", Right: "│"}

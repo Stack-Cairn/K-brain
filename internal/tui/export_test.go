@@ -76,3 +76,32 @@ func TestExportFilePerms(t *testing.T) {
 		t.Fatalf("transcript perms = %o, want 600", perm)
 	}
 }
+
+func TestExportJSONLRoundTrip(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "out.jsonl")
+	want := []ai.Message{{Role: "user", Content: "hello"}, {Role: "assistant", Content: "<answer>"}}
+	if err := exportJSONL(path, "abc", "title", "model1", "demo", want); err != nil {
+		t.Fatal(err)
+	}
+	got, err := importJSONL(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != len(want) || got[0].TextContent() != want[0].TextContent() || got[1].TextContent() != want[1].TextContent() {
+		t.Fatalf("round trip: %#v", got)
+	}
+}
+
+func TestExportHTMLEscaping(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "out.html")
+	if err := exportHTML(path, "<title>", []ai.Message{{Role: "user", Content: "<script>alert(1)</script>"}}); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "<script>alert") || !strings.Contains(string(b), "&lt;script&gt;") {
+		t.Fatalf("HTML escaping failed: %s", b)
+	}
+}

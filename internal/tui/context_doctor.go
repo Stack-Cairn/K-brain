@@ -83,6 +83,10 @@ func (m *model) doctorReport() string {
 			rows = append(rows, ctxRow{"mcp: server instructions", len(ib), ""})
 		}
 	}
+	if m.pluginMgr != nil {
+		pluginBytes := len(m.pluginMgr.PromptBlock())
+		rows = append(rows, ctxRow{fmt.Sprintf("plugins (%d enabled)", len(m.pluginMgr.Tools())), pluginBytes, "prompt and tool schemas"})
+	}
 
 	var tb int
 	for _, t := range m.agent.AllTools() {
@@ -118,7 +122,7 @@ func (m *model) doctorReport() string {
 		b.WriteString(line + "\n")
 	}
 	fmt.Fprintf(&b, "  %-*s %7s\n", w, "TOTAL injected before you type", "~"+tok(total))
-	b.WriteString("\nTrim: /mcp <name> disable · remove a skill from .agents/skills · /context-doctor again")
+	b.WriteString("\nTrim: /mcp <name> disable · /plugins disable NAME · remove a skill from .agents/skills · /context-doctor again")
 	return b.String()
 }
 

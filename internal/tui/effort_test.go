@@ -119,7 +119,7 @@ func TestSetEffortPersistsGlobalAndSession(t *testing.T) {
 	m := compactCmdModel()
 	m.cfg.DefaultEffort = "medium"
 	m.agent.Effort = "medium"
-	st, err := session.Open(filepath.Join(t.TempDir(), "s.db"))
+	st, err := session.Open(filepath.Join(t.TempDir(), "sessions"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +165,7 @@ func TestResumeRestoresEffort(t *testing.T) {
 	m := compactCmdModel()
 	m.cfg.DefaultEffort = "medium"
 	m.agent.Effort = "medium"
-	st, err := session.Open(filepath.Join(t.TempDir(), "s.db"))
+	st, err := session.Open(filepath.Join(t.TempDir(), "sessions"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +216,7 @@ func TestResumeRestoresEffort(t *testing.T) {
 
 func TestResumeRestoresUsage(t *testing.T) {
 	m := compactCmdModel()
-	st, err := session.Open(filepath.Join(t.TempDir(), "s.db"))
+	st, err := session.Open(filepath.Join(t.TempDir(), "sessions"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -13,7 +13,7 @@ import (
 
 func TestResumeShowsInterruptedToolCalls(t *testing.T) {
 	m := compactCmdModel()
-	st, err := session.Open(filepath.Join(t.TempDir(), "s.db"))
+	st, err := session.Open(filepath.Join(t.TempDir(), "sessions"))
 	if err != nil {
 		t.Fatal(err)
 	}

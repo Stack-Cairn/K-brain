@@ -15,7 +15,7 @@ import (
 
 func testStore(t *testing.T) *session.Store {
 	t.Helper()
-	st, err := session.Open(t.TempDir() + "/sessions.db")
+	st, err := session.Open(t.TempDir() + "/sessions")
 	if err != nil {
 		t.Fatal(err)
 	}

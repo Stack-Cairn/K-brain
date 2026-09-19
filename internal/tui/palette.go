@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Stack-Cairn/K-brain/internal/browser"
 	"github.com/Stack-Cairn/K-brain/internal/config"
@@ -821,7 +823,7 @@ func (m *model) paletteView() string {
 	hintW := 0
 	for _, it := range p.items {
 		if it.dynHint != nil {
-			hintW = max(hintW, len(it.dynHint(m)))
+			hintW = max(hintW, lipgloss.Width(paletteCommandHint(m, it)))
 		}
 	}
 	for i, it := range p.items {
@@ -835,18 +837,22 @@ func (m *model) paletteView() string {
 		}
 		hint := ""
 		if it.dynHint != nil {
-			hint = dimStyle.Render(fmt.Sprintf("%*s", hintW, it.dynHint(m)))
+			hint = paletteCommandHint(m, it)
+			hint = dimStyle.Render(strings.Repeat(" ", max(hintW-lipgloss.Width(hint), 0)) + hint)
 		}
 		line := " " + m.tr(it.title)
 		if it.dynDesc != nil {
 			line += dimStyle.Render("  — " + m.tr(it.dynDesc(m)))
 		}
 		state := paletteState(m, it)
+		bodyWidth := max(m.width-1-hintW-2, 0)
+		body := ansi.Truncate(line+state, bodyWidth, "…")
+		body += strings.Repeat(" ", max(bodyWidth-lipgloss.Width(body), 0))
+		marker := " "
 		if i == p.idx {
-			b.WriteString(botStyle.Render("→") + line + state + "  " + hint)
-		} else {
-			b.WriteString(" " + line + state + "  " + hint)
+			marker = botStyle.Render("›")
 		}
+		b.WriteString(ansi.Truncate(marker+body+"  "+hint, max(m.width, 1), "…"))
 		b.WriteString("\n")
 	}
 	if len(p.items) == 0 {
@@ -1086,4 +1092,15 @@ func (m *model) routePanel(kind panelKind, title, defaultModel, current, current
 		pp.note = "catalog stale for " + strings.Join(st, ", ") + " — /model refresh pulls newly announced models"
 	}
 	return pp
+}
+
+func paletteCommandHint(m *model, item paletteItem) string {
+	if item.dynHint == nil {
+		return ""
+	}
+	hint := item.dynHint(m)
+	if fields := strings.Fields(hint); len(fields) > 0 && strings.HasPrefix(fields[0], "/") {
+		return fields[0]
+	}
+	return hint
 }

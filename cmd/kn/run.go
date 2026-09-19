@@ -17,8 +17,11 @@ import (
 
 	"github.com/Stack-Cairn/K-brain/internal/agent"
 	"github.com/Stack-Cairn/K-brain/internal/config"
+	"github.com/Stack-Cairn/K-brain/internal/hooks"
+	"github.com/Stack-Cairn/K-brain/internal/plugins"
 	sysprompt "github.com/Stack-Cairn/K-brain/internal/prompts"
 	"github.com/Stack-Cairn/K-brain/internal/routing"
+	"github.com/Stack-Cairn/K-brain/internal/sandbox"
 	"github.com/Stack-Cairn/K-brain/internal/session"
 )
 
@@ -105,6 +108,7 @@ func runCLI(args []string) error {
 	}
 
 	ag := agent.New(route.Client, route.APIModel, route.MaxOutput, sys, agent.WithExperimental(cfg.Experimental))
+	ag.Hooks = hooks.New(cfg.Hooks)
 	ag.ModelName, ag.Provider = route.ModelName, route.ProviderName
 
 	ag.ComputerDisabled = true
@@ -112,12 +116,19 @@ func runCLI(args []string) error {
 
 	ag.Effort = routing.DefaultEffortFor(config.LoadCatalogs(), route.ProviderName, ag.Model, cfg.DefaultEffort)
 	ag.MaxTurns = *maxTurnsFlag
+	if project, perr := os.Getwd(); perr == nil {
+		if pm, _ := plugins.New(project); pm != nil {
+			ag.SetPluginTools(pluginTools(pm))
+			ag.Messages[0].Content += pm.PromptBlock()
+		}
+	}
+	ag.SandboxPolicy = cfg.Sandbox.Policy(cwd())
 
 	var store *session.Store
 	var sessionID string
 	if !*noSessionFlag {
 		if dir, derr := config.Dir(); derr == nil {
-			if st, serr := session.Open(dir + "/sessions.db"); serr == nil {
+			if st, serr := session.OpenHome(dir); serr == nil {
 				store = st
 				defer func() { _ = st.Close() }()
 			}
@@ -137,11 +148,15 @@ func runCLI(args []string) error {
 			}
 		}
 	}
+	if err := ag.Hooks.Run(context.Background(), hooks.Event{Name: "SessionStart", SessionID: sessionID}); err != nil {
+		return err
+	}
 
 	ag.SetCacheKey(resolveCacheKey(*cacheKeyFlag, sessionID))
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	ctx = sandbox.WithPolicy(ctx, cfg.Sandbox.Policy(cwd()))
 	if *timeoutFlag > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, *timeoutFlag)

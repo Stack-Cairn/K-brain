@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Stack-Cairn/K-brain/internal/ai"
+	"github.com/Stack-Cairn/K-brain/internal/sandbox"
 )
 
 type TaskStatus string
@@ -231,7 +232,11 @@ func (a *Agent) RegisterBackground(description, prompt string, o SubModel) *Back
 		a.bg = newTaskRegistry()
 	}
 	id := taskSlug(description, taskIDCounter.Add(1))
-	taskCtx, cancel := context.WithCancel(context.Background())
+	base := context.Background()
+	if a.SandboxPolicy != nil {
+		base = sandbox.WithPolicy(base, a.SandboxPolicy)
+	}
+	taskCtx, cancel := context.WithCancel(base)
 	sub := a.newSub(o)
 
 	scope := a.SessionIDValue()

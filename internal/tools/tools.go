@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Stack-Cairn/K-brain/internal/ai"
+	"github.com/Stack-Cairn/K-brain/internal/sandbox"
 	"github.com/Stack-Cairn/K-brain/internal/tools/bashrun"
 )
 
@@ -129,11 +130,14 @@ func bashTool() Tool {
 			if a.Timeout <= 0 {
 				a.Timeout = 120
 			}
-			if deny := checkGate("bash", a.Command); deny != "" {
+			if deny := checkGate(ctx, "bash", a.Command); deny != "" {
 				return "", errors.New(deny)
 			}
 			if a.Interactive && runtime.GOOS == "windows" {
 				return "", errors.New("interactive PTY is not available on native Windows; run non-interactively or run k-brain inside WSL")
+			}
+			if a.Interactive && func() bool { p := sandbox.FromContext(ctx); return p != nil && p.Enabled() }() {
+				return "", errors.New("interactive PTY is disabled inside the OS sandbox")
 			}
 			ctx = bashrun.WithShell(ctx, a.Shell)
 			dur := time.Duration(a.Timeout * float64(time.Second))
@@ -242,7 +246,7 @@ func writeTool() Tool {
 			if err := json.Unmarshal(args, &a); err != nil {
 				return "", err
 			}
-			if deny := checkGate("write", a.Path); deny != "" {
+			if deny := checkGate(ctx, "write", a.Path); deny != "" {
 				return "", errors.New(deny)
 			}
 
@@ -282,7 +286,7 @@ func editTool() Tool {
 			if err := json.Unmarshal(args, &a); err != nil {
 				return "", err
 			}
-			if deny := checkGate("edit", a.Path); deny != "" {
+			if deny := checkGate(ctx, "edit", a.Path); deny != "" {
 				return "", errors.New(deny)
 			}
 			data, err := os.ReadFile(a.Path)

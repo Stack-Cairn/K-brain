@@ -20,7 +20,7 @@ func checkTrust(r *bufio.Reader) (bool, error) {
 	st, err := os.Stdin.Stat()
 	if err != nil || st.Mode()&os.ModeCharDevice == 0 {
 
-		return false, fmt.Errorf("folder %s is not trusted (run interactively once to trust it, or add it to ~/.k-brain/trusted.json)", wd)
+		return false, fmt.Errorf("folder %s is not trusted (run interactively once to trust it, or add it to ~/.k-brain/trusted_folders.toml)", wd)
 	}
 	fmt.Fprintf(os.Stderr, "\nDo you trust the files in this folder?\n%s\n\n", wd)
 	fmt.Fprintln(os.Stderr, "k-brain may read files in this folder. Reading untrusted files may lead k-brain to behave in unexpected ways.")

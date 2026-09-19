@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -29,10 +28,13 @@ import (
 	"github.com/Stack-Cairn/K-brain/internal/browser"
 	"github.com/Stack-Cairn/K-brain/internal/computer"
 	"github.com/Stack-Cairn/K-brain/internal/config"
+	"github.com/Stack-Cairn/K-brain/internal/hooks"
 	"github.com/Stack-Cairn/K-brain/internal/lsp"
 	"github.com/Stack-Cairn/K-brain/internal/mcp"
 	"github.com/Stack-Cairn/K-brain/internal/memory"
+	"github.com/Stack-Cairn/K-brain/internal/plugins"
 	"github.com/Stack-Cairn/K-brain/internal/routing"
+	"github.com/Stack-Cairn/K-brain/internal/sandbox"
 	"github.com/Stack-Cairn/K-brain/internal/session"
 	"github.com/Stack-Cairn/K-brain/internal/skills"
 	"github.com/Stack-Cairn/K-brain/internal/tools"
@@ -71,6 +73,15 @@ type (
 	toolCallMsg   struct{ id, name, args string }
 	toolOutputMsg struct{ id, text string }
 	steeredMsg    string
+	reviewMsg     struct {
+		result string
+		err    error
+		fix    bool
+	}
+	btwMsg struct {
+		result string
+		err    error
+	}
 )
 
 type goalFromContextMsg struct {
@@ -126,11 +137,13 @@ type menu struct {
 type model struct {
 	promptCatalog promptCatalog
 
-	cfg       *config.Config
-	agent     *agent.Agent
-	modelName string
-	provName  string
-	sysPrompt string
+	cfg           *config.Config
+	agent         *agent.Agent
+	modelName     string
+	provName      string
+	sysPrompt     string
+	sandboxPolicy *sandbox.Policy
+	pluginMgr     *plugins.Manager
 
 	cfgExtra map[string]string
 	cfgMod   time.Time
@@ -147,6 +160,7 @@ type model struct {
 	termWidth int
 
 	busy    bool
+	btwBusy bool
 	current string
 	inMsg   bool
 
@@ -219,9 +233,11 @@ type model struct {
 	irunner *interactiveRunner
 	iactive *interactive
 
-	perms      permRules
-	permDialog *permDialog
-	askDialog  *askDialog
+	perms          permRules
+	permDialog     *permDialog
+	askDialog      *askDialog
+	permissionMode string
+	permissionDone chan struct{}
 
 	tasksFocus   bool
 	taskSel      int
@@ -314,15 +330,29 @@ func Run(cfg *config.Config, modelName, provName, sysPrompt, resumeID string, ca
 	}
 	m := &model{
 		cfg: cfg, agent: ag, modelName: mn, provName: pn, sysPrompt: sysPrompt,
-		input: ti, spin: spinner.New(spinner.WithSpinner(spinner.Dot)), follow: true, saved: 1,
+		sandboxPolicy: cfg.Sandbox.Policy(cwd()),
+		input:         ti, spin: spinner.New(spinner.WithSpinner(spinner.Dot)), follow: true, saved: 1,
 		catalogs: config.LoadCatalogs(), mouseOn: mouseOn, now: time.Now, showThinking: showThinking,
 
 		compactModel: cfg.CompactModel, compactProv: cfg.CompactProvider,
 		skillScan:     func() []skills.Skill { return skills.Scan(skills.DefaultDirs()...) },
 		initialPrompt: initialPrompt,
 	}
+	ag.SandboxPolicy = m.sandboxPolicy
 	m.applyCompactModel()
 	m.applyTaskModel()
+	if project, err := os.Getwd(); err == nil {
+		if pm, perr := plugins.New(project); perr == nil {
+			m.pluginMgr = pm
+			ag.SetPluginTools(pluginToolAdapters(pm))
+		} else if pm != nil && len(pm.List()) > 0 {
+			m.pluginMgr = pm
+			ag.SetPluginTools(pluginToolAdapters(pm))
+			m.append(errStyle.Render("plugin: " + perr.Error()))
+		} else {
+			m.append(dimStyle.Render("plugin: " + perr.Error()))
+		}
+	}
 	m.agent.CompactThreshold = compactThresholdFor(cfg)
 	m.wireTasks()
 
@@ -346,11 +376,16 @@ func Run(cfg *config.Config, modelName, provName, sysPrompt, resumeID string, ca
 	tools.ComputerApprover = m.computerConsent
 	m.installAskHook()
 
+	m.permissionMode = "always"
 	if cautious {
-		m.installPermGate()
+		m.permissionMode = "normal"
 	}
+	m.permissionDone = make(chan struct{})
+	previousGate := tools.Gate
+	m.installPermGate()
+	defer func() { close(m.permissionDone); tools.Gate = previousGate }()
 	if dir, derr := config.Dir(); derr == nil {
-		if st, serr := session.Open(dir + "/sessions.db"); serr == nil {
+		if st, serr := session.OpenProjectHome(dir); serr == nil {
 			m.store = st
 			defer func() { _ = st.Close() }()
 
@@ -699,7 +734,7 @@ func (m *model) resume(id string) error {
 
 func (m *model) continueRecent() error {
 	meta, err := m.store.LatestInDir(cwd())
-	if errors.Is(err, sql.ErrNoRows) {
+	if errors.Is(err, session.ErrNotFound) {
 		m.append(dimStyle.Render("(no previous session in this directory — starting fresh)"))
 		return nil
 	}
@@ -867,6 +902,10 @@ func buildAgent(cfg *config.Config, modelName, provName, sysPrompt string) (*age
 	}
 
 	ag := agent.New(route.Client, route.APIModel, route.MaxOutput, sysPrompt, agent.WithExperimental(cfg.Experimental))
+	ag.Hooks = hooks.New(cfg.Hooks)
+	if err := ag.Hooks.Run(context.Background(), hooks.Event{Name: "SessionStart"}); err != nil {
+		return nil, "", "", err
+	}
 	ag.ModelName, ag.Provider = route.ModelName, route.ProviderName
 	ag.ContextLimit = route.ContextLimit
 	ag.WorktreeSubagents = cfg.WorktreeSubagents != nil && *cfg.WorktreeSubagents
@@ -1546,7 +1585,13 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case permRequest:
-		m.permDialog = &permDialog{req: msg.req, reply: msg.reply}
+		m.receivePermission(msg)
+		return m, nil
+
+	case permClose:
+		if m.permDialog != nil && m.permDialog.reply == msg.reply {
+			m.permDialog = nil
+		}
 		return m, nil
 
 	case askRequest:
@@ -1768,13 +1813,13 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.applyPromptEdit(msg)
 		return m, nil
 
-	case meEditedMsg:
+	case brainEditedMsg:
 		if msg.err != nil {
-			m.append(errStyle.Render("/me: editor failed: " + msg.err.Error()))
-		} else if n := len(config.MeInstructions()); n > 0 {
-			m.append(dimStyle.Render("✓ me.md saved — standing instructions updated (" + strconv.Itoa(n) + " chars)"))
+			m.append(errStyle.Render("/brain: editor failed: " + msg.err.Error()))
+		} else if n := len(config.BrainInstructions()); n > 0 {
+			m.append(dimStyle.Render("✓ brain.md saved — standing instructions updated (" + strconv.Itoa(n) + " chars)"))
 		} else {
-			m.append(dimStyle.Render("me.md saved — no standing instructions set (all comments)"))
+			m.append(dimStyle.Render("brain.md saved — no standing instructions set (all comments)"))
 		}
 		return m, nil
 
@@ -1835,6 +1880,35 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.flushThink()
 		m.flushCurrent()
 		m.applyShellDone(msg)
+		return m, nil
+
+	case reviewMsg:
+		m.flushThink()
+		m.flushCurrent()
+		m.busy = false
+		m.cancel = nil
+		if errors.Is(msg.err, context.Canceled) {
+			m.append(dimStyle.Render("(review interrupted)"))
+		} else if msg.err != nil {
+			m.append(errStyle.Render("review failed: " + msg.err.Error()))
+		} else {
+			title := "◎ review"
+			if msg.fix {
+				title += " (fix mode)"
+			}
+			m.append(accentStyle.Render(title) + "\n" + msg.result)
+		}
+		return m, nil
+
+	case btwMsg:
+		m.btwBusy = false
+		if errors.Is(msg.err, context.Canceled) {
+			m.append(dimStyle.Render("(side question interrupted)"))
+		} else if msg.err != nil {
+			m.append(errStyle.Render("/btw failed: " + msg.err.Error()))
+		} else {
+			m.append(accentStyle.Render("◎ btw") + "\n" + msg.result)
+		}
 		return m, nil
 
 	case goalFromContextMsg:
@@ -2332,6 +2406,7 @@ func (m *model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.menuCycle(-1)
 			return m, nil
 		}
+		m.cyclePermissionMode()
 		return m, nil
 
 	case tea.KeySpace:
@@ -2591,6 +2666,9 @@ func csiUKey(rendered string) (tea.KeyMsg, bool) {
 	case code == 13 && !ctrl:
 		return tea.KeyMsg{Type: tea.KeyEnter, Alt: alt}, true
 	case code == 9 && !ctrl:
+		if shift {
+			return tea.KeyMsg{Type: tea.KeyShiftTab, Alt: alt}, true
+		}
 		return tea.KeyMsg{Type: tea.KeyTab, Alt: alt}, true
 	case code == 127 && !ctrl:
 		return tea.KeyMsg{Type: tea.KeyBackspace, Alt: alt}, true
@@ -2803,6 +2881,7 @@ func (m *model) applyCompactModel() {
 }
 
 func (m *model) wireTasks() {
+	m.agent.SetPlanMode(m.permissionMode == "plan")
 
 	st := m.store
 	m.agent.Tasks().OnRecord = func(sessionID string, t *agent.BackgroundTask) {
@@ -3091,6 +3170,9 @@ func (m *model) skillCands() []cand {
 func (m *model) prepareTurn(text string) (string, []ai.ContentPart) {
 	sk := skills.Scan(skills.DefaultDirs()...)
 	sys := m.sysPrompt + skills.PromptBlock(sk)
+	if m.pluginMgr != nil {
+		sys += m.pluginMgr.PromptBlock()
+	}
 	if m.mcpMgr != nil {
 		sys += m.mcpMgr.InstructionsBlock()
 	}
@@ -3248,6 +3330,7 @@ func (m *model) submitTurn(text string, authored bool) (tea.Model, tea.Cmd) {
 		m.agent.Tasks().ClearSettled(keep...)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
+	ctx = sandbox.WithPolicy(ctx, m.sandboxPolicy)
 	m.cancel = cancel
 	p := m.prog
 
@@ -3296,6 +3379,12 @@ func (m *model) submitTurn(text string, authored bool) (tea.Model, tea.Cmd) {
 
 	go func() {
 		var compactTook, compactKept int
+		if m.pluginMgr != nil {
+			if hookErr := m.pluginMgr.Hook(ctx, "UserPromptSubmit", map[string]string{"prompt": prepared, "sessionId": m.sessionID, "cwd": cwd()}, m.sandboxPolicy); hookErr != nil {
+				send(turnDoneMsg{final: "", err: hookErr, at: userMsgIdx, snap: preSnap, clean: workspaceClean()})
+				return
+			}
+		}
 		events := agent.Events{
 			OnText:  onText,
 			OnThink: onThink,
@@ -3361,7 +3450,7 @@ func busyCmd(text string) bool {
 		return false
 	}
 	switch fields[0] {
-	case "/language", "/editor", "/copy", "/diff", "/prompts", "/help", "/theme", "/mouse", "/effort", "/subagents", "/tasks", "/subagent", "/cd", "/pwd", "/report", "/export", "/fork", "/context", "/context-doctor", "/doctor", "/info", "/mcps", "/mcp", "/new", "/plan", "/session-info", "/status", "/title", "/undo", "/rewind", "/view-plan":
+	case "/permissions", "/language", "/editor", "/copy", "/diff", "/prompts", "/help", "/theme", "/mouse", "/effort", "/subagents", "/tasks", "/subagent", "/cd", "/pwd", "/report", "/export", "/import", "/fork", "/forks", "/context", "/context-doctor", "/doctor", "/info", "/mcps", "/mcp", "/plugins", "/new", "/plan", "/session-info", "/status", "/title", "/undo", "/rewind", "/view-plan":
 		return true
 	case "/auth":
 		return true
@@ -3401,6 +3490,8 @@ func (m *model) command(text string) (tea.Model, tea.Cmd) {
 		m.agent.SetSessionID("")
 		m.saved = 1
 		m.append(dimStyle.Render("(conversation cleared)"))
+	case "/permissions":
+		m.permissionCommand(fields[1:])
 	case "/memory":
 		m.memoryCommand(fields[1:])
 	case "/schedule":
@@ -3411,8 +3502,8 @@ func (m *model) command(text string) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m, m.openPromptEditor()
-	case "/me":
-		return m, m.openMe()
+	case "/brain":
+		return m, m.openBrain()
 	case "/compact":
 		if len(fields) > 1 {
 			switch fields[1] {
@@ -3437,6 +3528,7 @@ func (m *model) command(text string) (tea.Model, tea.Cmd) {
 		p := m.prog
 		ag := m.agent
 		ctx, cancel := context.WithCancel(context.Background())
+		ctx = sandbox.WithPolicy(ctx, m.sandboxPolicy)
 		m.cancel = cancel
 		go func() {
 			var summary string
@@ -3451,6 +3543,8 @@ func (m *model) command(text string) (tea.Model, tea.Cmd) {
 			}
 		}()
 		return m, m.spin.Tick
+	case "/plugins":
+		return m.pluginCommand(fields)
 	case "/mcp", "/mcps":
 		return m.mcpCommand(fields)
 	case "/lsp":
@@ -3549,6 +3643,7 @@ func (m *model) command(text string) (tea.Model, tea.Cmd) {
 
 		ag := m.agent
 		ctx, cancel := context.WithCancel(context.Background())
+		ctx = sandbox.WithPolicy(ctx, m.sandboxPolicy)
 		m.cancel = cancel
 		prompt := agent.BuildGoalFromContextPrompt(tail)
 		formulate := func() (string, error) {
@@ -3616,6 +3711,9 @@ func (m *model) command(text string) (tea.Model, tea.Cmd) {
 
 		m.forkCommand(strings.TrimSpace(strings.TrimPrefix(text, "/fork")))
 		return m, nil
+	case "/forks":
+		m.forksCommand()
+		return m, nil
 	case "/rename", "/title":
 		if m.busy {
 			m.append(dimStyle.Render("(busy — /rename after this turn)"))
@@ -3656,8 +3754,20 @@ func (m *model) command(text string) (tea.Model, tea.Cmd) {
 		m.promptsCommand(fields[1:])
 	case "/export":
 		m.exportCommand(strings.TrimSpace(strings.TrimPrefix(text, "/export")))
+	case "/import":
+		m.importCommand(strings.TrimSpace(strings.TrimPrefix(text, "/import")))
 	case "/report":
 		m.append(m.reportBlock())
+	case "/archive":
+		m.sessionManageCommand(fields[1:])
+	case "/search":
+		m.searchSessions(strings.TrimSpace(strings.TrimPrefix(text, "/search")))
+	case "/tag":
+		m.tagSession(fields[1:])
+	case "/btw":
+		return m, m.btwCommand(strings.TrimSpace(strings.TrimPrefix(text, "/btw")))
+	case "/review":
+		return m, m.reviewCommand(fields[1:])
 	case "/language":
 		m.languageCommand(fields[1:])
 	case "/help":
@@ -3952,7 +4062,7 @@ func (m *model) viewBody() string {
 	m.effortX = max(m.width-lipgloss.Width(right)-2, 0)
 	left = truncLine(left, max(m.width-lipgloss.Width(right)-4, 0))
 	{
-		b.WriteString(grokHeaderLabel(m.width, left, right, m.tr("commands")) + "\n")
+		b.WriteString(kbrainHeaderLabel(m.width, left, right, m.tr("commands")) + "\n")
 	}
 	if m.palette != nil {
 
@@ -4030,10 +4140,10 @@ func (m *model) viewBody() string {
 				inputView = m.highlightInput(sanitizeInputView(m.input.View()))
 			}
 		} else {
-			inputView = m.highlightInput(sanitizeInputView(m.input.View()))
+			inputView = m.inputArgumentView(m.highlightInput(sanitizeInputView(m.input.View())))
 		}
 		frameWidth := max(m.width-2, 1)
-		b.WriteString(grokPromptFrame(m.height).Width(frameWidth).Render(inputView))
+		b.WriteString(kbrainPromptFrame(m.height).Width(frameWidth).Render(inputView))
 	}
 	if m.quit1 {
 
@@ -4052,7 +4162,7 @@ func (m *model) viewBody() string {
 	if dock := m.tasksDock(); dock != "" {
 		b.WriteString("\n" + dock)
 	}
-	b.WriteString("\n" + shortcutStyle.Render(m.tr("shift+tab mode  ·  ctrl+c cancel  ·  ctrl+p menu")) + "\n\n" + m.statusView())
+	b.WriteString("\n" + accentStyle.Render(m.permissionModeLabel()) + "  ·  " + shortcutStyle.Render(m.tr("shift+tab mode  ·  ctrl+c cancel  ·  ctrl+p menu")) + "\n\n" + m.statusView())
 	return b.String()
 }
 
@@ -4205,37 +4315,6 @@ func ago(t time.Time) string {
 	default:
 		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
 	}
-}
-
-func (m *model) menuView() string {
-
-	start := 0
-	if m.menu.idx >= menuRows {
-		start = m.menu.idx - menuRows + 1
-	}
-	end := min(start+menuRows, len(m.menu.cands))
-
-	nameW := 0
-	for _, c := range m.menu.cands[start:end] {
-		nameW = max(nameW, lipgloss.Width(c.Text))
-	}
-
-	var b strings.Builder
-	for i := start; i < end; i++ {
-		c := m.menu.cands[i]
-		line := c.Text + strings.Repeat(" ", max(nameW-lipgloss.Width(c.Text), 0)+2)
-		var row string
-		if i == m.menu.idx {
-			row = botStyle.Render("→ " + line + c.Desc)
-		} else {
-			row = "  " + line + dimStyle.Render(c.Desc)
-		}
-
-		b.WriteString(ansi.Truncate(row, max(m.width, 8), "…"))
-		b.WriteByte('\n')
-	}
-	b.WriteString(dimStyle.Render(fmt.Sprintf("  (%d/%d)", m.menu.idx+1, len(m.menu.cands))))
-	return b.String()
 }
 
 func wrap(s string, width int) string {

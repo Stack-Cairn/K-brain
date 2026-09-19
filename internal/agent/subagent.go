@@ -41,6 +41,7 @@ func (a *Agent) newSub(o SubModel) *Agent {
 	o.Client = o.Client.Clone()
 	a.clientMu.Unlock()
 	sub := New(o.Client, o.Model, o.MaxTokens, subagentPrompt())
+	sub.planMode = a.planMode
 
 	if effort != "" {
 		sub.Effort = effort

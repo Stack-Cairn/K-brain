@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/Stack-Cairn/K-brain/internal/ai"
+	"github.com/Stack-Cairn/K-brain/internal/hooks"
+	"github.com/Stack-Cairn/K-brain/internal/sandbox"
 	"github.com/Stack-Cairn/K-brain/internal/tools"
 	"github.com/Stack-Cairn/K-brain/internal/workflow"
 )
@@ -70,6 +72,7 @@ func (a *Agent) reportRetries(ev Events) func() {
 }
 
 type Agent struct {
+	planMode  *atomic.Bool
 	Client    ai.Client
 	Model     string
 	ModelName string
@@ -123,8 +126,9 @@ type Agent struct {
 	sessionID atomic.Pointer[string]
 	cacheKey  string
 
-	toolsMu  sync.Mutex
-	mcpTools []tools.Tool
+	toolsMu     sync.Mutex
+	mcpTools    []tools.Tool
+	pluginTools []tools.Tool
 
 	wfMu sync.Mutex
 	wf   *workflow.Manager
@@ -134,8 +138,11 @@ type Agent struct {
 	BrowserDisabled bool
 
 	ComputerDisabled bool
+	SandboxPolicy    *sandbox.Policy
 
 	OnOrphanedSteer func(text string)
+
+	Hooks *hooks.Runner
 
 	usageMu sync.Mutex
 	usage   ai.Usage
@@ -299,6 +306,7 @@ func copyUsageMap(m map[string]ai.Usage) map[string]ai.Usage {
 
 func New(client ai.Client, model string, maxTokens int, systemPrompt string, opts ...Option) *Agent {
 	a := &Agent{
+		planMode:  &atomic.Bool{},
 		Client:    client,
 		Model:     model,
 		MaxTokens: maxTokens,
@@ -368,9 +376,15 @@ func (a *Agent) SetMCPTools(ts []tools.Tool) {
 	suggesterMu.Unlock()
 }
 
+func (a *Agent) SetPluginTools(ts []tools.Tool) {
+	a.toolsMu.Lock()
+	a.pluginTools = ts
+	a.toolsMu.Unlock()
+}
+
 func (a *Agent) suggest(name string) []string {
 	a.toolsMu.Lock()
-	all := append(append([]tools.Tool(nil), a.Tools...), a.mcpTools...)
+	all := append(append(append([]tools.Tool(nil), a.Tools...), a.mcpTools...), a.pluginTools...)
 	a.toolsMu.Unlock()
 	names := make([]string, len(all))
 	for i, t := range all {
@@ -382,7 +396,7 @@ func (a *Agent) suggest(name string) []string {
 func (a *Agent) AllTools() []tools.Tool {
 	a.toolsMu.Lock()
 	defer a.toolsMu.Unlock()
-	return append(append([]tools.Tool(nil), a.Tools...), a.mcpTools...)
+	return a.modeTools(append(append(append([]tools.Tool(nil), a.Tools...), a.mcpTools...), a.pluginTools...))
 }
 
 func (a *Agent) Turn(ctx context.Context, input string, ev Events) (string, error) {
@@ -402,6 +416,11 @@ func (a *Agent) TurnWithImages(ctx context.Context, input string, parts []ai.Con
 }
 
 func (a *Agent) turn(ctx context.Context, input string, parts []ai.ContentPart, authored bool, ev Events) (string, error) {
+	if a.Hooks != nil {
+		if err := a.Hooks.Run(ctx, hooks.Event{Name: "UserPromptSubmit", Prompt: input}); err != nil {
+			return "", err
+		}
+	}
 
 	if n := a.decay(); n > 0 && ev.OnDecay != nil {
 		ev.OnDecay(n)
@@ -410,6 +429,9 @@ func (a *Agent) turn(ctx context.Context, input string, parts []ai.ContentPart, 
 	defer func() {
 		a.running.Store(false)
 		a.drainOrphanedSteers()
+		if a.Hooks != nil {
+			_ = a.Hooks.Run(context.Background(), hooks.Event{Name: "Stop"})
+		}
 	}()
 	msg := ai.Message{Role: "user", Content: input, Parts: parts, Authored: authored}
 	if authored {
@@ -439,7 +461,7 @@ func (a *Agent) turn(ctx context.Context, input string, parts []ai.ContentPart, 
 		clearRetry := a.reportRetries(ev)
 		msg, usage, err := a.Client.Stream(ctx, ai.Request{
 			Model:           a.Model,
-			Messages:        msgs,
+			Messages:        a.modeMessages(msgs),
 			Tools:           tools.Defs(a.AllTools()),
 			MaxTokens:       a.MaxTokens,
 			ReasoningEffort: a.Effort,
@@ -561,6 +583,16 @@ func (a *Agent) runTools(ctx context.Context, calls []ai.ToolCall, ev Events) []
 		go func(i int, tc ai.ToolCall) {
 			defer wg.Done()
 			name, args := tc.Function.Name, tc.Function.Arguments
+			if a.Hooks != nil {
+				if err := a.Hooks.Run(ctx, hooks.Event{Name: "PreToolUse", ToolID: tc.ID, ToolName: name, ToolArgs: args}); err != nil {
+					out := "Error: hook PreToolUse denied tool call: " + err.Error()
+					if ev.OnToolEnd != nil {
+						ev.OnToolEnd(tc.ID, name, out)
+					}
+					outCh <- outcome{i, out, 0, 1}
+					return
+				}
+			}
 
 			if refused[i] {
 
@@ -598,6 +630,11 @@ func (a *Agent) runTools(ctx context.Context, calls []ai.ToolCall, ev Events) []
 				})
 			}
 			out := tools.Execute(callCtx, a.AllTools(), name, json.RawMessage(args))
+			if a.Hooks != nil {
+				if err := a.Hooks.Run(ctx, hooks.Event{Name: "PostToolUse", ToolID: tc.ID, ToolName: name, ToolArgs: args, ToolResult: out}); err != nil {
+					out += "\nHook PostToolUse failed: " + err.Error()
+				}
+			}
 			ms := time.Since(start).Milliseconds()
 			if ev.OnToolEnd != nil {
 				ev.OnToolEnd(tc.ID, name, out)
@@ -917,7 +954,7 @@ func (a *Agent) finalAnswer(ctx context.Context, ev Events) (string, error) {
 	clearRetry := a.reportRetries(ev)
 	msg, usage, err := a.Client.Stream(ctx, ai.Request{
 		Model:           a.Model,
-		Messages:        msgs,
+		Messages:        a.modeMessages(msgs),
 		Tools:           nil,
 		ReasoningEffort: a.Effort,
 		Temperature:     a.Temperature,

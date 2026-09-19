@@ -20,6 +20,9 @@ type promptCatalog struct {
 }
 
 func reservedPrompt(name string) bool {
+	if name == "review" {
+		return false
+	}
 	if registryFind("/"+name) != nil {
 		return true
 	}
@@ -113,18 +116,29 @@ func (m *model) promptCompletions(val string) (string, []cand) {
 		m.loadPrompts(false)
 		for _, tpl := range m.promptCatalog.items {
 			if strings.HasPrefix("/"+tpl.Name, val) {
-				desc := tpl.Description
-				if tpl.ArgumentHint != "" {
-					desc = tpl.ArgumentHint + " — " + desc
+				for i := len(cands) - 1; i >= 0; i-- {
+					if cands[i].Text == "/"+tpl.Name {
+						cands = append(cands[:i], cands[i+1:]...)
+					}
 				}
+				desc := tpl.Description
 				cands = append(cands, cand{Text: "/" + tpl.Name, Desc: desc})
 			}
 		}
 		sort.Slice(cands, func(i, j int) bool { return cands[i].Text < cands[j].Text })
 	}
 	for i := range cands {
-		if e := registryFind(cands[i].Text); head == "" && e != nil {
+		isTemplate := false
+		for _, tpl := range m.promptCatalog.items {
+			if cands[i].Text == "/"+tpl.Name {
+				isTemplate = true
+				break
+			}
+		}
+		if e := registryFind(cands[i].Text); head == "" && e != nil && !isTemplate {
 			cands[i].Desc = m.tr(e.Hint)
+		} else {
+			cands[i].Desc = m.tr(cands[i].Desc)
 		}
 	}
 	return head, cands

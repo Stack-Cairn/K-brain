@@ -16,6 +16,10 @@ Start with **`kn`**, short for **K**e **N**ao, the Chinese name 氪脑.
 
 [Quickstart](#quickstart) · [Usage](#usage) · [Building from source](#building-from-source) · [Documentation](#documentation) · [Repository layout](#repository-layout)
 
+<p align="center">
+  <img src="docs/assets/k-brain-tui.png" alt="K-brain TUI" width="900">
+</p>
+
 </div>
 
 ---
@@ -84,6 +88,56 @@ Replace `baseUrl`, `apiKey`, `model1`, and `model2` with your provider's values.
 - `/model refresh` fetches `baseUrl + "/models"`, which is `/v1/models` in this example. Use `/model` to select a model.
 - Restart after editing the file. The TUI can open without API credentials, but model requests require a valid configuration.
 
+Optional lifecycle hooks can run a local command for an agent event. The command receives a JSON event in `K_BRAIN_HOOK_EVENT`; a non-zero `PreToolUse` hook denies that tool call.
+
+```json
+{
+  "hooks": {
+    "SessionStart": [{"command": "echo session started"}],
+    "PreToolUse": [{"command": "echo $K_BRAIN_HOOK_EVENT", "shell": "bash", "timeout": 10}]
+  }
+}
+```
+
+Supported events are `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, and `Stop`. Hooks use the configured shell on Windows (`powershell`, `pwsh`, `bash`, `wsl`, or `cmd`) and the platform shell elsewhere.
+
+### Session files
+
+Sessions live under `~/.k-brain/sessions/<project-id>/<session-id>/session.jsonl` (or `$K_BRAIN_HOME/sessions`). Project IDs are stable hashes of the workspace path, keeping sessions grouped by project while exposing each full session ID.
+
+```text
+~/.k-brain/
+  config.json
+  brain.md
+  sessions/<project-id>/<session-id>/session.jsonl
+    <session-id>/
+      session.jsonl
+```
+
+Run `kn sessions` to list project-grouped session IDs. Use `kn sessions search <query>`, `kn sessions archive <id>`, or `kn sessions delete <id>` for navigation. Resume with `kn --resume <session-id>`; `/status` shows the current session file. Persistent standing instructions are stored in `~/.k-brain/brain.md` and edited with `/brain`. JSONL records include metadata, messages, tasks, compactions, schedules, and rewind snapshot references. SQLite storage and migration are no longer supported; existing database files are not read or modified.
+
+Project trust decisions use TOML at `~/.k-brain/trusted_folders.toml` (Windows: `~\.k-brain\trusted_folders.toml`), with one `[folders."<absolute-path>"]` table containing `trusted` and `decided_at` fields.
+
+### OS sandbox
+
+Configure command isolation in `config.json`:
+
+```json
+{"sandbox":{"mode":"strict","backend":"auto","network":false,"writable":[],"readOnly":[]}}
+```
+
+Linux uses Bubblewrap namespaces, macOS uses Seatbelt, and Windows uses WSL2 plus Bubblewrap (`backend: "wsl"`). Strict mode fails closed when its backend is unavailable. Shell, plugin, and background tools inherit the policy.
+
+### Plugins
+
+Put a plugin manifest at `.k-brain/plugins/<name>/plugin.json` or `~/.k-brain/plugins/<name>/plugin.json`:
+
+```json
+{"name":"sample","version":"1.0.0","command":["sample-plugin"],"prompt":"Additional instructions","tools":[{"name":"lookup","description":"Look up a value","inputSchema":{"type":"object"}}]}
+```
+
+The process receives one JSONL `tool.invoke` request and returns one JSON-RPC response. Plugins are explicitly enabled and inherit the sandbox. Manage them with `kn plugins list|install|enable|disable|remove|reload` or `/plugins`.
+
 ### 3. Start a task
 
 Run this in your project directory:
@@ -106,10 +160,11 @@ The TUI uses a full-screen terminal view with a bottom-anchored input area. The 
 
 | Input | Action |
 | --- | --- |
-| `/language` · `/language zh_cn` · `/language en` | Choose the interface language (Simplified Chinese / English) |
+| `/language` · `/language zh_cn` · `/language zh_tw` · `/language en` | Choose the interface language (Simplified Chinese / Traditional Chinese / English) |
 | `/model` · `/effort` | Switch models and adjust reasoning effort |
 | `/context` · `/compact` | Inspect context and compact it manually |
 | `/rewind` · `/fork` | Rewind to an earlier turn or branch a session |
+| `/forks` · `/export` · `/import` | Show the session tree, export Markdown/JSONL/HTML, or import JSONL |
 | `/title` · `/resume` | Rename or resume a session |
 | `/diff [--staged] [--stat]` | Inspect tracked Git changes locally, without a model request |
 | `/copy [N] [file]` | Copy the Nth latest assistant message with text, or save it to a new file |
@@ -144,7 +199,9 @@ Supported substitutions: `$1`, `$2`, `$@`, `$ARGUMENTS`, `${1:-default}`, `${@:-
 
 ### Interface language
 
-Run `/language` to open the language picker, then use ↑/↓ and Enter to apply or Esc to cancel. `/language zh_cn` and `/language en` switch directly and save `language` to `~/.k-brain/config.json`. English is the default; unknown values fall back to English.
+Run `/language` to open the language picker, then use ↑/↓ and Enter to apply or Esc to cancel. `/language zh_cn`, `/language zh_tw`, and `/language en` switch directly and save `language` to `~/.k-brain/config.json`. English is the default; unknown values fall back to English.
+
+`/export` chooses Markdown (`.md`), structured JSONL (`.jsonl`), or HTML (`.html`) from the file extension. `/import <path>` appends messages from a JSONL transcript, and `/forks` shows the current session and its fork relationships.
 
 The slash-command descriptions, help, input hints, primary navigation labels, and language/model picker controls switch immediately. Command names, model/provider identifiers, conversation content, and tool output remain unchanged. This setting does not instruct the model to reply in a specific language; some detailed diagnostics and secondary panels still use English.
 
@@ -169,7 +226,7 @@ kn run --format json --quiet --max-turns 8 --timeout 5m "Find and fix the build 
 | `kn sessions` | List saved sessions |
 | `kn update` | Update the installed version |
 
-The execution core is separate from the TUI and shares model adapters, tool loops, context compaction, background subtasks, and SQLite session storage. Current backend entry points are CLI, ACP, and MCP—not a standalone HTTP service. This repository does not include a Desktop frontend.
+The execution core is separate from the TUI and shares model adapters, tool loops, context compaction, background subtasks, and JSONL session files. Current backend entry points are CLI, ACP, and MCP—not a standalone HTTP service. This repository does not include a Desktop frontend.
 
 ### Platform notes
 

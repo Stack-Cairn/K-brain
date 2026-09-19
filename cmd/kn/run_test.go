@@ -319,7 +319,7 @@ func TestRunQuietJSON(t *testing.T) {
 
 func configDir() (string, error) { return os.Getenv("K_BRAIN_HOME"), nil }
 
-func sessionOpen(dir string) (*session.Store, error) { return session.Open(dir + "/sessions.db") }
+func sessionOpen(dir string) (*session.Store, error) { return session.OpenHome(dir) }
 
 func TestRunArgValidation(t *testing.T) {
 	runFixture(t, "never used", nil)

@@ -36,6 +36,11 @@ func (m *model) sessionInfo() string {
 			context = fmt.Sprintf("\ncontext: %d%% of %s", agent.EstimateTokens(m.agent.Messages)*100/m.agent.ContextLimit, fmtTok(m.agent.ContextLimit))
 		}
 	}
+	if m.store != nil && m.sessionID != "" {
+		if path := m.store.TranscriptPath(m.sessionID); path != "" {
+			context += "\nsession file: " + path
+		}
+	}
 	return dimStyle.Render(fmt.Sprintf("session\nid: %s\ntitle: %s\nmodel: %s\nprovider: %s\neffort: %s\nmessages: %d\nusage: %s\nworking directory: %s%s", id, title, model, provider, effort, messages, usage, cwd(), context))
 }
 

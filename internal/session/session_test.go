@@ -1,9 +1,8 @@
 package session
 
 import (
-	"context"
-	"database/sql"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,7 +12,7 @@ import (
 )
 
 func TestTaskRoundTrip(t *testing.T) {
-	st, err := Open(filepath.Join(t.TempDir(), "s.db"))
+	st, err := Open(filepath.Join(t.TempDir(), "sessions"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +61,7 @@ func TestTaskRoundTrip(t *testing.T) {
 }
 
 func TestStoreRoundTrip(t *testing.T) {
-	st, err := Open(filepath.Join(t.TempDir(), "s.db"))
+	st, err := Open(filepath.Join(t.TempDir(), "sessions"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +141,7 @@ func TestStoreRoundTrip(t *testing.T) {
 }
 
 func TestEffortRoundTrip(t *testing.T) {
-	st, err := Open(filepath.Join(t.TempDir(), "s.db"))
+	st, err := Open(filepath.Join(t.TempDir(), "sessions"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,7 +185,7 @@ func TestEffortRoundTrip(t *testing.T) {
 }
 
 func TestUserHistory(t *testing.T) {
-	st, err := Open(filepath.Join(t.TempDir(), "s.db"))
+	st, err := Open(filepath.Join(t.TempDir(), "sessions"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,7 +222,7 @@ func TestUserHistory(t *testing.T) {
 }
 
 func TestUserHistorySkipsInjected(t *testing.T) {
-	st, err := Open(filepath.Join(t.TempDir(), "s.db"))
+	st, err := Open(filepath.Join(t.TempDir(), "sessions"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,14 +249,18 @@ func TestUserHistorySkipsInjected(t *testing.T) {
 }
 
 func TestStoreEdgeCases(t *testing.T) {
-	if _, err := Open("/nonexistent-dir/x.db"); err == nil {
+	blocked := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(blocked, []byte("x"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Open(filepath.Join(blocked, "sessions")); err == nil {
 		t.Fatal("expected open error")
 	}
 	if truncate(strings.Repeat("a", 100), 10) != strings.Repeat("a", 9)+"…" {
 		t.Fatal("truncate long")
 	}
 
-	st, err := Open(filepath.Join(t.TempDir(), "s.db"))
+	st, err := Open(filepath.Join(t.TempDir(), "sessions"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -276,14 +279,16 @@ func TestStoreEdgeCases(t *testing.T) {
 		t.Fatalf("last exchange: %q %q", u, a)
 	}
 
-	st.db.ExecContext(context.Background(), `UPDATE messages SET content='{bad' WHERE session_id=?`, id1)
+	if err := os.WriteFile(st.TranscriptPath(id1), []byte("{bad"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	if _, _, err := st.Load(id1); err == nil {
 		t.Fatal("expected corrupt-row error")
 	}
 }
 
 func TestGoalPersistence(t *testing.T) {
-	st, err := Open(filepath.Join(t.TempDir(), "s.db"))
+	st, err := Open(filepath.Join(t.TempDir(), "sessions"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -305,7 +310,7 @@ func TestGoalPersistence(t *testing.T) {
 }
 
 func TestLoadSynthesizesDanglingToolResults(t *testing.T) {
-	st, err := Open(filepath.Join(t.TempDir(), "s.db"))
+	st, err := Open(filepath.Join(t.TempDir(), "sessions"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -358,7 +363,7 @@ func TestLoadSynthesizesDanglingToolResults(t *testing.T) {
 }
 
 func TestCompactionEvent(t *testing.T) {
-	st, err := Open(filepath.Join(t.TempDir(), "s.db"))
+	st, err := Open(filepath.Join(t.TempDir(), "sessions"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -441,7 +446,7 @@ func TestCompactionEvent(t *testing.T) {
 }
 
 func TestTodosAndUsagePersistence(t *testing.T) {
-	st, err := Open(filepath.Join(t.TempDir(), "s.db"))
+	st, err := Open(filepath.Join(t.TempDir(), "sessions"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -495,7 +500,7 @@ func TestTodosAndUsagePersistence(t *testing.T) {
 }
 
 func TestRecordCompactionCarriesModelAndUsage(t *testing.T) {
-	st, err := Open(filepath.Join(t.TempDir(), "s.db"))
+	st, err := Open(filepath.Join(t.TempDir(), "sessions"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -510,7 +515,7 @@ func TestRecordCompactionCarriesModelAndUsage(t *testing.T) {
 }
 
 func TestClearMessages(t *testing.T) {
-	st, err := Open(filepath.Join(t.TempDir(), "s.db"))
+	st, err := Open(filepath.Join(t.TempDir(), "sessions"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -536,7 +541,7 @@ func TestClearMessages(t *testing.T) {
 }
 
 func TestSnapshotRoundTrip(t *testing.T) {
-	st, err := Open(filepath.Join(t.TempDir(), "s.db"))
+	st, err := Open(filepath.Join(t.TempDir(), "sessions"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -585,7 +590,7 @@ func TestSnapshotRoundTrip(t *testing.T) {
 }
 
 func TestScheduleRoundTrip(t *testing.T) {
-	st, err := Open(filepath.Join(t.TempDir(), "s.db"))
+	st, err := Open(filepath.Join(t.TempDir(), "sessions"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -649,7 +654,7 @@ func TestScheduleRoundTrip(t *testing.T) {
 }
 
 func TestSubagentTranscriptRoundTrip(t *testing.T) {
-	st, err := Open(filepath.Join(t.TempDir(), "s.db"))
+	st, err := Open(filepath.Join(t.TempDir(), "sessions"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -697,7 +702,7 @@ func TestSubagentTranscriptRoundTrip(t *testing.T) {
 }
 
 func TestSubagentTranscriptExactIDNoPrefixCollision(t *testing.T) {
-	st, err := Open(filepath.Join(t.TempDir(), "s.db"))
+	st, err := Open(filepath.Join(t.TempDir(), "sessions"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -730,7 +735,7 @@ func TestSubagentTranscriptExactIDNoPrefixCollision(t *testing.T) {
 }
 
 func TestSubagentTranscriptResaveDeletesOrphanRows(t *testing.T) {
-	st, err := Open(filepath.Join(t.TempDir(), "s.db"))
+	st, err := Open(filepath.Join(t.TempDir(), "sessions"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -769,7 +774,7 @@ func TestSubagentTranscriptResaveDeletesOrphanRows(t *testing.T) {
 }
 
 func TestSubagentTranscriptAttributesSubModel(t *testing.T) {
-	st, err := Open(filepath.Join(t.TempDir(), "s.db"))
+	st, err := Open(filepath.Join(t.TempDir(), "sessions"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -794,15 +799,14 @@ func TestSubagentTranscriptAttributesSubModel(t *testing.T) {
 }
 
 func TestLatestInDir(t *testing.T) {
-	st, err := Open(filepath.Join(t.TempDir(), "s.db"))
+	st, err := Open(filepath.Join(t.TempDir(), "sessions"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer st.Close()
 
 	stamp := func(id string, at time.Time) {
-		if _, err := st.db.ExecContext(context.Background(),
-			`UPDATE sessions SET updated_at=? WHERE id=?`, at.UTC().Format(time.RFC3339), id); err != nil {
+		if err := st.update(id, func(d *sessionData) error { d.Meta.UpdatedAt = at.UTC(); return nil }); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -826,13 +830,13 @@ func TestLatestInDir(t *testing.T) {
 	} else if meta.ID != c {
 		t.Fatalf("LatestInDir(/b) = %s, want %s", meta.ID, c)
 	}
-	if _, err := st.LatestInDir("/none"); !errors.Is(err, sql.ErrNoRows) {
-		t.Fatalf("LatestInDir(/none) = %v, want sql.ErrNoRows", err)
+	if _, err := st.LatestInDir("/none"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("LatestInDir(/none) = %v, want ErrNotFound", err)
 	}
 }
 
 func TestLatestInDirExcludesSubagentTranscripts(t *testing.T) {
-	st, err := Open(filepath.Join(t.TempDir(), "s.db"))
+	st, err := Open(filepath.Join(t.TempDir(), "sessions"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -845,8 +849,7 @@ func TestLatestInDirExcludesSubagentTranscripts(t *testing.T) {
 	if err != nil || subID == "" {
 		t.Fatalf("subagent transcript save: id=%q err=%v", subID, err)
 	}
-	if _, err := st.db.ExecContext(context.Background(),
-		`UPDATE sessions SET cwd='/proj', updated_at=? WHERE id=?`, now(), subID); err != nil {
+	if err := st.update(subID, func(d *sessionData) error { d.Meta.CWD = "/proj"; d.Meta.UpdatedAt = time.Now().UTC(); return nil }); err != nil {
 		t.Fatal(err)
 	}
 
@@ -863,16 +866,14 @@ func TestLatestInDirExcludesSubagentTranscripts(t *testing.T) {
 }
 
 func TestLatestInDirSkipsEmptySessions(t *testing.T) {
-	st, err := Open(filepath.Join(t.TempDir(), "s.db"))
+	st, err := Open(filepath.Join(t.TempDir(), "sessions"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer st.Close()
 
 	empty, _ := st.Create("/x", "m", "p")
-	if _, err := st.db.ExecContext(context.Background(),
-		`UPDATE sessions SET updated_at=? WHERE id=?`,
-		time.Now().Add(-1*time.Hour).UTC().Format(time.RFC3339), empty); err != nil {
+	if err := st.update(empty, func(d *sessionData) error { d.Meta.UpdatedAt = time.Now().Add(-time.Hour).UTC(); return nil }); err != nil {
 		t.Fatal(err)
 	}
 	full, _ := st.Create("/x", "m", "p")

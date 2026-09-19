@@ -1,8 +1,10 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -61,17 +63,48 @@ func (r permRules) coveredBy(req tools.GateRequest) bool {
 
 func (m *model) installPermGate() {
 	m.perms = loadPermRules()
+	prog := func() *tea.Program { return m.prog }
+	var promptMu sync.Mutex
 	tools.Gate = func(req tools.GateRequest) (tools.GateDecision, string) {
-		if m.perms.coveredBy(req) {
-			return tools.GateAllowOnce, ""
+		promptMu.Lock()
+		defer promptMu.Unlock()
+		ctx := req.Context
+		if ctx == nil {
+			ctx = context.Background()
 		}
-		if m.prog == nil {
-			return tools.GateAllowOnce, ""
+		if ctx.Err() != nil {
+			return tools.GateReject, "cancelled"
+		}
+		p := prog()
+		if p == nil {
+			return tools.GateReject, "permission interface unavailable"
 		}
 		reply := make(chan permAnswer, 1)
-		m.prog.Send(permRequest{req: req, reply: reply})
-		ans := <-reply
-		return ans.decision, ans.redirect
+		p.Send(permRequest{req: req, reply: reply})
+		select {
+		case ans := <-reply:
+			return ans.decision, ans.redirect
+		case <-ctx.Done():
+			p.Send(permClose{reply: reply})
+			return tools.GateReject, "cancelled"
+		case <-m.permissionDone:
+			return tools.GateReject, "session closed"
+		}
+	}
+}
+
+type permClose struct{ reply chan permAnswer }
+
+func (m *model) receivePermission(msg permRequest) {
+	switch {
+	case msg.req.Context != nil && msg.req.Context.Err() != nil:
+		msg.reply <- permAnswer{tools.GateReject, "cancelled"}
+	case m.permissionMode == "plan":
+		msg.reply <- permAnswer{tools.GateReject, "Plan mode only allows read-only inspection"}
+	case m.permissionMode == "always" || m.perms.coveredBy(msg.req):
+		msg.reply <- permAnswer{decision: tools.GateAllowOnce}
+	default:
+		m.permDialog = &permDialog{req: msg.req, reply: msg.reply}
 	}
 }
 

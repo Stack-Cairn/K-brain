@@ -15,7 +15,7 @@ func (m *model) tr(text string) string { return i18n.Text(m.language(), text) }
 
 func (m *model) setLanguage(language string) bool {
 	if !i18n.Valid(language) {
-		m.append(errStyle.Render(m.tr("usage: /language [zh_cn|en]")))
+		m.append(errStyle.Render(m.tr("usage: /language [zh_cn|zh_tw|en]")))
 		return false
 	}
 	if m.cfg == nil {
@@ -43,16 +43,19 @@ func (m *model) languageCommand(args []string) {
 		return
 	}
 	if len(args) != 1 {
-		m.append(errStyle.Render(m.tr("usage: /language [zh_cn|en]")))
+		m.append(errStyle.Render(m.tr("usage: /language [zh_cn|zh_tw|en]")))
 		return
 	}
 	m.setLanguage(args[0])
 }
 
 func (m *model) languagePanel() *ppanel {
-	pp := &ppanel{kind: panelLanguage, title: "Language", list: []string{i18n.Chinese, i18n.English}}
-	if m.language() == i18n.English {
-		pp.midx = 1
+	pp := &ppanel{kind: panelLanguage, title: "Language", list: []string{i18n.Chinese, i18n.TraditionalChinese, i18n.English}}
+	for i, language := range pp.list {
+		if m.language() == language {
+			pp.midx = i
+			break
+		}
 	}
 	return pp
 }
@@ -60,6 +63,9 @@ func (m *model) languagePanel() *ppanel {
 func languageLabel(language string) string {
 	if language == i18n.Chinese {
 		return "zh_cn  简体中文"
+	}
+	if language == i18n.TraditionalChinese {
+		return "zh_tw  繁體中文"
 	}
 	return "en     English"
 }

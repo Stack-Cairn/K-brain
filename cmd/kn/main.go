@@ -75,6 +75,14 @@ func main() {
 		return
 	}
 
+	if flag.NArg() > 0 && flag.Arg(0) == "plugins" {
+		if err := pluginsCLI(flag.Args()[1:]); err != nil {
+			fmt.Fprintln(os.Stderr, "kn plugins:", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	if flag.NArg() > 0 && flag.Arg(0) == "acp" {
 		if err := acpCLI(flag.Args()[1:]); err != nil {
 			fmt.Fprintln(os.Stderr, "kn acp:", err)
@@ -92,7 +100,7 @@ func main() {
 	}
 
 	if flag.NArg() > 0 && flag.Arg(0) == "sessions" {
-		if err := sessionsCLI(); err != nil {
+		if err := sessionsCLI(flag.Args()[1:]...); err != nil {
 			fmt.Fprintln(os.Stderr, "kn:", err)
 			os.Exit(1)
 		}

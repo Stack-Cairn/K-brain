@@ -24,7 +24,7 @@ func TestSessionsCLI(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("K_BRAIN_HOME", dir)
 
-	st, _ := session.Open(filepath.Join(dir, "sessions.db"))
+	st, _ := session.OpenHome(dir)
 	id, _ := st.Create("/tmp", "kimi-k3-fast", "inference")
 	st.Save(id, 0, []ai.Message{
 		{Role: "user", Content: "how do I unstage a file", Authored: true},
@@ -37,7 +37,7 @@ func TestSessionsCLI(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
-	if !strings.Contains(out, "how do I unstage a file") || !strings.Contains(out, "kimi-k3-fast") {
+	if !strings.Contains(out, id) || !strings.Contains(out, filepath.Join(dir, "sessions")) || !strings.Contains(out, "how do I unstage a file") || !strings.Contains(out, "kimi-k3-fast") {
 		t.Fatalf("sessions should list id/title/model, got:\n%s", out)
 	}
 	if !strings.Contains(out, "just now") && !strings.Contains(out, time.Now().Format("2006-01-02")) {
@@ -58,7 +58,7 @@ func TestSessionsCLIEmptyAndUntitled(t *testing.T) {
 		t.Fatalf("an empty store should say so, got %q", out)
 	}
 
-	st, err := session.Open(filepath.Join(dir, "sessions.db"))
+	st, err := session.OpenHome(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func TestSessionsCLITruncatesTitle(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("K_BRAIN_HOME", dir)
 
-	st, err := session.Open(filepath.Join(dir, "sessions.db"))
+	st, err := session.OpenHome(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,11 +115,11 @@ func TestSessionsCLIStoreErrors(t *testing.T) {
 
 	dir := t.TempDir()
 	t.Setenv("K_BRAIN_HOME", dir)
-	if err := os.Mkdir(filepath.Join(dir, "sessions.db"), 0o700); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "sessions"), []byte("blocked"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := sessionsCLI(); err == nil {
-		t.Error("a sessions.db that is a directory should error")
+		t.Error("a sessions path that is a file should error")
 	}
 }
 
