@@ -26,7 +26,7 @@ func completionTable() []cand {
 var execNow = map[string]bool{
 	"/archive": true, "/btw": true, "/clear": true, "/compact": true, "/computer-use": true, "/computer": true, "/context-doctor": true, "/effort": true, "/goal": true, "/goal-from-context": true, "/help": true,
 	"/mcp": true, "/model": true, "/mouse": true, "/pwd": true, "/quit": true, "/report": true, "/resume": true, "/subagents": true, "/tasks": true, "/import": true,
-	"/rewind": true, "/language": true, "/plugins": true,
+	"/rewind": true, "/language": true, "/plugins": true, "/privacy": true,
 }
 
 func completions(val string, models, providers, skillCands, efforts []cand) (head string, cands []cand) {
@@ -60,7 +60,7 @@ func completions(val string, models, providers, skillCands, efforts []cand) (hea
 	case len(fields) == 1 && fields[0] == "/permissions":
 		cands = filterPrefix([]cand{{"normal", "Confirm commands and file changes"}, {"plan", "Read-only planning"}, {"always", "Always allow tool execution"}}, token)
 	case len(fields) == 1 && fields[0] == "/language":
-		cands = filterPrefix([]cand{{"zh_cn", "简体中文"}, {"zh_tw", "繁體中文"}, {"en", "English"}}, token)
+		cands = filterPrefix([]cand{{"zh_cn", "简体中文"}, {"zh_Hant", "繁體中文"}, {"en", "English"}}, token)
 	case len(fields) == 1 && fields[0] == "/effort":
 		cands = filterPrefix(efforts, token)
 	case len(fields) == 1 && fields[0] == "/compact":
@@ -84,7 +84,13 @@ func completions(val string, models, providers, skillCands, efforts []cand) (hea
 	default:
 		cands = pathMatches(token)
 	}
-	sort.Slice(cands, func(a, b int) bool { return cands[a].Text < cands[b].Text })
+	sort.Slice(cands, func(a, b int) bool {
+		left, right := strings.ToLower(cands[a].Text), strings.ToLower(cands[b].Text)
+		if left == right {
+			return cands[a].Text < cands[b].Text
+		}
+		return left < right
+	})
 	return head, cands
 }
 

@@ -160,7 +160,7 @@ The TUI uses a full-screen terminal view with a bottom-anchored input area. The 
 
 | Input | Action |
 | --- | --- |
-| `/language` · `/language zh_cn` · `/language zh_tw` · `/language en` | Choose the interface language (Simplified Chinese / Traditional Chinese / English) |
+| `/language` · `/language zh_cn` · `/language zh_Hant` · `/language en` | Choose the interface language (Simplified Chinese / Traditional Chinese / English) |
 | `/model` · `/effort` | Switch models and adjust reasoning effort |
 | `/context` · `/compact` | Inspect context and compact it manually |
 | `/rewind` · `/fork` | Rewind to an earlier turn or branch a session |
@@ -199,7 +199,7 @@ Supported substitutions: `$1`, `$2`, `$@`, `$ARGUMENTS`, `${1:-default}`, `${@:-
 
 ### Interface language
 
-Run `/language` to open the language picker, then use ↑/↓ and Enter to apply or Esc to cancel. `/language zh_cn`, `/language zh_tw`, and `/language en` switch directly and save `language` to `~/.k-brain/config.json`. English is the default; unknown values fall back to English.
+Run `/language` to open the language picker, then use ↑/↓ and Enter to apply or Esc to cancel. `/language zh_cn`, `/language zh_Hant`, and `/language en` switch directly and save `language` to `~/.k-brain/config.json`. English is the default; unknown values fall back to English.
 
 `/export` chooses Markdown (`.md`), structured JSONL (`.jsonl`), or HTML (`.html`) from the file extension. `/import <path>` appends messages from a JSONL transcript, and `/forks` shows the current session and its fork relationships.
 

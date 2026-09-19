@@ -130,7 +130,7 @@ func TestLanguageRegistryCoverageAndWidth(t *testing.T) {
 		t.Fatal(options)
 	}
 	_, filtered := m.promptCompletions("/language zh")
-	if len(filtered) != 2 || filtered[0].Text != "zh_cn" || filtered[1].Text != "zh_tw" {
+	if len(filtered) != 2 || filtered[0].Text != "zh_cn" || filtered[1].Text != "zh_Hant" {
 		t.Fatal(filtered)
 	}
 	other := compactCmdModel()

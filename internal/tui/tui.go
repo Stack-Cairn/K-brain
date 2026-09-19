@@ -148,10 +148,11 @@ type model struct {
 	cfgExtra map[string]string
 	cfgMod   time.Time
 
-	input  textarea.Model
-	spin   spinner.Model
-	vp     viewport.Model
-	blocks []block
+	input       textarea.Model
+	spin        spinner.Model
+	vp          viewport.Model
+	blocks      []block
+	ancientMode bool
 
 	msgBlock  []int
 	follow    bool
@@ -989,15 +990,24 @@ type block struct {
 	lines    int
 	width    int
 	stale    bool
+	ancient  bool
 }
 
 func (b *block) renderAt(width int) string {
-	if !b.stale && b.width == width {
+	return b.renderAtMode(width, false)
+}
+
+func (b *block) renderAtMode(width int, ancient bool) string {
+	if !b.stale && b.width == width && b.ancient == ancient {
 		return b.rendered
 	}
-	b.rendered = b.render(width)
+	if ancient && (b.kind == blockAssistant || b.kind == blockUser) {
+		b.rendered = accentStyle.Render(renderAncientText(ansi.Strip(b.render(width)), width))
+	} else {
+		b.rendered = b.render(width)
+	}
 	b.lines = lipgloss.Height(b.rendered)
-	b.width, b.stale = width, false
+	b.width, b.ancient, b.stale = width, ancient, false
 	return b.rendered
 }
 
@@ -1098,7 +1108,7 @@ func (m *model) refreshVP() {
 			b.WriteString("\n\n")
 			line++
 		}
-		r := m.blocks[i].renderAt(width)
+		r := m.blocks[i].renderAtMode(width, m.ancientMode)
 		m.blocks[i].y0 = line
 		m.blocks[i].y1 = line + m.blocks[i].lines - 1
 		b.WriteString(r)
@@ -3450,7 +3460,7 @@ func busyCmd(text string) bool {
 		return false
 	}
 	switch fields[0] {
-	case "/permissions", "/language", "/editor", "/copy", "/diff", "/prompts", "/help", "/theme", "/mouse", "/effort", "/subagents", "/tasks", "/subagent", "/cd", "/pwd", "/report", "/export", "/import", "/fork", "/forks", "/context", "/context-doctor", "/doctor", "/info", "/mcps", "/mcp", "/plugins", "/new", "/plan", "/session-info", "/status", "/title", "/undo", "/rewind", "/view-plan":
+	case "/permissions", "/language", "/editor", "/copy", "/diff", "/prompts", "/help", "/theme", "/mouse", "/effort", "/subagents", "/tasks", "/subagent", "/cd", "/pwd", "/report", "/export", "/import", "/fork", "/forks", "/context", "/context-doctor", "/doctor", "/info", "/mcps", "/mcp", "/plugins", "/new", "/plan", "/session-info", "/status", "/title", "/undo", "/rewind", "/view-plan", "/privacy", "/ancient":
 		return true
 	case "/auth":
 		return true
@@ -3492,6 +3502,10 @@ func (m *model) command(text string) (tea.Model, tea.Cmd) {
 		m.append(dimStyle.Render("(conversation cleared)"))
 	case "/permissions":
 		m.permissionCommand(fields[1:])
+	case "/privacy":
+		m.privacyCommand(fields[1:])
+	case "/ancient":
+		m.ancientCommand(fields[1:])
 	case "/memory":
 		m.memoryCommand(fields[1:])
 	case "/schedule":
@@ -4020,6 +4034,9 @@ func (m *model) View() string {
 		if m.namePrompt != nil && m.namePrompt.mask {
 			iv = m.namePrompt.label + " ┃ " + m.namePrompt.maskedValue(m.input.Value())
 		}
+		if m.ancientInput() {
+			iv = m.ancientize(iv)
+		}
 		raw := strings.Split(iv, "\n")
 		m.inputLines = make([]string, len(raw))
 		for i, ln := range raw {
@@ -4061,9 +4078,7 @@ func (m *model) viewBody() string {
 	}
 	m.effortX = max(m.width-lipgloss.Width(right)-2, 0)
 	left = truncLine(left, max(m.width-lipgloss.Width(right)-4, 0))
-	{
-		b.WriteString(kbrainHeaderLabel(m.width, left, right, m.tr("commands")) + "\n")
-	}
+	b.WriteString(kbrainHeaderLabel(m.width, left, right, m.tr("commands")) + "\n")
 	if m.palette != nil {
 
 		b.WriteString(m.paletteView())
@@ -4086,11 +4101,11 @@ func (m *model) viewBody() string {
 	b.WriteString(m.viewportView() + "\n")
 
 	if cv := m.thinkViewCapped(); m.curThink != "" && cv != "" {
-		b.WriteString("\n" + cv + "\n")
+		b.WriteString("\n" + m.ancientize(cv) + "\n")
 	}
 
 	if cv := m.currentViewCapped(); m.current != "" && cv != "" {
-		b.WriteString("\n" + cv + "\n")
+		b.WriteString("\n" + m.ancientize(cv) + "\n")
 	}
 	if m.iactive != nil {
 		b.WriteString("\n" + m.interactiveView() + "\n")
@@ -4115,7 +4130,7 @@ func (m *model) viewBody() string {
 		if m.busy && m.input.Value() == "" {
 			nav = " · ↑/↓ select · del removes"
 		}
-		b.WriteString(dimStyle.Render(fmt.Sprintf(" ⧗ queued (%d) — enter on empty input to steer into this turn%s", len(m.queue), nav)) + "\n")
+		b.WriteString(dimStyle.Render(fmt.Sprintf("queued (%d) — enter on empty input to steer into this turn%s", len(m.queue), nav)) + "\n")
 		for i, q := range m.queue {
 
 			line := ansi.Truncate(youStyle.Render(" "+glyphUser)+q, m.width, "…")
@@ -4143,7 +4158,12 @@ func (m *model) viewBody() string {
 			inputView = m.inputArgumentView(m.highlightInput(sanitizeInputView(m.input.View())))
 		}
 		frameWidth := max(m.width-2, 1)
-		b.WriteString(kbrainPromptFrame(m.height).Width(frameWidth).Render(inputView))
+		if m.ancientInput() {
+			inputView = m.ancientize(inputView)
+			b.WriteString(inputView)
+		} else {
+			b.WriteString(kbrainPromptFrame(m.height).Width(frameWidth).Render(inputView))
+		}
 	}
 	if m.quit1 {
 
@@ -4162,8 +4182,21 @@ func (m *model) viewBody() string {
 	if dock := m.tasksDock(); dock != "" {
 		b.WriteString("\n" + dock)
 	}
-	b.WriteString("\n" + accentStyle.Render(m.permissionModeLabel()) + "  ·  " + shortcutStyle.Render(m.tr("shift+tab mode  ·  ctrl+c cancel  ·  ctrl+p menu")) + "\n\n" + m.statusView())
+	footer := accentStyle.Render(m.permissionModeLabel()) + "  ·  " + shortcutStyle.Render(m.tr("shift+tab mode  ·  ctrl+c cancel  ·  ctrl+p menu")) + "\n\n" + m.statusView()
+	b.WriteString("\n" + footer)
 	return b.String()
+}
+
+func (m *model) ancientInput() bool {
+	return m.ancientMode && m.namePrompt == nil && strings.TrimSpace(m.input.Value()) != "" && !strings.HasPrefix(strings.TrimSpace(m.input.Value()), "/")
+}
+
+func (m *model) ancientize(s string) string {
+	if !m.ancientMode {
+		return s
+	}
+	w := max(m.width-2, 8)
+	return renderAncientText(ansi.Strip(s), w)
 }
 
 const inputPlaceholder = "Ask k-brain anything… (/ for commands, tab completes)"

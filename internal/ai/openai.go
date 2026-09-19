@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Stack-Cairn/K-brain/internal/privacy"
 )
 
 type Message struct {
@@ -355,7 +357,7 @@ func New(baseURL, apiKey string) *OpenAI {
 	return &OpenAI{
 		BaseURL:        strings.TrimRight(baseURL, "/"),
 		APIKey:         apiKey,
-		HTTP:           &http.Client{Timeout: 10 * time.Minute},
+		HTTP:           &http.Client{Transport: privacy.WrapTransport(http.DefaultTransport), Timeout: 10 * time.Minute},
 		CacheRetention: "short",
 	}
 }

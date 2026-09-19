@@ -160,7 +160,7 @@ TUI 使用当前终端的全屏界面，输入区固定在底部。首轮对话�
 
 | 输入 | 功能 |
 | --- | --- |
-| `/language` · `/language zh_cn` · `/language zh_tw` · `/language en` | 选择界面语言（简体中文 / 繁體中文 / English） |
+| `/language` · `/language zh_cn` · `/language zh_Hant` · `/language en` | 选择界面语言（简体中文 / 繁體中文 / English） |
 | `/model` · `/effort` | 切换模型、调整推理强度 |
 | `/context` · `/compact` | 查看上下文、手动压缩 |
 | `/rewind` · `/fork` | 回退到先前轮次、创建会话分支 |
@@ -199,7 +199,7 @@ argument-hint: "<模块> [关注点]"
 
 ### 界面语言
 
-输入 `/language` 打开选择器，↑/↓ 选择、Enter 应用、Esc 取消；也可以直接执行 `/language zh_cn`、`/language zh_tw` 或 `/language en`。设置保存到 `~/.k-brain/config.json` 的 `language` 字段，默认英文，未知值回退为英文。
+输入 `/language` 打开选择器，↑/↓ 选择、Enter 应用、Esc 取消；也可以直接执行 `/language zh_cn`、`/language zh_Hant` 或 `/language en`。设置保存到 `~/.k-brain/config.json` 的 `language` 字段，默认英文，未知值回退为英文。
 
 `/export` 根据扩展名生成 Markdown（`.md`）、结构化 JSONL（`.jsonl`）或 HTML（`.html`）文件；`/import <path>` 可将 JSONL 消息追加到当前会话。`/forks` 显示当前会话及其分支关系。
 
