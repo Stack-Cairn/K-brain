@@ -231,7 +231,7 @@ func TestResumeRestoresUsage(t *testing.T) {
 	if err := st.Save(id, 1, msgs, m.modelName, m.provName); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.SetUsage(id, 12000, 8000, 1500, nil); err != nil {
+	if err := st.SetUsage(id, ai.UsageSummary{Total: ai.Usage{PromptTokens: 12000, PromptCacheHitTokens: 8000, CompletionTokens: 1500}}); err != nil {
 		t.Fatal(err)
 	}
 

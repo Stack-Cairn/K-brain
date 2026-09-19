@@ -25,10 +25,10 @@ func TestCatalogLites(t *testing.T) {
 	if len(a.ReasoningEfforts) != 2 || len(a.InputModalities) != 2 {
 		t.Errorf("efforts/modalities not carried: %+v", a)
 	}
-	if a.InPrice == 0 || a.OutPrice == 0 || a.CacheReadPrice == 0 {
+	if a.Pricing == nil || a.Pricing.Input == 0 || a.Pricing.Output == 0 || a.Pricing.CacheRead == 0 || a.Pricing.CacheWrite != a.Pricing.Input {
 		t.Errorf("pricing not parsed: %+v", a)
 	}
-	if b := lites[1]; b.InPrice != 0 || b.OutPrice != 0 || len(b.InputModalities) != 0 {
+	if b := lites[1]; b.Pricing != nil || len(b.InputModalities) != 0 {
 		t.Errorf("pricing-less model should stay zero-rated: %+v", b)
 	}
 }

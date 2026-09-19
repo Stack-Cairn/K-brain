@@ -39,6 +39,13 @@ func FanIn(evs ...Events) Events {
 				}
 			}
 		},
+		OnToolOutput: func(id, output string) {
+			for _, e := range evs {
+				if e.OnToolOutput != nil {
+					e.OnToolOutput(id, output)
+				}
+			}
+		},
 		OnSteer: func(text string) {
 			for _, e := range evs {
 				if e.OnSteer != nil {
@@ -71,6 +78,20 @@ func FanIn(evs ...Events) Events {
 			for _, e := range evs {
 				if e.OnUsage != nil {
 					e.OnUsage(u)
+				}
+			}
+		},
+		OnRetry: func(event ai.RetryEvent) {
+			for _, e := range evs {
+				if e.OnRetry != nil {
+					e.OnRetry(event)
+				}
+			}
+		},
+		OnDecay: func(n int) {
+			for _, e := range evs {
+				if e.OnDecay != nil {
+					e.OnDecay(n)
 				}
 			}
 		},

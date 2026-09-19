@@ -2,8 +2,16 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"strings"
 )
+
+func Authorize(ctx context.Context, tool, command string) error {
+	if deny := checkGate(ctx, tool, command); deny != "" {
+		return errors.New(deny)
+	}
+	return nil
+}
 
 type GateDecision int
 
@@ -21,6 +29,16 @@ type GateRequest struct {
 }
 
 var Gate func(GateRequest) (GateDecision, string)
+
+type gateContextKey struct{}
+
+type contextGate struct {
+	check func(GateRequest) (GateDecision, string)
+}
+
+func WithGate(ctx context.Context, gate func(GateRequest) (GateDecision, string)) context.Context {
+	return context.WithValue(ctx, gateContextKey{}, contextGate{check: gate})
+}
 
 var arity = map[string]int{
 
@@ -64,10 +82,16 @@ func CommandRule(command string) string {
 }
 
 func checkGate(ctx context.Context, tool, command string) string {
-	if Gate == nil {
+	var gate func(GateRequest) (GateDecision, string)
+	if scoped, ok := ctx.Value(gateContextKey{}).(contextGate); ok {
+		gate = scoped.check
+	} else {
+		gate = Gate
+	}
+	if gate == nil {
 		return ""
 	}
-	decision, redirect := Gate(GateRequest{Context: ctx, Tool: tool, Command: command, Rule: CommandRule(command)})
+	decision, redirect := gate(GateRequest{Context: ctx, Tool: tool, Command: command, Rule: CommandRule(command)})
 	if decision == GateReject {
 		if redirect == "" {
 			redirect = "the user rejected this action"

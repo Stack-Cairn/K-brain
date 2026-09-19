@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/Stack-Cairn/K-brain/internal/agent"
-	"github.com/Stack-Cairn/K-brain/internal/ai"
 	"github.com/Stack-Cairn/K-brain/internal/tools/bashrun"
 )
 
@@ -121,10 +120,14 @@ func (m *model) fork(cut int, title string) {
 		if cut+1 <= len(m.agent.Messages) {
 			m.future = nil
 		} else {
-			m.applyRewind(cut + 1)
+			if _, ok := m.applyRewind(cut + 1); !ok {
+				return
+			}
 		}
 	}
-	m.persist()
+	if !m.persist() {
+		return
+	}
 	if m.sessionID == "" {
 		return
 	}
@@ -134,16 +137,25 @@ func (m *model) fork(cut int, title string) {
 	if meta, _, err := m.store.Load(oldID); err == nil && meta.Title != "" {
 		oldTitle = meta.Title
 	}
-	newID, err := m.store.Fork(oldID, cut, title)
+	boundary, err := m.history.Boundary(cut + 1)
+	if err != nil {
+		m.append(errStyle.Render("fork failed: " + err.Error()))
+		return
+	}
+	newID, err := m.store.Fork(oldID, boundary-1, title)
 	if err != nil {
 		m.append(errStyle.Render("fork failed: " + err.Error()))
 		return
 	}
 	m.sessionID = newID
 	m.agent.Tasks().SetSessionID(newID)
-	m.agent.Messages = m.agent.Messages[:cut+1]
+	m.agent.SetSessionID(newID)
+	if err := m.loadHistory(newID); err != nil {
+		m.append(errStyle.Render("fork reload failed: " + err.Error()))
+		return
+	}
+	m.sessTitle, m.titled = title, true
 	m.future = nil
-	m.saved = cut + 1
 	m.rebuildTranscript()
 	m.append(dimStyle.Render(fmt.Sprintf("⑂ forked %q → %q (%s) — the original is under /resume", oldTitle, title, newID)))
 }
@@ -163,7 +175,16 @@ func (m *model) busyFork(title string) {
 		return
 	}
 	oldTitle := m.sessionID
-	if meta, _, err := m.store.Load(m.sessionID); err == nil && meta.Title != "" {
+	meta, msgs, err := m.store.Load(m.sessionID)
+	if err != nil {
+		m.append(errStyle.Render("fork failed: " + err.Error()))
+		return
+	}
+	if len(msgs) == 0 {
+		m.append(dimStyle.Render("(nothing to fork yet — the first turn hasn't been saved; /fork again after this turn)"))
+		return
+	}
+	if meta.Title != "" {
 		oldTitle = meta.Title
 	}
 
@@ -193,6 +214,7 @@ func (m *model) switchToForked(id string) {
 	} else {
 		m.agent = agent.New(m.agent.Client, m.agent.Model, m.agent.MaxTokens, m.sysPrompt, agent.WithExperimental(m.agent.Experimental()))
 		m.agent.ModelName, m.agent.Provider = m.modelName, m.provName
+		m.agent.Vision = m.supportsVision()
 		m.agent.ContextLimit = m.contextLimitFor(m.provName, m.agent.Model)
 	}
 	m.applyCompactModel()
@@ -203,21 +225,17 @@ func (m *model) switchToForked(id string) {
 	if meta.Effort != "" && slices.Contains(m.effortsFor(), meta.Effort) {
 		m.agent.Effort = meta.Effort
 	}
-	if meta.UsageIn > 0 || meta.UsageOut > 0 {
-		u := ai.Usage{PromptTokens: meta.UsageIn, CompletionTokens: meta.UsageOut}
-		if meta.UsageCached > 0 {
-			u.PromptTokensDetails = &struct {
-				CachedTokens int `json:"cached_tokens"`
-			}{CachedTokens: meta.UsageCached}
-		}
-		m.agent.SetUsage(u)
-	}
-	m.agent.SetSubUsage(meta.SubUsage)
+	m.agent.RestoreUsage(meta.UsageSummary(msgs))
 	m.sessionID = meta.ID
 	m.sessTitle = meta.Title
 	bashrun.SetMarkers(meta.ID, m.agent.Model)
-	m.agent.Messages = append(m.agent.Messages, msgs...)
-	m.saved = len(m.agent.Messages)
+	if err := m.loadHistory(meta.ID); err != nil {
+		m.append(errStyle.Render("fork reload failed: " + err.Error()))
+		return
+	}
+	m.agent.Tasks().SetSessionID(meta.ID)
+	m.agent.SetSessionID(meta.ID)
+	m.agent.LoadTodosJSON(m.store.Todos(meta.ID))
 	m.goal = meta.Goal
 	m.goalRounds = 0
 	m.titled = true

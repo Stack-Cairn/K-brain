@@ -33,56 +33,25 @@ type BackgroundTask struct {
 	StartedAt   time.Time
 	EndedAt     time.Time
 
-	Restored bool
+	Restored    bool
+	FollowingUp bool
 
 	Done chan struct{}
 
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	sub *Agent
+	sub          *Agent
+	worktreePath string
+	followCancel context.CancelFunc
 
 	SubMessages []ai.Message
 
-	SubUsage    ai.Usage
-	SubSubUsage map[string]ai.Usage
+	SubUsage      ai.Usage
+	SubModelUsage map[string]ai.Usage
+	SubSubUsage   map[string]ai.Usage
 
 	SubModel string
-}
-
-type JournaledEvent struct {
-	Kind  int
-	S, S2 string
-}
-
-type taskJournal struct {
-	events    []JournaledEvent
-	bytes     int
-	Truncated bool
-}
-
-const journalBudget = 128 * 1024
-
-func (j *taskJournal) append(kind int, s, s2 string) {
-	if kind == 0 && len(j.events) > 0 && j.events[len(j.events)-1].Kind == 0 {
-		j.events[len(j.events)-1].S += s
-		j.bytes += len(s)
-	} else {
-		j.events = append(j.events, JournaledEvent{Kind: kind, S: s, S2: s2})
-		j.bytes += len(s) + len(s2)
-	}
-	for j.bytes > journalBudget && len(j.events) > 1 {
-		j.bytes -= len(j.events[0].S) + len(j.events[0].S2)
-		j.events = j.events[1:]
-		j.Truncated = true
-	}
-
-	if len(j.events) == 1 && len(j.events[0].S) > journalBudget {
-		drop := len(j.events[0].S) - journalBudget
-		j.events[0].S = j.events[0].S[drop:]
-		j.bytes -= drop
-		j.Truncated = true
-	}
 }
 
 type taskRegistry struct {
@@ -91,12 +60,16 @@ type taskRegistry struct {
 
 	journals map[string]*taskJournal
 
-	subs map[string][]Events
+	subs map[string][]*taskSubscription
 
 	OnChange func(*BackgroundTask)
 
 	OnRecord  func(sessionID string, t *BackgroundTask)
 	sessionID atomic.Pointer[string]
+}
+
+type taskSubscription struct {
+	events Events
 }
 
 func (r *taskRegistry) SetSessionID(id string) {
@@ -115,7 +88,7 @@ func (r *taskRegistry) recordSession() string {
 }
 
 func newTaskRegistry() *taskRegistry {
-	return &taskRegistry{tasks: map[string]*BackgroundTask{}, subs: map[string][]Events{}, journals: map[string]*taskJournal{}}
+	return &taskRegistry{tasks: map[string]*BackgroundTask{}, subs: map[string][]*taskSubscription{}, journals: map[string]*taskJournal{}}
 }
 
 func (r *taskRegistry) List() []BackgroundTask {
@@ -145,7 +118,7 @@ func taskIDNum(id string) int64 {
 
 func taskSlug(description string, n int64) string {
 	words := strings.FieldsFunc(strings.ToLower(description), func(r rune) bool {
-		return r < 'a' || r > 'z' && (r < '0' || r > '9')
+		return (r < 'a' || r > 'z') && (r < '0' || r > '9')
 	})
 	var kept []string
 	for _, w := range words {
@@ -178,7 +151,7 @@ func (r *taskRegistry) ClearSettled(keep ...string) int {
 	defer r.mu.Unlock()
 	n := 0
 	for id, t := range r.tasks {
-		if !slices.Contains(keep, id) && t.Status != TaskRunning {
+		if !slices.Contains(keep, id) && t.Status != TaskRunning && !t.FollowingUp {
 			delete(r.tasks, id)
 			delete(r.subs, id)
 			delete(r.journals, id)
@@ -191,23 +164,31 @@ func (r *taskRegistry) ClearSettled(keep ...string) int {
 func (r *taskRegistry) Cancel(id string) bool {
 	r.mu.Lock()
 	t, ok := r.tasks[id]
-	running := ok && t.Status == TaskRunning
+	var cancel context.CancelFunc
+	if ok {
+		if t.FollowingUp {
+			cancel = t.followCancel
+		} else if t.Status == TaskRunning {
+			cancel = t.cancel
+		}
+	}
 	r.mu.Unlock()
-	if !running {
+	if cancel == nil {
 		return false
 	}
-	t.cancel()
+	cancel()
 	return true
 }
 
 func (r *taskRegistry) settle(id string, status TaskStatus, report string) {
 	r.mu.Lock()
 	t, ok := r.tasks[id]
-	if !ok {
+	if !ok || t.Status != TaskRunning {
 		r.mu.Unlock()
 		return
 	}
 	t.Status, t.Report, t.EndedAt = status, report, time.Now()
+	delete(r.subs, id)
 	r.mu.Unlock()
 
 	if r.OnChange != nil {
@@ -223,28 +204,69 @@ var taskIDCounter atomic.Int64
 
 func (a *Agent) StartBackground(description, prompt string, o SubModel) *BackgroundTask {
 	t := a.RegisterBackground(description, prompt, o)
-	a.launchBackground(t)
+	if a.WorktreeSubagents {
+		go func() {
+			if _, err := a.prepareBackground(t, true); err != nil {
+				a.Steer(fmt.Sprintf("[subagent %s] %s", t.ID, err))
+			}
+		}()
+	} else {
+		a.launchBackground(t)
+	}
 	return t
 }
 
-func (a *Agent) RegisterBackground(description, prompt string, o SubModel) *BackgroundTask {
-	if a.bg == nil {
-		a.bg = newTaskRegistry()
+func (a *Agent) prepareBackground(t *BackgroundTask, worktree bool) (string, error) {
+	path := ""
+	var err error
+	if worktree {
+		path, err = provisionSubagentWorktreeAt(t.ctx, t.sub.WorkingDir, t.ID)
 	}
-	id := taskSlug(description, taskIDCounter.Add(1))
-	base := context.Background()
-	if a.SandboxPolicy != nil {
+	if err == nil {
+		err = t.ctx.Err()
+	}
+	if err != nil {
+		status := TaskError
+		if t.ctx.Err() != nil {
+			status = TaskCancelled
+		}
+		if path != "" {
+			err = fmt.Errorf("prepare subagent workspace at %s: %w", path, err)
+		} else {
+			err = fmt.Errorf("prepare subagent workspace: %w", err)
+		}
+		t.cancel()
+		a.Tasks().settle(t.ID, status, err.Error())
+		return "", err
+	}
+	a.LaunchBackground(t, path)
+	return path, nil
+}
+
+func (a *Agent) RegisterBackground(description, prompt string, o SubModel) *BackgroundTask {
+	return a.RegisterBackgroundContext(context.Background(), description, prompt, o)
+}
+
+func (a *Agent) RegisterBackgroundContext(parent context.Context, description, prompt string, o SubModel) *BackgroundTask {
+	r := a.Tasks()
+	base := parent
+	if base == nil {
+		base = context.Background()
+	}
+	if a.SandboxPolicy != nil && sandbox.FromContext(base) == nil {
 		base = sandbox.WithPolicy(base, a.SandboxPolicy)
 	}
 	taskCtx, cancel := context.WithCancel(base)
-	sub := a.newSub(o)
+	sub := a.newSubContext(base, o)
 
 	scope := a.SessionIDValue()
 	if scope == "" {
 		scope = a.cacheKey
 	}
-	if scope != "" {
-		sub.SetCacheKey(scope + "/" + id)
+	r.mu.Lock()
+	id := taskSlug(description, taskIDCounter.Add(1))
+	for r.tasks[id] != nil {
+		id = taskSlug(description, taskIDCounter.Add(1))
 	}
 	t := &BackgroundTask{
 		ID: id, Description: description, Prompt: prompt,
@@ -254,21 +276,27 @@ func (a *Agent) RegisterBackground(description, prompt string, o SubModel) *Back
 
 		SubModel: sub.Model,
 	}
-	a.bg.mu.Lock()
-	a.bg.tasks[id] = t
-	a.bg.mu.Unlock()
-	if a.bg.OnChange != nil {
-		a.bg.OnChange(t)
+	r.tasks[id] = t
+	r.mu.Unlock()
+	if scope != "" {
+		sub.SetCacheKey(scope + "/" + id)
 	}
-	if a.bg.OnRecord != nil {
-		a.bg.OnRecord(a.bg.recordSession(), t)
+	if r.OnChange != nil {
+		r.OnChange(t)
+	}
+	if r.OnRecord != nil {
+		r.OnRecord(r.recordSession(), t)
 	}
 	return t
 }
 
 func (a *Agent) LaunchBackground(t *BackgroundTask, worktreePath string) {
 	if worktreePath != "" {
-		t.sub.Steer("Work entirely inside the git worktree at " + worktreePath + " (run `cd " + worktreePath + "` first; it is your own branch, isolated from other agents). Commit your changes there.")
+		a.bg.mu.Lock()
+		t.worktreePath = worktreePath
+		a.bg.mu.Unlock()
+		t.sub.setWorktree(worktreePath)
+		t.sub.Steer("Work entirely inside the git worktree at " + worktreePath + ". Your tools already use this working directory; its branch is isolated from other agents.")
 	}
 	a.launchBackground(t)
 }
@@ -276,27 +304,31 @@ func (a *Agent) LaunchBackground(t *BackgroundTask, worktreePath string) {
 func (a *Agent) launchBackground(t *BackgroundTask) {
 	id, description, prompt := t.ID, t.Description, t.Prompt
 	taskCtx := t.ctx
+	if t.sub.SandboxPolicy != nil {
+		taskCtx = sandbox.WithPolicy(taskCtx, t.sub.SandboxPolicy)
+	}
 	go func() {
+		defer t.cancel()
 
 		report, err := t.sub.Turn(taskCtx, prompt, a.bg.emitter(id))
 		status := TaskDone
 		text := report
 		switch {
-		case err != nil && taskCtx.Err() == context.Canceled:
-			status, text = TaskCancelled, "cancelled"
+		case taskCtx.Err() != nil:
+			status, text = TaskCancelled, taskCtx.Err().Error()
 		case err != nil:
 			status, text = TaskError, err.Error()
+		}
+		if t.worktreePath != "" {
+			text += "\n\nWorktree: " + t.worktreePath
 		}
 
 		a.bg.mu.Lock()
 		t.SubMessages = t.sub.MessagesSnapshot()
 		t.SubUsage, t.SubSubUsage = t.sub.Usage(), t.sub.SubUsage()
+		t.SubModelUsage = t.sub.ModelUsage()
 		a.bg.mu.Unlock()
 		a.bg.settle(id, status, text)
-
-		a.bg.mu.Lock()
-		delete(a.bg.subs, id)
-		a.bg.mu.Unlock()
 
 		a.Steer(fmt.Sprintf("[subagent %s %s] %s\n\n%s", id, status, description, text))
 	}()
@@ -308,6 +340,7 @@ func (r *taskRegistry) refreshTranscript(id string, sub *Agent) {
 	if ok {
 		t.SubMessages = sub.MessagesSnapshot()
 		t.SubUsage, t.SubSubUsage = sub.Usage(), sub.SubUsage()
+		t.SubModelUsage = sub.ModelUsage()
 	}
 	r.mu.Unlock()
 	if !ok || r.OnRecord == nil {
@@ -317,27 +350,49 @@ func (r *taskRegistry) refreshTranscript(id string, sub *Agent) {
 }
 
 func (r *taskRegistry) SubscribeWithJournal(id string, ev Events) (events []JournaledEvent, truncated, ok bool) {
+	events, truncated, ok, _ = r.WatchTask(id, ev)
+	return
+}
+
+func (r *taskRegistry) WatchTask(id string, ev Events) (events []JournaledEvent, truncated, live bool, unsubscribe func()) {
+	unsubscribe = func() {}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	t, exists := r.tasks[id]
 	if !exists {
-		return nil, false, false
+		return
 	}
 	j := r.journals[id]
 	if j != nil {
 		events = append([]JournaledEvent(nil), j.events...)
 		truncated = j.Truncated
 	}
-	if t.Status != TaskRunning {
-		return events, truncated, false
+	if t.Status != TaskRunning && !t.FollowingUp {
+		return
 	}
-	r.subs[id] = append(r.subs[id], ev)
-	return events, truncated, true
+	live = true
+	if ev.OnText == nil && ev.OnThink == nil && ev.OnToolStart == nil && ev.OnToolCall == nil && ev.OnToolEnd == nil && ev.OnSteer == nil && ev.OnCompact == nil {
+		return
+	}
+	sub := &taskSubscription{events: ev}
+	r.subs[id] = append(r.subs[id], sub)
+	unsubscribe = sync.OnceFunc(func() {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		r.subs[id] = slices.DeleteFunc(r.subs[id], func(s *taskSubscription) bool { return s == sub })
+		if len(r.subs[id]) == 0 {
+			delete(r.subs, id)
+		}
+	})
+	return
 }
 
 func (r *taskRegistry) emitLocked(id string, kind int, s, s2 string, journaled bool) []Events {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if task, ok := r.tasks[id]; !ok || (task.Status != TaskRunning && !task.FollowingUp) {
+		return nil
+	}
 	if journaled {
 		j := r.journals[id]
 		if j == nil {
@@ -346,7 +401,11 @@ func (r *taskRegistry) emitLocked(id string, kind int, s, s2 string, journaled b
 		}
 		j.append(kind, s, s2)
 	}
-	return append([]Events(nil), r.subs[id]...)
+	out := make([]Events, 0, len(r.subs[id]))
+	for _, sub := range r.subs[id] {
+		out = append(out, sub.events)
+	}
+	return out
 }
 
 func (r *taskRegistry) emitter(id string) Events {
@@ -409,6 +468,8 @@ func (r *taskRegistry) emitter(id string) Events {
 }
 
 func (a *Agent) Tasks() *taskRegistry {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	if a.bg == nil {
 		a.bg = newTaskRegistry()
 	}
@@ -421,6 +482,10 @@ func (a *Agent) RestoreTask(t BackgroundTask) {
 	close(t.Done)
 	t.cancel = func() {}
 	r.mu.Lock()
+	if _, exists := r.tasks[t.ID]; exists {
+		r.mu.Unlock()
+		return
+	}
 	r.tasks[t.ID] = &t
 	r.mu.Unlock()
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 	"time"
 )
@@ -12,6 +11,13 @@ import (
 const SecretCmdTimeout = 5 * time.Second
 
 func ResolveSecret(v string) (string, error) {
+	return ResolveSecretContext(context.Background(), v)
+}
+
+func ResolveSecretContext(ctx context.Context, v string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	switch {
 	case strings.HasPrefix(v, "${") && strings.HasSuffix(v, "}") && isEnvRefBody(v[2:len(v)-1]):
 		name := v[2 : len(v)-1]
@@ -44,17 +50,7 @@ func ResolveSecret(v string) (string, error) {
 		}
 		return "", fmt.Errorf("secret reference $%s: environment variable unset or empty", name)
 	case strings.HasPrefix(v, "!"):
-		fields := strings.Fields(v[1:])
-		if len(fields) == 0 {
-			return "", fmt.Errorf("secret reference %q: empty command", v)
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), SecretCmdTimeout)
-		defer cancel()
-		out, err := exec.CommandContext(ctx, fields[0], fields[1:]...).Output()
-		if err != nil {
-			return "", fmt.Errorf("secret reference %q: %w", v, err)
-		}
-		return strings.TrimSpace(string(out)), nil
+		return resolveSecretCommand(ctx, v[1:])
 	}
 	return v, nil
 }
@@ -175,20 +171,32 @@ func isEnvName(s string) bool {
 }
 
 func ResolveEnvMap(env map[string]string) (map[string]string, error) {
+	return ResolveEnvMapContext(context.Background(), env)
+}
+
+func ResolveEnvMapContext(ctx context.Context, env map[string]string) (map[string]string, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if len(env) == 0 {
 		return env, nil
 	}
 	out := make(map[string]string, len(env))
 	for k, v := range env {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		var rv string
 		var err error
 		if strings.HasPrefix(v, "!") || IsWholeRef(v) {
-			rv, err = ResolveSecret(v)
+			rv, err = ResolveSecretContext(ctx, v)
 		} else {
 			rv, err = ExpandTemplate(v)
 		}
 		if err != nil {
-
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
 			logf("mcp.env", "dropping env %s: %v", k, err)
 			continue
 		}
@@ -198,8 +206,15 @@ func ResolveEnvMap(env map[string]string) (map[string]string, error) {
 }
 
 func ResolveHeader(v string) (string, error) {
+	return ResolveHeaderContext(context.Background(), v)
+}
+
+func ResolveHeaderContext(ctx context.Context, v string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	if strings.HasPrefix(v, "!") || IsWholeRef(v) {
-		return ResolveSecret(v)
+		return ResolveSecretContext(ctx, v)
 	}
 	return ExpandTemplate(v)
 }

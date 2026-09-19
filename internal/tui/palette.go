@@ -47,12 +47,9 @@ const (
 )
 
 type mcpRow struct {
-	name     string
-	source   bool
-	on       bool
-	detail   string
-	filtered bool
-	disabled bool
+	name   string
+	on     bool
+	detail string
 }
 
 type ppanel struct {
@@ -233,7 +230,7 @@ func (m *model) paletteItems() []paletteItem {
 		},
 		{
 			title: "MCPs", category: "Session",
-			dynDesc: func(m *model) string { return slashHint(m, "/mcp") + "; toggle claude/codex imports" },
+			dynDesc: func(m *model) string { return slashHint(m, "/mcp") },
 			dynHint: func(m *model) string { return "/mcp" },
 			panel: func(m *model) *ppanel {
 				rows := m.buildMCPRows()
@@ -284,13 +281,13 @@ func (m *model) paletteItems() []paletteItem {
 			title: "Subagent model", category: "Session",
 			dynDesc: func(m *model) string {
 				if m.cfg.TaskModel == "" {
-					return "default (" + config.DefaultTaskModel + ")"
+					return "current model"
 				}
 				return m.cfg.TaskModel
 			},
 			dynHint: func(m *model) string { return "config taskModel" },
 			panel: func(m *model) *ppanel {
-				return m.routePanel(panelSubagent, "Subagent model", config.DefaultTaskModel, m.cfg.TaskModel, m.cfg.TaskProvider)
+				return m.routePanel(panelSubagent, "Subagent model", "", m.cfg.TaskModel, m.cfg.TaskProvider)
 			},
 		},
 		{
@@ -706,6 +703,10 @@ func (m *model) panelKey(msg tea.KeyMsg, pp *ppanel) (tea.Model, tea.Cmd) {
 		}
 
 	case panelMCP:
+		m.refreshMCPPanel(pp)
+		if len(pp.mcps) == 0 && msg.Type != tea.KeyEsc && msg.Type != tea.KeyCtrlC {
+			return m, nil
+		}
 		switch msg.Type {
 		case tea.KeyEsc, tea.KeyCtrlC:
 			pop()
@@ -715,19 +716,9 @@ func (m *model) panelKey(msg tea.KeyMsg, pp *ppanel) (tea.Model, tea.Cmd) {
 			pp.midx = (pp.midx + 1) % len(pp.mcps)
 		case tea.KeyLeft, tea.KeyRight, tea.KeyEnter:
 			row := &pp.mcps[pp.midx]
-			if row.disabled {
-				return m, nil
-			}
-			if row.source {
-				m.mcpSetImport(row.name, !row.on)
-			} else {
-				m.mcpSetEnabled(row.name, !row.on)
-			}
+			m.mcpSetEnabled(row.name, !row.on)
 
-			pp.mcps = m.buildMCPRows()
-			if pp.midx >= len(pp.mcps) {
-				pp.midx = len(pp.mcps) - 1
-			}
+			m.refreshMCPPanel(pp)
 		}
 
 	case panelGoal:
@@ -753,17 +744,11 @@ func (m *model) previewModel(it modelItem) {
 	if it.model == m.modelName && it.provider == m.provName {
 		return
 	}
-	ag, mn, pn, err := buildAgent(m.cfg, it.model, it.provider, m.sysPrompt)
-	if err != nil {
+	if err := m.selectModel(it.model, it.provider); err != nil {
+		m.append(errStyle.Render(err.Error()))
 		return
 	}
-	ag.Effort = m.agent.Effort
-	ag.Messages = append(ag.Messages, m.agent.Messages[1:]...)
-	ag.CompactClient, ag.CompactModel = m.agent.CompactClient, m.agent.CompactModel
-	ag.CompactThreshold = m.agent.CompactThreshold
-	m.agent, m.modelName, m.provName = ag, mn, pn
-	m.applyTaskModel()
-	if !slices.Contains(m.effortsFor(), ag.Effort) {
+	if !slices.Contains(m.effortsFor(), m.agent.Effort) {
 		m.setEffort("")
 	}
 }
@@ -1050,22 +1035,15 @@ func (m *model) panelView(pp *ppanel) string {
 		b.WriteString("\n\n" + dimStyle.Render(fmt.Sprintf("  type the goal · empty clears · enter/esc apply · max %d rounds (/goal rounds)", m.goalMaxRounds())))
 
 	case panelMCP:
+		if len(pp.mcps) == 0 {
+			b.WriteString(dimStyle.Render("  no MCP servers configured\n"))
+		}
 		for i, row := range pp.mcps {
 			box := "[x]"
 			if !row.on {
 				box = "[ ]"
 			}
-			label := row.name
-			if row.source {
-				label = map[string]string{"claude": "Import Claude MCPs", "codex": "Import Codex MCPs"}[row.name]
-			}
-			line := fmt.Sprintf("%s %-22s %s", box, label, dimStyle.Render(row.detail))
-			if row.filtered {
-				line += dimStyle.Render("  (name filters set — edit config)")
-			}
-			if row.disabled {
-				line = dimStyle.Render(line)
-			}
+			line := fmt.Sprintf("%s %-22s %s", box, row.name, dimStyle.Render(row.detail))
 			if i == pp.midx {
 				b.WriteString(botStyle.Render(" → "+line) + "\n")
 			} else {
@@ -1082,6 +1060,9 @@ func (m *model) routePanel(kind panelKind, title, defaultModel, current, current
 	items := buildModelItems(m.cfg)
 	pp := &ppanel{kind: kind, title: title, items: items, list: make([]string, 0, len(items)+1)}
 	pp.list = append(pp.list, "default ("+defaultModel+")")
+	if kind == panelSubagent {
+		pp.list[0] = "current model"
+	}
 	for i, it := range items {
 		pp.list = append(pp.list, routeKey(it))
 		if it.model == current && (currentProv == "" || it.provider == currentProv) && pp.midx == 0 {

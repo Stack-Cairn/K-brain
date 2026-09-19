@@ -15,6 +15,8 @@ import (
 )
 
 func TestStartupReportSkillsAndWarnings(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", os.Getenv("HOME"))
 	dir := t.TempDir()
 	mkSkill := func(name, desc string) {
 		d := filepath.Join(dir, ".agents", "skills", name)
@@ -61,7 +63,7 @@ func TestStartupReportMCP(t *testing.T) {
 	}
 }
 
-func TestStartupReportMCPReadyAndQuiet(t *testing.T) {
+func TestStartupReportMCPReadyAndPending(t *testing.T) {
 	srv := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "ok"}, nil)
 	sdkmcp.AddTool(srv, &sdkmcp.Tool{
 		Name:        "ping",
@@ -96,26 +98,13 @@ func TestStartupReportMCPReadyAndQuiet(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("USERPROFILE", os.Getenv("HOME"))
 
-	mdMu.Lock()
-	sl, sk := mdLight, mdKnown
-	mdLight, mdKnown = true, true
-	mdMu.Unlock()
-	t.Cleanup(func() { mdMu.Lock(); mdLight, mdKnown = sl, sk; mdMu.Unlock() })
 	m := tasksModel("http://unused")
 
 	m.mcpMgr = mgr
 	m.startupReport()
 	out := m.blocks[0].text
-	if !strings.Contains(out, "invalid ✗") || strings.Contains(out, "ok ✓") {
-		t.Errorf("quiet report should list only failures:\n%s", out)
-	}
-
-	m2 := tasksModel("http://unused")
-	m2.mcpMgr = mgr
-	m2.startupReport()
-	out2 := m2.blocks[0].text
-	if !strings.Contains(out2, "ok ✓ (1 tools)") || !strings.Contains(out2, "invalid ✗") {
-		t.Errorf("full report should list every server:\n%s", out2)
+	if !strings.Contains(out, "ok ✓ (1 tools)") || !strings.Contains(out, "invalid ✗") {
+		t.Errorf("full report should list every server:\n%s", out)
 	}
 
 	mgr2 := mcp.NewManager(map[string]mcp.ServerConfig{

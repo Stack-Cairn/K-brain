@@ -157,7 +157,7 @@ func TestWaitDiagnosticsEditedFile(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir+"/main.go", "package main\n")
 	out := m.WaitDiagnostics(context.Background(), dir+"/main.go")
-	want := "\n\n<diagnostics file=\"" + dir + "/main.go\">\nERROR [3:2] undefined: foo\nWARN [7:1] x declared and not used\n</diagnostics>"
+	want := fmt.Sprintf("\n\n<diagnostics file=%q>\nERROR [3:2] undefined: foo\nWARN [7:1] x declared and not used\n</diagnostics>", filepath.Join(dir, "main.go"))
 	if out != want {
 		t.Fatalf("got %q, want %q", out, want)
 	}
@@ -179,7 +179,7 @@ func TestWaitDiagnosticsSiblingErrors(t *testing.T) {
 	writeFile(t, dir+"/main.go", "package main\n")
 	writeFile(t, dir+"/other.go", "package main\n")
 	out := m.WaitDiagnostics(context.Background(), dir+"/main.go")
-	if want := "<diagnostics file=\"" + dir + "/other.go\">\nERROR [42:9]"; !strings.Contains(out, want) {
+	if want := fmt.Sprintf("<diagnostics file=%q>\nERROR [42:9]", filepath.Join(dir, "other.go")); !strings.Contains(out, want) {
 		t.Fatalf("missing sibling block; got %q", out)
 	}
 	if !strings.Contains(out, "errors in file") {

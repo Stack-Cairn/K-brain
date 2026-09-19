@@ -74,7 +74,12 @@ type server struct {
 
 	reconnect chan struct{}
 
-	autoTries int
+	autoTries     int
+	ctx           context.Context
+	cancel        context.CancelFunc
+	connectCancel context.CancelFunc
+	started       bool
+	workers       sync.WaitGroup
 
 	mu sync.Mutex
 }
@@ -96,49 +101,55 @@ func autoReconnectDelay(try int) time.Duration {
 
 func (s *server) kickAutoReconnect(m *Manager) {
 	m.onChangeMu.Lock()
-	closing := m.closed
-	m.onChangeMu.Unlock()
+	defer m.onChangeMu.Unlock()
 	s.mu.Lock()
 	tries := s.autoTries
+	gen := s.gen
+	disabled := s.cfg.Disabled()
 	s.mu.Unlock()
-	if closing || s.disabled() || tries >= autoReconnectMax {
+	if disabled || tries >= autoReconnectMax {
 		return
 	}
-	go func() {
-		time.Sleep(autoReconnectDelay(tries))
+	m.launchLocked(s, func() {
+		timer := time.NewTimer(autoReconnectDelay(tries))
+		defer timer.Stop()
+		select {
+		case <-s.ctx.Done():
+			return
+		case <-timer.C:
+		}
 		m.onChangeMu.Lock()
-		closing := m.closed
-		m.onChangeMu.Unlock()
+		defer m.onChangeMu.Unlock()
 		s.mu.Lock()
-		gave := s.status == StatusReady || s.autoTries != tries
-		s.mu.Unlock()
-		if closing || gave || s.disabled() {
+		defer s.mu.Unlock()
+		if !m.ownsLocked(s) || s.status == StatusReady || s.autoTries != tries || s.gen != gen || s.cfg.Disabled() {
 			return
 		}
-		s.mu.Lock()
 		s.autoTries++
-		s.mu.Unlock()
 		select {
 		case s.reconnect <- struct{}{}:
 		default:
 		}
-	}()
+	})
 }
 
 type Manager struct {
 	servers  map[string]*server
 	onChange func()
 
-	blocked []Server
-
 	connectTransport func(ctx context.Context, cfg ServerConfig, stderr *ringBuffer) (sdkmcp.Transport, error)
 
 	onChangeMu sync.Mutex
 	closed     bool
+	workers    sync.WaitGroup
+	closeOnce  sync.Once
 }
 
 func newServer(name string, cfg ServerConfig) *server {
+	ctx, cancel := context.WithCancel(context.Background())
 	s := &server{
+		ctx:       ctx,
+		cancel:    cancel,
 		name:      name,
 		cfg:       cfg,
 		note:      cfg.Note,
@@ -180,21 +191,15 @@ func (m *Manager) AddServers(ctx context.Context, cfgs map[string]ServerConfig) 
 		m.onChangeMu.Unlock()
 		return
 	}
-	var fresh []*server
 	for name, cfg := range cfgs {
 		if _, exists := m.servers[name]; exists {
 			continue
 		}
 		s := newServer(name, cfg)
 		m.servers[name] = s
-		if s.status == StatusConnecting {
-			fresh = append(fresh, s)
-		}
+		m.startLocked(ctx, s)
 	}
 	m.onChangeMu.Unlock()
-	for _, s := range fresh {
-		go s.run(ctx, m)
-	}
 	m.fireOnChange()
 }
 
@@ -209,15 +214,17 @@ func (m *Manager) RemoveServers(names ...string) {
 	}
 	m.onChangeMu.Unlock()
 	for _, s := range doomed {
+		s.cancel()
 		s.mu.Lock()
 		s.cfg.Enabled = new(false)
 		old := s.sess
-		s.sess, s.defs = nil, nil
+		s.sess, s.defs, s.instr = nil, nil, ""
 		s.gen++
 		s.mu.Unlock()
 		if old != nil {
 			_ = old.Close()
 		}
+		s.workers.Wait()
 	}
 	if len(doomed) > 0 {
 		m.fireOnChange()
@@ -235,6 +242,9 @@ func (m *Manager) FireOnChangeForTest() { m.fireOnChange() }
 func (m *Manager) fireOnChange() {
 	m.onChangeMu.Lock()
 	fn := m.onChange
+	if m.closed {
+		fn = nil
+	}
 	m.onChangeMu.Unlock()
 	if fn != nil {
 		fn()
@@ -243,22 +253,29 @@ func (m *Manager) fireOnChange() {
 
 func (m *Manager) Start(ctx context.Context) {
 	m.onChangeMu.Lock()
-	servers := make([]*server, 0, len(m.servers))
+	defer m.onChangeMu.Unlock()
 	for _, s := range m.servers {
-		servers = append(servers, s)
-	}
-	m.onChangeMu.Unlock()
-	for _, s := range servers {
-		if s.status != StatusConnecting {
-			continue
-		}
-		go s.run(ctx, m)
+		m.startLocked(ctx, s)
 	}
 }
 
 func (s *server) run(ctx context.Context, m *Manager) {
-	s.connect(ctx, m)
-	for range s.reconnect {
+	defer s.stopSession(m)
+	s.mu.Lock()
+	connect := s.status == StatusConnecting
+	s.mu.Unlock()
+	if connect {
+		s.connect(ctx, m)
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-s.reconnect:
+		}
+		if ctx.Err() != nil {
+			return
+		}
 		if s.disabled() {
 			s.setState(m, StatusDisabled, "")
 			continue
@@ -269,22 +286,35 @@ func (s *server) run(ctx context.Context, m *Manager) {
 		if ready {
 			continue
 		}
-		s.connect(context.Background(), m)
+		s.connect(ctx, m)
 	}
 }
 
 func (s *server) connect(ctx context.Context, m *Manager) {
-
+	m.onChangeMu.Lock()
+	if !m.ownsLocked(s) || ctx.Err() != nil {
+		m.onChangeMu.Unlock()
+		return
+	}
 	s.mu.Lock()
-	s.status = StatusConnecting
-	s.mu.Unlock()
-	m.fireOnChange()
-	s.mu.Lock()
+	if s.cfg.Disabled() {
+		s.mu.Unlock()
+		m.onChangeMu.Unlock()
+		return
+	}
 	cfg, startGen := s.cfg, s.gen
-	s.mu.Unlock()
 	timeout := cfg.StartupTimeoutDuration()
 	ctx, cancel := context.WithTimeout(ctx, timeout)
+	s.connectCancel = cancel
 	defer cancel()
+	s.setStateLocked(StatusConnecting, "")
+	s.mu.Unlock()
+	m.onChangeMu.Unlock()
+	m.fireOnChange()
+	if msg := cfg.Valid(); msg != "" {
+		s.setState(m, StatusFailed, "invalid config: "+msg)
+		return
+	}
 
 	transport, err := m.connectTransport(ctx, cfg, s.stderr)
 	if err == nil {
@@ -295,50 +325,46 @@ func (s *server) connect(ctx context.Context, m *Manager) {
 			var listed *sdkmcp.ListToolsResult
 			listed, err = sess.ListTools(ctx, nil)
 			if err == nil {
-				m.onChangeMu.Lock()
-				closed := m.closed
-				_, stillOurs := m.servers[s.name]
-				m.onChangeMu.Unlock()
-				s.mu.Lock()
-				removed := s.gen != startGen
-				s.mu.Unlock()
-				if closed || removed || !stillOurs {
-
-					_ = sess.Close()
-					return
-				}
 				var instr string
 				if ir := sess.InitializeResult(); ir != nil {
 					instr = strings.TrimSpace(ir.Instructions)
 				}
+				m.onChangeMu.Lock()
 				s.mu.Lock()
+				if !m.ownsLocked(s) || s.gen != startGen || s.cfg.Disabled() || ctx.Err() != nil {
+					s.mu.Unlock()
+					m.onChangeMu.Unlock()
+					_ = sess.Close()
+					return
+				}
 				s.defs = listed.Tools
 				s.instr = instr
 				s.sess = sess
 				s.gen++
 				s.autoTries = 0
 				gen := s.gen
+				s.setStateLocked(StatusReady, "")
 				s.mu.Unlock()
-				s.setState(m, StatusReady, "")
-
-				go func() {
+				m.launchLocked(s, func() {
 					_ = sess.Wait()
 					m.onChangeMu.Lock()
-					closing := m.closed
-					m.onChangeMu.Unlock()
 					s.mu.Lock()
-					stale := s.gen != gen
+					stale := !m.ownsLocked(s) || s.gen != gen
 					if !stale {
 						s.sess = nil
 						s.defs = nil
 						s.instr = ""
+						s.setStateLocked(StatusFailed, "connection closed")
 					}
 					s.mu.Unlock()
-					if !stale && !closing {
-						s.setState(m, StatusFailed, "connection closed")
+					m.onChangeMu.Unlock()
+					if !stale {
+						m.fireOnChange()
 						s.kickAutoReconnect(m)
 					}
-				}()
+				})
+				m.onChangeMu.Unlock()
+				m.fireOnChange()
 				return
 			}
 			_ = sess.Close()
@@ -353,21 +379,33 @@ func (s *server) connect(ctx context.Context, m *Manager) {
 			msg += " — stderr: " + tail
 		}
 	}
-	s.setState(m, StatusFailed, msg)
+	m.onChangeMu.Lock()
+	s.mu.Lock()
+	changed := m.ownsLocked(s) && s.gen == startGen && !s.cfg.Disabled()
+	retry := changed && s.autoTries > 0
+	if changed {
+		s.setStateLocked(StatusFailed, msg)
+	}
+	s.mu.Unlock()
+	m.onChangeMu.Unlock()
+	if changed {
+		m.fireOnChange()
+	}
+	if retry {
+		s.kickAutoReconnect(m)
+	}
 }
 
 func (s *server) setState(m *Manager, st Status, errMsg string) {
+	m.onChangeMu.Lock()
+	if !m.ownsLocked(s) {
+		m.onChangeMu.Unlock()
+		return
+	}
 	s.mu.Lock()
-	firstSettle := !s.settled
-	if st != StatusConnecting {
-		s.settled = true
-	}
-	s.status, s.err = st, errMsg
+	s.setStateLocked(st, errMsg)
 	s.mu.Unlock()
-	if firstSettle && st != StatusConnecting {
-		close(s.ready)
-	}
-	logf("server %s -> %s %s", s.name, st, errMsg)
+	m.onChangeMu.Unlock()
 	m.fireOnChange()
 }
 
@@ -415,6 +453,7 @@ func (s *server) call(ctx context.Context, tool string, args json.RawMessage) (s
 
 	s.mu.Lock()
 	settled, sess, status, errMsg := s.settled, s.sess, s.status, s.err
+	toolTimeout := s.cfg.ToolTimeoutDuration()
 	s.mu.Unlock()
 	if !settled {
 
@@ -453,7 +492,7 @@ func (s *server) call(ctx context.Context, tool string, args json.RawMessage) (s
 	case <-ctx.Done():
 		return "", ctx.Err()
 	}
-	ctx, cancel := context.WithTimeout(ctx, s.cfg.ToolTimeoutDuration())
+	ctx, cancel := context.WithTimeout(ctx, toolTimeout)
 	defer cancel()
 	var argMap map[string]any
 	if len(args) > 0 {
@@ -464,7 +503,7 @@ func (s *server) call(ctx context.Context, tool string, args json.RawMessage) (s
 	res, err := sess.CallTool(ctx, &sdkmcp.CallToolParams{Name: tool, Arguments: argMap})
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
-			return "", fmt.Errorf("mcp tool %s timed out after %s", tool, s.cfg.ToolTimeoutDuration())
+			return "", fmt.Errorf("mcp tool %s timed out after %s", tool, toolTimeout)
 		}
 		return "", err
 	}
@@ -542,33 +581,39 @@ func (m *Manager) Config(name string) (ServerConfig, bool) {
 func (m *Manager) Disable(name string) bool {
 	m.onChangeMu.Lock()
 	s, ok := m.servers[name]
-	m.onChangeMu.Unlock()
-	if !ok {
+	if !ok || !m.ownsLocked(s) {
+		m.onChangeMu.Unlock()
 		return false
 	}
 	s.mu.Lock()
 	s.cfg.Enabled = new(false)
+	if s.connectCancel != nil {
+		s.connectCancel()
+	}
 	old := s.sess
-	s.sess, s.defs = nil, nil
+	s.sess, s.defs, s.instr = nil, nil, ""
 	s.gen++
+	s.setStateLocked(StatusDisabled, "")
 	s.mu.Unlock()
+	m.onChangeMu.Unlock()
 	if old != nil {
 		_ = old.Close()
 	}
-	s.setState(m, StatusDisabled, "")
+	m.fireOnChange()
 	return true
 }
 
 func (m *Manager) Enable(name string) bool {
 	m.onChangeMu.Lock()
 	s, ok := m.servers[name]
-	m.onChangeMu.Unlock()
-	if !ok {
+	if !ok || !m.ownsLocked(s) {
+		m.onChangeMu.Unlock()
 		return false
 	}
 	s.mu.Lock()
 	s.cfg.Enabled = nil
 	s.mu.Unlock()
+	m.onChangeMu.Unlock()
 	return m.Reconnect(name)
 }
 
@@ -631,33 +676,6 @@ func Probe(ctx context.Context, name string, cfg ServerConfig) ProbeResult {
 	return res
 }
 
-func (m *Manager) SetBlocked(cfgs map[string]ServerConfig) {
-	m.onChangeMu.Lock()
-	defer m.onChangeMu.Unlock()
-	m.blocked = make([]Server, 0, len(cfgs))
-	for name, c := range cfgs {
-		m.blocked = append(m.blocked, Server{Name: name, Status: StatusDisabled, Note: c.Note, Source: c.Source})
-	}
-	sort.Slice(m.blocked, func(i, j int) bool { return m.blocked[i].Name < m.blocked[j].Name })
-}
-
-func (m *Manager) Blocked() []Server {
-	m.onChangeMu.Lock()
-	defer m.onChangeMu.Unlock()
-	return append([]Server(nil), m.blocked...)
-}
-
-func (m *Manager) BlockedByPolicy(name string) bool {
-	m.onChangeMu.Lock()
-	defer m.onChangeMu.Unlock()
-	for _, b := range m.blocked {
-		if b.Name == name {
-			return true
-		}
-	}
-	return false
-}
-
 func (m *Manager) Statuses() []Server {
 	m.onChangeMu.Lock()
 	servers := make([]*server, 0, len(m.servers))
@@ -678,14 +696,24 @@ func (m *Manager) Statuses() []Server {
 func (m *Manager) Reconnect(name string) bool {
 	m.onChangeMu.Lock()
 	s, ok := m.servers[name]
-	m.onChangeMu.Unlock()
-	if !ok {
+	if !ok || !m.ownsLocked(s) {
+		m.onChangeMu.Unlock()
 		return false
 	}
 	s.mu.Lock()
+	if s.connectCancel != nil {
+		s.connectCancel()
+	}
 	old := s.sess
-	s.sess, s.defs = nil, nil
+	s.sess, s.defs, s.instr = nil, nil, ""
+	s.gen++
+	s.autoTries = 0
+	if !s.cfg.Disabled() {
+		s.setStateLocked(StatusConnecting, "")
+	}
 	s.mu.Unlock()
+	m.startLocked(context.Background(), s)
+	m.onChangeMu.Unlock()
 	if old != nil {
 		_ = old.Close()
 	}
@@ -697,31 +725,42 @@ func (m *Manager) Reconnect(name string) bool {
 }
 
 func (m *Manager) Close() {
-	m.onChangeMu.Lock()
-	m.closed = true
-	servers := make([]*server, 0, len(m.servers))
-	for _, s := range m.servers {
-		servers = append(servers, s)
-	}
-	m.onChangeMu.Unlock()
-	for _, s := range servers {
-		s.mu.Lock()
-		sess := s.sess
-		s.sess, s.defs = nil, nil
-		s.mu.Unlock()
-		if sess != nil {
+	m.closeOnce.Do(func() {
+		m.onChangeMu.Lock()
+		m.closed = true
+		var sessions []*sdkmcp.ClientSession
+		for _, s := range m.servers {
+			s.cancel()
+			s.mu.Lock()
+			if s.sess != nil {
+				sessions = append(sessions, s.sess)
+			}
+			s.sess, s.defs, s.instr = nil, nil, ""
+			s.gen++
+			s.setStateLocked(StatusFailed, "manager closed")
+			s.mu.Unlock()
+		}
+		m.onChangeMu.Unlock()
+		for _, sess := range sessions {
 			_ = sess.Close()
 		}
-	}
+		m.workers.Wait()
+	})
 }
 
 func defaultTransport(ctx context.Context, cfg ServerConfig, stderr *ringBuffer) (sdkmcp.Transport, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if cfg.Remote() {
 
 		headers := make(map[string]string, len(cfg.Headers))
 		for k, v := range cfg.Headers {
-			rv, err := config.ResolveHeader(v)
+			rv, err := config.ResolveHeaderContext(ctx, v)
 			if err != nil {
+				if ctx.Err() != nil {
+					return nil, ctx.Err()
+				}
 				logf("header %s: %v (dropped)", k, err)
 				continue
 			}
@@ -737,7 +776,7 @@ func defaultTransport(ctx context.Context, cfg ServerConfig, stderr *ringBuffer)
 
 	cmd := exec.CommandContext(context.WithoutCancel(ctx), cfg.Command[0], cfg.Command[1:]...)
 
-	env, err := config.ResolveEnvMap(cfg.Env)
+	env, err := config.ResolveEnvMapContext(ctx, cfg.Env)
 	if err != nil {
 		return nil, fmt.Errorf("env: %w", err)
 	}

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Stack-Cairn/K-brain/internal/ai"
+	"github.com/Stack-Cairn/K-brain/internal/session"
 	"github.com/Stack-Cairn/K-brain/internal/tools"
 )
 
@@ -27,12 +28,21 @@ func TestMemoryToolsSessionScope(t *testing.T) {
 		t.Fatalf("unknown scope should refuse: %q", out)
 	}
 
-	ag.SetSessionID("sess1")
+	store, err := session.OpenProjectHome(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	id, err := store.Create(t.TempDir(), "m", "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ag.SetSessionID(id)
 	out = tools.Execute(ctx, ag.Tools, "remember", json.RawMessage(`{"text":"always pnpm, never npm","scope":"session"}`))
 	if out != "Remembered (session memory)." {
 		t.Fatalf("remember after SetSessionID: %q", out)
 	}
-	path := filepath.Join(home, "sessions", "sess1.memory.md")
+	path := filepath.Join(filepath.Dir(store.TranscriptPath(id)), "memory.md")
 	data, err := os.ReadFile(path)
 	if err != nil || !strings.Contains(string(data), "always pnpm, never npm") {
 		t.Fatalf("session memory file should hold the entry: %v %q", err, data)

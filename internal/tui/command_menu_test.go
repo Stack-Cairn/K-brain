@@ -172,7 +172,7 @@ func TestPaletteCommandColumnsHideUsage(t *testing.T) {
 	m.width = 100
 	m.openPalette()
 	view := ansi.Strip(m.paletteView())
-	for _, usage := range []string{"[level]", "[zh_cn|zh_tw|en]", "[title]", "<model>"} {
+	for _, usage := range []string{"[level]", "[zh_cn|zh_Hant|en]", "[title]", "<model>"} {
 		if strings.Contains(view, usage) {
 			t.Fatalf("palette leaked %q", usage)
 		}

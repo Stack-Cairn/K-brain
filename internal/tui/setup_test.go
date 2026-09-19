@@ -3,6 +3,8 @@ package tui
 import (
 	"bufio"
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -41,8 +43,21 @@ func driveWizard(t *testing.T, input string) *config.Config {
 	t.Setenv("K_BRAIN_HOME", home)
 
 	cfg := config.Default()
-	if err := runSetupWizard(cfg, strings.NewReader(input), &bytes.Buffer{}); err != nil {
+	var output bytes.Buffer
+	if err := runSetupWizard(cfg, strings.NewReader(input), &output); err != nil {
 		t.Fatalf("runSetupWizard: %v", err)
+	}
+	for _, removed := range []string{"import", "claude", "codex"} {
+		if strings.Contains(strings.ToLower(output.String()), removed) {
+			t.Fatalf("setup offers a removed integration: %s", output.String())
+		}
+	}
+	body, err := os.ReadFile(filepath.Join(home, "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(body, []byte(`"mcpImport"`)) {
+		t.Fatal("setup wrote removed import settings")
 	}
 	saved, err := config.Load()
 	if err != nil {
@@ -54,13 +69,6 @@ func driveWizard(t *testing.T, input string) *config.Config {
 func TestWizardDefaultsOptOut(t *testing.T) {
 
 	saved := driveWizard(t, "\n\n\n")
-	if saved.MCPImport == nil || saved.MCPImport.Claude == nil || saved.MCPImport.Codex == nil {
-		t.Fatalf("mcpImport should be recorded explicitly, got %+v", saved.MCPImport)
-	}
-	if *saved.MCPImport.Claude.Enabled || *saved.MCPImport.Codex.Enabled {
-		t.Fatalf("Enter should default imports off, got claude=%v codex=%v",
-			*saved.MCPImport.Claude.Enabled, *saved.MCPImport.Codex.Enabled)
-	}
 	if saved.Thinking != nil {
 		t.Fatalf("default thinking answer should leave the block absent, got %v", *saved.Thinking)
 	}
@@ -69,11 +77,11 @@ func TestWizardDefaultsOptOut(t *testing.T) {
 	}
 }
 
-func TestWizardOptIn(t *testing.T) {
+func TestWizardThinkingOn(t *testing.T) {
 
-	saved := driveWizard(t, "y\ny\ny\n")
-	if !*saved.MCPImport.Claude.Enabled || !*saved.MCPImport.Codex.Enabled {
-		t.Fatalf("explicit yes should import, got %+v", saved.MCPImport)
+	saved := driveWizard(t, "y\n")
+	if saved.Thinking != nil && !*saved.Thinking {
+		t.Fatal("thinking should remain enabled")
 	}
 }
 

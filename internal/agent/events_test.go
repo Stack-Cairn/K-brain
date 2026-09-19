@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -126,5 +127,52 @@ func TestTasksLazyRegistry(t *testing.T) {
 	r := a.Tasks()
 	if r == nil || a.Tasks() != r {
 		t.Fatal("Tasks must create once and return the same registry")
+	}
+}
+
+func TestFanInPreservesEveryCallback(t *testing.T) {
+	var events Events
+	fields := reflect.ValueOf(&events).Elem()
+	counts := make([]int, fields.NumField())
+	for i := range fields.NumField() {
+		field := fields.Field(i)
+		field.Set(reflect.MakeFunc(field.Type(), func(args []reflect.Value) []reflect.Value {
+			counts[i]++
+			for _, arg := range args {
+				switch arg.Kind() {
+				case reflect.String:
+					if arg.String() != "payload" {
+						t.Errorf("callback %s lost string argument", fields.Type().Field(i).Name)
+					}
+				case reflect.Int:
+					if arg.Int() != 7 {
+						t.Errorf("callback %s lost integer argument", fields.Type().Field(i).Name)
+					}
+				}
+			}
+			return nil
+		}))
+	}
+	fan := reflect.ValueOf(FanIn(events, Events{}, events))
+	for i := range fan.NumField() {
+		callback := fan.Field(i)
+		if callback.IsNil() {
+			t.Errorf("FanIn dropped %s", fan.Type().Field(i).Name)
+			continue
+		}
+		args := make([]reflect.Value, callback.Type().NumIn())
+		for j := range args {
+			args[j] = reflect.New(callback.Type().In(j)).Elem()
+			switch args[j].Kind() {
+			case reflect.String:
+				args[j].SetString("payload")
+			case reflect.Int:
+				args[j].SetInt(7)
+			}
+		}
+		callback.Call(args)
+		if counts[i] != 2 {
+			t.Errorf("%s delivered %d times, want 2", fan.Type().Field(i).Name, counts[i])
+		}
 	}
 }

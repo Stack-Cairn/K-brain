@@ -477,7 +477,7 @@ func TestTodosAndUsagePersistence(t *testing.T) {
 	}
 
 	subs := map[string]ai.Usage{"sub-m @ p": {PromptTokens: 9, CompletionTokens: 3}}
-	if err := st.SetUsage(id, 100, 40, 7, subs); err != nil {
+	if err := st.SetUsage(id, ai.UsageSummary{Total: ai.Usage{PromptTokens: 100, PromptCacheHitTokens: 40, CompletionTokens: 7}, Subagents: subs}); err != nil {
 		t.Fatal(err)
 	}
 	meta, _, err := st.Load(id)
@@ -491,7 +491,7 @@ func TestTodosAndUsagePersistence(t *testing.T) {
 		t.Fatalf("sub usage did not round-trip: %+v", meta.SubUsage)
 	}
 
-	if err := st.SetUsage(id, 100, 40, 7, nil); err != nil {
+	if err := st.SetUsage(id, ai.UsageSummary{Total: ai.Usage{PromptTokens: 100, PromptCacheHitTokens: 40, CompletionTokens: 7}}); err != nil {
 		t.Fatal(err)
 	}
 	if meta, _, _ = st.Load(id); meta.SubUsage != nil {

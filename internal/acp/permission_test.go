@@ -15,8 +15,8 @@ func gatedProbe(ran *bool) tools.Tool {
 	return tools.Tool{
 		Def: llmTool("probe"),
 		Run: func(ctx context.Context, args json.RawMessage) (string, error) {
-			if deny := checkGateForTest("bash", "rm -rf x"); deny != "" {
-				return "", errString(deny)
+			if err := tools.Authorize(ctx, "bash", "rm -rf x"); err != nil {
+				return "", err
 			}
 			*ran = true
 			return "ran", nil

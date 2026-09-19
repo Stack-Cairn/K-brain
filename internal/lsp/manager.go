@@ -6,11 +6,9 @@ import (
 	"fmt"
 	"io"
 	"maps"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"sort"
 	"strings"
@@ -18,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Stack-Cairn/K-brain/internal/config"
+	"github.com/Stack-Cairn/K-brain/internal/fileuri"
 	"github.com/Stack-Cairn/K-brain/internal/process"
 )
 
@@ -460,31 +459,9 @@ func findRoot(dir string, markers []string) string {
 }
 
 func fileURI(path string) string {
-	path = filepath.ToSlash(path)
-	if strings.HasPrefix(path, "//") {
-		host, rest, _ := strings.Cut(path[2:], "/")
-		return (&url.URL{Scheme: "file", Host: host, Path: "/" + rest}).String()
-	}
-	if !strings.HasPrefix(path, "/") {
-		path = "/" + path
-	}
-	return (&url.URL{Scheme: "file", Path: path}).String()
+	return fileuri.FromPath(path)
 }
 
 func uriPath(uri string) string {
-	u, err := url.Parse(uri)
-	if err != nil || u.Scheme != "file" {
-		return ""
-	}
-	if runtime.GOOS == "windows" {
-		if u.Host != "" && u.Host != "localhost" {
-			return filepath.FromSlash("//" + u.Host + u.Path)
-		}
-		path := u.Path
-		if len(path) >= 3 && path[0] == '/' && path[2] == ':' {
-			path = path[1:]
-		}
-		return filepath.FromSlash(path)
-	}
-	return u.Path
+	return fileuri.Path(uri)
 }

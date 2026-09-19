@@ -3,6 +3,7 @@ package tui
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -71,10 +72,20 @@ func TestRunShellFailingCommand(t *testing.T) {
 
 func TestRunShellTruncatesHugeOutput(t *testing.T) {
 	m := shellModel()
-	m.runShell("!seq 1 200000")
+	m.runShell("!" + testShellCommand(t, "seq 1 200000", "[Console]::Write(('x' * 400000))"))
 	if b := lastBlock(m); !strings.Contains(b, "truncated") {
 		t.Fatalf("huge output should carry a truncation marker (len %d)", len(b))
 	}
+}
+
+func testShellCommand(t *testing.T, unix, windows string) string {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Setenv("K_BRAIN_SHELL", "powershell.exe")
+		return windows
+	}
+	t.Setenv("K_BRAIN_SHELL", "/bin/sh")
+	return unix
 }
 
 func TestRunShellWhileBusySteers(t *testing.T) {
@@ -153,6 +164,10 @@ func TestCdAndPwd(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Chdir(orig)
 
 	m := shellModel()
@@ -161,10 +176,6 @@ func TestCdAndPwd(t *testing.T) {
 		t.Fatalf("/pwd should print the cwd: %q", b)
 	}
 
-	dir, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
 	m.command("/cd " + dir)
 	if wd, _ := os.Getwd(); wd != dir {
 		t.Fatalf("/cd should chdir: got %q", wd)
@@ -193,11 +204,11 @@ func TestCdTilde(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Chdir(orig)
 	home, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Chdir(orig)
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", os.Getenv("HOME"))
 

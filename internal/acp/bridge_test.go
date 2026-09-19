@@ -211,9 +211,10 @@ func scriptServer(t *testing.T, steps []step) *httptest.Server {
 }
 
 type fixture struct {
-	bridge *Bridge
-	client *fakeClient
-	conn   *acp.ClientSideConnection
+	bridge     *Bridge
+	client     *fakeClient
+	conn       *acp.ClientSideConnection
+	disconnect func()
 }
 
 func newFixture(t *testing.T, client *fakeClient, store *session.Store, newAgent Factory) *fixture {
@@ -240,13 +241,17 @@ func newFixture(t *testing.T, client *fakeClient, store *session.Store, newAgent
 		conn.SetLogger(logger)
 		agentConn.SetLogger(logger)
 	}
-	t.Cleanup(func() {
+	disconnect := sync.OnceFunc(func() {
 		_ = agentW.Close()
 		_ = clientW.Close()
 		_ = agentR.Close()
 		_ = clientR.Close()
 	})
-	return &fixture{bridge: b, client: client, conn: conn}
+	t.Cleanup(func() {
+		disconnect()
+		b.CloseAll()
+	})
+	return &fixture{bridge: b, client: client, conn: conn, disconnect: disconnect}
 }
 
 func (f *fixture) initialize(t *testing.T) acp.InitializeResponse {

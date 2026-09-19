@@ -22,24 +22,31 @@ func CatalogModels(infos []ai.ModelInfo) []config.ModelInfoLite {
 			InputModalities:     mi.InputModalities,
 		}
 		if mi.Pricing != nil {
-			lites[i].InPrice, lites[i].OutPrice, lites[i].CacheReadPrice = mi.Pricing.Rates()
+			lites[i].Pricing = mi.Pricing.Rates()
 		}
 	}
 	return lites
 }
 
 func RefreshCatalogs(cfg *config.Config, force bool) map[string]config.Catalog {
+	return RefreshCatalogsContext(context.Background(), cfg, force)
+}
+
+func RefreshCatalogsContext(parent context.Context, cfg *config.Config, force bool) map[string]config.Catalog {
 	cats := config.LoadCatalogs()
 	dirty := false
 	for name, prov := range cfg.Providers {
+		if parent.Err() != nil {
+			break
+		}
 		if strings.TrimSpace(prov.BaseURL) == "" {
 			continue
 		}
 		if c, ok := cats[name]; ok && !force && !c.Stale() && c.BaseURL == prov.BaseURL {
 			continue
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		client, err := ClientForProvider(prov, name, cfg.MaxRetries)
+		ctx, cancel := context.WithTimeout(parent, 10*time.Second)
+		client, err := ClientForProviderContext(ctx, prov, name, cfg.MaxRetries)
 		if err != nil {
 			cancel()
 			config.LogEvent("catalog.fetch", name+" skipped: "+err.Error())
@@ -62,13 +69,23 @@ func RefreshCatalogs(cfg *config.Config, force bool) map[string]config.Catalog {
 }
 
 func ResolveWithRefresh(cfg *config.Config, modelName, provName string) (config.Provider, config.Model, string, error) {
+	return ResolveWithRefreshContext(context.Background(), cfg, modelName, provName)
+}
+
+func ResolveWithRefreshContext(ctx context.Context, cfg *config.Config, modelName, provName string) (config.Provider, config.Model, string, error) {
+	if err := ctx.Err(); err != nil {
+		return config.Provider{}, config.Model{}, "", err
+	}
 	prov, mdl, id, err := cfg.Resolve(modelName, provName)
 	var unknown *config.UnknownModelError
 	if !errors.As(err, &unknown) {
 		return prov, mdl, id, err
 	}
 	config.LogEvent("catalog.fetch", fmt.Sprintf("startup resolve missed %q — force-refreshing catalogs", unknown.Model))
-	RefreshCatalogs(cfg, true)
+	RefreshCatalogsContext(ctx, cfg, true)
+	if err := ctx.Err(); err != nil {
+		return config.Provider{}, config.Model{}, "", err
+	}
 	if prov, mdl, id, rerr := cfg.Resolve(modelName, provName); rerr == nil {
 		return prov, mdl, id, nil
 	}

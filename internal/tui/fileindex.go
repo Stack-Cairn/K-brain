@@ -136,15 +136,13 @@ func subseq(s, q string) bool {
 
 func resolveMentionPath(p string) (string, bool) {
 	abs := p
-	if abs == "~" || strings.HasPrefix(abs, "~/") {
+	if abs == "~" || strings.HasPrefix(abs, "~/") || strings.HasPrefix(abs, `~\`) {
 		if home, err := os.UserHomeDir(); err == nil {
-			abs = home + abs[1:]
+			abs = filepath.Join(home, strings.TrimLeft(abs[1:], `/\`))
 		}
 	}
-	if !filepath.IsAbs(abs) {
-		if wd, err := os.Getwd(); err == nil {
-			abs = filepath.Join(wd, abs)
-		}
+	if resolved, err := filepath.Abs(abs); err == nil {
+		abs = resolved
 	}
 	if _, err := os.Stat(abs); err == nil {
 		return abs, true

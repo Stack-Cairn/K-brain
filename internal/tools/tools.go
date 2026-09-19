@@ -17,8 +17,9 @@ import (
 )
 
 type Tool struct {
-	Def ai.Tool
-	Run func(ctx context.Context, args json.RawMessage) (string, error)
+	Def       ai.Tool
+	Run       func(ctx context.Context, args json.RawMessage) (string, error)
+	NoInherit bool
 }
 
 type InteractiveRunner interface {
@@ -37,6 +38,24 @@ func All() []Tool {
 
 type updateKey struct{}
 
+func WithWorkingDir(ctx context.Context, dir string) context.Context {
+	return bashrun.WithWorkingDir(ctx, dir)
+}
+
+func WorkingDir(ctx context.Context) string {
+	return bashrun.WorkingDir(ctx)
+}
+
+func ResolvePath(ctx context.Context, path string) string {
+	if path == "" || filepath.IsAbs(path) {
+		return path
+	}
+	if dir := WorkingDir(ctx); dir != "" {
+		return filepath.Join(dir, path)
+	}
+	return path
+}
+
 func WithOnUpdate(ctx context.Context, onUpdate func(outputSoFar string)) context.Context {
 	return context.WithValue(ctx, updateKey{}, onUpdate)
 }
@@ -52,10 +71,16 @@ func Defs(ts []Tool) []ai.Tool {
 var Suggester func(name string) []string
 
 func Execute(ctx context.Context, ts []Tool, name string, args json.RawMessage) string {
+	if err := ctx.Err(); err != nil {
+		return "Error: " + err.Error()
+	}
 	for _, t := range ts {
 		if t.Def.Function.Name == name {
 			out, err := t.Run(ctx, args)
 			if err != nil {
+				if out != "" {
+					return "Error: " + err.Error() + "\n" + out
+				}
 				return "Error: " + err.Error()
 			}
 			if out == "" {
@@ -158,6 +183,7 @@ func bashTool() Tool {
 			res := bashrun.Run(ctx, bashrun.Options{
 				Command:  a.Command,
 				Timeout:  dur,
+				Dir:      WorkingDir(ctx),
 				OnUpdate: onUpdate,
 			})
 
@@ -207,6 +233,7 @@ func readTool() Tool {
 			if err := json.Unmarshal(args, &a); err != nil {
 				return "", err
 			}
+			a.Path = ResolvePath(ctx, a.Path)
 			data, err := os.ReadFile(a.Path)
 			if err != nil {
 				return "", err
@@ -246,6 +273,7 @@ func writeTool() Tool {
 			if err := json.Unmarshal(args, &a); err != nil {
 				return "", err
 			}
+			a.Path = ResolvePath(ctx, a.Path)
 			if deny := checkGate(ctx, "write", a.Path); deny != "" {
 				return "", errors.New(deny)
 			}
@@ -286,6 +314,7 @@ func editTool() Tool {
 			if err := json.Unmarshal(args, &a); err != nil {
 				return "", err
 			}
+			a.Path = ResolvePath(ctx, a.Path)
 			if deny := checkGate(ctx, "edit", a.Path); deny != "" {
 				return "", errors.New(deny)
 			}

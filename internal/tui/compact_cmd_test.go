@@ -81,7 +81,7 @@ func TestCompactCommandSelectsModel(t *testing.T) {
 func TestCompactModelEmptyResolvesDefault(t *testing.T) {
 	m := compactCmdModel()
 	m.applyCompactModel()
-	if m.agent.CompactModel != config.DefaultCompactModel || m.agent.CompactClient == nil {
+	if m.agent.CompactModel != config.DefaultCompactModel || m.agent.CompactClient == nil || m.agent.CompactProvider != "inference" {
 		t.Fatalf("empty compactModel should resolve the default, got %q", m.agent.CompactModel)
 	}
 }

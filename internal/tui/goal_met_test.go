@@ -3,6 +3,8 @@ package tui
 import (
 	"strings"
 	"testing"
+
+	"github.com/Stack-Cairn/K-brain/internal/ai"
 )
 
 func TestGoalMet(t *testing.T) {
@@ -49,5 +51,15 @@ func TestGoalLoopContinuesWithoutToken(t *testing.T) {
 	_, cmd := m.Update(turnDoneMsg{final: "still working"})
 	if cmd == nil {
 		t.Fatal("goal loop must continue when the token is absent")
+	}
+}
+
+func TestGoalLoopDoesNotCompleteOnTruncatedResponse(t *testing.T) {
+	m := goalFromContextModel(t, 200, `{"choices":[{"message":{"content":"ok"}}]}`)
+	m.goal = "ship the thing"
+	m.goalRounds = 0
+	_, cmd := m.Update(turnDoneMsg{final: "GOAL_MET — done\n[response truncated by output limit]", stopReason: ai.StopReasonLength})
+	if cmd == nil || m.goal == "" {
+		t.Fatal("truncated completion marker ended the goal")
 	}
 }

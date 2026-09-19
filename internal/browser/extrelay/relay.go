@@ -9,15 +9,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/gobwas/ws"
-	"github.com/gobwas/ws/wsutil"
 )
 
 type frame struct {
@@ -30,31 +26,21 @@ type frame struct {
 }
 
 type Relay struct {
-	token   string
-	ln      net.Listener
-	mu      sync.Mutex
-	ext     *conn
-	cdpConn *conn
-	tabInfo tabInfo
-	swlogs  []string
-}
-
-type conn struct {
-	nc net.Conn
-	r  io.Reader
-	w  *lockedWriter
-	wm sync.Mutex
-}
-
-type lockedWriter struct {
-	nc net.Conn
-	mu *sync.Mutex
-}
-
-func (w *lockedWriter) Write(p []byte) (int, error) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	return w.nc.Write(p)
+	token      string
+	ln         net.Listener
+	mu         sync.Mutex
+	ext        *conn
+	cdpConn    *conn
+	tabInfo    tabInfo
+	swlogs     []string
+	swlogBytes int
+	server     *http.Server
+	closed     bool
+	workers    sync.WaitGroup
+	closeOnce  sync.Once
+	closeErr   error
+	done       chan struct{}
+	serveDone  chan struct{}
 }
 
 func NewRelay() (*Relay, error) {
@@ -66,39 +52,60 @@ func NewRelay() (*Relay, error) {
 	if err != nil {
 		return nil, err
 	}
-	r := &Relay{token: tok, ln: ln}
+	r := &Relay{token: tok, ln: ln, done: make(chan struct{}), serveDone: make(chan struct{})}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/ext", r.handleExt)
-	mux.HandleFunc("/cdp", r.handleCDP)
-	mux.HandleFunc("/swlog", r.handleSWLog)
+	mux.HandleFunc("/ext", r.handler(r.handleExt))
+	mux.HandleFunc("/cdp", r.handler(r.handleCDP))
+	mux.HandleFunc("/swlog", r.handler(r.handleSWLog))
+	r.server = &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 
-	go func() { _ = http.Serve(ln, mux) }()
+	go func() {
+		defer close(r.serveDone)
+		_ = r.server.Serve(ln)
+	}()
 	return r, nil
 }
 
-func (r *Relay) SWLogs() []string {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return append([]string(nil), r.swlogs...)
-}
-
-func (r *Relay) handleSWLog(w http.ResponseWriter, req *http.Request) {
-	if req.URL.Query().Get("token") != r.token {
-		http.Error(w, "bad token", http.StatusUnauthorized)
-		return
+func (r *Relay) handler(fn http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		r.mu.Lock()
+		if r.closed {
+			r.mu.Unlock()
+			http.Error(w, "relay closed", http.StatusServiceUnavailable)
+			return
+		}
+		r.workers.Add(1)
+		r.mu.Unlock()
+		defer r.workers.Done()
+		fn(w, req)
 	}
-	body, _ := io.ReadAll(io.LimitReader(req.Body, 1<<16))
-	r.mu.Lock()
-	r.swlogs = append(r.swlogs, string(body))
-	r.mu.Unlock()
-	w.WriteHeader(http.StatusNoContent)
 }
 
 func (r *Relay) Addr() string { return r.ln.Addr().String() }
 
 func (r *Relay) Token() string { return r.token }
 
-func (r *Relay) Close() error { return r.ln.Close() }
+func (r *Relay) Close() error {
+	r.closeOnce.Do(func() {
+		r.mu.Lock()
+		r.closed = true
+		close(r.done)
+		ext, cdp := r.ext, r.cdpConn
+		r.ext, r.cdpConn = nil, nil
+		r.tabInfo = tabInfo{}
+		r.mu.Unlock()
+		if ext != nil {
+			ext.close()
+		}
+		if cdp != nil {
+			cdp.close()
+		}
+		r.closeErr = r.server.Close()
+		<-r.serveDone
+		r.workers.Wait()
+	})
+	return r.closeErr
+}
 
 func (r *Relay) CDPURL() string { return "ws://" + r.ln.Addr().String() + "/cdp" }
 
@@ -121,24 +128,43 @@ func (r *Relay) handleExt(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, "bad token", http.StatusUnauthorized)
 		return
 	}
-	c, err := upgrade(w, req)
-	if err != nil {
+	r.mu.Lock()
+	if r.closed {
+		r.mu.Unlock()
+		http.Error(w, "relay closed", http.StatusServiceUnavailable)
 		return
 	}
-	r.mu.Lock()
+	c, err := upgrade(w, req)
+	if err != nil {
+		r.mu.Unlock()
+		return
+	}
 	if r.ext != nil {
 		r.ext.close()
 	}
 	r.ext = c
+	r.tabInfo = tabInfo{}
 	r.mu.Unlock()
 	r.serveExt(c)
 }
 
 func (r *Relay) handleCDP(w http.ResponseWriter, req *http.Request) {
-	c, err := upgrade(w, req)
-	if err != nil {
+	r.mu.Lock()
+	if r.closed {
+		r.mu.Unlock()
+		http.Error(w, "relay closed", http.StatusServiceUnavailable)
 		return
 	}
+	c, err := upgrade(w, req)
+	if err != nil {
+		r.mu.Unlock()
+		return
+	}
+	if old := r.cdpConn; old != nil {
+		old.close()
+	}
+	r.cdpConn = c
+	r.mu.Unlock()
 	r.serveCDP(c)
 }
 
@@ -157,6 +183,10 @@ func upgrade(w http.ResponseWriter, req *http.Request) (*conn, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := nc.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		_ = nc.Close()
+		return nil, err
+	}
 	key := req.Header.Get("Sec-WebSocket-Key")
 	accept := wsAccept(key)
 	if _, err := fmt.Fprintf(rw, "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: %s\r\n\r\n", accept); err != nil {
@@ -167,9 +197,8 @@ func upgrade(w http.ResponseWriter, req *http.Request) (*conn, error) {
 		_ = nc.Close()
 		return nil, err
 	}
-	c := &conn{nc: nc, r: rw.Reader}
-	c.w = &lockedWriter{nc: nc, mu: &c.wm}
-	return c, nil
+	_ = nc.SetWriteDeadline(time.Time{})
+	return &conn{nc: nc, r: rw.Reader}, nil
 }
 
 func wsAccept(key string) string {
@@ -178,28 +207,12 @@ func wsAccept(key string) string {
 	return base64.StdEncoding.EncodeToString(sum[:])
 }
 
-func (c *conn) close() { _ = c.nc.Close() }
-
-type wsRW struct {
-	c *conn
-}
-
-func (s wsRW) Read(p []byte) (int, error)  { return s.c.r.Read(p) }
-func (s wsRW) Write(p []byte) (int, error) { return s.c.w.Write(p) }
-
-func (c *conn) writeText(b []byte) error {
-	return wsutil.WriteServerMessage(wsRW{c}, ws.OpText, b)
-}
-
-func (c *conn) readText() ([]byte, error) {
-	return wsutil.ReadClientText(wsRW{c})
-}
-
 func (r *Relay) serveExt(c *conn) {
 	defer func() {
 		r.mu.Lock()
 		if r.ext == c {
 			r.ext = nil
+			r.tabInfo = tabInfo{}
 		}
 		r.mu.Unlock()
 		c.close()
@@ -211,10 +224,14 @@ func (r *Relay) serveExt(c *conn) {
 		}
 
 		if isControl(msg) {
-			r.handleControl(msg)
+			r.handleControl(c, msg)
 			continue
 		}
 		r.mu.Lock()
+		if r.ext != c || r.closed {
+			r.mu.Unlock()
+			return
+		}
 		cdp := r.cdpLocked()
 		r.mu.Unlock()
 		if cdp != nil {
@@ -224,21 +241,23 @@ func (r *Relay) serveExt(c *conn) {
 }
 
 func (r *Relay) serveCDP(c *conn) {
-	r.mu.Lock()
-	if old := r.cdpConn; old != nil && old != c {
-		old.close()
-	}
-	r.setCDPLocked(c)
-	r.mu.Unlock()
 	defer func() {
 		r.mu.Lock()
-		r.setCDPLocked(nil)
+		if r.cdpConn == c {
+			r.cdpConn = nil
+		}
 		r.mu.Unlock()
 		c.close()
 	}()
 	for {
 		msg, err := c.readText()
 		if err != nil {
+			return
+		}
+		r.mu.Lock()
+		current := !r.closed && r.cdpConn == c
+		r.mu.Unlock()
+		if !current {
 			return
 		}
 		if r.handleSynth(c, msg) {
@@ -256,8 +275,6 @@ func (r *Relay) serveCDP(c *conn) {
 }
 
 func (r *Relay) cdpLocked() *conn { return r.cdpConn }
-
-func (r *Relay) setCDPLocked(c *conn) { r.cdpConn = c }
 
 func (r *Relay) handleSynth(c *conn, msg []byte) bool {
 	var f frame
@@ -348,7 +365,7 @@ func (r *Relay) replyErr(c *conn, msg []byte, text string) {
 
 type tabInfo struct{ ID, Title, URL string }
 
-func (r *Relay) handleControl(msg []byte) {
+func (r *Relay) handleControl(c *conn, msg []byte) {
 	var f frame
 	if json.Unmarshal(msg, &f) != nil || !strings.HasPrefix(f.Method, "k-brain.") {
 		return
@@ -361,7 +378,9 @@ func (r *Relay) handleControl(msg []byte) {
 		}
 		_ = json.Unmarshal(f.Params, &p)
 		r.mu.Lock()
-		r.tabInfo = tabInfo{ID: fmt.Sprintf("tab-%d", p.TabID), Title: p.Title, URL: p.URL}
+		if r.ext == c && !r.closed {
+			r.tabInfo = tabInfo{ID: fmt.Sprintf("tab-%d", p.TabID), Title: p.Title, URL: p.URL}
+		}
 		r.mu.Unlock()
 	}
 }
@@ -379,8 +398,10 @@ func (r *Relay) WaitAttached(ctx context.Context) error {
 			return nil
 		}
 		select {
+		case <-r.done:
+			return net.ErrClosed
 		case <-ctx.Done():
-			return errors.New("no tab attached: click the k-brain extension icon on the tab to drive")
+			return fmt.Errorf("no tab attached: click the k-brain extension icon on the tab to drive: %w", ctx.Err())
 		case <-t.C:
 		}
 	}

@@ -4,21 +4,27 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"github.com/Stack-Cairn/K-brain/internal/ai"
 )
 
 func TestCatalogPricing(t *testing.T) {
 	cat := Catalog{Models: []ModelInfoLite{
-		{ID: "priced", InPrice: 1e-6, OutPrice: 5e-6, CacheReadPrice: 1e-7},
+		{ID: "priced", Pricing: &ai.TokenRates{Input: 1e-6, Output: 5e-6, CacheRead: 1e-7, CacheWrite: 2e-6}},
+		{ID: "free", Pricing: &ai.TokenRates{}},
 		{ID: "unpriced"},
 	}}
-	in, out, cr, ok := cat.Pricing("priced")
-	if !ok || in != 1e-6 || out != 5e-6 || cr != 1e-7 {
-		t.Fatalf("priced model: %v %v %v ok=%v", in, out, cr, ok)
+	rates, ok := cat.Pricing("priced")
+	if !ok || rates != (ai.TokenRates{Input: 1e-6, Output: 5e-6, CacheRead: 1e-7, CacheWrite: 2e-6}) {
+		t.Fatalf("priced model: %+v ok=%v", rates, ok)
 	}
-	if _, _, _, ok := cat.Pricing("unpriced"); ok {
+	if _, ok := cat.Pricing("free"); !ok {
+		t.Fatal("explicit free model should have pricing")
+	}
+	if _, ok := cat.Pricing("unpriced"); ok {
 		t.Fatal("model with no prices should report ok=false")
 	}
-	if _, _, _, ok := cat.Pricing("missing"); ok {
+	if _, ok := cat.Pricing("missing"); ok {
 		t.Fatal("unknown model should report ok=false")
 	}
 }
@@ -27,15 +33,15 @@ func TestCatalogPricingRoundTrip(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("USERPROFILE", os.Getenv("HOME"))
 	cats := map[string]Catalog{
-		"p": {Models: []ModelInfoLite{{ID: "m", InPrice: 1e-6, OutPrice: 5e-6, CacheReadPrice: 1e-7}}},
+		"p": {Models: []ModelInfoLite{{ID: "m", Pricing: &ai.TokenRates{Input: 1e-6, Output: 5e-6, CacheRead: 1e-7, CacheWrite: 2e-6}}}},
 	}
 	if err := SaveCatalogs(cats); err != nil {
 		t.Fatal(err)
 	}
 	got := LoadCatalogs()
-	in, out, cr, ok := got["p"].Pricing("m")
-	if !ok || in != 1e-6 || out != 5e-6 || cr != 1e-7 {
-		t.Fatalf("round-trip: %v %v %v ok=%v", in, out, cr, ok)
+	rates, ok := got["p"].Pricing("m")
+	if !ok || rates != *cats["p"].Models[0].Pricing {
+		t.Fatalf("round-trip: %+v ok=%v", rates, ok)
 	}
 }
 

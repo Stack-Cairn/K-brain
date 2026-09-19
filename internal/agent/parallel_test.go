@@ -252,11 +252,18 @@ func TestClearSettledKeepsRunning(t *testing.T) {
 
 func TestAcquireGlobalSerializes(t *testing.T) {
 	f := newFileLocks()
-	release := f.acquireGlobal()
+	release, err := f.acquireGlobal(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	acquired := make(chan struct{})
 	go func() {
-		r2 := f.acquireGlobal()
+		r2, err := f.acquireGlobal(context.Background())
+		if err != nil {
+			t.Error(err)
+			return
+		}
 		close(acquired)
 		r2()
 	}()

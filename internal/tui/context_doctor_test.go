@@ -45,10 +45,9 @@ func TestDoctorCommandWired(t *testing.T) {
 
 	before := len(m.blocks)
 	m.command("/doctor")
-	if !strings.Contains(m.blocks[len(m.blocks)-1].text, "unknown command") {
-		t.Error("/doctor should not exist as a shorthand")
+	if len(m.blocks) != before+1 || !strings.Contains(m.blocks[len(m.blocks)-1].text, "context audit") {
+		t.Error("/doctor should show the context audit")
 	}
-	_ = before
 }
 
 func TestDoctorSkillSources(t *testing.T) {
@@ -78,10 +77,10 @@ func TestDoctorSkillSources(t *testing.T) {
 	if !strings.Contains(out, "proj-skill") || !strings.Contains(out, "user-skill") {
 		t.Fatalf("both skills should be named:\n%s", out)
 	}
-	if !strings.Contains(out, "proj-skill ~") || !strings.Contains(out, "(./.agents/skills)") {
+	if !strings.Contains(out, "proj-skill ~") || !strings.Contains(out, "(."+string(filepath.Separator)+filepath.Join(".agents", "skills")+")") {
 		t.Errorf("project skill should point at ./.agents/skills:\n%s", out)
 	}
-	if !strings.Contains(out, "(~/.k-brain/skills)") {
+	if !strings.Contains(out, "("+filepath.Join("~", ".k-brain", "skills")+")") {
 		t.Errorf("user skill should point at ~/.k-brain/skills:\n%s", out)
 	}
 }
@@ -93,9 +92,10 @@ func TestShortSkillsDir(t *testing.T) {
 	wd := t.TempDir()
 	t.Chdir(wd)
 	cases := map[string]string{
-		filepath.Join(home, ".k-brain", "skills"):                  "~/.k-brain/skills",
-		filepath.Join(wd, ".agents", "skills"):                     "./.agents/skills",
-		filepath.Join(string(filepath.Separator), "opt", "skills"): "/opt/skills",
+		filepath.Join(home, ".k-brain", "skills"):                  filepath.Join("~", ".k-brain", "skills"),
+		filepath.Join(wd, ".agents", "skills"):                     "." + string(filepath.Separator) + filepath.Join(".agents", "skills"),
+		filepath.Join(wd, "..local", "skills"):                     "." + string(filepath.Separator) + filepath.Join("..local", "skills"),
+		filepath.Join(string(filepath.Separator), "opt", "skills"): filepath.Join(string(filepath.Separator), "opt", "skills"),
 	}
 	for dir, want := range cases {
 		if got := shortSkillsDir(dir); got != want {

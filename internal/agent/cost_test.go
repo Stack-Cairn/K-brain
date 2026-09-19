@@ -173,8 +173,8 @@ func TestDoomLoopRefusalSkipsExecution(t *testing.T) {
 	if ran.Load() != 2 {
 		t.Fatalf("tool body should run twice, ran %d", ran.Load())
 	}
-	if !strings.Contains(res[0], "refused") {
-		t.Fatalf("3rd call should return the refusal, got %q", res[0])
+	if !strings.Contains(res[0].Text, "refused") {
+		t.Fatalf("3rd call should return the refusal, got %q", res[0].Text)
 	}
 	if ended.Load() != 3 {
 		t.Fatalf("OnToolEnd should fire for the refused call too, got %d", ended.Load())

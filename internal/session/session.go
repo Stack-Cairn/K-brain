@@ -22,24 +22,26 @@ var ErrNotFound = errors.New("session not found")
 var ErrClosed = errors.New("session store is closed")
 
 type Meta struct {
-	ID          string   `json:"id"`
-	Title       string   `json:"title"`
-	Model       string   `json:"model"`
-	Provider    string   `json:"provider"`
-	CWD         string   `json:"cwd"`
-	Goal        string   `json:"goal"`
-	ForkedFrom  string   `json:"forked_from"`
-	ForkSeq     int      `json:"fork_seq"`
-	Tags        []string `json:"tags"`
-	Pinned      bool     `json:"pinned"`
-	Archived    bool     `json:"archived"`
-	Effort      string   `json:"effort"`
-	UsageIn     int      `json:"usage_in"`
-	UsageCached int      `json:"usage_cached"`
-	UsageOut    int      `json:"usage_out"`
+	ID              string   `json:"id"`
+	Title           string   `json:"title"`
+	Model           string   `json:"model"`
+	Provider        string   `json:"provider"`
+	CWD             string   `json:"cwd"`
+	Goal            string   `json:"goal"`
+	ForkedFrom      string   `json:"forked_from"`
+	ForkSeq         int      `json:"fork_seq"`
+	Tags            []string `json:"tags"`
+	Pinned          bool     `json:"pinned"`
+	Archived        bool     `json:"archived"`
+	Effort          string   `json:"effort"`
+	UsageIn         int      `json:"usage_in"`
+	UsageCached     int      `json:"usage_cached"`
+	UsageOut        int      `json:"usage_out"`
+	UsageCacheWrite int      `json:"usage_cache_write,omitempty"`
 
-	SubUsage  map[string]ai.Usage `json:"sub_usage"`
-	UpdatedAt time.Time           `json:"updated_at"`
+	SubUsage   map[string]ai.Usage `json:"sub_usage"`
+	ModelUsage map[string]ai.Usage `json:"model_usage,omitempty"`
+	UpdatedAt  time.Time           `json:"updated_at"`
 
 	TaskID string `json:"task_id"`
 }
@@ -63,11 +65,12 @@ type Schedule struct {
 }
 
 type Compaction struct {
-	Seq     int      `json:"seq"`
-	Cutoff  int      `json:"cutoff"`
-	Summary string   `json:"summary"`
-	Model   string   `json:"model"`
-	Usage   ai.Usage `json:"usage"`
+	Seq       int      `json:"seq"`
+	Cutoff    int      `json:"cutoff"`
+	Summary   string   `json:"summary"`
+	Model     string   `json:"model"`
+	Usage     ai.Usage `json:"usage"`
+	DropPrior bool     `json:"drop_prior,omitempty"`
 }
 
 type Store struct {
@@ -143,21 +146,10 @@ func (s *Store) TranscriptPath(id string) string {
 	if !s.projectScoped {
 		return direct
 	}
-	if _, err := os.Stat(direct); err == nil {
-		return direct
-	}
-	entries, err := os.ReadDir(s.filesDir)
-	if err != nil {
-		return direct
-	}
-	for _, entry := range entries {
-		if !entry.IsDir() || !validProjectDir(entry.Name()) {
-			continue
-		}
-		path := filepath.Join(s.filesDir, entry.Name(), id, "session.jsonl")
-		if _, err := os.Stat(path); err == nil {
-			return path
-		}
+	if path, err := FindTranscript(s.filesDir, id); err == nil {
+		return path
+	} else if !errors.Is(err, ErrNotFound) && !errors.Is(err, os.ErrNotExist) {
+		return ""
 	}
 	return direct
 }
@@ -267,10 +259,7 @@ func (s *Store) all() ([]*sessionData, error) {
 		out = append(out, d)
 	}
 	sort.Slice(out, func(i, j int) bool {
-		if out[i].Meta.UpdatedAt.Equal(out[j].Meta.UpdatedAt) {
-			return out[i].Meta.ID < out[j].Meta.ID
-		}
-		return out[i].Meta.UpdatedAt.After(out[j].Meta.UpdatedAt)
+		return metaBefore(out[i].Meta, out[j].Meta)
 	})
 	return out, nil
 }

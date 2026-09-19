@@ -2,6 +2,8 @@ package ai
 
 import (
 	"context"
+	"errors"
+	"io"
 	"strings"
 	"testing"
 )
@@ -34,8 +36,8 @@ func TestStreamDiscardsIncompleteArgsOnDroppedStream(t *testing.T) {
 	defer srv.Close()
 
 	msg, _, err := New(srv.URL, "test-key").Stream(context.Background(), Request{Model: "m"}, nil, nil, nil)
-	if err != nil {
-		t.Fatal(err)
+	if !errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Fatalf("expected premature EOF, got %v", err)
 	}
 	if len(msg.ToolCalls) != 0 {
 		t.Fatalf("incomplete tool call from a dropped stream must be discarded, got %+v", msg.ToolCalls)

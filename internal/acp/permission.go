@@ -3,7 +3,6 @@ package acp
 import (
 	"context"
 	"fmt"
-	"sync"
 
 	acp "github.com/coder/acp-go-sdk"
 
@@ -16,18 +15,29 @@ const (
 	optReject      = "reject"
 )
 
-var gateMu sync.Mutex
-
-func (b *Bridge) installPermissionGate(s *acpSession, turnCtx context.Context) (restore func()) {
-	gateMu.Lock()
-	prev := tools.Gate
-	tools.Gate = func(req tools.GateRequest) (tools.GateDecision, string) {
-		return b.requestPermission(turnCtx, s, req)
-	}
-	return func() {
-		tools.Gate = prev
-		gateMu.Unlock()
-	}
+func (b *Bridge) permissionContext(ctx context.Context, s *acpSession) context.Context {
+	return tools.WithGate(ctx, func(req tools.GateRequest) (tools.GateDecision, string) {
+		s.turnMu.Lock()
+		mode := s.mode
+		s.turnMu.Unlock()
+		switch mode {
+		case ModeAuto:
+			return tools.GateAllowOnce, ""
+		case ModePlan:
+			return tools.GateReject, "Plan mode blocks this action; switch modes before implementation"
+		}
+		decision, reason := b.requestPermission(req.Context, s, req)
+		s.turnMu.Lock()
+		blocked := s.closed || s.mode == ModePlan
+		s.turnMu.Unlock()
+		if blocked {
+			return tools.GateReject, "session closed or switched to Plan mode while awaiting permission"
+		}
+		if err := req.Context.Err(); err != nil {
+			return tools.GateReject, err.Error()
+		}
+		return decision, reason
+	})
 }
 
 func (b *Bridge) requestPermission(ctx context.Context, s *acpSession, req tools.GateRequest) (tools.GateDecision, string) {

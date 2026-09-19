@@ -16,8 +16,8 @@ func taskCfg(url string) *config.Config {
 		DefaultModel: "m",
 		Providers:    map[string]config.Provider{"p": {BaseURL: url, APIKey: "k"}},
 		Models: map[string]config.Model{
-			"m":                     {Providers: []string{"p"}},
-			config.DefaultTaskModel: {Providers: []string{"p"}, Context: 384000},
+			"m":      {Providers: []string{"p"}},
+			"worker": {Providers: []string{"p"}, Context: 384000},
 		},
 	}
 }
@@ -49,6 +49,24 @@ func TestTaskCommandSpawns(t *testing.T) {
 	}
 }
 
+func TestTaskCommandHonorsWorktreeSetting(t *testing.T) {
+	srv := sseTextServer(t, "should not run")
+	defer srv.Close()
+	m := tasksModel(srv.URL)
+	m.agent.WorktreeSubagents = true
+	m.agent.WorkingDir = t.TempDir()
+	m.taskCommand("work in isolation")
+	tasks := m.agent.Tasks().List()
+	if len(tasks) != 1 {
+		t.Fatalf("task count = %d", len(tasks))
+	}
+	waitSettled(t, &tasks[0])
+	snap, _ := m.agent.Tasks().Get(tasks[0].ID)
+	if snap.Status != agent.TaskError || !strings.Contains(snap.Report, "workspace") {
+		t.Fatalf("worktree request silently fell back to shared workspace: %s: %s", snap.Status, snap.Report)
+	}
+}
+
 func taskmodelCfgModel(url string) *model {
 	m := tasksModel(url)
 	m.cfg = taskCfg(url)
@@ -71,10 +89,10 @@ func TestSubagentModelCommandPersists(t *testing.T) {
 	}
 
 	m.subagentModelCommand([]string{"off"})
-	if m.cfg.TaskModel != "" || m.agent.TaskDefault.Model != config.DefaultTaskModel {
+	if m.cfg.TaskModel != "" || m.agent.TaskDefault.Client != nil {
 		t.Fatalf("off should restore the default route: %q", m.cfg.TaskModel)
 	}
-	if !strings.Contains(m.blocks[len(m.blocks)-1].text, "default ("+config.DefaultTaskModel+")") {
+	if !strings.Contains(m.blocks[len(m.blocks)-1].text, "current model") {
 		t.Fatalf("off should note the default, got %q", m.blocks[len(m.blocks)-1].text)
 	}
 }
@@ -113,7 +131,7 @@ func TestSubagentModelPanel(t *testing.T) {
 	if pp == nil {
 		t.Fatal("palette should have a Subagent model row")
 	}
-	if pp.list[0] != "default ("+config.DefaultTaskModel+")" || len(pp.list) != len(m.cfg.Models)+1 {
+	if pp.list[0] != "current model" || len(pp.list) != len(m.cfg.Models)+1 {
 		t.Fatalf("panel list: %v", pp.list)
 	}
 
@@ -132,7 +150,7 @@ func TestSubagentModelPanel(t *testing.T) {
 	m.palette.stack = []*ppanel{pp}
 	m.panelKey(tea.KeyMsg{Type: tea.KeyEnter}, pp)
 	if m.cfg.TaskModel != "" {
-		t.Fatal("the default row should restore the built-in subagent model")
+		t.Fatal("the default row should restore inheritance from the current model")
 	}
 }
 
@@ -215,7 +233,7 @@ func TestSubagentModelPanelShowsRoutes(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	pp := m.routePanel(panelSubagent, "Subagent model", config.DefaultTaskModel, "", "")
+	pp := m.routePanel(panelSubagent, "Subagent model", "worker", "", "")
 	var shared []int
 	for i, row := range pp.list {
 		if model, _ := splitRouteKey(row); model == "shared" {
@@ -248,7 +266,7 @@ func TestSubagentModelPanelWindowsToHeight(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.height = 30
-	pp := m.routePanel(panelSubagent, "Subagent model", config.DefaultTaskModel, "", "")
+	pp := m.routePanel(panelSubagent, "Subagent model", "worker", "", "")
 	view := m.panelView(pp)
 	lines := strings.Split(view, "\n")
 	if len(lines) > 30 {
@@ -257,7 +275,7 @@ func TestSubagentModelPanelWindowsToHeight(t *testing.T) {
 	if !strings.Contains(lines[0], "/") || !strings.Contains(view, "type to filter") || !strings.Contains(view, "more") {
 		t.Fatalf("query line, footer and overflow marker should render:\n%s", view)
 	}
-	if !strings.Contains(view, "default (") {
+	if !strings.Contains(view, "current model") {
 		t.Fatal("selection (row 0) should be in the window")
 	}
 	pp.midx = 250

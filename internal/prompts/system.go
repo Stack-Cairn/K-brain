@@ -3,11 +3,26 @@ package prompts
 import (
 	"os/user"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/Stack-Cairn/K-brain/internal/config"
 	"github.com/Stack-Cairn/K-brain/internal/tools/bashrun"
 )
+
+func WithWorkingDirectory(prompt, dir string) string {
+	const marker = "\n<env>\n  Working directory: "
+	i := strings.Index(prompt, marker)
+	if i < 0 {
+		return prompt
+	}
+	i += len(marker)
+	j := strings.IndexByte(prompt[i:], '\n')
+	if j < 0 {
+		return prompt
+	}
+	return prompt[:i] + dir + prompt[i+j:]
+}
 
 func username() string {
 	u, err := user.Current()

@@ -22,7 +22,7 @@ func TestSelectionRowAccuracy(t *testing.T) {
 	for i, l := range strings.Split(v, "\n") {
 		if j := strings.Index(ansi.Strip(l), "MARKER-ANSWER"); j >= 0 {
 
-			screenRow, screenCol = m.viewTop+i, ansi.StringWidth(ansi.Strip(l)[:j])
+			screenRow, screenCol = i, ansi.StringWidth(ansi.Strip(l)[:j])
 		}
 	}
 	if screenRow < 0 {

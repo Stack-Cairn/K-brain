@@ -16,6 +16,7 @@ import (
 )
 
 type taskEventMsg struct {
+	view *taskView
 	id   string
 	kind int
 	s    string
@@ -24,6 +25,12 @@ type taskEventMsg struct {
 
 func sendTaskMsg(p *tea.Program, msg taskEventMsg) {
 	if p == nil {
+		return
+	}
+	if msg.view != nil {
+		if msg.view.stream.push(msg) {
+			go p.Send(taskStreamReadyMsg{view: msg.view})
+		}
 		return
 	}
 	go p.Send(msg)
@@ -38,7 +45,7 @@ func renderTaskEvent(buf *strings.Builder, kind int, s, s2 string) {
 	case 2:
 		preview := strings.Split(strings.TrimRight(s2, "\n"), "\n")
 		if len(preview) > 4 {
-			preview = append(preview[:4], fmt.Sprintf("… +%d lines", len(s2)-4))
+			preview = append(preview[:4], fmt.Sprintf("… +%d lines", len(preview)-4))
 		}
 		fmt.Fprintf(buf, "%s\n", dimStyle.Render("  "+strings.Join(preview, "\n  ")))
 	case 3:
@@ -62,6 +69,8 @@ type taskView struct {
 	busy  bool
 
 	followCancel context.CancelFunc
+	unsubscribe  func()
+	stream       taskStream
 }
 
 const tasksDockHeight = 6
@@ -172,18 +181,22 @@ func (m *model) tasksDock() string {
 		case agent.TaskError, agent.TaskCancelled:
 			icon = errStyle.Render("✗")
 		}
-		line := fmt.Sprintf("%s %s  %s", icon, t.ID, truncLine(t.Description, max(m.width-24, 8)))
 		var meta string
 		if t.Status == agent.TaskRunning {
 			meta = fmt.Sprintf("  %ds", int(time.Since(t.StartedAt).Seconds()))
 		} else {
 			meta = "  " + string(t.Status)
 		}
+		if t.FollowingUp {
+			icon = toolStyle.Render("⏳")
+			meta = "  replying"
+		}
+		line := fmt.Sprintf("%s %s  %s", icon, t.ID, truncLine(t.Description, max(m.width-24, 8)))
 		selected := m.tasksFocus && i == m.taskSel
 		switch {
 		case selected:
 			line = botStyle.Render(" → "+line) + toolStyle.Render(meta)
-		case t.Status == agent.TaskRunning:
+		case t.Status == agent.TaskRunning || t.FollowingUp:
 			line = "   " + toolStyle.Render(line) + dimStyle.Render(meta)
 		default:
 			line = "   " + line + dimStyle.Render(meta)
@@ -210,6 +223,7 @@ func (m *model) openTask(id string) {
 	if !ok {
 		return
 	}
+	m.closeTaskView()
 	tv := &taskView{id: id}
 	tv.input = textinput.New()
 	tv.input.Prompt = youStyle.Render("› ")
@@ -219,21 +233,23 @@ func (m *model) openTask(id string) {
 		toolStyle.Render("⚙"), t.ID, t.Description,
 		youStyle.Render("prompt:"), t.Prompt)
 	p := m.prog
-	events, truncated, live := m.agent.Tasks().SubscribeWithJournal(id, agent.Events{
+	events, truncated, live, unsubscribe := m.agent.Tasks().WatchTask(id, agent.Events{
 		OnText: func(s string) {
-			sendTaskMsg(p, taskEventMsg{id: id, kind: 0, s: s})
+			sendTaskMsg(p, taskEventMsg{view: tv, id: id, kind: 0, s: s})
 		},
 		OnToolStart: func(_, n, a string) {
-			sendTaskMsg(p, taskEventMsg{id: id, kind: 1, s: n, s2: a})
+			sendTaskMsg(p, taskEventMsg{view: tv, id: id, kind: 1, s: n, s2: a})
 		},
 		OnToolEnd: func(_, n, r string) {
-			sendTaskMsg(p, taskEventMsg{id: id, kind: 2, s: n, s2: r})
+			sendTaskMsg(p, taskEventMsg{view: tv, id: id, kind: 2, s: n, s2: r})
 		},
 		OnSteer: func(s string) {
-			sendTaskMsg(p, taskEventMsg{id: id, kind: 3, s: s})
+			sendTaskMsg(p, taskEventMsg{view: tv, id: id, kind: 3, s: s})
 		},
 	})
 	tv.live = live
+	tv.busy = t.FollowingUp
+	tv.unsubscribe = unsubscribe
 	if truncated {
 		fmt.Fprintf(&tv.buf, "\n%s\n", dimStyle.Render("  [earlier output dropped]"))
 	}
@@ -280,7 +296,7 @@ func renderTranscript(buf *strings.Builder, msgs []ai.Message) {
 		case "tool":
 			preview := strings.Split(strings.TrimRight(msg.Content, "\n"), "\n")
 			if len(preview) > 4 {
-				preview = append(preview[:4], fmt.Sprintf("… +%d lines", len(msg.Content)-4))
+				preview = append(preview[:4], fmt.Sprintf("… +%d lines", len(preview)-4))
 			}
 			fmt.Fprintf(buf, "%s\n", dimStyle.Render("  "+strings.Join(preview, "\n  ")))
 		}
@@ -305,7 +321,7 @@ func (m *model) taskSend(tv *taskView, text string) {
 			break
 		}
 		fmt.Fprintf(&tv.buf, "\n%s %s\n", youStyle.Render("you:"), text)
-	case tv.busy:
+	case tv.busy || t.FollowingUp:
 		fmt.Fprintf(&tv.buf, "\n%s\n", dimStyle.Render("(still replying — wait for the current reply)"))
 	default:
 		fmt.Fprintf(&tv.buf, "\n%s %s\n\n", youStyle.Render("you:"), text)
@@ -314,13 +330,13 @@ func (m *model) taskSend(tv *taskView, text string) {
 		p, id := m.prog, tv.id
 		ev := agent.Events{
 			OnText: func(s string) {
-				sendTaskMsg(p, taskEventMsg{id: id, kind: 0, s: s})
+				sendTaskMsg(p, taskEventMsg{view: tv, id: id, kind: 0, s: s})
 			},
 			OnToolStart: func(_, n, a string) {
-				sendTaskMsg(p, taskEventMsg{id: id, kind: 1, s: n, s2: a})
+				sendTaskMsg(p, taskEventMsg{view: tv, id: id, kind: 1, s: n, s2: a})
 			},
 			OnToolEnd: func(_, n, r string) {
-				sendTaskMsg(p, taskEventMsg{id: id, kind: 2, s: n, s2: r})
+				sendTaskMsg(p, taskEventMsg{view: tv, id: id, kind: 2, s: n, s2: r})
 			},
 		}
 		ag := m.agent
@@ -331,7 +347,7 @@ func (m *model) taskSend(tv *taskView, text string) {
 			if err != nil {
 				e = err.Error()
 			}
-			sendTaskMsg(p, taskEventMsg{id: id, kind: 4, s: e})
+			sendTaskMsg(p, taskEventMsg{view: tv, id: id, kind: 4, s: e})
 		}()
 	}
 	m.refreshTaskVP()
@@ -352,15 +368,25 @@ func (m *model) refreshTaskVP() {
 	}
 }
 
+func (m *model) closeTaskView() {
+	if m.taskVP != nil {
+		m.taskVP.stream.close()
+		if m.taskVP.unsubscribe != nil {
+			m.taskVP.unsubscribe()
+		}
+	}
+	m.taskVP = nil
+}
+
 func (m *model) taskViewKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	tv := m.taskVP
 	switch msg.Type {
 	case tea.KeyEsc:
-		m.taskVP = nil
+		m.closeTaskView()
 		m.tasksFocus = true
 		return m, nil
 	case tea.KeyCtrlT:
-		m.taskVP = nil
+		m.closeTaskView()
 		m.tasksFocus = true
 		return m, nil
 	case tea.KeyCtrlX:
@@ -400,7 +426,7 @@ func (m *model) taskViewView() string {
 	if ok && t.Restored {
 		status += ", restored"
 	}
-	if tv.busy {
+	if tv.busy || (ok && t.FollowingUp) {
 		status += ", replying"
 	}
 	head := toolStyle.Render(fmt.Sprintf(" ⚙ %s — %s", tv.id, truncLine(t.Description, max(m.width-30, 8)))) +

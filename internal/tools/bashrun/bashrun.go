@@ -71,6 +71,8 @@ type Result struct {
 type Options struct {
 	Command string
 
+	Dir string
+
 	Shell string
 
 	Timeout time.Duration
@@ -92,6 +94,23 @@ type Options struct {
 	Sandbox *sandbox.Policy
 }
 
+type workingDirKey struct{}
+
+func WithWorkingDir(ctx context.Context, dir string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, workingDirKey{}, dir)
+}
+
+func WorkingDir(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	dir, _ := ctx.Value(workingDirKey{}).(string)
+	return dir
+}
+
 func Run(ctx context.Context, opts Options) Result {
 	if opts.Timeout <= 0 {
 		opts.Timeout = 120 * time.Second
@@ -110,6 +129,11 @@ func Run(ctx context.Context, opts Options) Result {
 	cmd, err := shellCommand(ctx, shell, opts.Command)
 	if err != nil {
 		return Result{Exit: err.Error()}
+	}
+	if opts.Dir != "" {
+		cmd.Dir = opts.Dir
+	} else {
+		cmd.Dir = WorkingDir(ctx)
 	}
 	policy := opts.Sandbox
 	if policy == nil {
@@ -165,7 +189,7 @@ func runPiped(ctx context.Context, cmd *exec.Cmd, onUpdate func(string)) Result 
 
 	_ = outW.Close()
 	_ = errW.Close()
-	track(cmd)
+	state := track(cmd)
 	defer untrack(cmd)
 
 	var out bytes.Buffer
@@ -212,6 +236,7 @@ func runPiped(ctx context.Context, cmd *exec.Cmd, onUpdate func(string)) Result 
 	}
 
 	waitErr := cmd.Wait()
+	killed := state.finish(waitErr)
 
 	drained := make(chan struct{})
 	go func() { wg.Wait(); close(drained) }()
@@ -239,9 +264,7 @@ func runPiped(ctx context.Context, cmd *exec.Cmd, onUpdate func(string)) Result 
 		return res
 	}
 	res.Exit = exitString(waitErr)
-	if waitErr != nil {
-		res.Killed = isKilledBySignal(waitErr)
-	}
+	res.Killed = killed
 	return res
 }
 
@@ -280,16 +303,41 @@ func openDevNull() *os.File {
 
 var (
 	trackMu sync.Mutex
-	tracked = map[int]*exec.Cmd{}
+	tracked = map[int]*trackedProcess{}
 )
 
-func track(cmd *exec.Cmd) {
-	if cmd.Process == nil {
+type trackedProcess struct {
+	cmd      *exec.Cmd
+	mu       sync.Mutex
+	killed   bool
+	finished bool
+}
+
+func (p *trackedProcess) kill() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.finished || p.killed || p.cmd.Process == nil {
 		return
 	}
+	p.killed = process.Kill(p.cmd) == nil
+}
+
+func (p *trackedProcess) finish(err error) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.finished = true
+	return err != nil && (p.killed || isKilledBySignal(err))
+}
+
+func track(cmd *exec.Cmd) *trackedProcess {
+	p := &trackedProcess{cmd: cmd}
+	if cmd.Process == nil {
+		return p
+	}
 	trackMu.Lock()
-	tracked[cmd.Process.Pid] = cmd
+	tracked[cmd.Process.Pid] = p
 	trackMu.Unlock()
+	return p
 }
 
 func untrack(cmd *exec.Cmd) {
@@ -297,26 +345,26 @@ func untrack(cmd *exec.Cmd) {
 		return
 	}
 	trackMu.Lock()
-	delete(tracked, cmd.Process.Pid)
+	if p := tracked[cmd.Process.Pid]; p != nil && p.cmd == cmd {
+		delete(tracked, cmd.Process.Pid)
+	}
 	trackMu.Unlock()
 }
 
 func KillAll() {
 	trackMu.Lock()
-	procs := make([]*exec.Cmd, 0, len(tracked))
+	procs := make([]*trackedProcess, 0, len(tracked))
 	for _, c := range tracked {
 		procs = append(procs, c)
 	}
 	trackMu.Unlock()
-	for _, c := range procs {
-		if c.Process != nil {
-
-			_ = process.Kill(c)
-		}
+	for _, p := range procs {
+		p.kill()
 	}
 
 	deadline := time.Now().Add(2 * time.Second)
-	for _, c := range procs {
+	for _, p := range procs {
+		c := p.cmd
 		if c.Process == nil {
 			continue
 		}

@@ -175,7 +175,7 @@ func TestStatusLineShowsCost(t *testing.T) {
 	m.provName = "p"
 	m.agent.Model = "priced"
 	m.catalogs = map[string]config.Catalog{
-		"p": {Models: []config.ModelInfoLite{{ID: "priced", InPrice: 1e-6, OutPrice: 5e-6, CacheReadPrice: 1e-7}}},
+		"p": {Models: []config.ModelInfoLite{{ID: "priced", Pricing: &ai.TokenRates{Input: 1e-6, Output: 5e-6, CacheRead: 1e-7, CacheWrite: 1e-6}}}},
 	}
 	u := ai.Usage{PromptTokens: 10000, CompletionTokens: 1000}
 	u.PromptTokensDetails = &struct {
@@ -288,7 +288,7 @@ func TestSessionCostUsesFetchedPricing(t *testing.T) {
 	for i, mi := range infos {
 		lites[i] = config.ModelInfoLite{ID: mi.ID}
 		if mi.Pricing != nil {
-			lites[i].InPrice, lites[i].OutPrice, lites[i].CacheReadPrice = mi.Pricing.Rates()
+			lites[i].Pricing = mi.Pricing.Rates()
 		}
 	}
 	m := statusModel()
@@ -298,14 +298,14 @@ func TestSessionCostUsesFetchedPricing(t *testing.T) {
 	u.PromptTokensDetails = &struct {
 		CachedTokens int `json:"cached_tokens"`
 	}{CachedTokens: 20700}
-	m.agent.AddUsage(u)
-
 	m.agent.Model = "kimi-k3-fast"
+	m.agent.SetUsage(u)
 	fast, ok := m.sessionCost()
 	if !ok {
 		t.Fatal("fast variant should be priced")
 	}
 	m.agent.Model = "kimi-k3"
+	m.agent.SetUsage(u)
 	std, ok := m.sessionCost()
 	if !ok {
 		t.Fatal("standard variant should be priced")
@@ -314,7 +314,7 @@ func TestSessionCostUsesFetchedPricing(t *testing.T) {
 		t.Errorf("kimi-k3-fast cost %v should exceed kimi-k3 %v", fast, std)
 	}
 
-	if want := 0.064215; fast != want {
+	if want := 0.064215; fast-want > 1e-12 || want-fast > 1e-12 {
 		t.Errorf("kimi-k3-fast cost = %v, want %v", fast, want)
 	}
 

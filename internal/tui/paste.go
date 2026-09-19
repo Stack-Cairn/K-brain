@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/url"
@@ -22,6 +21,7 @@ import (
 
 	"github.com/Stack-Cairn/K-brain/internal/ai"
 	"github.com/Stack-Cairn/K-brain/internal/config"
+	"github.com/Stack-Cairn/K-brain/internal/fileuri"
 )
 
 func readClipboardImage() (string, []byte, error) {
@@ -104,7 +104,7 @@ func macOSPasteImage() (string, []byte, error) {
 func hasImageType(types []byte) (string, bool) {
 	for line := range strings.SplitSeq(string(types), "\n") {
 		line = strings.TrimSpace(line)
-		if after, ok := strings.CutPrefix(line, "image/"); ok {
+		if after, ok := strings.CutPrefix(line, "image/"); ok && imageExtsForMention["."+after] {
 			return after, true
 		}
 	}
@@ -184,13 +184,18 @@ func powershellImage() (string, []byte, error) {
 
 func pastedImagePath(text string) (string, bool) {
 	path := strings.TrimSpace(text)
-	if u, err := url.Parse(path); err == nil && u.Scheme == "file" {
-		if u.Host != "" && u.Host != "localhost" {
+	if strings.HasPrefix(strings.ToLower(path), "file:") {
+		u, err := url.Parse(path)
+		if err != nil || u.Host != "" && !strings.EqualFold(u.Host, "localhost") {
 			return "", false
 		}
-		path = u.Path
+		path = fileuri.Path(path)
+		if path == "" {
+			return "", false
+		}
+	} else {
+		path = unescapePath(path)
 	}
-	path = unescapePath(path)
 	info, err := os.Stat(path)
 	if err != nil || !info.Mode().IsRegular() {
 		return "", false
@@ -251,6 +256,10 @@ func pasteImageFileCmd(path string) tea.Msg {
 }
 
 func saveClipboardImage(ext string, data []byte) (string, error) {
+	ext = strings.ToLower(ext)
+	if !imageExtsForMention["."+ext] {
+		return "", fmt.Errorf("unsupported image extension %q", ext)
+	}
 	ext, data = ai.NormalizeImage(ext, data)
 	dir, err := config.Dir()
 	if err != nil {
@@ -260,15 +269,20 @@ func saveClipboardImage(ext string, data []byte) (string, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}
-	b := make([]byte, 3)
-	rand.Read(b)
-	name := fmt.Sprintf("%s-%s.%s", time.Now().Format("20060102-150405"), hex.EncodeToString(b), ext)
+	name := fmt.Sprintf("%s-%s.%s", time.Now().Format("20060102-150405"), rand.Text(), ext)
 	root, err := os.OpenRoot(dir)
 	if err != nil {
 		return "", err
 	}
 	defer func() { _ = root.Close() }()
-	if err := root.WriteFile(name, data, 0o600); err != nil {
+	f, err := root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return "", err
+	}
+	_, writeErr := f.Write(data)
+	closeErr := f.Close()
+	if err := errors.Join(writeErr, closeErr); err != nil {
+		_ = root.Remove(name)
 		return "", err
 	}
 	return filepath.Join(dir, name), nil

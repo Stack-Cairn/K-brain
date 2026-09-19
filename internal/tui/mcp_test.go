@@ -1,13 +1,9 @@
 package tui
 
 import (
-	"context"
 	"strings"
-	"sync"
 	"testing"
 	"time"
-
-	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/Stack-Cairn/K-brain/internal/agent"
 	"github.com/Stack-Cairn/K-brain/internal/ai"
@@ -22,6 +18,7 @@ func mcpModel(t *testing.T, cfgs map[string]mcp.ServerConfig) *model {
 	m.cfg = &config.Config{}
 	if cfgs != nil {
 		m.mcpMgr = mcp.NewManager(cfgs)
+		t.Cleanup(m.mcpMgr.Close)
 	}
 	return m
 }
@@ -109,24 +106,17 @@ func TestMCPSurvivesAgentSwap(t *testing.T) {
 	}
 }
 
-func TestMCPBlockedViewAndEnableGuard(t *testing.T) {
+func TestMCPUnknownEnableDoesNotCreateServer(t *testing.T) {
 	m := mcpModel(t, map[string]mcp.ServerConfig{"docs": {Command: []string{"docs"}}})
-	off := false
-	m.mcpMgr.SetBlocked(map[string]mcp.ServerConfig{
-		"node_repl": {Command: []string{"/app/bin/node_repl"}, Enabled: &off, Note: "blocked by mcpImport config"},
-	})
-	m.command("/mcp")
-	out := m.blocks[len(m.blocks)-1].text
-	if !strings.Contains(out, "node_repl") || !strings.Contains(out, "blocked by mcpImport config") {
-		t.Errorf("blocked server must stay visible with its note:\n%s", out)
+	m.command("/mcp unknown enable")
+	if last := m.blocks[len(m.blocks)-1].text; !strings.Contains(last, "no MCP server named unknown") {
+		t.Fatalf("unknown server not reported: %q", last)
 	}
-	m.command("/mcp node_repl enable")
-	last := m.blocks[len(m.blocks)-1].text
-	if !strings.Contains(last, "blocked by the mcpImport config") || !strings.Contains(last, "config.json") {
-		t.Errorf("enable on a blocked server should point at the config, got %q", last)
+	if _, written := m.cfg.MCPServers["unknown"]; written {
+		t.Fatal("enabling an unknown server wrote a config entry")
 	}
-	if _, written := m.cfg.MCPServers["node_repl"]; written {
-		t.Error("enabling a blocked server must not write a config entry")
+	if _, exists := m.mcpMgr.Config("unknown"); exists {
+		t.Fatal("enabling an unknown server created a runtime entry")
 	}
 }
 
@@ -139,11 +129,6 @@ func agHasTool(a *agent.Agent, name string) bool {
 	return false
 }
 
-var (
-	_ = sdkmcp.Tool{}
-	_ = context.Background
-)
-
 func TestMCPFirstSettleNote(t *testing.T) {
 	disabled := false
 	m := mcpModel(t, map[string]mcp.ServerConfig{
@@ -151,35 +136,31 @@ func TestMCPFirstSettleNote(t *testing.T) {
 		"off":  {Command: []string{"true"}, Enabled: &disabled},
 	})
 
-	var mu sync.Mutex
+	updates := make(chan struct{}, 8)
 	m.mcpMgr.SetOnChange(func() {
-		mu.Lock()
-		defer mu.Unlock()
-		m.Update(mcpStatusMsg{})
+		select {
+		case updates <- struct{}{}:
+		default:
+		}
 	})
-	m.mcpMgr.Start(context.Background())
+	m.mcpMgr.Start(t.Context())
 
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		done := 0
-		for _, s := range m.mcpMgr.Statuses() {
-			if s.Status != mcp.StatusConnecting {
-				done++
-			}
+	deadline := time.NewTimer(5 * time.Second)
+	defer deadline.Stop()
+	for !m.mcpSeen["dead"] || !m.mcpSeen["off"] {
+		select {
+		case <-updates:
+			m.Update(mcpStatusMsg{})
+		case <-deadline.C:
+			t.Fatal("MCP state updates never reached the UI")
 		}
-		if done == 2 {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
 	}
-	mu.Lock()
 	var sb strings.Builder
 	for _, b := range m.blocks {
 		sb.WriteString(b.text)
 		sb.WriteByte('\n')
 	}
 	text := sb.String()
-	mu.Unlock()
 	if !strings.Contains(text, "mcp: dead failed") || !strings.Contains(text, "/mcp dead reconnect") {
 		t.Errorf("missing failure note:\n%s", text)
 	}
@@ -190,13 +171,9 @@ func TestMCPFirstSettleNote(t *testing.T) {
 		t.Errorf("missing disabled note:\n%s", text)
 	}
 
-	mu.Lock()
 	before := len(m.blocks)
-	mu.Unlock()
-	m.mcpMgr.FireOnChangeForTest()
-	mu.Lock()
+	m.Update(mcpStatusMsg{})
 	if len(m.blocks) != before {
 		t.Error("second settle must not re-announce")
 	}
-	mu.Unlock()
 }

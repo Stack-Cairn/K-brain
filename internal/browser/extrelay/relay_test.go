@@ -149,11 +149,15 @@ func TestExtensionDisconnectDetaches(t *testing.T) {
 	}
 	defer r.Close()
 	ext := dialWS(t, fmt.Sprintf("ws://%s/ext?token=%s", r.Addr(), r.Token()))
+	deadline := time.Now().Add(2 * time.Second)
+	for !r.Attached() && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
 	if !r.Attached() {
 		t.Fatal("should be attached")
 	}
 	ext.Close()
-	deadline := time.Now().Add(2 * time.Second)
+	deadline = time.Now().Add(2 * time.Second)
 	for r.Attached() && time.Now().Before(deadline) {
 		time.Sleep(20 * time.Millisecond)
 	}

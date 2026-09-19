@@ -1,6 +1,7 @@
 package routing
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -9,10 +10,17 @@ import (
 )
 
 func ClientForProvider(prov config.Provider, name string, maxRetries int) (ai.Client, error) {
+	return ClientForProviderContext(context.Background(), prov, name, maxRetries)
+}
+
+func ClientForProviderContext(ctx context.Context, prov config.Provider, name string, maxRetries int) (ai.Client, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if prov.API != "" && prov.API != "openai-completions" && prov.API != "openai-responses" && prov.API != "anthropic-messages" {
 		return nil, fmt.Errorf("unsupported API %q for provider %q", prov.API, name)
 	}
-	key, err := prov.ResolveKey()
+	key, err := prov.ResolveKeyContext(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -28,13 +36,20 @@ func ClientForProvider(prov config.Provider, name string, maxRetries int) (ai.Cl
 }
 
 func ClientForProviderOptional(prov config.Provider, name string, maxRetries int) (ai.Client, error) {
+	return ClientForProviderOptionalContext(context.Background(), prov, name, maxRetries)
+}
+
+func ClientForProviderOptionalContext(ctx context.Context, prov config.Provider, name string, maxRetries int) (ai.Client, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if strings.TrimSpace(prov.BaseURL) == "" || strings.TrimSpace(prov.APIKey) == "" {
 		client := ai.New(prov.BaseURL, "")
 		client.MaxRetries = maxRetries
 		configureCache(client, prov)
 		return client, nil
 	}
-	return ClientForProvider(prov, name, maxRetries)
+	return ClientForProviderContext(ctx, prov, name, maxRetries)
 }
 func configureCache(client ai.Client, prov config.Provider) {
 	o, ok := client.(interface{ SetCacheOptions(ai.CacheOptions) })

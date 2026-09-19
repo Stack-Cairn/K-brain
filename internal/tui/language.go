@@ -15,7 +15,7 @@ func (m *model) tr(text string) string { return i18n.Text(m.language(), text) }
 
 func (m *model) setLanguage(language string) bool {
 	if !i18n.Valid(language) {
-		m.append(errStyle.Render(m.tr("usage: /language [zh_cn|zh_tw|en]")))
+		m.append(errStyle.Render(m.tr("usage: /language [zh_cn|zh_Hant|en]")))
 		return false
 	}
 	if m.cfg == nil {
@@ -43,7 +43,7 @@ func (m *model) languageCommand(args []string) {
 		return
 	}
 	if len(args) != 1 {
-		m.append(errStyle.Render(m.tr("usage: /language [zh_cn|zh_tw|en]")))
+		m.append(errStyle.Render(m.tr("usage: /language [zh_cn|zh_Hant|en]")))
 		return
 	}
 	m.setLanguage(args[0])
@@ -65,7 +65,7 @@ func languageLabel(language string) string {
 		return "zh_cn  简体中文"
 	}
 	if language == i18n.TraditionalChinese {
-		return "zh_tw  繁體中文"
+		return "zh_Hant  繁體中文"
 	}
 	return "en     English"
 }

@@ -17,7 +17,9 @@ func trackedCount() int {
 
 func TestKillAllReapsChildren(t *testing.T) {
 	done := make(chan Result, 1)
-	go func() { done <- Run(context.Background(), Options{Command: "sleep 60"}) }()
+	go func() {
+		done <- Run(context.Background(), Options{Command: shellTestCommand("sleep 60", "Start-Sleep -Seconds 60")})
+	}()
 
 	deadline := time.Now().Add(2 * time.Second)
 	for trackedCount() == 0 {
@@ -29,7 +31,7 @@ func TestKillAllReapsChildren(t *testing.T) {
 	trackMu.Lock()
 	var cmd *exec.Cmd
 	for _, c := range tracked {
-		cmd = c
+		cmd = c.cmd
 	}
 	trackMu.Unlock()
 
@@ -51,7 +53,7 @@ func TestKillAllReapsChildren(t *testing.T) {
 func TestBackgroundGrandchildDoesNotHang(t *testing.T) {
 	done := make(chan Result, 1)
 	go func() {
-		done <- Run(context.Background(), Options{Command: "sleep 30 & echo started", Timeout: 10 * time.Second})
+		done <- Run(context.Background(), Options{Command: shellTestCommand("sleep 30 & echo started", "Start-Job { Start-Sleep -Seconds 30 } | Out-Null; Write-Output started"), Timeout: 10 * time.Second})
 	}()
 	select {
 	case res := <-done:

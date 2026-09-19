@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Stack-Cairn/K-brain/internal/config"
+	"github.com/Stack-Cairn/K-brain/internal/session"
 )
 
 const (
@@ -43,7 +44,11 @@ func Session(id string) Scope {
 	if err != nil {
 		return Scope{}
 	}
-	return Scope{Path: filepath.Join(dir, "sessions", id+".memory.md"), Name: "session"}
+	transcript, err := session.FindTranscript(filepath.Join(dir, "sessions"), id)
+	if err != nil {
+		return Scope{}
+	}
+	return Scope{Path: filepath.Join(filepath.Dir(transcript), "memory.md"), Name: "session"}
 }
 
 func (s Scope) Entries() []Entry {

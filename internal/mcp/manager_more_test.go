@@ -109,30 +109,6 @@ func TestBridgeTitleFallback(t *testing.T) {
 	}
 }
 
-func TestSetBlockedAndBlockedByPolicy(t *testing.T) {
-	m := NewManager(nil)
-	if m.BlockedByPolicy("anything") {
-		t.Error("nothing is blocked yet")
-	}
-	m.SetBlocked(map[string]ServerConfig{
-		"zeta":  {Note: "blocked by mcpImport", Source: "~/.codex/config.toml"},
-		"alpha": {Note: "blocked by mcpImport", Source: ".mcp.json"},
-	})
-	b := m.Blocked()
-	if len(b) != 2 || b[0].Name != "alpha" || b[1].Name != "zeta" {
-		t.Fatalf("blocked = %+v, want name-sorted alpha,zeta", b)
-	}
-	if b[0].Status != StatusDisabled || b[0].Note != "blocked by mcpImport" || b[0].Source != ".mcp.json" {
-		t.Errorf("blocked[0] = %+v", b[0])
-	}
-	if !m.BlockedByPolicy("zeta") || !m.BlockedByPolicy("alpha") {
-		t.Error("blocked servers must report true")
-	}
-	if m.BlockedByPolicy("never-configured") {
-		t.Error("unknown name must report false")
-	}
-}
-
 func TestInstructionsBlockSortedAndEmpty(t *testing.T) {
 	if got := NewManager(nil).InstructionsBlock(); got != "" {
 		t.Errorf("no servers → %q, want empty", got)

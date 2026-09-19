@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os/exec"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -11,8 +12,8 @@ import (
 
 func TestRunReportsUnstartableShell(t *testing.T) {
 	for _, interactive := range []bool{false, true} {
-		t.Setenv("SHELL", "/nonexistent/definitely-not-a-shell")
 		res := Run(context.Background(), Options{
+			Shell:             "definitely-not-a-k-brain-shell",
 			Command:           "echo hi",
 			Interactive:       interactive,
 			Timeout:           5 * time.Second,
@@ -22,7 +23,11 @@ func TestRunReportsUnstartableShell(t *testing.T) {
 			t.Fatalf("interactive=%v: a shell that can't start must report an exit status: %+v", interactive, res)
 		}
 
-		if !strings.Contains(res.Exit, "exit:") {
+		if runtime.GOOS == "windows" && interactive {
+			if !strings.Contains(res.Exit, "interactive PTY is not available") {
+				t.Fatalf("Windows must report unsupported PTY: %+v", res)
+			}
+		} else if !strings.Contains(res.Exit, "exit:") {
 			t.Fatalf("interactive=%v: exit should name the start failure, got %q", interactive, res.Exit)
 		}
 		if res.Output != "" {
@@ -32,6 +37,9 @@ func TestRunReportsUnstartableShell(t *testing.T) {
 }
 
 func TestInteractiveNeverOutlivesItsCaps(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("native Windows does not provide interactive PTY")
+	}
 	cases := map[string]struct {
 		setup    func() (context.Context, time.Duration)
 		wantExit string
@@ -88,6 +96,13 @@ func TestExitString(t *testing.T) {
 	if got := exitString(errors.New("fork/exec: no such file")); got != "(exit: fork/exec: no such file)" {
 		t.Fatalf("non-exit errors: %q", got)
 	}
+	if runtime.GOOS == "windows" {
+		err := exec.CommandContext(t.Context(), "cmd.exe", "/C", "exit 5").Run()
+		if got := exitString(err); got != "(exit: exit status 5)" {
+			t.Fatalf("exit status: %q", got)
+		}
+		return
+	}
 	err := exec.CommandContext(t.Context(), "sh", "-c", "exit 5").Run()
 	if got := exitString(err); got != "(exit: exit status 5)" {
 		t.Fatalf("exit status: %q", got)
@@ -95,6 +110,9 @@ func TestExitString(t *testing.T) {
 }
 
 func TestIsKilledBySignal(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix signals are not available on Windows")
+	}
 	if isKilledBySignal(errors.New("boom")) {
 		t.Fatal("a non-exec error is not a signal kill")
 	}
@@ -125,7 +143,7 @@ func TestTrackIgnoresUnstartedCommands(t *testing.T) {
 
 func TestKillAllSkipsProcesslessEntries(t *testing.T) {
 	trackMu.Lock()
-	tracked[-1] = exec.CommandContext(t.Context(), "true")
+	tracked[-1] = &trackedProcess{cmd: exec.CommandContext(t.Context(), "true")}
 	trackMu.Unlock()
 	t.Cleanup(func() {
 		trackMu.Lock()

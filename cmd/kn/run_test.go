@@ -247,12 +247,29 @@ func TestRunMaxTurns(t *testing.T) {
 }`, srv.URL)
 	os.WriteFile(filepath.Join(home, "config.json"), []byte(cfg), 0o600)
 
-	out, err := runCapture(t, "", "-max-turns", "2", "-no-session", "loop forever")
+	out, err := runCapture(t, "", "-max-turns", "2", "loop forever")
 	if err != nil {
 		t.Fatalf("a capped run should finalize, not error: %v", err)
 	}
 	if !strings.Contains(out, "final answer") {
 		t.Fatalf("capped run should return the forced final answer, got %q", out)
+	}
+	st, err := sessionOpen(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	metas, err := st.Recent(10)
+	if err != nil || len(metas) != 1 {
+		t.Fatalf("capped session: %+v, %v", metas, err)
+	}
+	_, history, err := st.Load(metas[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := history[len(history)-1]
+	if last.Role != "assistant" || last.Content != "final answer" || last.Usage == nil || last.Model != "test @ testprov" {
+		t.Fatalf("forced final answer missing from saved history: %+v", last)
 	}
 }
 
@@ -319,7 +336,7 @@ func TestRunQuietJSON(t *testing.T) {
 
 func configDir() (string, error) { return os.Getenv("K_BRAIN_HOME"), nil }
 
-func sessionOpen(dir string) (*session.Store, error) { return session.OpenHome(dir) }
+func sessionOpen(dir string) (*session.Store, error) { return session.OpenProjectHome(dir) }
 
 func TestRunArgValidation(t *testing.T) {
 	runFixture(t, "never used", nil)
@@ -331,6 +348,9 @@ func TestRunArgValidation(t *testing.T) {
 		{"unknown flag", "not defined", []string{"-nosuchflag"}},
 		{"bad format", "unknown --format", []string{"--format", "xml", "hi"}},
 		{"no prompt", "no prompt given", nil},
+		{"negative turns", "--max-turns must be non-negative", []string{"--max-turns", "-1", "hi"}},
+		{"negative timeout", "--timeout must be non-negative", []string{"--timeout", "-1s", "hi"}},
+		{"conflicting session flags", "--resume cannot be combined", []string{"--resume", "id", "--no-session", "hi"}},
 	} {
 		_, err := runCapture(t, "", c.args...)
 		if err == nil || !strings.Contains(err.Error(), c.want) {

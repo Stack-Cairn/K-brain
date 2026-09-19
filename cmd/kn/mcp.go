@@ -2,10 +2,8 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 	"time"
@@ -18,14 +16,17 @@ func mcpCLI(args []string, version string) error {
 	if len(args) == 0 {
 		return errors.New("usage: kn mcp <list|add|remove|serve|test>")
 	}
-	if args[0] == "serve" {
+	switch args[0] {
+	case "serve":
 		return mcp.Serve(context.Background(), version)
-	}
-	if args[0] == "test" {
+	case "test":
 		if len(args) < 2 {
 			return errors.New("usage: kn mcp test <name>")
 		}
 		return mcpTestCLI(args[1])
+	case "list", "add", "remove":
+	default:
+		return fmt.Errorf("unknown mcp subcommand %q (list|add|remove|serve|test)", args[0])
 	}
 	cfg, err := config.Load()
 	if err != nil {
@@ -34,12 +35,9 @@ func mcpCLI(args []string, version string) error {
 
 	switch args[0] {
 	case "list":
-		disc := mcp.LoadConfigured(mcp.FromConfigMap(cfg.MCPServers))
-		names := make([]string, 0, len(disc.Merged)+len(disc.Blocked))
-		for name := range disc.Merged {
-			names = append(names, name)
-		}
-		for name := range disc.Blocked {
+		servers := mcp.FromConfigMap(cfg.MCPServers)
+		names := make([]string, 0, len(servers))
+		for name := range servers {
 			names = append(names, name)
 		}
 		sort.Strings(names)
@@ -47,20 +45,12 @@ func mcpCLI(args []string, version string) error {
 			fmt.Println("no MCP servers configured")
 		}
 		for _, name := range names {
+			c := servers[name]
 			status := "enabled"
-			var c mcp.ServerConfig
-			if b, ok := disc.Blocked[name]; ok {
-				c, status = b, "blocked"
-			} else {
-				c = disc.Merged[name]
-				if c.Disabled() {
-					status = "disabled"
-				}
+			if c.Disabled() {
+				status = "disabled"
 			}
-			fmt.Printf("%-20s %-9s %-30s %s\n", name, status, mcpTarget(c), disc.Sources[name]+" config")
-		}
-		for src, e := range disc.Errs {
-			fmt.Fprintf(os.Stderr, "mcp: %s: %s\n", src, e)
+			fmt.Printf("%-20s %-9s %-30s %s\n", name, status, mcpTarget(c), c.Source+" config")
 		}
 		return nil
 
@@ -117,8 +107,7 @@ func mcpTestCLI(name string) error {
 	if err != nil {
 		return err
 	}
-	disc := mcp.LoadConfigured(mcp.FromConfigMap(cfg.MCPServers))
-	sc, ok := disc.Merged[name]
+	sc, ok := mcp.FromConfigMap(cfg.MCPServers)[name]
 	if !ok {
 		return fmt.Errorf("no mcp server named %q (try: kn mcp list)", name)
 	}
@@ -151,58 +140,4 @@ func mcpTarget(c mcp.ServerConfig) string {
 		return c.URL
 	}
 	return strings.Join(c.Command, " ")
-}
-
-func mcpImportCLI(args []string) error {
-	dryRun := false
-	for _, a := range args {
-		if a == "--dry-run" {
-			dryRun = true
-		} else {
-			return errors.New("usage: kn mcp import [--dry-run]")
-		}
-	}
-	cfg, err := config.Load()
-	if err != nil {
-		return err
-	}
-	wd, _ := os.Getwd()
-	disc := mcp.LoadMergedFiltered(wd, mcp.FromConfigMap(cfg.MCPServers), mcp.ImportPolicyFrom(cfg.MCPImport))
-	add := map[string]config.MCPServer{}
-	for name, sc := range disc.Merged {
-		if _, owned := cfg.MCPServers[name]; owned {
-			continue
-		}
-		add[name] = config.MCPServer{
-			Command: sc.Command, Env: sc.Env, Cwd: sc.Cwd,
-			URL: sc.URL, Headers: sc.Headers, Enabled: sc.Enabled,
-			Note: sc.Note, StartupTimeout: sc.StartupTimeout, ToolTimeout: sc.ToolTimeout,
-		}
-	}
-	if len(add) == 0 {
-		fmt.Println("nothing to import — all servers are already in k-brain's config (or blocked by mcpImport)")
-		return nil
-	}
-	if dryRun {
-		body, err := json.MarshalIndent(add, "", "  ")
-		if err != nil {
-			return err
-		}
-		fmt.Printf("would add %d server(s) to ~/.k-brain/config.json under \"mcp\":\n%s\n", len(add), body)
-		return nil
-	}
-	if cfg.MCPServers == nil {
-		cfg.MCPServers = map[string]config.MCPServer{}
-	}
-	names := make([]string, 0, len(add))
-	for name, entry := range add {
-		cfg.MCPServers[name] = entry
-		names = append(names, name)
-	}
-	if err := cfg.Save(); err != nil {
-		return err
-	}
-	sort.Strings(names)
-	fmt.Printf("imported %d mcp server(s) into ~/.k-brain/config.json: %s\n", len(names), strings.Join(names, ", "))
-	return nil
 }

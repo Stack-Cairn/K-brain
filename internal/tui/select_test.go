@@ -22,7 +22,7 @@ func selTestModel() *model {
 
 func blockRowY(m *model, r int) int {
 	m.View()
-	return m.viewTop + 3 + (r + m.contentPad() - m.vp.YOffset) - m.vpLead
+	return m.viewTop + m.vpTopRows() + (r + m.contentPad() - m.vp.YOffset) - m.vpLead
 }
 
 func TestDragSelectsHighlightsCopies(t *testing.T) {

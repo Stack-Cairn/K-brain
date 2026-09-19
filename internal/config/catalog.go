@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"slices"
 	"time"
+
+	"github.com/Stack-Cairn/K-brain/internal/ai"
 )
 
 const catalogTTL = 24 * time.Hour
@@ -17,14 +19,12 @@ type Catalog struct {
 }
 
 type ModelInfoLite struct {
-	ID                  string   `json:"id"`
-	ContextLength       int      `json:"contextLength,omitempty"`
-	MaxCompletionTokens int      `json:"maxCompletionTokens,omitempty"`
-	ReasoningEfforts    []string `json:"reasoningEfforts,omitempty"`
-	InPrice             float64  `json:"inPrice,omitempty"`
-	OutPrice            float64  `json:"outPrice,omitempty"`
-	CacheReadPrice      float64  `json:"cacheReadPrice,omitempty"`
-	InputModalities     []string `json:"inputModalities,omitempty"`
+	ID                  string         `json:"id"`
+	ContextLength       int            `json:"contextLength,omitempty"`
+	MaxCompletionTokens int            `json:"maxCompletionTokens,omitempty"`
+	ReasoningEfforts    []string       `json:"reasoningEfforts,omitempty"`
+	Pricing             *ai.TokenRates `json:"pricing,omitempty"`
+	InputModalities     []string       `json:"inputModalities,omitempty"`
 }
 
 func (c Catalog) SupportsVision(id string) (vision, found bool) {
@@ -60,13 +60,16 @@ func (c Catalog) MaxCompletionTokens(id string) int {
 	return 0
 }
 
-func (c Catalog) Pricing(id string) (in, out, cacheRead float64, ok bool) {
+func (c Catalog) Pricing(id string) (ai.TokenRates, bool) {
 	for _, mi := range c.Models {
 		if mi.ID == id {
-			return mi.InPrice, mi.OutPrice, mi.CacheReadPrice, mi.InPrice > 0 || mi.OutPrice > 0
+			if mi.Pricing != nil && mi.Pricing.Valid() {
+				return *mi.Pricing, true
+			}
+			return ai.TokenRates{}, false
 		}
 	}
-	return 0, 0, 0, false
+	return ai.TokenRates{}, false
 }
 
 func (c Catalog) Find(id string) *ModelInfoLite {

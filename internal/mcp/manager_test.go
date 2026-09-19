@@ -372,8 +372,8 @@ func TestManagerAutoReconnectGivesUp(t *testing.T) {
 	if st.Status != StatusFailed {
 		t.Errorf("flaky should end failed, got %v", st.Status)
 	}
-	if got := connects.Load(); got > int64(autoReconnectMax)+1 {
-		t.Errorf("connect attempts = %d, want <= initial + %d retries", got, autoReconnectMax)
+	if got := connects.Load(); got != int64(autoReconnectMax)+1 {
+		t.Errorf("connect attempts = %d, want initial + %d retries", got, autoReconnectMax)
 	}
 }
 

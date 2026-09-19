@@ -109,7 +109,6 @@ func TestStreamTextAndToolCalls(t *testing.T) {
 		`data: {"choices":[{"delta":{"content":"hel"}}]}`,
 		`data: {"choices":[{"delta":{"content":"lo"}}]}`,
 		`: comment to ignore`,
-		`data: not-json-is-skipped`,
 		`data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","type":"function","function":{"name":"ba","arguments":"{\"comm"}}]}}]}`,
 		`data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"sh","arguments":"and\":\"ls\"}"}}]}}]}`,
 		`data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}`,
@@ -407,9 +406,9 @@ func TestModelInfoPricingParsed(t *testing.T) {
 	if mi.Pricing == nil {
 		t.Fatal("pricing block should unmarshal")
 	}
-	in, out, cr := mi.Pricing.Rates()
-	if in != 1e-6 || out != 5e-6 || cr != 1e-7 {
-		t.Fatalf("rates: in=%v out=%v cr=%v", in, out, cr)
+	rates := mi.Pricing.Rates()
+	if rates == nil || rates.Input != 1e-6 || rates.Output != 5e-6 || rates.CacheRead != 1e-7 || rates.CacheWrite != 1e-6 {
+		t.Fatalf("rates: %+v", rates)
 	}
 }
 
@@ -437,15 +436,16 @@ func TestSessionCost(t *testing.T) {
 		in, out, cacheRead float64
 		want               float64
 	}{
-		{"no cache", Usage{PromptTokens: 10000, CompletionTokens: 1000}, 1e-6, 5e-6, 0, 0.015},
+		{"no cache", Usage{PromptTokens: 10000, CompletionTokens: 1000}, 1e-6, 5e-6, 1e-6, 0.015},
 		{"partial cache with cache rate", cached(8000), 1e-6, 5e-6, 1e-7, 0.0078},
-		{"cache billed at input rate when no cache rate", cached(8000), 1e-6, 5e-6, 0, 0.015},
+		{"cache billed at input rate", cached(8000), 1e-6, 5e-6, 1e-6, 0.015},
+		{"free cache", cached(8000), 1e-6, 5e-6, 0, 0.007},
 		{"zero usage", Usage{}, 1e-6, 5e-6, 1e-7, 0},
 	}
 	for _, c := range cases {
 
-		if got := SessionCost(c.u, c.in, c.out, c.cacheRead); math.Abs(got-c.want) > 1e-12 {
-			t.Errorf("%s: SessionCost = %v, want %v", c.name, got, c.want)
+		if got, ok := CalculateCost(c.u, TokenRates{Input: c.in, Output: c.out, CacheRead: c.cacheRead, CacheWrite: c.in}); !ok || math.Abs(got.Total-c.want) > 1e-12 {
+			t.Errorf("%s: CalculateCost = %+v, %v; want %v", c.name, got, ok, c.want)
 		}
 	}
 }

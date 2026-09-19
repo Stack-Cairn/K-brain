@@ -6,6 +6,18 @@ param(
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $repo = 'Stack-Cairn/K-brain'
+
+function Get-PrioritizedPath([string]$PathValue, [string]$Directory) {
+    $key = $Directory.TrimEnd('\', '/')
+    $remaining = foreach ($entry in ($PathValue -split ';')) {
+        $normalized = [Environment]::ExpandEnvironmentVariables($entry.Trim().Trim('"')).TrimEnd('\', '/')
+        if ($normalized -and -not [string]::Equals($normalized, $key, [StringComparison]::OrdinalIgnoreCase)) {
+            $entry
+        }
+    }
+    return (@($Directory) + @($remaining)) -join ';'
+}
+
 $arch = $env:PROCESSOR_ARCHITECTURE
 if ($env:PROCESSOR_ARCHITEW6432) { $arch = $env:PROCESSOR_ARCHITEW6432 }
 switch ($arch) {
@@ -41,6 +53,14 @@ try {
     if ((Get-FileHash -LiteralPath $download -Algorithm SHA256).Hash -ne $expected) {
         throw 'Downloaded binary checksum mismatch'
     }
+    $installedVersion = [string](& $download --version)
+    if ($LASTEXITCODE -ne 0 -or $installedVersion -notmatch '^k-brain (v[0-9][A-Za-z0-9._-]*)$') {
+        throw "Downloaded binary did not report a release version: $installedVersion"
+    }
+    $installedTag = $Matches[1]
+    if ($Version -ne 'latest' -and $installedTag -ne $Version) {
+        throw "Downloaded binary reports $installedTag; expected $Version"
+    }
     Invoke-WebRequest -UseBasicParsing -Uri "$base/$helperAsset" -OutFile $helperDownload
     $helperExpected = $null
     foreach ($line in ($sums -split "`n")) {
@@ -56,10 +76,16 @@ try {
     }
     Move-Item -LiteralPath $helperDownload -Destination $helperTarget -Force
     $userPath = [string][Environment]::GetEnvironmentVariable('Path', 'User')
-    if (($userPath -split ';') -notcontains $InstallDir) {
-        [Environment]::SetEnvironmentVariable('Path', ($userPath.TrimEnd(';') + ';' + $InstallDir).TrimStart(';'), 'User')
+    $updatedPath = Get-PrioritizedPath $userPath $InstallDir
+    if ($updatedPath -ne $userPath) {
+        [Environment]::SetEnvironmentVariable('Path', $updatedPath, 'User')
     }
-    Write-Output "Installed $target. Open a new terminal and run kn."
+    $env:Path = Get-PrioritizedPath $env:Path $InstallDir
+    Write-Output "Installed $installedVersion at $target. Run kn to start."
+    $resolved = Get-Command kn -ErrorAction SilentlyContinue
+    if ($resolved -and ($resolved.CommandType -ne 'Application' -or $resolved.Source -ne $target)) {
+        Write-Warning "kn resolves to $($resolved.Definition), not the installed release. Run & '$target' or remove the conflicting alias/function."
+    }
 } finally {
     if (Test-Path -LiteralPath $download) { Remove-Item -LiteralPath $download -Force }
     if (Test-Path -LiteralPath $helperDownload) { Remove-Item -LiteralPath $helperDownload -Force }

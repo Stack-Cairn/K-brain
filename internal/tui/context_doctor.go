@@ -136,7 +136,7 @@ func shortSkillsDir(dir string) string {
 		}
 	}
 	if wd, err := os.Getwd(); err == nil {
-		if rel, err := filepath.Rel(wd, dir); err == nil && !strings.HasPrefix(rel, "..") {
+		if rel, err := filepath.Rel(wd, dir); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 			if rel == "." {
 				return "."
 			}

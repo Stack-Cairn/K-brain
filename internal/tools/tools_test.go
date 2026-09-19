@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +16,17 @@ import (
 func run(t *testing.T, name, args string) string {
 	t.Helper()
 	return Execute(context.Background(), All(), name, json.RawMessage(args))
+}
+
+func shellTestCommand(posix, windows string) string {
+	if runtime.GOOS == "windows" {
+		return windows
+	}
+	return posix
+}
+
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
 
 func TestToolRoundTrip(t *testing.T) {
@@ -43,7 +55,7 @@ func TestToolRoundTrip(t *testing.T) {
 	if !strings.HasPrefix(out, "Error") {
 		t.Fatalf("expected ambiguity error, got %q", out)
 	}
-	out = run(t, "bash", `{"command":"echo hi; echo err >&2; exit 3"}`)
+	out = run(t, "bash", fmt.Sprintf(`{"command":%q}`, shellTestCommand("echo hi; echo err >&2; exit 3", "Write-Output hi; [Console]::Error.WriteLine('err'); exit 3")))
 	if !strings.Contains(out, "hi") || !strings.Contains(out, "err") || !strings.Contains(out, "exit") {
 		t.Fatalf("bash output wrong: %q", out)
 	}
@@ -83,11 +95,11 @@ func TestHelpersAndEdgeCases(t *testing.T) {
 		}
 	}
 
-	if out := run(t, "bash", `{"command":"true"}`); out != "(no output)" {
+	if out := run(t, "bash", fmt.Sprintf(`{"command":%q}`, shellTestCommand("true", "$null = 1"))); out != "(no output)" {
 		t.Fatalf("empty output: %q", out)
 	}
 
-	if out := run(t, "bash", `{"command":"sleep 5","timeout":0.1}`); !strings.Contains(out, "timed out") {
+	if out := run(t, "bash", fmt.Sprintf(`{"command":%q,"timeout":0.1}`, shellTestCommand("sleep 5", "Start-Sleep -Seconds 5"))); !strings.Contains(out, "timed out") {
 		t.Fatalf("timeout: %q", out)
 	}
 
@@ -119,6 +131,9 @@ func TestHelpersAndEdgeCases(t *testing.T) {
 }
 
 func TestBashToolFastFailOnTTYRead(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("/dev/tty is Unix-specific")
+	}
 
 	start := time.Now()
 	out := run(t, "bash", `{"command":"read -r p < /dev/tty; echo got $p","timeout":5}`)
@@ -149,6 +164,13 @@ func (m *mockInteractiveRunner) Run(_ context.Context, command string, timeout t
 }
 
 func TestBashToolInteractiveHook(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		out := run(t, "bash", `{"command":"echo should-not-run","interactive":true}`)
+		if !strings.Contains(out, "interactive PTY is not available") {
+			t.Fatalf("Windows must reject unsupported interactive mode: %q", out)
+		}
+		return
+	}
 	mock := &mockInteractiveRunner{returnThis: "PASSWORD_ACCEPTED\n(exit: 0)"}
 	prev := InteractiveBash
 	InteractiveBash = mock
@@ -200,11 +222,13 @@ func TestWriteToolDiffOnOverwrite(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "f.txt")
 	w := writeTool()
-	out, err := w.Run(context.Background(), json.RawMessage(`{"path":"`+p+`","content":"a\nb\n"}`))
+	first, _ := json.Marshal(map[string]string{"path": p, "content": "a\nb\n"})
+	out, err := w.Run(context.Background(), first)
 	if err != nil || strings.Contains(out, "```diff") {
 		t.Fatalf("fresh write should carry no diff: %q, %v", out, err)
 	}
-	out, err = w.Run(context.Background(), json.RawMessage(`{"path":"`+p+`","content":"a\nc\n"}`))
+	second, _ := json.Marshal(map[string]string{"path": p, "content": "a\nc\n"})
+	out, err = w.Run(context.Background(), second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,7 +288,12 @@ func TestBinaryOutputPlaceholder(t *testing.T) {
 		t.Fatalf("read placeholder:\n got %q\nwant %q", out, want)
 	}
 
-	if out := run(t, "bash", fmt.Sprintf(`{"command":"cat %s | head -c 200"}`, bin)); !strings.Contains(out, "not shown") {
+	command := fmt.Sprintf("cat %s | head -c 200", shellQuote(bin))
+	if runtime.GOOS == "windows" {
+		command = fmt.Sprintf("[Console]::OpenStandardOutput().Write([IO.File]::ReadAllBytes('%s'), 0, [IO.File]::ReadAllBytes('%s').Length)", strings.ReplaceAll(bin, "'", "''"), strings.ReplaceAll(bin, "'", "''"))
+	}
+	commandJSON, _ := json.Marshal(map[string]string{"command": command})
+	if out := run(t, "bash", string(commandJSON)); !strings.Contains(out, "not shown") {
 		t.Fatalf("bash binary output not replaced: %q", out)
 	}
 

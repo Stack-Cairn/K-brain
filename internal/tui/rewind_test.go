@@ -300,7 +300,7 @@ func TestRewindPickerShowsTurnUsageAndCost(t *testing.T) {
 		},
 	)
 	m.catalogs = map[string]config.Catalog{
-		"p1": {Models: []config.ModelInfoLite{{ID: "m1", InPrice: 1e-6, OutPrice: 5e-6, CacheReadPrice: 1e-7}}},
+		"p1": {Models: []config.ModelInfoLite{{ID: "m1", Pricing: &ai.TokenRates{Input: 1e-6, Output: 5e-6, CacheRead: 1e-7, CacheWrite: 1e-6}}}},
 		"p2": {Models: []config.ModelInfoLite{{ID: "m2"}}},
 	}
 	press(t, m, esc(m))

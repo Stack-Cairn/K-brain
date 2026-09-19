@@ -138,6 +138,12 @@ func toolCallContent(name, args, result string) []acp.ToolCallContent {
 
 func promptFromBlocks(blocks []acp.ContentBlock, vision bool) (text string, parts []ai.ContentPart) {
 	var sb strings.Builder
+	flushText := func() {
+		if sb.Len() > 0 {
+			parts = append(parts, ai.ContentPart{Type: "text", Text: sb.String()})
+			sb.Reset()
+		}
+	}
 	sep := func() {
 		if sb.Len() > 0 {
 			sb.WriteString("\n\n")
@@ -163,8 +169,9 @@ func promptFromBlocks(blocks []acp.ContentBlock, vision bool) (text string, part
 			}
 		case b.Image != nil:
 			if vision {
-				if data, err := base64.StdEncoding.DecodeString(b.Image.Data); err == nil {
+				if data, err := base64.StdEncoding.DecodeString(b.Image.Data); err == nil && len(data) > 0 {
 					ext, data := ai.NormalizeImage(mimeExt(b.Image.MimeType), data)
+					flushText()
 					parts = append(parts, ai.ImagePart(ext, data))
 					continue
 				}
@@ -176,7 +183,14 @@ func promptFromBlocks(blocks []acp.ContentBlock, vision bool) (text string, part
 			fmt.Fprintf(&sb, "[audio: %s — not supported]", b.Audio.MimeType)
 		}
 	}
-	return sb.String(), parts
+	if len(parts) == 0 {
+		return sb.String(), nil
+	}
+	flushText()
+	if parts[0].Type == "text" {
+		return parts[0].Text, parts[1:]
+	}
+	return "", parts
 }
 
 func mimeExt(mime string) string {
@@ -190,11 +204,27 @@ func replayUpdates(msgs []ai.Message) []acp.SessionUpdate {
 	for _, m := range msgs {
 		switch m.Role {
 		case "user":
-			if t := strings.TrimSpace(m.TextContent()); t != "" {
-				out = append(out, acp.UpdateUserMessageText(t))
+			for _, part := range m.ContentParts() {
+				switch part.Type {
+				case "text":
+					if part.Text != "" {
+						out = append(out, acp.UpdateUserMessageText(part.Text))
+					}
+				case "image_url":
+					if part.ImageURL == nil {
+						continue
+					}
+					url := part.ImageURL.URL
+					mime, data, ok := strings.Cut(strings.TrimPrefix(url, "data:"), ";base64,")
+					if strings.HasPrefix(url, "data:") && ok && data != "" {
+						out = append(out, acp.UpdateUserMessage(acp.ImageBlock(data, mime)))
+					} else {
+						out = append(out, acp.UpdateUserMessageText("[image: "+url+"]"))
+					}
+				}
 			}
 		case "assistant":
-			if t := m.Content; t != "" {
+			if t := m.TextContent(); t != "" {
 				out = append(out, acp.UpdateAgentMessageText(t))
 			}
 			for _, tc := range m.ToolCalls {
@@ -210,7 +240,7 @@ func replayUpdates(msgs []ai.Message) []acp.SessionUpdate {
 			if !ok {
 				continue
 			}
-			out = append(out, endToolCall(m.ToolCallID, info.name, info.args, m.Content))
+			out = append(out, endToolCall(m.ToolCallID, info.name, info.args, m.TextContent()))
 		}
 	}
 	return out

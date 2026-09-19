@@ -1,7 +1,8 @@
 package routing
 
 import (
-	"strings"
+	"context"
+	"fmt"
 
 	"github.com/Stack-Cairn/K-brain/internal/agent"
 	"github.com/Stack-Cairn/K-brain/internal/config"
@@ -24,41 +25,31 @@ func ResolvedProvider(cfg *config.Config, model, prov string) string {
 }
 
 func SubModelFor(cfg *config.Config, model, provider string) (agent.SubModel, error) {
-	route, err := ResolveRoute(cfg, model, provider, false)
+	return SubModelForContext(context.Background(), cfg, model, provider)
+}
+
+func SubModelForContext(ctx context.Context, cfg *config.Config, model, provider string) (agent.SubModel, error) {
+	route, err := ResolveRouteContext(ctx, cfg, model, provider, false)
 	if err != nil {
 		return agent.SubModel{}, err
 	}
-	return agent.SubModel{Client: route.Client, Model: route.APIModel,
-		ContextLimit: route.ContextLimit, MaxTokens: route.MaxOutput}, nil
+	return agent.SubModel{Client: route.Client, Model: route.APIModel, Provider: route.ProviderName,
+		ContextLimit: route.ContextLimit, MaxTokens: route.MaxOutput, Vision: route.Vision}, nil
 }
 
-func TaskDefaultFor(cfg *config.Config, provider string) (agent.SubModel, error) {
-	tm, explicit := cfg.TaskModel, cfg.TaskModel != ""
-	if !explicit {
-		tm = config.DefaultTaskModel
+func TaskDefaultFor(cfg *config.Config) (agent.SubModel, error) {
+	return TaskDefaultForContext(context.Background(), cfg)
+}
+
+func TaskDefaultForContext(ctx context.Context, cfg *config.Config) (agent.SubModel, error) {
+	if cfg == nil {
+		return agent.SubModel{}, fmt.Errorf("configuration is nil")
 	}
-	o, err := SubModelFor(cfg, tm, cfg.TaskProvider)
-	if err == nil {
-		return o, nil
-	}
-	if explicit {
+	if err := ctx.Err(); err != nil {
 		return agent.SubModel{}, err
 	}
-	if id := catalogSuffixMatch(tm); id != "" {
-		if o, err2 := SubModelFor(cfg, id, ""); err2 == nil {
-			return o, nil
-		}
+	if cfg.TaskModel == "" {
+		return agent.SubModel{}, nil
 	}
-	return agent.SubModel{}, nil
-}
-
-func catalogSuffixMatch(name string) string {
-	for _, cat := range config.LoadCatalogs() {
-		for _, mi := range cat.Models {
-			if strings.HasSuffix(mi.ID, "/"+name) {
-				return mi.ID
-			}
-		}
-	}
-	return ""
+	return SubModelForContext(ctx, cfg, cfg.TaskModel, cfg.TaskProvider)
 }

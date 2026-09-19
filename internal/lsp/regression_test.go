@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -35,14 +36,16 @@ func TestWedgedServerTeardown(t *testing.T) {
 }
 
 func TestURIRoundTripSpecialChars(t *testing.T) {
-	for _, p := range []string{
-		"/tmp/plain/main.go",
-		"/tmp/100%/main.go",
-		"/tmp/a b/main.go",
-		"/tmp/c#d/main.go",
-		"/tmp/ünïcode/mäin.go",
-		"/tmp/100%/a%20b.go",
+	root := t.TempDir()
+	for _, name := range []string{
+		"plain/main.go",
+		"100%/main.go",
+		"a b/main.go",
+		"c#d/main.go",
+		"ünïcode/mäin.go",
+		"100%/a%20b.go",
 	} {
+		p := filepath.Join(root, filepath.FromSlash(name))
 		if got := uriPath(fileURI(p)); got != p {
 			t.Errorf("round trip %q → %q", p, got)
 		}

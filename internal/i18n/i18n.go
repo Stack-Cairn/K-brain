@@ -2,7 +2,7 @@ package i18n
 
 const English = "en"
 const Chinese = "zh_cn"
-const TraditionalChinese = "zh_tw"
+const TraditionalChinese = "zh_Hant"
 
 func Valid(language string) bool {
 	return language == English || language == Chinese || language == TraditionalChinese
@@ -65,6 +65,15 @@ var chinese = map[string]string{
 	"import messages from a JSONL transcript":                       "从 JSONL 对话记录导入消息",
 	"copy the conversation into a new session":                      "将对话复制为新会话",
 	"show the current session tree":                                 "查看当前会话树",
+	"ask a side question without changing this session":             "提出旁支问题，不改变当前会话",
+	"archive this session or a session id":                          "归档当前会话或指定会话",
+	"edit persistent standing instructions in brain.md":             "编辑 brain.md 中的常驻指令",
+	"toggle the local privacy masking gateway":                      "切换本地隐私脱敏网关",
+	"toggle ancient vertical writing mode":                          "切换古人竖排文字模式",
+	"manage local plugins":                                          "管理本地插件",
+	"search sessions and message text":                              "搜索会话和消息内容",
+	"manage session tags":                                           "管理会话标签",
+	"review changes against a branch":                               "审查分支相对变更",
 	"keep working until the goal is met (resume | clear)":           "持续执行直到完成目标（resume | clear）",
 	"form a goal from recent messages and pursue it":                "根据近期消息生成并执行目标",
 	"show all commands and keybindings":                             "显示所有命令和快捷键",
@@ -131,7 +140,7 @@ var chinese = map[string]string{
 	"  (current)":         "  （当前）",
 	"  ↑/↓ select · enter apply · esc back":                                         "  ↑/↓ 选择 · Enter 应用 · Esc 返回",
 	"  (%d/%d) ↑/↓ select · enter open/apply · ←/→ change · esc close":              "  (%d/%d) ↑/↓ 选择 · Enter 打开/应用 · ←/→ 修改 · Esc 关闭",
-	"usage: /language [zh_cn|zh_tw|en]":                                             "用法：/language [zh_cn|zh_tw|en]",
+	"usage: /language [zh_cn|zh_Hant|en]":                                           "用法：/language [zh_cn|zh_Hant|en]",
 	"language: configuration unavailable":                                           "语言：配置不可用",
 	"language: could not save: ":                                                    "语言：保存失败：",
 	"Interface language saved: ":                                                    "界面语言已保存：",
@@ -271,7 +280,7 @@ var traditionalChinese = map[string]string{
 	"  (current)":         "  （當前）",
 	"  ↑/↓ select · enter apply · esc back":                                         "  ↑/↓ 選擇 · Enter 應用 · Esc 返回",
 	"  (%d/%d) ↑/↓ select · enter open/apply · ←/→ change · esc close":              "  (%d/%d) ↑/↓ 選擇 · Enter 開啟/應用 · ←/→ 修改 · Esc 關閉",
-	"usage: /language [zh_cn|zh_tw|en]":                                             "用法：/language [zh_cn|zh_tw|en]",
+	"usage: /language [zh_cn|zh_Hant|en]":                                           "用法：/language [zh_cn|zh_Hant|en]",
 	"language: configuration unavailable":                                           "語言：配置不可用",
 	"language: could not save: ":                                                    "語言：儲存失敗：",
 	"Interface language saved: ":                                                    "介面語言已儲存：",

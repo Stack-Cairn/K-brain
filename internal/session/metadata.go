@@ -12,6 +12,13 @@ import (
 	"github.com/Stack-Cairn/K-brain/internal/ai"
 )
 
+func metaBefore(a, b Meta) bool {
+	if a.UpdatedAt.Equal(b.UpdatedAt) {
+		return a.ID < b.ID
+	}
+	return a.UpdatedAt.After(b.UpdatedAt)
+}
+
 func (s *Store) SetGoal(id, goal string) error {
 	return s.update(id, func(d *sessionData) error { d.Meta.Goal = goal; return nil })
 }
@@ -28,9 +35,9 @@ func (s *Store) Todos(id string) string {
 func (s *Store) SetEffort(id, effort string) error {
 	return s.update(id, func(d *sessionData) error { d.Meta.Effort = effort; return nil })
 }
-func (s *Store) SetUsage(id string, in, cached, out int, sub map[string]ai.Usage) error {
+func (s *Store) SetUsage(id string, usage ai.UsageSummary) error {
 	return s.update(id, func(d *sessionData) error {
-		d.Meta.UsageIn, d.Meta.UsageCached, d.Meta.UsageOut, d.Meta.SubUsage = in, cached, out, sub
+		d.Meta.setUsage(usage)
 		return nil
 	})
 }
@@ -182,8 +189,18 @@ func (s *Store) Fork(srcID string, uptoSeq int, title string) (id string, err er
 		d := newData(Meta{CWD: m.CWD, Model: m.Model, Provider: m.Provider, Goal: m.Goal, Effort: m.Effort,
 			Title: title, ForkedFrom: srcID, ForkSeq: uptoSeq, UpdatedAt: time.Now().UTC()})
 		for seq, msg := range src.Messages {
-			if uptoSeq > 0 && seq <= uptoSeq {
+			if seq <= uptoSeq {
 				d.Messages[seq] = msg
+			}
+		}
+		for seq, c := range src.Compactions {
+			if c.Cutoff <= len(d.Messages) {
+				d.Compactions[seq] = c
+			}
+		}
+		for seq, ref := range src.Snapshots {
+			if seq <= uptoSeq {
+				d.Snapshots[seq] = ref
 			}
 		}
 		id, err = s.create(d)

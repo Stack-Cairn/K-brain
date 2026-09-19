@@ -2,12 +2,23 @@ package bashrun
 
 import (
 	"context"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 )
 
+func shellTestCommand(posix, windows string) string {
+	if runtime.GOOS == "windows" {
+		return windows
+	}
+	return posix
+}
+
 func TestNonInteractiveDoesNotHangOnTTYRead(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("/dev/tty is Unix-specific")
+	}
 	cmd := `exec 3< /dev/tty; read -r line <&3; echo "got: $line"`
 	res := Run(context.Background(), Options{
 		Command: cmd,
@@ -26,7 +37,7 @@ func TestNonInteractiveDoesNotHangOnTTYRead(t *testing.T) {
 
 func TestNonInteractiveCapture(t *testing.T) {
 	res := Run(context.Background(), Options{
-		Command: `echo hi; echo err >&2; exit 3`,
+		Command: shellTestCommand(`echo hi; echo err >&2; exit 3`, `Write-Output hi; [Console]::Error.WriteLine('err'); exit 3`),
 	})
 	if !strings.Contains(res.Output, "hi") || !strings.Contains(res.Output, "err") {
 		t.Fatalf("output missing: %q", res.Output)
@@ -40,7 +51,7 @@ func TestNonInteractiveCapture(t *testing.T) {
 }
 
 func TestNonInteractiveCleanExit(t *testing.T) {
-	res := Run(context.Background(), Options{Command: `true`})
+	res := Run(context.Background(), Options{Command: shellTestCommand(`true`, `$null = 1`)})
 	if res.Output != "" || res.Exit != "" {
 		t.Fatalf("clean exit should be empty: %+v", res)
 	}
@@ -48,7 +59,7 @@ func TestNonInteractiveCleanExit(t *testing.T) {
 
 func TestNonInteractiveTimeout(t *testing.T) {
 	res := Run(context.Background(), Options{
-		Command: `sleep 5`,
+		Command: shellTestCommand(`sleep 5`, `Start-Sleep -Seconds 5`),
 		Timeout: 100 * time.Millisecond,
 	})
 	if !res.TimedOut || !res.Killed {
@@ -65,13 +76,16 @@ func TestNonInteractiveCancellation(t *testing.T) {
 		time.Sleep(80 * time.Millisecond)
 		cancel()
 	}()
-	res := Run(ctx, Options{Command: `sleep 5`, Timeout: 10 * time.Second})
+	res := Run(ctx, Options{Command: shellTestCommand(`sleep 5`, `Start-Sleep -Seconds 5`), Timeout: 10 * time.Second})
 	if !res.Killed {
 		t.Fatalf("cancellation should kill: %+v", res)
 	}
 }
 
 func TestInteractiveExit(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("native Windows does not provide interactive PTY")
+	}
 	res := Run(context.Background(), Options{
 		Command:     `echo hello; exit 7`,
 		Interactive: true,
@@ -91,6 +105,9 @@ func TestInteractiveExit(t *testing.T) {
 }
 
 func TestInteractiveInactivityTimeout(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("native Windows does not provide interactive PTY")
+	}
 	start := time.Now()
 	res := Run(context.Background(), Options{
 		Command:           `cat`,
@@ -114,6 +131,9 @@ func TestInteractiveInactivityTimeout(t *testing.T) {
 }
 
 func TestInteractiveKeyForwardingDelaysInactivity(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("native Windows does not provide interactive PTY")
+	}
 	keys := make(chan []byte, 16)
 	go func() {
 
@@ -145,6 +165,18 @@ func TestInteractiveKeyForwardingDelaysInactivity(t *testing.T) {
 }
 
 func TestUserShellResolution(t *testing.T) {
+	t.Setenv("K_BRAIN_SHELL", "explicit-test-shell")
+	if got := userShell(); got != "explicit-test-shell" {
+		t.Fatalf("K_BRAIN_SHELL ignored: %q", got)
+	}
+	t.Setenv("K_BRAIN_SHELL", "")
+	if runtime.GOOS == "windows" {
+		t.Setenv("SHELL", "/bin/zsh")
+		if got := userShell(); got != "pwsh.exe" && got != "powershell.exe" {
+			t.Fatalf("Windows default shell: %q", got)
+		}
+		return
+	}
 	t.Setenv("SHELL", "/bin/zsh")
 	if sh := userShell(); sh != "/bin/zsh" {
 		t.Fatalf("$SHELL should win, got %q", sh)

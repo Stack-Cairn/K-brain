@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Stack-Cairn/K-brain/internal/hooks"
 	"github.com/Stack-Cairn/K-brain/internal/sandbox"
 	"github.com/Stack-Cairn/K-brain/internal/tools/bashrun"
 )
@@ -25,6 +26,7 @@ type Manager struct {
 	state     map[string]bool
 	statePath string
 	roots     []string
+	project   string
 }
 
 func Dirs(project string) []string {
@@ -43,7 +45,7 @@ func New(project string) (*Manager, error) {
 	if err != nil {
 		return nil, err
 	}
-	m := &Manager{plugins: map[string]Plugin{}, state: map[string]bool{}, roots: Dirs(project), statePath: filepath.Join(home, "plugins.json")}
+	m := &Manager{plugins: map[string]Plugin{}, state: map[string]bool{}, roots: Dirs(project), statePath: filepath.Join(home, "plugins.json"), project: project}
 	if data, err := os.ReadFile(m.statePath); err == nil {
 		_ = json.Unmarshal(data, &m.state)
 	}
@@ -222,6 +224,14 @@ func (m *Manager) PromptBlock() string {
 }
 
 func (m *Manager) Hook(ctx context.Context, event string, payload any, policy *sandbox.Policy) error {
+	return m.runHook(ctx, event, payload, policy, m.project)
+}
+
+func (m *Manager) RunHook(ctx context.Context, event hooks.Event) error {
+	return m.runHook(ctx, event.Name, event, sandbox.FromContext(ctx), event.CWD)
+}
+
+func (m *Manager) runHook(ctx context.Context, event string, payload any, policy *sandbox.Policy, cwd string) error {
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return err
@@ -235,7 +245,7 @@ func (m *Manager) Hook(ctx context.Context, event string, payload any, policy *s
 			continue
 		}
 		hctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-		result := bashrun.Run(hctx, bashrun.Options{Command: command, Timeout: 30 * time.Second, Env: []string{"K_BRAIN_PLUGIN_EVENT=" + event, "K_BRAIN_PLUGIN_PAYLOAD=" + string(data)}, Sandbox: policy})
+		result := bashrun.Run(hctx, bashrun.Options{Command: command, Dir: cwd, Timeout: 30 * time.Second, Env: []string{"K_BRAIN_PLUGIN_EVENT=" + event, "K_BRAIN_PLUGIN_PAYLOAD=" + string(data)}, Sandbox: policy})
 		cancel()
 		if result.Exit != "" || result.TimedOut || result.Killed {
 			return fmt.Errorf("plugin %s hook %s failed: %s", p.Name, event, result.Output)

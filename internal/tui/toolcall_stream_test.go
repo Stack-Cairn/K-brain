@@ -31,6 +31,20 @@ func TestToolCallQueuedRowReplacedOnStart(t *testing.T) {
 	}
 }
 
+func TestToolCallCommitsPendingContentBeforePreview(t *testing.T) {
+	m := compactCmdModel()
+	m.showThinking = true
+	m.Update(textMsg("before tool"))
+	m.Update(thinkMsg("plan tool"))
+	m.Update(toolCallMsg{id: "c", name: "read", args: `{"path":"file"}`})
+	if len(m.blocks) != 3 || m.blocks[0].text != "before tool" || !strings.Contains(m.blocks[1].text, "plan tool") || m.blocks[2].kind != blockToolQueued {
+		t.Fatalf("preview overtook content: %+v", m.blocks)
+	}
+	if m.current != "" || m.curThink != "" {
+		t.Fatal("preview left earlier content below the tool")
+	}
+}
+
 func TestToolCallQueuedRowUpdatesInPlace(t *testing.T) {
 	m := compactCmdModel()
 	m.Update(mkWinSize(80, 24))
