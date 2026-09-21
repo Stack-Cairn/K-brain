@@ -12,12 +12,12 @@ const defaultPlaceholder = "Ask k-brain anything… (/ for commands, tab complet
 func (m *model) applyAppearance() {
 	invalidateMDRenderer()
 	m.spin = spinner.New(spinner.WithSpinner(spinner.Dot))
-	m.input.Prompt = "› "
+	m.input.Prompt = "❯ "
 	m.input.Placeholder = m.tr(defaultPlaceholder)
-	m.input.FocusedStyle.Text = lipgloss.NewStyle()
-	m.input.FocusedStyle.CursorLine = lipgloss.NewStyle()
+	m.input.FocusedStyle.Text = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "234", Dark: "255"})
+	m.input.FocusedStyle.CursorLine = lipgloss.NewStyle().Background(lipgloss.AdaptiveColor{Light: "254", Dark: "235"})
 	m.input.FocusedStyle.Placeholder = dimStyle
-	m.input.BlurredStyle.Text = lipgloss.NewStyle()
+	m.input.BlurredStyle.Text = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "238", Dark: "250"})
 	m.input.BlurredStyle.Placeholder = dimStyle
 	m.input.Focus()
 }

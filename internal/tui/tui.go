@@ -51,11 +51,16 @@ var (
 	errStyle  = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "124", Dark: "9"})
 	growStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "28", Dark: "10"})
 
-	thinkingStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "240", Dark: "245"}).Italic(true)
-	chromeStyle   = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "239", Dark: "245"})
-	accentStyle   = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "33", Dark: "75"}).Bold(true)
-	userPanel     = lipgloss.NewStyle().Background(lipgloss.AdaptiveColor{Light: "255", Dark: "235"}).Padding(0, 1)
-	shortcutStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "242", Dark: "245"})
+	thinkingStyle    = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "240", Dark: "245"}).Italic(true)
+	chromeStyle      = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "238", Dark: "252"})
+	accentStyle      = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "31", Dark: "81"}).Bold(true)
+	userPanel        = lipgloss.NewStyle().Background(lipgloss.AdaptiveColor{Light: "255", Dark: "235"}).Padding(0, 1)
+	shortcutStyle    = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "243", Dark: "246"})
+	brandStyle       = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "24", Dark: "80"}).Bold(true)
+	metaStyle        = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "242", Dark: "250"})
+	statusTitleStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "24", Dark: "81"}).Bold(true)
+	chromeRuleStyle  = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "250", Dark: "238"})
+	selectedRowStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "24", Dark: "81"}).Background(lipgloss.AdaptiveColor{Light: "254", Dark: "236"}).Bold(true)
 )
 
 var (
@@ -91,11 +96,13 @@ type compactMsg struct {
 	cutoff        int
 	info          agent.CompactInfo
 	err           error
+	fresh         bool
 }
 
 type compactStartMsg struct {
 	took, est int
 }
+type contextStartMsg struct{ took, est int }
 type turnDoneMsg struct {
 	final      string
 	stopReason ai.StopReason
@@ -279,7 +286,7 @@ type picker struct {
 func newInput() textarea.Model {
 	ti := textarea.New()
 	ti.Placeholder = inputPlaceholder
-	ti.Prompt = "┃ "
+	ti.Prompt = "❯ "
 	ti.SetHeight(1)
 	ti.MaxHeight = 24
 	ti.ShowLineNumbers = false
@@ -293,7 +300,7 @@ func newInput() textarea.Model {
 	ti.FocusedStyle.CursorLine = lipgloss.NewStyle()
 	ti.FocusedStyle.Placeholder = dimStyle
 	ti.BlurredStyle.Placeholder = dimStyle
-	ti.FocusedStyle.Prompt = botStyle
+	ti.FocusedStyle.Prompt = accentStyle
 	ti.BlurredStyle.Prompt = dimStyle
 	ti.Focus()
 	return ti
@@ -1459,7 +1466,7 @@ func (m *model) dockTop() int {
 	if m.viewH > 0 {
 		bottom = m.viewTop + m.viewH
 	}
-	return bottom - 2 - m.dockRows + m.dockSkip
+	return bottom - 3 - m.dockRows + m.dockSkip
 }
 
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -1879,6 +1886,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			msg.took, fmtTok(msg.est), m.compactModelLabel())))
 		return m, nil
 
+	case contextStartMsg:
+		m.flushThink()
+		m.flushCurrent()
+		m.append(dimStyle.Render(fmt.Sprintf("◎ starting new context window after %d msgs (est. %s)…", msg.took, fmtTok(msg.est))))
+		return m, nil
+
 	case compactMsg:
 
 		m.flushThink()
@@ -1886,7 +1899,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch {
 		case msg.err != nil:
 			m.append(errStyle.Render("compact failed: " + msg.err.Error()))
-		case msg.summary == "":
+		case msg.summary == "" && !msg.fresh:
 
 		default:
 			if m.store == nil {
@@ -3278,7 +3291,11 @@ func (m *model) submitTurn(text string, authored bool) (tea.Model, tea.Cmd) {
 					m.agent.Messages[turnAt].RewoundFrom = rewoundFrom
 				}
 				compactBefore = m.agent.MessagesSnapshot()
-				send(compactStartMsg{took, est})
+				send(compactStartMsg{took: took, est: est})
+			},
+			OnNewContextStart: func(took, est int) {
+				compactBefore = m.agent.MessagesSnapshot()
+				send(contextStartMsg{took: took, est: est})
 			},
 
 			OnCompact: func(took, kept int) { compactTook, compactKept = took, kept },
@@ -3291,6 +3308,11 @@ func (m *model) submitTurn(text string, authored bool) (tea.Model, tea.Cmd) {
 				} else {
 					turnAt = -1
 				}
+			},
+			OnNewContext: func(cutoff int) {
+				send(compactMsg{took: len(compactBefore), kept: len(m.agent.MessagesSnapshot()), cutoff: cutoff,
+					before: compactBefore, after: m.agent.MessagesSnapshot(), fresh: true})
+				turnAt = -1
 			},
 			OnUsage: func(u ai.Usage) { send(usageMsg(u)) },
 
@@ -3331,7 +3353,7 @@ func busyCmd(text string) bool {
 		return false
 	}
 	switch fields[0] {
-	case "/permissions", "/language", "/editor", "/copy", "/diff", "/prompts", "/help", "/theme", "/mouse", "/effort", "/subagents", "/tasks", "/subagent", "/cd", "/pwd", "/report", "/export", "/import", "/fork", "/forks", "/context", "/context-doctor", "/doctor", "/info", "/mcps", "/mcp", "/plugins", "/new", "/plan", "/session-info", "/status", "/title", "/undo", "/rewind", "/view-plan", "/privacy", "/ancient":
+	case "/permissions", "/language", "/editor", "/copy", "/diff", "/prompts", "/help", "/theme", "/mouse", "/effort", "/subagents", "/tasks", "/subagent", "/cd", "/pwd", "/report", "/export", "/import", "/fork", "/forks", "/context", "/context-doctor", "/doctor", "/info", "/mcps", "/mcp", "/plugins", "/new", "/new-context", "/new_context", "/plan", "/session-info", "/status", "/title", "/undo", "/rewind", "/view-plan", "/privacy", "/ancient":
 		return true
 	case "/auth":
 		return true
@@ -3399,6 +3421,8 @@ func (m *model) command(text string) (tea.Model, tea.Cmd) {
 			case "log":
 				m.compactLog()
 				return m, nil
+			case "fresh", "new-context":
+				return m.command("/new-context")
 			}
 			m.compactCommand(fields[1:])
 			return m, nil
@@ -3428,6 +3452,39 @@ func (m *model) command(text string) (tea.Model, tea.Cmd) {
 			if p != nil {
 				p.Send(compactMsg{took: took - len(ag.Messages), kept: len(ag.Messages), summary: summary, cutoff: cutoff, info: info, err: err,
 					before: before, after: ag.MessagesSnapshot()})
+				p.Send(turnDoneMsg{})
+			}
+		}()
+		return m, m.spin.Tick
+	case "/new-context", "/new_context":
+		if len(fields) != 1 {
+			m.append(errStyle.Render("usage: /new-context"))
+			return m, nil
+		}
+		if m.busy {
+			m.append(dimStyle.Render("(busy — /new-context will land after this turn)"))
+			return m, nil
+		}
+		m.prepareHistory()
+		m.busy = true
+		p := m.prog
+		ag := m.agent
+		ctx, cancel := context.WithCancel(context.Background())
+		ctx = sandbox.WithPolicy(ctx, m.sandboxPolicy)
+		m.cancel = cancel
+		go func() {
+			before := ag.MessagesSnapshot()
+			var cutoff int
+			err := ag.ManualNewContext(ctx, agent.Events{
+				OnNewContextStart: func(took, est int) {
+					if p != nil {
+						p.Send(contextStartMsg{took: took, est: est})
+					}
+				},
+				OnNewContext: func(c int) { cutoff = c },
+			})
+			if p != nil {
+				p.Send(compactMsg{took: len(before), kept: len(ag.MessagesSnapshot()), cutoff: cutoff, before: before, after: ag.MessagesSnapshot(), fresh: true, err: err})
 				p.Send(turnDoneMsg{})
 			}
 		}()
@@ -3897,7 +3954,6 @@ func (m *model) viewBody() string {
 		right = m.tr("◌ thinking  ·  ") + right
 	}
 	m.effortX = max(m.width-lipgloss.Width(right)-2, 0)
-	left = truncLine(left, max(m.width-lipgloss.Width(right)-4, 0))
 	b.WriteString(kbrainHeaderLabel(m.width, left, right, m.tr("commands")) + "\n")
 	if m.palette != nil {
 
@@ -4012,7 +4068,7 @@ func (m *model) viewBody() string {
 		b.WriteString("\n" + dock)
 	}
 	notice := dimStyle.Render(ansi.Truncate(m.tr(m.transientNotice), max(m.width, 0), "…"))
-	footer := accentStyle.Render(m.permissionModeLabel()) + "  ·  " + shortcutStyle.Render(m.tr("shift+tab mode  ·  ctrl+c cancel  ·  ctrl+p menu")) + "\n" + notice + "\n" + m.statusView()
+	footer := m.footerHints() + "\n" + notice + "\n" + m.statusView()
 	b.WriteString("\n" + footer)
 	return b.String()
 }
@@ -4085,14 +4141,14 @@ func (m *model) statusView() string {
 	default:
 		dir = ""
 	}
-	line := lead + dir + right
+	line := lead + metaStyle.Render(dir) + dimStyle.Render(right)
 	if titleSuffix != "" {
 		if pad := m.width - lipgloss.Width(line) - lipgloss.Width(titleSuffix); pad > 0 {
 			line += strings.Repeat(" ", pad)
 		}
-		line += titleSuffix
+		line += statusTitleStyle.Render(titleSuffix)
 	}
-	return dimStyle.Render(ansi.Truncate(line, max(m.width, 0), ""))
+	return ansi.Truncate(line, max(m.width, 0), "")
 }
 
 func shortCWD() string {

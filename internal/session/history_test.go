@@ -187,3 +187,38 @@ func TestHistoryBatchesCompactionsAndUpdatesRetainedMessages(t *testing.T) {
 		t.Fatalf("batched raw history: %+v", raw)
 	}
 }
+
+func TestHistoryNewContextDropsViewButPreservesRawMessages(t *testing.T) {
+	st, id := seeded(t)
+	initial := []ai.Message{{Role: "system", Content: "sys"}}
+	h, msgs, err := st.History(id, initial)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := h.Observe(msgs); err != nil {
+		t.Fatal(err)
+	}
+	cutoff := len(msgs)
+	if err := h.NewContext(cutoff); err != nil {
+		t.Fatal(err)
+	}
+	msgs = []ai.Message{initial[0], {Role: "user", Content: "continue"}}
+	if err := st.SaveHistory(id, h, msgs, "m", "p"); err != nil {
+		t.Fatal(err)
+	}
+	_, loaded, err := st.History(id, initial)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(loaded, msgs) {
+		t.Fatalf("fresh context view: %+v", loaded)
+	}
+	raw := st.RawMessages(id)
+	if len(raw) != 5 || raw[1].Content != "a1" || raw[len(raw)-1].Content != "continue" {
+		t.Fatalf("fresh context lost raw history: %+v", raw)
+	}
+	events := st.Compactions(id)
+	if len(events) != 1 || !events[0].Fresh {
+		t.Fatalf("fresh context event: %+v", events)
+	}
+}

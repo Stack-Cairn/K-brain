@@ -256,8 +256,8 @@ func TestTasksDockListsTasks(t *testing.T) {
 	if !strings.Contains(dock, task.ID) || !strings.Contains(dock, "probe grafana") {
 		t.Fatalf("dock should list the running task, got %q", dock)
 	}
-	if !strings.Contains(dock, "⏳") {
-		t.Fatalf("running task should show the spinner icon, got %q", dock)
+	if !strings.Contains(dock, "◌") {
+		t.Fatalf("running task should show the activity marker, got %q", dock)
 	}
 }
 
@@ -372,7 +372,7 @@ func TestDockClickSelectsClickedRow(t *testing.T) {
 	m = m2
 
 	m.layout()
-	stripTop := m.height - 2 - m.dockRows
+	stripTop := m.height - 3 - m.dockRows
 	m2 = click(stripTop + 2).(*model)
 	if m2.taskSel != 1 || !m2.taskExpanded {
 		t.Fatalf("clicking the second task row should select+expand it: sel=%d expanded=%v", m2.taskSel, m2.taskExpanded)

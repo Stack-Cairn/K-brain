@@ -180,6 +180,9 @@ func TestTaskViewChat(t *testing.T) {
 	if !strings.Contains(tv.buf.String(), "still replying") {
 		t.Fatal("sends while busy should be refused in the pane")
 	}
+	if tv.input.Value() != "more" {
+		t.Fatal("sends while busy must preserve the draft")
+	}
 	tv.followCancel()
 }
 

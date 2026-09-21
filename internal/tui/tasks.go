@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -131,7 +130,7 @@ func (m *model) dockTaskExpand(id string) []string {
 		lines = lines[len(lines)-dockExpandRows:]
 	}
 	for i, l := range lines {
-		lines[i] = "   " + dimStyle.Render("│ ") + truncLine(l, max(m.width-10, 8))
+		lines[i] = ansi.Truncate("   "+dimStyle.Render("│ ")+dimStyle.Render(taskLine(l)), max(m.width, 1), "…")
 	}
 	return lines
 }
@@ -146,74 +145,47 @@ func (m *model) tasksDock() string {
 
 	rows := make([]string, 0, len(tasks)+2)
 	if m.tasksFocus {
-		hint := " ⚙ subagents — ↑/↓ select (↑ past top: back to input) · space expand · enter open"
-		if m.taskExpanded {
-			hint = " ⚙ subagents — ↑/↓ select · space collapse · enter open"
-		}
-		rows = append(rows, dimStyle.Render(hint))
+		label := fmt.Sprintf("%s %d/%d", m.tr("subagents"), m.taskSel+1, len(tasks))
+		rows = append(rows, taskColumns(accentStyle.Render(label), dimStyle.Render(m.taskSummary(tasks)), m.width))
 	}
 
 	budget := tasksDockHeight - len(rows)
-	if len(tasks) > budget {
+	var expanded []string
+	if m.tasksFocus && m.taskExpanded && m.taskSel < len(tasks) {
+		expanded = m.dockTaskExpand(tasks[m.taskSel].ID)
+	}
+	if len(tasks)+len(expanded) > budget {
 		budget--
 	}
-
-	extra := 0
-	if m.tasksFocus && m.taskExpanded && m.taskSel < len(tasks) {
-		extra = len(m.dockTaskExpand(tasks[m.taskSel].ID))
-	}
+	extra := min(len(expanded), max(budget-1, 0))
+	expanded = expanded[len(expanded)-extra:]
+	slots := max(budget-extra, 1)
 	lo := 0
-	if m.tasksFocus && m.taskSel >= budget-extra {
-		lo = m.taskSel - (budget - extra) + 1
+	if m.tasksFocus && m.taskSel >= slots {
+		lo = m.taskSel - slots + 1
 	}
-	hi := min(lo+budget-extra, len(tasks))
-	hi = max(hi, min(lo+1, len(tasks)))
+	hi := min(lo+slots, len(tasks))
 
 	m.dockOffsets = m.dockOffsets[:0]
 	m.dockLo = lo
 	offset := 0
 	for i := lo; i < hi; i++ {
 		t := tasks[i]
-		icon := toolStyle.Render("⏳")
-		switch t.Status {
-		case agent.TaskDone:
-			icon = "✓"
-		case agent.TaskError, agent.TaskCancelled:
-			icon = errStyle.Render("✗")
-		}
-		var meta string
-		if t.Status == agent.TaskRunning {
-			meta = fmt.Sprintf("  %ds", int(time.Since(t.StartedAt).Seconds()))
-		} else {
-			meta = "  " + string(t.Status)
-		}
-		if t.FollowingUp {
-			icon = toolStyle.Render("⏳")
-			meta = "  replying"
-		}
-		line := fmt.Sprintf("%s %s  %s", icon, t.ID, truncLine(t.Description, max(m.width-24, 8)))
 		selected := m.tasksFocus && i == m.taskSel
-		switch {
-		case selected:
-			line = botStyle.Render(" → "+line) + toolStyle.Render(meta)
-		case t.Status == agent.TaskRunning || t.FollowingUp:
-			line = "   " + toolStyle.Render(line) + dimStyle.Render(meta)
-		default:
-			line = "   " + line + dimStyle.Render(meta)
-		}
 		m.dockOffsets = append(m.dockOffsets, offset)
-		rows = append(rows, line)
+		rows = append(rows, m.taskDockRow(t, selected))
 		offset++
 		if selected && m.taskExpanded {
-			for _, el := range m.dockTaskExpand(t.ID) {
+			for _, el := range expanded {
 				rows = append(rows, el)
 				offset++
 			}
 		}
 	}
 	m.dockTaskRows = offset
-	if more := len(tasks) - hi; more > 0 {
-		rows = append(rows, dimStyle.Render(fmt.Sprintf("   … +%d more (ctrl+t to browse)", more)))
+	if lo > 0 || hi < len(tasks) {
+		more := fmt.Sprintf(m.tr("   ↑ %d more · ↓ %d more · ctrl+t browse"), lo, len(tasks)-hi)
+		rows = append(rows, dimStyle.Render(ansi.Truncate(more, max(m.width, 1), "…")))
 	}
 	return strings.Join(rows, "\n")
 }
@@ -226,8 +198,10 @@ func (m *model) openTask(id string) {
 	m.closeTaskView()
 	tv := &taskView{id: id}
 	tv.input = textinput.New()
-	tv.input.Prompt = youStyle.Render("› ")
-	tv.input.Placeholder = "message this subagent (enter to send)"
+	tv.input.Prompt = "❯ "
+	tv.input.PromptStyle = accentStyle
+	tv.input.PlaceholderStyle = dimStyle
+	tv.input.Placeholder = m.tr("message this subagent (enter to send)")
 	tv.input.Focus()
 	fmt.Fprintf(&tv.buf, "%s %s  %s\n\n%s %s\n",
 		toolStyle.Render("⚙"), t.ID, t.Description,
@@ -313,6 +287,11 @@ func (m *model) taskSend(tv *taskView, text string) {
 	if !ok {
 		return
 	}
+	if tv.busy || t.FollowingUp {
+		fmt.Fprintf(&tv.buf, "\n%s\n", dimStyle.Render(m.tr("still replying — draft kept; wait for the current response")))
+		m.refreshTaskVP()
+		return
+	}
 	tv.input.SetValue("")
 	switch {
 	case t.Status == agent.TaskRunning:
@@ -321,8 +300,6 @@ func (m *model) taskSend(tv *taskView, text string) {
 			break
 		}
 		fmt.Fprintf(&tv.buf, "\n%s %s\n", youStyle.Render("you:"), text)
-	case tv.busy || t.FollowingUp:
-		fmt.Fprintf(&tv.buf, "\n%s\n", dimStyle.Render("(still replying — wait for the current reply)"))
 	default:
 		fmt.Fprintf(&tv.buf, "\n%s %s\n\n", youStyle.Render("you:"), text)
 		ctx, cancel := context.WithCancel(context.Background())
@@ -359,10 +336,10 @@ func (m *model) refreshTaskVP() {
 		return
 	}
 
-	tv.vp.Width, tv.vp.Height = m.width, max(m.height-3, 1)
-	tv.input.Width = max(m.width-4, 8)
 	atBottom := tv.vp.AtBottom()
-	tv.vp.SetContent(tv.buf.String())
+	tv.vp.Width, tv.vp.Height = max(m.width, 1), max(m.height-m.taskViewChromeRows(), 1)
+	tv.input.Width = max(m.width-6, 1)
+	tv.vp.SetContent(wrapWideLines(tv.buf.String(), max(m.width, 1)))
 	if atBottom {
 		tv.vp.GotoBottom()
 	}
@@ -389,6 +366,12 @@ func (m *model) taskViewKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.closeTaskView()
 		m.tasksFocus = true
 		return m, nil
+	case tea.KeyCtrlHome:
+		tv.vp.GotoTop()
+		return m, nil
+	case tea.KeyCtrlEnd:
+		tv.vp.GotoBottom()
+		return m, nil
 	case tea.KeyCtrlX:
 		if tv.busy && tv.followCancel != nil {
 			tv.followCancel()
@@ -414,29 +397,4 @@ func (m *model) taskViewKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	tv.input, cmd = tv.input.Update(msg)
 	return m, cmd
-}
-
-func (m *model) taskViewView() string {
-	tv := m.taskVP
-	t, ok := m.agent.Tasks().Get(tv.id)
-	status := "running"
-	if ok {
-		status = string(t.Status)
-	}
-	if ok && t.Restored {
-		status += ", restored"
-	}
-	if tv.busy || (ok && t.FollowingUp) {
-		status += ", replying"
-	}
-	head := toolStyle.Render(fmt.Sprintf(" ⚙ %s — %s", tv.id, truncLine(t.Description, max(m.width-30, 8)))) +
-		dimStyle.Render("  ("+status+")")
-	in := " " + tv.input.View()
-	hint := " esc back · ↑/↓ scroll · enter send (steers while running, chats after) · ctrl+x cancel"
-	if ok && t.Restored {
-		in = dimStyle.Render(" (restored from a previous session — read-only)")
-		hint = " esc back · ↑/↓ scroll"
-	}
-	foot := dimStyle.Render(hint)
-	return head + "\n" + sanitizeView(tv.vp.View()) + "\n" + in + "\n" + foot
 }
