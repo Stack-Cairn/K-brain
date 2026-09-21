@@ -74,6 +74,20 @@ func FanIn(evs ...Events) Events {
 				}
 			}
 		},
+		OnNewContextStart: func(took, est int) {
+			for _, e := range evs {
+				if e.OnNewContextStart != nil {
+					e.OnNewContextStart(took, est)
+				}
+			}
+		},
+		OnNewContext: func(cutoff int) {
+			for _, e := range evs {
+				if e.OnNewContext != nil {
+					e.OnNewContext(cutoff)
+				}
+			}
+		},
 		OnUsage: func(u ai.Usage) {
 			for _, e := range evs {
 				if e.OnUsage != nil {

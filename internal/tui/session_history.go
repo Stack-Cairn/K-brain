@@ -70,7 +70,13 @@ func (m *model) saveHistory(msgs []ai.Message) error {
 				m.turnSnapshotSeq = &seq
 			}
 		}
-		if err := m.history.Compact(event.summary, event.cutoff, event.info.Model, event.info.Usage); err != nil {
+		var err error
+		if event.fresh {
+			err = m.history.NewContext(event.cutoff)
+		} else {
+			err = m.history.Compact(event.summary, event.cutoff, event.info.Model, event.info.Usage)
+		}
+		if err != nil {
 			m.historyErr = err
 			return err
 		}

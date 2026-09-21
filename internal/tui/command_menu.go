@@ -73,7 +73,7 @@ func (m *model) menuView() string {
 			}
 		}
 		if i == m.menu.idx {
-			line = botStyle.Render("› " + line)
+			line = selectedRowStyle.Width(width).Render("› " + line)
 		} else {
 			line = "  " + line
 		}

@@ -40,6 +40,16 @@ func (r *Recorder) Events() agent.Events {
 				r.err = r.history.Observe(r.agent.MessagesSnapshot())
 			}
 		},
+		OnNewContextStart: func(int, int) {
+			if r.err == nil {
+				r.err = r.history.Observe(r.agent.MessagesSnapshot())
+			}
+		},
+		OnNewContext: func(cutoff int) {
+			if r.err == nil {
+				r.err = r.history.NewContext(cutoff)
+			}
+		},
 		OnCompacted: func(summary string, cutoff int, info agent.CompactInfo) {
 			if r.err == nil {
 				r.err = r.history.Compact(summary, cutoff, info.Model, info.Usage)

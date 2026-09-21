@@ -26,7 +26,7 @@ func completionTable() []cand {
 var execNow = map[string]bool{
 	"/archive": true, "/btw": true, "/clear": true, "/compact": true, "/computer-use": true, "/computer": true, "/context-doctor": true, "/effort": true, "/goal": true, "/goal-from-context": true, "/help": true,
 	"/mcp": true, "/model": true, "/mouse": true, "/pwd": true, "/quit": true, "/report": true, "/resume": true, "/subagents": true, "/tasks": true, "/import": true,
-	"/rewind": true, "/language": true, "/plugins": true, "/privacy": true,
+	"/rewind": true, "/language": true, "/plugins": true, "/privacy": true, "/new-context": true, "/new_context": true,
 }
 
 func completions(val string, models, providers, skillCands, efforts []cand) (head string, cands []cand) {
@@ -64,7 +64,7 @@ func completions(val string, models, providers, skillCands, efforts []cand) (hea
 	case len(fields) == 1 && fields[0] == "/effort":
 		cands = filterPrefix(efforts, token)
 	case len(fields) == 1 && fields[0] == "/compact":
-		cands = filterPrefix(append([]cand{{"off", "compact with the current model"}}, models...), token)
+		cands = filterPrefix(append([]cand{{"fresh", "start a new context window"}, {"off", "compact with the current model"}}, models...), token)
 	case len(fields) == 2 && fields[0] == "/compact":
 		cands = filterPrefix(providers, token)
 	case strings.HasPrefix(token, "$"):

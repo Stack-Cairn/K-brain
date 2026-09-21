@@ -28,6 +28,13 @@ func (m *model) compactModelLabel() string {
 
 func (m *model) compactResultLine(msg compactMsg) string {
 	var b strings.Builder
+	if msg.fresh {
+		fmt.Fprintf(&b, "◎ new context — discarded %d msgs; raw history preserved", msg.took)
+		if msg.preserved {
+			b.WriteString(" · session saved")
+		}
+		return dimStyle.Render(b.String())
+	}
 	fmt.Fprintf(&b, "◎ compacted — summarized %d msgs, %d kept", msg.took, msg.kept)
 	if msg.info.Model != "" {
 		b.WriteString(" · " + msg.info.Model)
@@ -102,7 +109,11 @@ func (m *model) compactLog() {
 		if len(summary) > 80 {
 			summary = summary[:80] + "…"
 		}
-		b.WriteString("\n  " + dimStyle.Render("#"+strconv.Itoa(c.Seq)+" folded through message "+strconv.Itoa(c.Cutoff)+": ") + summary)
+		kind := "folded through message "
+		if c.Fresh {
+			kind = "new context at message "
+		}
+		b.WriteString("\n  " + dimStyle.Render("#"+strconv.Itoa(c.Seq)+" "+kind+strconv.Itoa(c.Cutoff)+": ") + summary)
 	}
 	m.append(b.String())
 }

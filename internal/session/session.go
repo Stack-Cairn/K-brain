@@ -71,6 +71,7 @@ type Compaction struct {
 	Model     string   `json:"model"`
 	Usage     ai.Usage `json:"usage"`
 	DropPrior bool     `json:"drop_prior,omitempty"`
+	Fresh     bool     `json:"fresh,omitempty"`
 }
 
 type Store struct {

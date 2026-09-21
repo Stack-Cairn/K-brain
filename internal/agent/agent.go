@@ -32,9 +32,11 @@ type Events struct {
 
 	OnCompacted func(summary string, cutoff int, info CompactInfo)
 
-	OnCompactStart func(took, estTokens int)
-	OnUsage        func(u ai.Usage)
-	OnRetry        func(ev ai.RetryEvent)
+	OnCompactStart    func(took, estTokens int)
+	OnNewContextStart func(took, estTokens int)
+	OnNewContext      func(cutoff int)
+	OnUsage           func(u ai.Usage)
+	OnRetry           func(ev ai.RetryEvent)
 
 	OnDecay func(n int)
 }
@@ -43,6 +45,7 @@ type CompactInfo struct {
 	Model    string
 	Provider string
 	Usage    ai.Usage
+	Fresh    bool
 }
 
 func (a *Agent) SetOnTodos(fn func(items []Todo)) {
@@ -104,12 +107,15 @@ type Agent struct {
 
 	WorktreeSubagents bool
 
-	mu        sync.Mutex
-	pending   []pendingSteer
-	compacted bool
-	running   atomic.Bool
-	turnMu    sync.Mutex
-	waitReg   *waitRegistry
+	mu               sync.Mutex
+	pending          []pendingSteer
+	compacted        bool
+	contextRequested atomic.Bool
+	contextNoticeMu  sync.Mutex
+	contextNotice    string
+	running          atomic.Bool
+	turnMu           sync.Mutex
+	waitReg          *waitRegistry
 
 	msgsMu sync.Mutex
 
@@ -341,6 +347,7 @@ func New(client ai.Client, model string, maxTokens int, systemPrompt string, opt
 		a.Tools = append(a.Tools, tools.ComputerExec())
 	}
 	sessionTools := []tools.Tool{tools.QuestionTool(), taskTool(a), taskSteerTool(a)}
+	sessionTools = append(sessionTools, newContextTool(a))
 	if a.experimentalEnabled(FeatureWorkflows) {
 		sessionTools = append(sessionTools, workflowTool(a))
 	}
@@ -486,6 +493,9 @@ func (a *Agent) turn(ctx context.Context, input string, parts []ai.ContentPart, 
 			return "", err
 		}
 		msgs := a.Messages
+		if notice := a.takeContextNotice(); notice != "" {
+			msgs = append(append([]ai.Message(nil), msgs...), ai.Message{Role: "system", Content: notice})
+		}
 		if block := a.todoBlock(); block != "" {
 
 			msgs = append(append([]ai.Message(nil), a.Messages...),
@@ -534,6 +544,17 @@ func (a *Agent) turn(ctx context.Context, input string, parts []ai.ContentPart, 
 		a.appendResponse(msg, usage)
 		if len(msg.ToolCalls) > 0 {
 			results := a.runTools(ctx, msg.ToolCalls, ev)
+			if a.contextRequested.Swap(false) {
+				before := a.MessagesSnapshot()
+				if ev.OnNewContextStart != nil {
+					ev.OnNewContextStart(len(before), EstimateTokens(before))
+				}
+				a.resetContextMessages(true)
+				if ev.OnNewContext != nil {
+					ev.OnNewContext(len(before))
+				}
+				continue
+			}
 			a.msgsMu.Lock()
 			for i, tc := range msg.ToolCalls {
 				a.Messages = append(a.Messages, ai.Message{
@@ -582,6 +603,44 @@ func (a *Agent) drainOrphanedSteers() {
 	for _, s := range a.drainPending() {
 		a.OnOrphanedSteer(s.text)
 	}
+}
+
+func (a *Agent) requestNewContext() {
+	a.contextRequested.Store(true)
+}
+
+func (a *Agent) resetContextMessages(notice bool) {
+	lastUser := ""
+	a.msgsMu.Lock()
+	if len(a.Messages) > 0 {
+		for i := len(a.Messages) - 1; i >= 0; i-- {
+			if a.Messages[i].Role == "user" {
+				lastUser = truncateField(a.Messages[i].TextContent(), 8000)
+				break
+			}
+		}
+		a.Messages = []ai.Message{a.Messages[0]}
+	}
+	a.msgsMu.Unlock()
+	a.usageMu.Lock()
+	a.lastPrompt = 0
+	a.usageMu.Unlock()
+	if notice {
+		a.contextNoticeMu.Lock()
+		a.contextNotice = "A new context window is active. Continue the current task using the available workspace and tools. The previous conversation was intentionally discarded."
+		if lastUser != "" {
+			a.contextNotice += "\n\nCurrent task:\n" + lastUser
+		}
+		a.contextNoticeMu.Unlock()
+	}
+}
+
+func (a *Agent) takeContextNotice() string {
+	a.contextNoticeMu.Lock()
+	defer a.contextNoticeMu.Unlock()
+	n := a.contextNotice
+	a.contextNotice = ""
+	return n
 }
 
 const (
@@ -846,6 +905,25 @@ func (a *Agent) ManualCompact(ctx context.Context, ev Events) error {
 	}
 	if ev.OnCompacted != nil {
 		ev.OnCompacted(sum, cutoff, info)
+	}
+	return nil
+}
+
+func (a *Agent) ManualNewContext(ctx context.Context, ev Events) error {
+	if !a.turnMu.TryLock() {
+		return ErrBusy
+	}
+	defer a.turnMu.Unlock()
+	if len(a.Messages) <= 1 {
+		return errors.New("not enough history to start a new context")
+	}
+	before := a.MessagesSnapshot()
+	if ev.OnNewContextStart != nil {
+		ev.OnNewContextStart(len(before), EstimateTokens(before))
+	}
+	a.resetContextMessages(false)
+	if ev.OnNewContext != nil {
+		ev.OnNewContext(len(before))
 	}
 	return nil
 }

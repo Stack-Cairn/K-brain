@@ -80,6 +80,22 @@ func (h *History) Compact(summary string, cutoff int, model string, usage ai.Usa
 	return nil
 }
 
+func (h *History) NewContext(cutoff int) error {
+	if cutoff <= 1 || cutoff > len(h.refs) {
+		return fmt.Errorf("invalid new-context cutoff %d for %d messages", cutoff, len(h.refs))
+	}
+	rawCutoff := len(h.raw)
+	for _, seq := range h.refs[cutoff:] {
+		if seq >= 0 {
+			rawCutoff = slices.Index(h.raw, seq)
+			break
+		}
+	}
+	h.compactions = append(h.compactions, Compaction{Cutoff: rawCutoff, Fresh: true})
+	h.refs = []int{h.refs[0]}
+	return nil
+}
+
 func (s *Store) SaveHistory(id string, h *History, msgs []ai.Message, model, provider string) error {
 	return s.saveHistory(id, h, msgs, model, provider, nil)
 }
@@ -148,6 +164,15 @@ func compactionIndexes(c Compaction, msgs []ai.Message) []int {
 		return nil
 	}
 	var out []int
+	if c.Fresh {
+		if len(msgs) > 0 && msgs[0].Role == "system" {
+			out = append(out, 0)
+		}
+		for i := c.Cutoff; i < len(msgs); i++ {
+			out = append(out, i)
+		}
+		return out
+	}
 	if len(msgs) > 0 && (!c.DropPrior || msgs[0].Role == "system") {
 		out = append(out, 0)
 	}
