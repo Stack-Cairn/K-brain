@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 func fullModel() *model {
@@ -27,8 +28,11 @@ func TestViewNeverTallerThanTerminal(t *testing.T) {
 	}
 
 	lines := strings.Split(m.View(), "\n")
-	if !strings.Contains(lines[0], "k-brain") || !strings.Contains(lines[1], "ctrl+p") {
-		t.Fatalf("header/tips scrolled off: top rows %q / %q", lines[0], lines[1])
+	if got, want := ansi.Strip(lines[len(lines)-1]), ansi.Strip(m.statusView()); got != want {
+		t.Fatalf("status row scrolled off: %q, want %q", got, want)
+	}
+	if hints := ansi.Strip(lines[len(lines)-3]); !strings.Contains(hints, "Ctrl+P") || !strings.Contains(hints, m.permissionModeLabel()) {
+		t.Fatalf("hints row scrolled off: %q", hints)
 	}
 
 	check := func(name string, mut func()) {
@@ -51,8 +55,8 @@ func TestDragSelectOnFullTranscript(t *testing.T) {
 	tm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
 	m = tm.(*model)
 	m.input.SetValue("")
-	if m.contentPad() != 0 || m.vp.YOffset == 0 {
-		t.Fatalf("test setup: expected a scrolled full viewport (pad=%d yoff=%d)", m.contentPad(), m.vp.YOffset)
+	if m.vp.YOffset == 0 {
+		t.Fatalf("test setup: expected a scrolled full viewport (yoff=%d)", m.vp.YOffset)
 	}
 
 	last := len(m.blocks) - 1

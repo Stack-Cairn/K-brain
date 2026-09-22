@@ -33,7 +33,7 @@ func (m *model) setLanguage(language string) bool {
 	m.syncInputPlaceholder()
 	m.menu = nil
 	m.refreshVP()
-	m.append(dimStyle.Render(m.tr("Interface language saved: ") + language))
+	// No confirmation line: the interface language change is visible everywhere.
 	return true
 }
 

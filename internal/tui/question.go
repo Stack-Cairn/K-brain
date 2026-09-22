@@ -185,14 +185,14 @@ func (m *model) askView() string {
 	switch {
 	case d.editing:
 		b.WriteString("\n" + youStyle.Render(glyphUser+custom+": ") + d.custom + "█")
-		b.WriteString(dimStyle.Render("\n  enter confirms · esc back"))
+		b.WriteString(dimStyle.Render("\n  Enter confirms · Esc Back"))
 		return b.String()
 	case d.sel == len(d.req.Options):
 		b.WriteString("\n" + youStyle.Render(glyphUser+custom))
 	default:
 		b.WriteString("\n  " + custom)
 	}
-	hint := "  ↑/↓ or 1-9 select · enter picks · esc dismisses"
+	hint := "  ↑/↓ or 1-9 Select · Enter Picks · Esc Dismisses"
 	if d.req.Multiple {
 		hint = "  ↑/↓ or 1-9 toggle · enter submits · esc dismisses"
 	}

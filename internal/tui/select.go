@@ -1,9 +1,6 @@
 package tui
 
 import (
-	"encoding/base64"
-	"fmt"
-	"os"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -30,8 +27,17 @@ func (m *model) selPoint(x, y int, clamp bool) (selPos, bool) {
 	if !clamp && (y < max(m.viewportTop, 0) || y >= m.viewportTop+m.viewportRows || x < 0 || x >= m.width) {
 		return selPos{}, false
 	}
-	row := y - m.viewTop - m.vpTopRows() - m.contentPad() + m.vp.YOffset + m.vpLead
-	first, last := m.blocks[0].y0, m.blocks[len(m.blocks)-1].y1
+	row := y - m.viewTop - m.vpTopRows() + m.vp.YOffset + m.vpLead
+	// The banner block is skipped from the transcript once the conversation
+	// has messages, so anchor on the first rendered block instead of index 0.
+	first := 0
+	for _, blk := range m.blocks {
+		if blk.y0 >= 0 {
+			first = blk.y0
+			break
+		}
+	}
+	last := m.blocks[len(m.blocks)-1].y1
 	if !clamp && (row < first || row > last) {
 		return selPos{}, false
 	}
@@ -77,7 +83,9 @@ func cellSlice(s string, off, n int) string {
 	var b strings.Builder
 	col := 0
 	for _, r := range s {
-		w := runewidth.RuneWidth(r)
+		// Match the width convention of ansi.StringWidth used by selPoint so
+		// ambiguous glyphs (e.g. ●) never shift the selection off-by-one.
+		w := ansi.StringWidth(string(r))
 		if col+w > off && col < off+n {
 			b.WriteRune(r)
 		}
@@ -145,7 +153,7 @@ func (m *model) highlightSelection(view string) string {
 	}
 	lines := strings.Split(view, "\n")
 	lo, hi := selOrder(*m.sel)
-	base := m.contentPad() - m.vp.YOffset
+	base := -m.vp.YOffset
 	for r := lo.row; r <= hi.row; r++ {
 		si := r + base
 		if si < 0 || si >= len(lines) {
@@ -212,19 +220,6 @@ func reverseRange(line string, start, end int) string {
 	return b.String()
 }
 
-func copyText(s string) {
-	if s == "" {
-		return
-	}
-	seq := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte(s)) + "\a"
-	if os.Getenv("TMUX") != "" {
-
-		seq = "\x1bPtmux;" + strings.ReplaceAll(seq, "\x1b", "\x1b\x1b") + "\x1b\\"
-	}
-	fmt.Fprint(os.Stdout, seq)
-	_ = writeClipboard(s)
-}
-
 type selScrollTick struct{}
 
 func (m *model) handleMouseSelect(msg tea.MouseMsg) (handled bool, cmd tea.Cmd) {
@@ -266,10 +261,10 @@ func (m *model) handleMouseSelect(msg tea.MouseMsg) (handled bool, cmd tea.Cmd) 
 			return false, nil
 		}
 		if m.sel.anchor != m.sel.cur {
+			// A drag selects text: keep the highlight so the terminal's native
+			// copy (ctrl+shift+c / cmd+c) can grab it. No auto-copy, no notice.
 			m.sel.done = true
-			copyText(m.selText(*m.sel))
-			return true, m.showNotice("Copied to clipboard")
-
+			return true, nil
 		}
 		inputClick := m.sel.anchor.input
 		m.sel = nil
@@ -289,7 +284,9 @@ func (m *model) selEdgeScroll() tea.Cmd {
 	top := max(m.viewportTop, 0)
 	bottom := m.viewportTop + m.viewportRows - 1
 	switch {
-	case m.selDragY < top && m.vp.YOffset > 0:
+	// The transcript now starts at the top of the terminal, so there is no row
+	// above it to drag into — dragging onto the first transcript row scrolls up.
+	case m.selDragY <= top && m.vp.YOffset > 0:
 		m.vp.SetYOffset(m.vp.YOffset - 1)
 	case m.selDragY > bottom && !m.vp.AtBottom():
 		m.vp.SetYOffset(m.vp.YOffset + 1)

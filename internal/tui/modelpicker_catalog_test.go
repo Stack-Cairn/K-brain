@@ -228,7 +228,7 @@ func TestModelPickerKeepsSelectionVisibleWhenScrolling(t *testing.T) {
 	if !strings.Contains(view, "→") || !strings.Contains(view, "vendor/model-150") {
 		t.Fatalf("selection must stay visible after scrolling:\n%s", view)
 	}
-	if !strings.Contains(lines[0], "/") || !strings.Contains(view, "type to filter") {
+	if !strings.Contains(lines[0], "/") || !strings.Contains(view, "Type to Filter") {
 		t.Fatalf("query line and footer must stay visible:\n%s", view)
 	}
 }

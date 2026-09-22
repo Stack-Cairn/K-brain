@@ -29,8 +29,8 @@ func TestSelectionRowAccuracy(t *testing.T) {
 		t.Fatal("MARKER not rendered")
 	}
 
-	if m.viewTop == 0 {
-		t.Fatal("test setup: view must not start at screen row 0")
+	if m.viewportRows == 0 {
+		t.Fatal("test setup: the transcript must occupy rows on screen")
 	}
 	t.Logf("MARKER at screen (%d,%d); block[1] y0=%d", screenRow, screenCol, m.blocks[1].y0)
 

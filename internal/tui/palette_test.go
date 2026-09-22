@@ -104,7 +104,7 @@ func TestPaletteViewRendersCategories(t *testing.T) {
 	m.openPalette()
 	m.width = 100
 	v := m.paletteView()
-	for _, want := range []string{"Commands", "Suggested", "Agent", "Session", "Display", "App", "esc close"} {
+	for _, want := range []string{"Commands", "Suggested", "Agent", "Session", "Display", "App", "Esc Close"} {
 		if !strings.Contains(v, want) {
 			t.Errorf("palette view missing %q:\n%s", want, v)
 		}

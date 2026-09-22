@@ -84,7 +84,7 @@ func TestSubagentModelCommandPersists(t *testing.T) {
 	if m.agent.TaskDefault.Client == nil || m.agent.TaskDefault.Model != "m" {
 		t.Fatalf("the agent's default subagent route should follow the pick: %+v", m.agent.TaskDefault)
 	}
-	if !strings.Contains(m.blocks[len(m.blocks)-1].text, "subagent model: m @ p") {
+	if !strings.Contains(m.blocks[len(m.blocks)-1].text, "subagent model: m@p") {
 		t.Fatalf("expected a confirmation note, got %q", m.blocks[len(m.blocks)-1].text)
 	}
 

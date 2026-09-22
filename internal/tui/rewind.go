@@ -258,8 +258,7 @@ func (m *model) messageAt(i int) ai.Message {
 }
 
 func (m *model) rebuildTranscript() {
-	m.blocks = nil
-	m.msgBlock = nil
+	m.resetTranscript()
 	m.seedTranscript(m.agent.Messages[1:], 1)
 }
 

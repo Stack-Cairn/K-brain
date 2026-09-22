@@ -326,7 +326,7 @@ func (m *model) modelPickerView() string {
 	if len(view) == 0 {
 		rows = append(rows, dimStyle.Render(m.tr("  no models match ")+strconv.Quote(p.filter.query)))
 	}
-	rows = append(rows, dimStyle.Render(fmt.Sprintf(m.tr("  (%d/%d) type to filter · ↑/↓ select · enter switch · esc cancel"), p.idx+1, len(view))))
+	rows = append(rows, dimStyle.Render(fmt.Sprintf(m.tr("  (%d/%d) Type to Filter · ↑/↓ Select · Enter Switch · Esc Cancel"), p.idx+1, len(view))))
 	if len(p.staleHints) > 0 {
 		rows = append(rows, dimStyle.Render(fmt.Sprintf(m.tr("  catalog stale for %s — /model refresh to pull newly announced models"), strings.Join(p.staleHints, ", "))))
 	}

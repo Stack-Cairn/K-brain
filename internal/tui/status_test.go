@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"path"
 	"strings"
 	"testing"
 
@@ -30,15 +29,10 @@ func TestStatusLineAlwaysShown(t *testing.T) {
 	m.agent.AddUsage(ai.Usage{PromptTokens: 45230, CompletionTokens: 3120})
 
 	v := m.View()
-	for _, want := range []string{"kimi-k3-fast (high)", "inference", "45.2k", "3.1k"} {
+	for _, want := range []string{"kimi-k3-fast", "✦ high", "inference", "45.2k", "3.1k"} {
 		if !strings.Contains(v, want) {
-			t.Errorf("status line should show %q\n--- view tail ---\n%s", want, tailLines(v, 6))
+			t.Errorf("info rows should show %q\n--- view tail ---\n%s", want, tailLines(v, 6))
 		}
-	}
-
-	base := path.Base(cwd())
-	if !strings.Contains(v, base) {
-		t.Errorf("status line should show the working directory's last segment %q\n%s", base, tailLines(v, 6))
 	}
 }
 
@@ -54,8 +48,11 @@ func TestStatusLineDefaults(t *testing.T) {
 	if strings.Contains(v, "m (") {
 		t.Errorf("effort off should not add parens\n%s", tailLines(v, 6))
 	}
-	if !strings.Contains(v, "  m   p  ") && !strings.Contains(v, " m   p ") {
-		t.Errorf("bare model and provider should appear\n%s", tailLines(v, 6))
+	if hints := ansi.Strip(m.footerHints()); !strings.HasSuffix(hints, "m · ✦ off") {
+		t.Errorf("model and effort should close the hints row, got %q", hints)
+	}
+	if !strings.Contains(ansi.Strip(m.statusView()), "p   0/0 tok") {
+		t.Errorf("provider should lead the spend cluster\n%s", tailLines(v, 6))
 	}
 }
 
@@ -111,12 +108,25 @@ func TestStatusLineSpacing(t *testing.T) {
 	if statusRow < 1 {
 		t.Fatalf("status line not found\n%s", m.View())
 	}
-	if lines[statusRow-1] != "" {
-		t.Errorf("want one blank line above the status line, got %q", lines[statusRow-1])
+	if got := ansi.Strip(lines[statusRow-1]); strings.Trim(strings.TrimSpace(got), "─") != "" {
+		t.Errorf("want the footer rule directly above the status line, got %q", got)
 	}
 
 	if statusRow != len(lines)-1 {
 		t.Errorf("status line should be the last row (row %d of %d lines)", statusRow, len(lines)-1)
+	}
+}
+
+func TestFooterRuleCarriesTheNotice(t *testing.T) {
+	m := statusModel()
+	m.width = 80
+
+	bare := ansi.Strip(m.footerRule())
+	if strings.Trim(strings.TrimSpace(bare), "─") != "" || lipgloss.Width(bare) != m.width {
+		t.Fatalf("an idle rule should span the width: %q", bare)
+	}
+	if lipgloss.Height(m.footerRule()) != 1 {
+		t.Error("the rule must stay a single row — that would shift the composer")
 	}
 }
 

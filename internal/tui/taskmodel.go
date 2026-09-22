@@ -98,7 +98,7 @@ func (m *model) subagentModelCommand(args []string) {
 	}
 	note := "◎ subagent model: " + model
 	if p := routing.ResolvedProvider(m.cfg, model, prov); p != "" {
-		note += " @ " + p
+		note += "@" + p
 	}
 	m.append(dimStyle.Render(note))
 }

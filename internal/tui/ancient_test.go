@@ -48,7 +48,7 @@ func TestAncientKeepsInterfaceHorizontal(t *testing.T) {
 	m.ancientMode = true
 	m.syncInputPlaceholder()
 	out := ansi.Strip(m.View())
-	for _, want := range []string{"k-brain", m.input.Placeholder, "shift+tab", "ctrl+c", m.permissionModeLabel()} {
+	for _, want := range []string{"k-brain", m.input.Placeholder, "Shift+Tab", "Ctrl+C", m.permissionModeLabel()} {
 		if !strings.Contains(out, want) {
 			t.Errorf("horizontal interface missing %q: %q", want, out)
 		}

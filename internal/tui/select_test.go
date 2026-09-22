@@ -22,7 +22,7 @@ func selTestModel() *model {
 
 func blockRowY(m *model, r int) int {
 	m.View()
-	return m.viewTop + m.vpTopRows() + (r + m.contentPad() - m.vp.YOffset) - m.vpLead
+	return m.viewTop + m.vpTopRows() + (r - m.vp.YOffset) - m.vpLead
 }
 
 func TestDragSelectsHighlightsCopies(t *testing.T) {
@@ -110,16 +110,22 @@ func TestClickExpandsToolBlock(t *testing.T) {
 func TestPressOutsideTranscriptNotConsumed(t *testing.T) {
 	m := selTestModel()
 	m.View()
-	for _, y := range []int{0, 1, m.height - 1} {
-		if m.inInputRow(y) {
+	checked := 0
+	for y := range m.height {
+		inTranscript := y >= max(m.viewportTop, 0) && y < m.viewportTop+m.viewportRows
+		if inTranscript || m.inInputRow(y) {
 			continue
 		}
+		checked++
 		if handled, _ := m.handleMouseSelect(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: 2, Y: y}); handled {
 			t.Fatalf("press on non-selectable row %d must not be consumed", y)
 		}
 		if m.sel != nil {
 			t.Fatalf("press on non-selectable row %d must not start a selection", y)
 		}
+	}
+	if checked == 0 {
+		t.Fatal("test setup: expected some chrome rows outside the transcript")
 	}
 
 	m.handleMouseSelect(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: 0, Y: blockRowY(m, m.blocks[0].y0)})
