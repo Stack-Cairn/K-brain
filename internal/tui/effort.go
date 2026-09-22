@@ -112,7 +112,7 @@ func (m *model) effortPanelView(pp *ppanel) string {
 		}
 		b.WriteByte('\n')
 	}
-	b.WriteString("\n" + shortcutStyle.Render("  ↑↓ navigate  ·  enter apply  ·  ←→ cycle  ·  esc close"))
+	b.WriteString("\n" + shortcutStyle.Render("  ↑↓ Navigate  ·  Enter Apply  ·  ←→ Cycle  ·  Esc Close"))
 	return b.String()
 }
 

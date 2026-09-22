@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/Stack-Cairn/K-brain/internal/agent"
 	"github.com/Stack-Cairn/K-brain/internal/ai"
 )
@@ -19,8 +21,15 @@ func TestFmtTok(t *testing.T) {
 	}
 }
 
-func TestHeaderShowsUsage(t *testing.T) {
+// footerRows returns the two info rows under the input box (the hints row and
+// the status row), which is where the old top header's fields now live.
+func footerRows(m *model) string {
+	return ansi.Strip(m.footerHints() + "\n" + m.statusView())
+}
+
+func TestFooterShowsUsage(t *testing.T) {
 	m := compactCmdModel()
+	m.modelName = "kimi-k3-fast"
 	m.agent = agent.New(ai.New("https://x", "k"), "kimi-k3-fast", 100, "sys")
 	m.agent.ContextLimit = 100000
 	m.follow = true
@@ -32,22 +41,22 @@ func TestHeaderShowsUsage(t *testing.T) {
 		}{CachedTokens: 4000},
 	})
 	m.width = 200
-	head, _, _ := strings.Cut(m.View(), "\n")
-	for _, want := range []string{"kimi-k3-fast", "✦ off", "12.3k in", "4.0k cached", "678 out", "% ctx"} {
-		if !strings.Contains(head, want) {
-			t.Errorf("header missing %q: %q", want, head)
+	rows := footerRows(m)
+	for _, want := range []string{"kimi-k3-fast", "✦ off", "12.3k(4.0k)/678 tok", "% ctx"} {
+		if !strings.Contains(rows, want) {
+			t.Errorf("footer missing %q: %q", want, rows)
 		}
 	}
 }
 
-func TestHeaderOmitsUsageUntilReported(t *testing.T) {
+func TestFooterOmitsUsageUntilReported(t *testing.T) {
 	m := compactCmdModel()
 	m.width = 120
-	head, _, _ := strings.Cut(m.View(), "\n")
-	if strings.Contains(head, "⣿") {
-		t.Errorf("no usage should mean no token block: %q", head)
+	rows := footerRows(m)
+	if !strings.Contains(rows, "0/0 tok") {
+		t.Errorf("an unused session should read 0/0 tok: %q", rows)
 	}
-	if !strings.Contains(head, "✦ off") || !strings.Contains(head, "kimi-k3-fast") {
-		t.Errorf("model and effort always show: %q", head)
+	if !strings.Contains(rows, "✦ off") || !strings.Contains(rows, m.modelName) {
+		t.Errorf("model and effort always show: %q", rows)
 	}
 }

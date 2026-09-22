@@ -73,7 +73,7 @@ func TestPromptEditorBusyAndFailure(t *testing.T) {
 	if m.openPromptEditor() != nil || m.input.Value() != "keep" {
 		t.Fatal("failed launch lost draft")
 	}
-	if !strings.Contains(helpText(), "ctrl+g") || registryFind("/editor").Name != "/editor" {
+	if !strings.Contains(helpText(), "Ctrl+G") || registryFind("/editor").Name != "/editor" {
 		t.Fatal("missing discoverability")
 	}
 }

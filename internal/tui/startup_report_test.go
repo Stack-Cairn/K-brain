@@ -10,9 +10,29 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/Stack-Cairn/K-brain/internal/mcp"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+// reportText is everything startupReport appended, i.e. the per-item problems.
+// Summary counts live on the startup card instead and are asserted through
+// bannerRows.
+func reportText(m *model) string {
+	var b strings.Builder
+	for _, blk := range m.blocks {
+		if blk.kind == blockBanner {
+			continue
+		}
+		b.WriteString(ansi.Strip(blk.text) + "\n")
+	}
+	return b.String()
+}
+
+func cardText(m *model) string {
+	return ansi.Strip(strings.Join(m.bannerRows(), "\n"))
+}
 
 func TestStartupReportSkillsAndWarnings(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
@@ -34,13 +54,18 @@ func TestStartupReportSkillsAndWarnings(t *testing.T) {
 
 	m := tasksModel("http://unused")
 	m.startupReport()
-	if len(m.blocks) == 0 {
-		t.Fatal("no report rendered")
+
+	if m.stats.skills != 2 {
+		t.Errorf("loaded count = %d, want 2", m.stats.skills)
 	}
-	out := m.blocks[0].text
-	if !strings.Contains(out, "skills: 2 loaded") {
-		t.Errorf("missing loaded count:\n%s", out)
+	if m.stats.skillWarn != 2 {
+		t.Errorf("warning count = %d, want 2 (one truncation, one parse problem)", m.stats.skillWarn)
 	}
+	if card := cardText(m); !strings.Contains(card, "2 skills") || !strings.Contains(card, "(2 ⚠)") {
+		t.Errorf("card should summarise skills and flag the warnings:\n%s", card)
+	}
+
+	out := reportText(m)
 	if !strings.Contains(out, "wordy") || !strings.Contains(out, "exceeds 1024") {
 		t.Errorf("missing truncation warning:\n%s", out)
 	}
@@ -57,9 +82,15 @@ func TestStartupReportMCP(t *testing.T) {
 		"invalid": {},
 	})
 	m.startupReport()
-	out := m.blocks[0].text
-	if !strings.Contains(out, "mcp:") || !strings.Contains(out, "off ○") || !strings.Contains(out, "invalid ✗") {
-		t.Errorf("bad mcp line:\n%s", out)
+
+	if m.stats.mcpFailed != 1 {
+		t.Errorf("failed count = %d, want 1", m.stats.mcpFailed)
+	}
+	if card := cardText(m); !strings.Contains(card, "MCP ✗") {
+		t.Errorf("a failed server should be flagged on the card:\n%s", card)
+	}
+	if out := reportText(m); !strings.Contains(out, "mcp invalid") {
+		t.Errorf("the failing server should be named in the report:\n%s", out)
 	}
 }
 
@@ -99,25 +130,35 @@ func TestStartupReportMCPReadyAndPending(t *testing.T) {
 	t.Setenv("USERPROFILE", os.Getenv("HOME"))
 
 	m := tasksModel("http://unused")
-
 	m.mcpMgr = mgr
 	m.startupReport()
-	out := m.blocks[0].text
-	if !strings.Contains(out, "ok ✓ (1 tools)") || !strings.Contains(out, "invalid ✗") {
-		t.Errorf("full report should list every server:\n%s", out)
+
+	if m.stats.mcpReady != 1 || m.stats.mcpFailed != 1 || m.stats.mcpTools != 1 {
+		t.Errorf("stats = %+v, want 1 ready / 1 failed / 1 tool", m.stats)
+	}
+	if card := cardText(m); !strings.Contains(card, "1/2 MCP ✗") {
+		t.Errorf("a partly broken fleet should read as a failure on the card:\n%s", card)
 	}
 
-	mgr2 := mcp.NewManager(map[string]mcp.ServerConfig{
-		"ok":      {URL: hs.URL},
-		"pending": {Command: []string{"true"}},
-	})
+	// A healthy fleet reports its tool count instead of a failure.
+	mgr2 := mcp.NewManager(map[string]mcp.ServerConfig{"ok": {URL: hs.URL}})
+	mgr2.Start(context.Background())
 	defer mgr2.Close()
+	for {
+		sts := mgr2.Statuses()
+		if len(sts) == 1 && sts[0].Status == mcp.StatusReady {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("second server never became ready: %+v", sts)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	m3 := tasksModel("http://unused")
 	m3.mcpMgr = mgr2
 	m3.startupReport()
-	out3 := m3.blocks[0].text
-	if !strings.Contains(out3, "pending ◌") {
-		t.Errorf("unsettled server should show ◌:\n%s", out3)
+	if card := cardText(m3); !strings.Contains(card, "1 MCP (1 tools)") {
+		t.Errorf("a healthy fleet should show its tool count:\n%s", card)
 	}
 }
 
@@ -129,8 +170,8 @@ func TestStartupReportSilent(t *testing.T) {
 
 	m := tasksModel("http://unused")
 	m.startupReport()
-	if len(m.blocks) != 0 {
-		t.Errorf("expected silence, got %q", m.blocks[0].text)
+	if out := strings.TrimSpace(reportText(m)); out != "" {
+		t.Errorf("expected silence, got %q", out)
 	}
 }
 
@@ -143,11 +184,9 @@ func TestStartupReportUpdateNotice(t *testing.T) {
 	m := tasksModel("http://unused")
 	m.updateLatest = "v0.4.0"
 	m.startupReport()
-	if len(m.blocks) == 0 {
-		t.Fatal("no report rendered")
-	}
-	out := m.blocks[0].text
-	if !strings.Contains(out, "update available: v0.4.0") || !strings.Contains(out, "kn update") {
-		t.Errorf("missing update notice:\n%s", out)
+
+	card := cardText(m)
+	if !strings.Contains(card, "v0.4.0") || !strings.Contains(card, "kn update") {
+		t.Errorf("the card should carry the update notice:\n%s", card)
 	}
 }

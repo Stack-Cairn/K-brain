@@ -31,8 +31,13 @@ func TestCtrlKClear(t *testing.T) {
 	if m.msgBlock != nil {
 		t.Fatal("ctrl+k should drop the pending message block")
 	}
-	if len(m.blocks) != 1 || !strings.Contains(ansi.Strip(m.blocks[0].render(m.width)), "(conversation cleared)") {
-		t.Fatalf("expected only the cleared notice block, got %d blocks", len(m.blocks))
+	// The banner is reseeded on clear, so the transcript is just the banner:
+	// clearing is silent now that the emptied conversation is visible on screen.
+	if len(m.blocks) != 1 || m.blocks[0].kind != blockBanner {
+		t.Fatalf("expected just the banner, got %d blocks", len(m.blocks))
+	}
+	if last := m.blocks[len(m.blocks)-1]; strings.Contains(ansi.Strip(last.render(m.width)), "cleared") {
+		t.Fatalf("clearing should be silent, got %q", ansi.Strip(last.render(m.width)))
 	}
 	if m.sessionID != "" {
 		t.Fatalf("ctrl+k should detach the session, got %q", m.sessionID)
@@ -40,7 +45,7 @@ func TestCtrlKClear(t *testing.T) {
 	if got := m.input.Value(); got != "draft" {
 		t.Fatalf("ctrl+k must not delete-after-cursor in the input, got %q", got)
 	}
-	if out := ansi.Strip(m.View()); !strings.Contains(out, "(conversation cleared)") {
-		t.Fatalf("missing cleared notice in transcript: %q", out)
+	if out := ansi.Strip(m.View()); strings.Contains(out, "(conversation cleared)") {
+		t.Fatalf("clearing should be silent in transcript: %q", out)
 	}
 }

@@ -87,10 +87,10 @@ type palette struct {
 }
 
 const (
-	palHintRewind   = "esc esc"
+	palHintRewind   = "Esc Esc"
 	palDescRewind   = "rewind the conversation"
-	palHintThinking = "ctrl+o"
-	palHintQuit     = "ctrl+c ctrl+c"
+	palHintThinking = "Ctrl+O"
+	palHintQuit     = "Ctrl+C Ctrl+C"
 )
 
 func slashHint(m *model, name string) string {
@@ -106,8 +106,8 @@ func (m *model) paletteItems() []paletteItem {
 		{
 			title: "Model", category: "Agent", suggested: true,
 
-			dynDesc: func(m *model) string { return m.modelName + " @ " + m.provName },
-			dynHint: func(m *model) string { return "/model · tab" },
+			dynDesc: func(m *model) string { return m.modelName + "@" + m.provName },
+			dynHint: func(m *model) string { return "/model · Tab" },
 			panel: func(m *model) *ppanel {
 				items := buildModelItems(m.cfg)
 				if len(items) == 0 {
@@ -844,7 +844,7 @@ func (m *model) paletteView() string {
 		b.WriteString(dimStyle.Render(m.tr("  (no matches)")))
 		b.WriteString("\n")
 	}
-	b.WriteString("\n" + dimStyle.Render(fmt.Sprintf(m.tr("  (%d/%d) ↑/↓ select · enter open/apply · ←/→ change · esc close"),
+	b.WriteString("\n" + dimStyle.Render(fmt.Sprintf(m.tr("  (%d/%d) ↑/↓ Select · Enter Open/Apply · ←/→ Change · Esc Close"),
 		min(p.idx+1, len(p.items)), len(p.items))))
 	return b.String()
 }
@@ -924,7 +924,7 @@ func (m *model) panelView(pp *ppanel) string {
 		if hi < len(rows) {
 			b.WriteString(dimStyle.Render(fmt.Sprintf(m.tr("   ↓ %d more"), len(rows)-hi)) + "\n")
 		}
-		b.WriteString("\n" + dimStyle.Render(fmt.Sprintf("  (%d/%d) ↑/↓ preview · enter switch · esc back", pp.idx+1, len(pp.items))))
+		b.WriteString("\n" + dimStyle.Render(fmt.Sprintf("  (%d/%d) ↑/↓ preview · Enter switch · Esc Back", pp.idx+1, len(pp.items))))
 
 	case panelEffort:
 		return m.effortPanelView(pp)
@@ -982,7 +982,7 @@ func (m *model) panelView(pp *ppanel) string {
 		if pp.note != "" {
 			b.WriteString(dimStyle.Render("  "+pp.note) + "\n")
 		}
-		b.WriteString("\n" + dimStyle.Render(fmt.Sprintf(m.tr("  (%d/%d) type to filter · ↑/↓ select · enter/←/→ apply · esc back"), pp.midx+1, len(view))))
+		b.WriteString("\n" + dimStyle.Render(fmt.Sprintf(m.tr("  (%d/%d) type to filter · ↑/↓ select · Enter/←/→ apply · Esc Back"), pp.midx+1, len(view))))
 
 	case panelLanguage:
 		for i, language := range pp.list {
@@ -996,7 +996,7 @@ func (m *model) panelView(pp *ppanel) string {
 				b.WriteString("   " + line + "\n")
 			}
 		}
-		b.WriteString("\n" + dimStyle.Render(m.tr("  ↑/↓ select · enter apply · esc back")))
+		b.WriteString("\n" + dimStyle.Render(m.tr("  ↑/↓ select · Enter apply · Esc Back")))
 
 	case panelTheme:
 		cur := m.cfg.Theme
@@ -1014,7 +1014,7 @@ func (m *model) panelView(pp *ppanel) string {
 				b.WriteString("   " + name + mark + "\n")
 			}
 		}
-		b.WriteString("\n" + dimStyle.Render(m.tr("  ↑/↓ select · enter/←/→ apply · esc back")))
+		b.WriteString("\n" + dimStyle.Render(m.tr("  ↑/↓ select · Enter/←/→ apply · Esc Back")))
 
 	case panelBrowser:
 		for i, name := range pp.list {
@@ -1028,11 +1028,11 @@ func (m *model) panelView(pp *ppanel) string {
 				b.WriteString("   " + name + mark + "\n")
 			}
 		}
-		b.WriteString("\n" + dimStyle.Render(m.tr("  ↑/↓ select · enter/←/→ apply · esc back")))
+		b.WriteString("\n" + dimStyle.Render(m.tr("  ↑/↓ select · Enter/←/→ apply · Esc Back")))
 
 	case panelGoal:
 		b.WriteString(" " + youStyle.Render(glyphUser) + pp.prepare + dimStyle.Render("█"))
-		b.WriteString("\n\n" + dimStyle.Render(fmt.Sprintf("  type the goal · empty clears · enter/esc apply · max %d rounds (/goal rounds)", m.goalMaxRounds())))
+		b.WriteString("\n\n" + dimStyle.Render(fmt.Sprintf("  type the goal · empty clears · Enter/Esc apply · max %d rounds (/goal rounds)", m.goalMaxRounds())))
 
 	case panelMCP:
 		if len(pp.mcps) == 0 {
@@ -1050,7 +1050,7 @@ func (m *model) panelView(pp *ppanel) string {
 				b.WriteString("   " + line + "\n")
 			}
 		}
-		b.WriteString("\n" + dimStyle.Render("  ↑/↓ select · enter/←/→ toggle · esc back · /mcp for reconnect"))
+		b.WriteString("\n" + dimStyle.Render("  ↑/↓ select · Enter/←/→ toggle · Esc Back · /mcp for reconnect"))
 	}
 	b.WriteString("\n")
 	return b.String()

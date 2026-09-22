@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/cursor"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textarea"
@@ -44,23 +45,33 @@ import (
 )
 
 var (
-	youStyle  = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "21", Dark: "12"}).Bold(true)
-	botStyle  = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "90", Dark: "13"}).Bold(true)
-	toolStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "136", Dark: "11"})
-	dimStyle  = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "240", Dark: "245"})
-	errStyle  = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "124", Dark: "9"})
-	growStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "28", Dark: "10"})
+	youStyle  = lipgloss.NewStyle().Foreground(infoColor).Bold(true)
+	botStyle  = lipgloss.NewStyle().Foreground(secondaryColor).Bold(true)
+	toolStyle = lipgloss.NewStyle().Foreground(warnColor)
+	dimStyle  = lipgloss.NewStyle().Foreground(faintColor)
+	errStyle  = lipgloss.NewStyle().Foreground(errColor)
+	warnStyle = lipgloss.NewStyle().Foreground(warnColor)
+	growStyle = lipgloss.NewStyle().Foreground(successColor)
 
-	thinkingStyle    = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "240", Dark: "245"}).Italic(true)
-	chromeStyle      = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "238", Dark: "252"})
-	accentStyle      = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "31", Dark: "81"}).Bold(true)
-	userPanel        = lipgloss.NewStyle().Background(lipgloss.AdaptiveColor{Light: "255", Dark: "235"}).Padding(0, 1)
-	shortcutStyle    = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "243", Dark: "246"})
-	brandStyle       = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "24", Dark: "80"}).Bold(true)
-	metaStyle        = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "242", Dark: "250"})
-	statusTitleStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "24", Dark: "81"}).Bold(true)
-	chromeRuleStyle  = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "250", Dark: "238"})
-	selectedRowStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "24", Dark: "81"}).Background(lipgloss.AdaptiveColor{Light: "254", Dark: "236"}).Bold(true)
+	thinkingStyle = lipgloss.NewStyle().Foreground(faintColor).Italic(true)
+	chromeStyle   = lipgloss.NewStyle().Foreground(mutedColor)
+	accentStyle   = lipgloss.NewStyle().Foreground(accentColor).Bold(true)
+	userPanel     = lipgloss.NewStyle().Background(panelBGColor).Padding(0, 1)
+	shortcutStyle = lipgloss.NewStyle().Foreground(subtleColor)
+	// The brand name is structure, not a signal: bold carries it, colour is
+	// saved for the one actionable span in the card.
+	brandStyle       = lipgloss.NewStyle().Foreground(mutedColor).Bold(true)
+	metaStyle        = lipgloss.NewStyle().Foreground(subtleColor)
+	chromeRuleStyle  = lipgloss.NewStyle().Foreground(borderColor)
+	statusTitleStyle = lipgloss.NewStyle().Foreground(accentColor).Bold(true)
+	selectedRowStyle = lipgloss.NewStyle().Foreground(accentColor).Background(selectionBGColor).Bold(true)
+
+	// Mode chips carry risk, so their colour is semantic: allow-everything is a
+	// warning, plan is the safe accent, normal is unremarkable.
+	modeChipBase   = lipgloss.NewStyle().Bold(true).Padding(0, 1)
+	modeChipAlways = modeChipBase.Foreground(lipgloss.CompleteAdaptiveColor{Light: lipgloss.CompleteColor{TrueColor: "#ffffff", ANSI256: "231", ANSI: "15"}, Dark: lipgloss.CompleteColor{TrueColor: "#1b1d22", ANSI256: "235", ANSI: "0"}}).Background(errColor)
+	modeChipPlan   = modeChipBase.Foreground(lipgloss.CompleteAdaptiveColor{Light: lipgloss.CompleteColor{TrueColor: "#ffffff", ANSI256: "231", ANSI: "15"}, Dark: lipgloss.CompleteColor{TrueColor: "#0f1714", ANSI256: "235", ANSI: "0"}}).Background(accentColor)
+	modeChipNormal = modeChipBase.Foreground(mutedColor).Background(borderColor)
 )
 
 var (
@@ -219,30 +230,45 @@ type model struct {
 	selDragX int
 	selDragY int
 
-	inputBodyOff     int
-	viewportTop      int
-	viewportRows     int
-	inputLeft        int
-	inputTop         int
-	inputLines       []string
-	vpLead           int
-	viewTop          int
-	viewH            int
-	frameTop         int
-	frameH           int
-	themeHow         string
-	sessTitle        string
-	transientNotice  string
-	noticeGeneration uint64
-	compactModel     string
-	compactProv      string
+	inputBodyOff int
+	// composerTop is where the composer's top rule sits, which is one row above
+	// inputBodyOff. Padding goes here so the frame stays whole.
+	composerTop int
+	// turnFloorH is the tallest the frame has been during the running turn, so a
+	// mid-stream shrink cannot bounce the composer back up. Reset when idle.
+	turnFloorH   int
+	viewportTop  int
+	viewportRows int
+	inputLeft    int
+	inputTop     int
+	inputLines   []string
+	vpLead       int
+	viewTop      int
+	viewH        int
+	frameTop     int
+	frameH       int
+	themeHow     string
+	sessTitle    string
+	compactModel string
+	compactProv  string
+	git          gitStatus
 
 	updateLatest string
-	effortX      int
-	catalogs     map[string]config.Catalog
-	mcpMgr       *mcp.Manager
-	mcpSeen      map[string]bool
-	lspMgr       *lsp.Manager
+	// stats backs the startup card's "ready" row. MCP fills in asynchronously,
+	// so the card restates itself as statuses land.
+	stats bannerStats
+
+	// effortX is the column where the footer's effort chip starts; effortRow is
+	// its row within the rendered body and effortY the same row on screen. Both
+	// rows are -1 when no clickable chip is on screen.
+	effortX   int
+	effortRow int
+	effortY   int
+
+	catalogs map[string]config.Catalog
+	mcpMgr   *mcp.Manager
+	mcpSeen  map[string]bool
+	lspMgr   *lsp.Manager
 
 	skillScan func() []skills.Skill
 
@@ -302,6 +328,11 @@ func newInput() textarea.Model {
 	ti.BlurredStyle.Placeholder = dimStyle
 	ti.FocusedStyle.Prompt = accentStyle
 	ti.BlurredStyle.Prompt = dimStyle
+	// A blinking cursor repaints twice a second forever. bubbletea walks from
+	// home with a run of newlines to reach the composer on each blink, which
+	// some terminals — JetBrains' JediTerm among them — redraw as a visible
+	// flicker. A static block still shows where typing lands.
+	ti.Cursor.SetMode(cursor.CursorStatic)
 	ti.Focus()
 	return ti
 }
@@ -355,6 +386,12 @@ func Run(cfg *config.Config, modelName, provName, sysPrompt, resumeID string, ca
 		initialPrompt: initialPrompt,
 	}
 	ag.SandboxPolicy = m.sandboxPolicy
+
+	// Styles bake their adaptive colours at Render time, so the theme has to be
+	// settled before anything is appended to the transcript.
+	m.themeHow = m.applyTheme(cfg.Theme)
+	m.appendBanner()
+
 	m.applyCompactModel()
 	m.applyTaskModel()
 	if project, err := os.Getwd(); err == nil {
@@ -433,8 +470,6 @@ func Run(cfg *config.Config, modelName, provName, sysPrompt, resumeID string, ca
 
 	m.updateLatest = update.Pending(Version)
 
-	m.themeHow = m.applyTheme(cfg.Theme)
-
 	m.applyAppearance()
 
 	tmuxEnableExtendedKeys()
@@ -495,6 +530,8 @@ func Run(cfg *config.Config, modelName, provName, sysPrompt, resumeID string, ca
 	return m.sessionID, err
 }
 
+// startupReport records the counts the startup card summarises and appends only
+// the per-item problems, which are diagnostics the card has no room for.
 func (m *model) startupReport() {
 
 	if inMoshEnv() {
@@ -506,56 +543,53 @@ func (m *model) startupReport() {
 	}
 	sk, problems := skills.ScanDetailed(skills.DefaultDirs()...)
 	var b strings.Builder
-	var warned bool
 
 	line := func(format string, args ...any) {
 		fmt.Fprintf(&b, format+"\n", args...)
 	}
-	if len(sk) > 0 {
-		line("skills: %d loaded", len(sk))
-	}
+	m.stats.skills = len(sk)
 	for _, s := range sk {
 		if s.Warning != "" {
 			line("  ⚠ %s: %s", s.Name, s.Warning)
-			warned = true
+			m.stats.skillWarn++
 		}
 	}
 	for _, p := range problems {
 		line("  ⚠ %s: %s", p.Path, p.Err)
-		warned = true
+		m.stats.skillWarn++
 	}
-	if m.mcpMgr != nil {
-		sts := m.mcpMgr.Statuses()
-		var parts []string
-		for _, st := range sts {
-			switch st.Status {
-			case mcp.StatusReady:
-				parts = append(parts, fmt.Sprintf("%s ✓ (%d tools)", st.Name, st.Tools))
-			case mcp.StatusFailed:
-				parts = append(parts, st.Name+" ✗")
-				warned = true
-			case mcp.StatusDisabled:
-				parts = append(parts, st.Name+" ○")
-			default:
-				parts = append(parts, st.Name+" ◌")
-			}
-		}
-		if len(parts) > 0 {
-			line("mcp: %s", strings.Join(parts, " · "))
+	m.readMCPStats()
+	for _, st := range m.mcpStatuses() {
+		if st.Status == mcp.StatusFailed {
+			line("  ⚠ mcp %s: failed to start", st.Name)
 		}
 	}
-	if m.updateLatest != "" {
-		line("update available: %s (run: kn update)", m.updateLatest)
-		warned = true
-	}
+	m.refreshBanner()
 	if b.Len() == 0 {
 		return
 	}
-	out := strings.TrimRight(b.String(), "\n")
-	if warned {
-		m.append(errStyle.Render(out))
-	} else {
-		m.append(dimStyle.Render(out))
+	m.append(errStyle.Render(strings.TrimRight(b.String(), "\n")))
+}
+
+func (m *model) mcpStatuses() []mcp.Server {
+	if m.mcpMgr == nil {
+		return nil
+	}
+	return m.mcpMgr.Statuses()
+}
+
+// readMCPStats re-reads the MCP manager, which brings servers up asynchronously,
+// so the card can restate itself as statuses land.
+func (m *model) readMCPStats() {
+	m.stats.mcpReady, m.stats.mcpFailed, m.stats.mcpTools = 0, 0, 0
+	for _, st := range m.mcpStatuses() {
+		switch st.Status {
+		case mcp.StatusReady:
+			m.stats.mcpReady++
+			m.stats.mcpTools += st.Tools
+		case mcp.StatusFailed:
+			m.stats.mcpFailed++
+		}
 	}
 }
 
@@ -694,8 +728,7 @@ func (m *model) resume(id string) error {
 		}
 	}
 	m.histIdx = len(m.hist)
-	m.blocks = nil
-	m.msgBlock = nil
+	m.resetTranscript()
 	m.future = nil
 	m.goal = meta.Goal
 	m.goalRounds = 0
@@ -817,9 +850,10 @@ func (m *model) setTheme(theme string) {
 	}
 	m.refreshVP()
 	if theme == "auto" {
+		// Auto mode resolves from a detection source the user did not pick, so
+		// name it. An explicit light/dark switch needs no line: the palette
+		// change is visible on screen already.
 		m.append(dimStyle.Render(fmt.Sprintf("◐ theme: %s (auto: %s)", CurrentTheme(), how)))
-	} else {
-		m.append(dimStyle.Render("◐ theme: " + CurrentTheme()))
 	}
 }
 
@@ -916,6 +950,7 @@ const (
 	blockToolRun
 	blockToolQueued
 	blockUser
+	blockBanner
 )
 
 const toolPreviewLines = 5
@@ -967,6 +1002,8 @@ func (b *block) renderAtMode(width int, ancient bool) string {
 
 func (b block) render(width int) string {
 	switch b.kind {
+	case blockBanner:
+		return renderBannerBox(b.text, width)
 	case blockUser:
 		return userPanel.Width(max(width-2, 1)).Render(wrap(youStyle.Render(glyphUser)+b.text, max(width-4, 1)))
 	case blockAssistant:
@@ -1056,8 +1093,15 @@ func (m *model) refreshVP() {
 		b.Grow(n*24 + 1<<20)
 	}
 	line := 0
+	wrote := false
 	for i := range m.blocks {
-		if i > 0 {
+		// The startup card only exists while the conversation is empty: as
+		// soon as any message lands the card leaves the transcript entirely.
+		if m.blocks[i].kind == blockBanner && len(m.blocks) > 1 {
+			m.blocks[i].y0, m.blocks[i].y1 = -1, -1
+			continue
+		}
+		if wrote {
 
 			b.WriteString("\n\n")
 			line++
@@ -1067,23 +1111,30 @@ func (m *model) refreshVP() {
 		m.blocks[i].y1 = line + m.blocks[i].lines - 1
 		b.WriteString(r)
 		line = m.blocks[i].y1 + 1
+		wrote = true
 	}
-	content := b.String()
-	if pad := m.contentPad(); pad > 0 {
-		content = strings.Repeat("\n", pad) + content
-	}
-	m.vp.SetContent(content)
-	if m.follow {
+	// The transcript is top-anchored: content starts at viewport row 0 and the
+	// whole frame grows downwards, so there is no leading pad to insert here.
+	m.vp.SetContent(b.String())
+
+	// SetContent only clamps against the line count, never against maxYOffset.
+	// Without the old bottom pad a stale offset would leave the top of a shrunk
+	// transcript scrolled off with nothing to pull it back.
+	m.vp.SetYOffset(m.vp.YOffset)
+	switch {
+	case m.follow:
 		m.vp.GotoBottom()
+	case m.vp.AtBottom():
+		m.follow = true
 	}
 }
 
-func (m *model) contentPad() int {
+// transcriptRows is how many rows the rendered blocks occupy.
+func (m *model) transcriptRows() int {
 	if len(m.blocks) == 0 {
-		return m.vp.Height
+		return 0
 	}
-	h := m.blocks[len(m.blocks)-1].y1 + 1
-	return max(m.vp.Height-h, 0)
+	return m.blocks[len(m.blocks)-1].y1 + 1
 }
 
 func (m *model) viewportView() string {
@@ -1093,25 +1144,19 @@ func (m *model) viewportView() string {
 	}
 
 	lines := strings.Split(s, "\n")
+	m.vpLead = 0
 
-	drop := max(min(m.contentPad()-m.vp.YOffset, len(lines)), 0)
-
-	first := 0
-	for first < drop && strings.TrimSpace(ansi.Strip(lines[first])) == "" {
-		first++
-	}
-	m.vpLead = first
-	lines = lines[first:]
-
-	last := len(lines) - 1
-	for last >= 0 && strings.TrimSpace(ansi.Strip(lines[last])) == "" {
-		last--
-	}
-	return strings.Join(lines[:last+1], "\n")
+	// Keep exactly the transcript rows the viewport is showing and drop only the
+	// viewport's own filler. Trimming blank rows instead would also swallow real
+	// separator rows, which makes the composer wobble a row per scroll notch.
+	visible := max(min(m.transcriptRows()-m.vp.YOffset, len(lines)), 0)
+	return strings.Join(lines[:visible], "\n")
 }
 
 func (m *model) Init() tea.Cmd {
-	cmds := []tea.Cmd{textarea.Blink}
+	// No textarea.Blink: the cursor is static, so there is no blink loop to
+	// start and nothing repaints while the composer sits idle.
+	var cmds []tea.Cmd
 
 	if inTmuxEnv() {
 
@@ -1121,6 +1166,7 @@ func (m *model) Init() tea.Cmd {
 
 		cmds = append(cmds, func() tea.Msg { return initialPromptMsg{} })
 	}
+	cmds = append(cmds, fetchGitStatus())
 	return tea.Batch(cmds...)
 }
 
@@ -1377,12 +1423,8 @@ func (m *model) growInput() {
 func (m *model) layout() {
 	m.growInput()
 
-	chrome := 8 + m.input.Height()
+	chrome := fixedFrameRows + m.composerRows()
 
-	if m.iactive != nil {
-
-		chrome -= m.input.Height()
-	}
 	if m.busy {
 		chrome += 2
 	}
@@ -1501,8 +1543,11 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		resized := w != m.width
 		m.width, m.height = w, msg.Height
 
+		// Geometry is unknown until the next render: park every screen-row offset
+		// out of reach so a stray click cannot land on a stale row, and drop the
+		// turn floor, which was measured against the old geometry.
 		m.viewTop, m.frameTop = 1<<30, 1<<30
-		m.frameH = 0
+		m.frameH, m.effortY, m.turnFloorH = 0, -1, 0
 		m.input.SetWidth(w - 2)
 		if resized {
 			m.refreshVP()
@@ -1586,7 +1631,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft &&
-			msg.Y == m.viewTop && msg.X >= m.effortX {
+			m.effortY >= 0 && msg.Y == m.effortY && msg.X >= m.effortX {
 			m.setEffort(nextEffort(m.effortsFor(), m.agent.Effort))
 			return m, nil
 		}
@@ -1637,7 +1682,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft &&
-				msg.Y-m.viewTop > 1 && m.palette == nil {
+				msg.Y >= m.viewTop && m.palette == nil {
 				m.clickAt(msg.X, msg.Y)
 				return m, nil
 			}
@@ -1985,10 +2030,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.append(dimStyle.Render(string(msg)))
 		return m, nil
 
-	case noticeExpiredMsg:
-		if uint64(msg) == m.noticeGeneration {
-			m.transientNotice = ""
-		}
+	case gitStatusMsg:
+		m.git = msg.status
 		return m, nil
 
 	case usageMsg:
@@ -2035,6 +2078,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case mcpStatusMsg:
 
 		if m.mcpMgr != nil {
+			m.readMCPStats()
+			m.refreshBanner()
 			if m.palette != nil {
 				if pp := m.palette.top(); pp != nil && pp.kind == panelMCP {
 					m.refreshMCPPanel(pp)
@@ -2224,6 +2269,7 @@ func (m *model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		m.quit1 = true
+		m.append(errStyle.Render("  · press Ctrl+C again to quit"))
 		return m, tea.Tick(2*time.Second, func(time.Time) tea.Msg { return quitArmMsg{} })
 
 	case tea.KeyPgUp, tea.KeyPgDown:
@@ -2267,10 +2313,10 @@ func (m *model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.hist = append(m.hist, strings.TrimSpace(m.input.Value()))
 					m.histIdx = len(m.hist)
 					m.input.Reset()
-					m.append(dimStyle.Render("draft cleared — ↑ recalls it"))
 					return m, nil
 				}
 				m.escClr = true
+				m.append(errStyle.Render("  · Esc again: clear the input (↑ recalls it)"))
 				return m, tea.Tick(time.Second, func(time.Time) tea.Msg { return escArmMsg{} })
 			}
 
@@ -2280,6 +2326,7 @@ func (m *model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.esc1 = true
+			m.append(dimStyle.Render("  · Esc again: rewind the conversation"))
 			return m, tea.Tick(time.Second, func(time.Time) tea.Msg { return escArmMsg{} })
 		}
 		m.esc1 = false
@@ -2789,9 +2836,8 @@ func (m *model) applyCompactModel() {
 	}
 	prov, mdl, apiID, err := m.cfg.Resolve(cm, compactProv)
 	if err != nil {
-		if m.compactModel != "" {
-			m.append(errStyle.Render("compaction model: " + err.Error() + " — using current model"))
-		}
+		// Fall back silently: compaction runs on the current model. The
+		// fallback is the same behaviour the user already sees everywhere else.
 		return
 	}
 	if compactProv == "" {
@@ -2805,8 +2851,6 @@ func (m *model) applyCompactModel() {
 		m.agent.CompactClient = client
 		m.agent.CompactModel = apiID
 		m.agent.CompactProvider = compactProv
-	} else if m.compactModel != "" {
-		m.append(errStyle.Render("compaction model: " + err.Error() + " — using current model"))
 	}
 }
 
@@ -2935,9 +2979,9 @@ func (m *model) switchModel(name, prov string, persist bool) {
 		if err := m.cfg.Save(); err != nil {
 			m.append(errStyle.Render("config save failed: " + err.Error()))
 		}
-		m.append(dimStyle.Render("→ " + mn + " @ " + pn))
+		m.append(dimStyle.Render("→ " + mn + "@" + pn))
 	} else {
-		m.append(dimStyle.Render("→ " + mn + " @ " + pn + " (this session only)"))
+		m.append(dimStyle.Render("→ " + mn + "@" + pn + " (this session only)"))
 	}
 }
 
@@ -3379,8 +3423,7 @@ func (m *model) command(text string) (tea.Model, tea.Cmd) {
 		m.agent.Messages = m.agent.Messages[:1]
 		m.agent.ResetUsage()
 		m.lastResp = ai.Usage{}
-		m.blocks = nil
-		m.msgBlock = nil
+		m.resetTranscript()
 		m.future = nil
 		m.setGoal("")
 		m.sessionID = ""
@@ -3393,7 +3436,6 @@ func (m *model) command(text string) (tea.Model, tea.Cmd) {
 		m.agent.Tasks().SetSessionID("")
 		m.agent.SetSessionID("")
 		m.saved = 1
-		m.append(dimStyle.Render("(conversation cleared)"))
 	case "/permissions":
 		m.permissionCommand(fields[1:])
 	case "/privacy":
@@ -3497,7 +3539,7 @@ func (m *model) command(text string) (tea.Model, tea.Cmd) {
 		return m.lspCommand(fields)
 	case "/cd":
 		m.cdCommand(strings.TrimSpace(strings.TrimPrefix(text, "/cd")))
-		return m, nil
+		return m, fetchGitStatus()
 	case "/pwd":
 		m.append(dimStyle.Render(cwd()))
 		return m, nil
@@ -3559,7 +3601,6 @@ func (m *model) command(text string) (tea.Model, tea.Cmd) {
 				break
 			}
 			m.setEffort(lv)
-			m.append(accentStyle.Render("✦ effort: " + effortLabel(m.agent.Effort) + "  ·  " + effortDescription(m.agent.Effort)))
 		} else {
 			m.openPaletteOn("reasoning effort")
 		}
@@ -3578,7 +3619,6 @@ func (m *model) command(text string) (tea.Model, tea.Cmd) {
 			}
 		case fields[1] == "clear":
 			m.setGoal("")
-			m.append(dimStyle.Render("(goal cleared)"))
 		case fields[1] == "rounds":
 			m.goalRoundsCommand(fields[2:])
 		case fields[1] == "resume":
@@ -3741,7 +3781,7 @@ func (m *model) compactCommand(args []string) {
 	}
 	note := "◎ compaction model: " + m.compactModel
 	if prov := resolvedProvider(m.cfg, m.compactModel, m.compactProv); prov != "" {
-		note += " @ " + prov
+		note += "@" + prov
 	}
 	m.append(dimStyle.Render(note))
 }
@@ -3829,11 +3869,8 @@ func streamTail(s string, n int) string {
 }
 
 func (m *model) fixedChrome() int {
-	chrome := 8 + m.input.Height()
+	chrome := fixedFrameRows + m.composerRows()
 
-	if m.iactive != nil {
-		chrome -= m.input.Height()
-	}
 	if m.busy {
 		chrome += 2
 	}
@@ -3878,27 +3915,108 @@ func (m *model) thinkViewCapped() string {
 	return streamTail(m.thinkView(), liveCap)
 }
 
+// bannerOnly reports whether the startup card is the whole transcript, which is
+// when the card is centred vertically rather than pinned to the top.
+func (m *model) bannerOnly() bool {
+	return len(m.blocks) == 1 && m.blocks[0].kind == blockBanner
+}
+
+// padAboveTranscript inserts n blank rows at the very top of the frame, moving
+// every row offset down with it.
+func (m *model) padAboveTranscript(v string, n int) string {
+	if n <= 0 {
+		return v
+	}
+	v = strings.Repeat("\n", n) + v
+	m.composerTop += n
+	m.inputBodyOff += n
+	m.viewportTop += n
+	if m.effortRow >= 0 {
+		m.effortRow += n
+	}
+	m.viewH += n
+	return v
+}
+
+// padAboveComposer inserts n blank rows directly above the composer's top rule
+// and moves every row offset that sits below the insertion point. Inserting at
+// inputBodyOff instead would land inside the frame and strand its top rule up
+// with the transcript.
+func (m *model) padAboveComposer(v string, n int) string {
+	if n <= 0 {
+		return v
+	}
+	lines := strings.Split(v, "\n")
+	at := max(min(m.composerTop, len(lines)), 0)
+	v = strings.Join(slices.Concat(lines[:at], make([]string, n), lines[at:]), "\n")
+	m.composerTop += n
+	m.inputBodyOff += n
+	if m.effortRow >= 0 {
+		m.effortRow += n
+	}
+	m.viewH += n
+	return v
+}
+
 func (m *model) View() string {
 	m.syncInputPlaceholder()
 	v := m.viewBody()
+
+	// An empty transcript leaves blank rows at the top of the body. Drop them so
+	// the banner really is the first row on screen.
+	if lead := len(v) - len(strings.TrimLeft(v, "\n")); lead > 0 {
+		v = v[lead:]
+		m.inputBodyOff -= lead
+		m.composerTop -= lead
+		m.effortRow -= lead
+		m.viewportTop -= lead
+	}
 
 	if m.height > 0 {
 		m.viewH = lipgloss.Height(v)
 
 		m.frameH, m.frameTop = m.height, 0
 		if dropped := m.viewH - m.height; dropped > 0 {
+			// Once the frame outgrows the terminal it clips from the top, which
+			// pins the composer to the bottom exactly as a full screen should.
 			v = strings.Join(strings.Split(v, "\n")[dropped:], "\n")
 			m.inputBodyOff -= dropped
+			m.composerTop -= dropped
+			m.effortRow -= dropped
 			m.viewportTop -= dropped
 			m.vpLead += dropped
 			m.viewH = m.height
 		}
-		m.viewTop = m.height - m.viewH
-		if m.viewTop > 0 {
-			v = strings.Repeat("\n", m.viewTop) + v
+
+		// Mid-turn the frame can briefly shrink — a markdown block re-wraps as a
+		// fence opens, the live area empties on a flush — which would bounce the
+		// composer upwards while tokens stream. Hold the turn's high-water mark
+		// and make up the difference just above the composer.
+		if m.busy {
+			m.turnFloorH = max(m.turnFloorH, m.viewH)
+		} else {
+			m.turnFloorH = 0
 		}
+		v = m.padAboveComposer(v, min(m.turnFloorH, m.height)-m.viewH)
+
+		// Bottom-anchored composer: spare rows go between the transcript and the
+		// composer, so the input box and its info rows hug the bottom. While the
+		// startup card is the only thing in the transcript, half those rows move
+		// above it instead, which centres the card in the empty region.
+		m.viewTop = 0
+		spare := m.height - m.viewH
+		if spare > 0 && m.bannerOnly() {
+			v = m.padAboveTranscript(v, spare/2)
+			spare -= spare / 2
+		}
+		v = m.padAboveComposer(v, spare)
 	}
 	m.viewportTop += m.viewTop
+
+	m.effortY = -1
+	if m.effortRow >= 0 {
+		m.effortY = m.viewTop + m.effortRow
+	}
 
 	if m.iactive != nil || m.height == 0 || m.palette != nil || m.picker != nil || m.mpicker != nil || m.taskVP != nil {
 		m.inputTop = -1
@@ -3925,36 +4043,7 @@ func (m *model) View() string {
 func (m *model) viewBody() string {
 	var b strings.Builder
 	m.viewportTop, m.viewportRows = 0, 0
-	left := fmt.Sprintf(" k-brain · %s @ %s", m.modelName, m.provName)
-	if m.goal != "" {
-		left += " · ◎ " + truncLine(m.goal, 40)
-	}
-	if !m.follow {
-		left += fmt.Sprintf(" · ↑ %d%%", int(m.vp.ScrollPercent()*100))
-	}
-
-	u := m.agent.TotalUsage()
-	if u.PromptTokens > 0 || u.CompletionTokens > 0 {
-		left += fmt.Sprintf(" · ⣿ %s in", fmtTok(u.PromptTokens))
-		if c := u.Cached(); c > 0 {
-			left += fmt.Sprintf(" (%s cached)", fmtTok(c))
-		}
-		left += fmt.Sprintf(" · %s out", fmtTok(u.CompletionTokens))
-	}
-	if m.agent.ContextLimit > 0 {
-		left += fmt.Sprintf(" · %d%% ctx", agent.EstimateTokens(m.agent.Messages)*100/m.agent.ContextLimit)
-	}
-
-	if n := m.runningTasks(); n > 0 {
-		left += fmt.Sprintf(" · ⚙ %d sub", n)
-	}
-
-	right := "✦ " + m.tr(effortLabel(m.agent.Effort))
-	if m.showThinking {
-		right = m.tr("◌ thinking  ·  ") + right
-	}
-	m.effortX = max(m.width-lipgloss.Width(right)-2, 0)
-	b.WriteString(kbrainHeaderLabel(m.width, left, right, m.tr("commands")) + "\n")
+	m.effortRow, m.effortX = -1, 0
 	if m.palette != nil {
 
 		b.WriteString(m.paletteView())
@@ -3998,35 +4087,38 @@ func (m *model) viewBody() string {
 		b.WriteString("\n" + m.askView() + "\n")
 	}
 	if m.busy {
-		hint := " thinking… (enter queues · /theme /mouse /effort run now · esc interrupts · ctrl+c ctrl+c interrupts)"
+		hint := " thinking… (Enter queues · /theme /mouse /effort run now · Esc interrupts · Ctrl+C Ctrl+C interrupts)"
 		if m.iactive != nil {
-			hint = " bash (interactive) — type to respond · ctrl+c ctrl+c to cancel"
+			hint = " bash (interactive) — type to respond · Ctrl+C Ctrl+C to cancel"
 		} else if m.interrupt1 {
-			hint = " thinking… (esc or ctrl+c again to interrupt)"
+			hint = " thinking… (Esc or Ctrl+C again to interrupt)"
 		}
 		b.WriteString("\n" + m.spin.View() + dimStyle.Render(m.busyStats()+hint) + "\n")
 	}
 	if len(m.queue) > 0 {
 		nav := ""
 		if m.busy && m.input.Value() == "" {
-			nav = " · ↑/↓ select · del removes"
+			nav = " · ↑/↓ Select · Del Removes"
 		}
-		b.WriteString(dimStyle.Render(fmt.Sprintf("queued (%d) — enter on empty input to steer into this turn%s", len(m.queue), nav)) + "\n")
+		b.WriteString(dimStyle.Render(fmt.Sprintf("queued (%d) — Enter on empty input to steer into this turn%s", len(m.queue), nav)) + "\n")
 		for i, q := range m.queue {
 
 			line := ansi.Truncate(youStyle.Render(" "+glyphUser)+q, m.width, "…")
 			if i == m.queueSel {
-				line = ansi.Truncate(botStyle.Render(" → ")+q+dimStyle.Render("  (del to remove)"), m.width, "…")
+				line = ansi.Truncate(botStyle.Render(" → ")+q+dimStyle.Render("  (Del to remove)"), m.width, "…")
 			}
 			b.WriteString(line + "\n")
 		}
 	}
-	b.WriteString("\n")
 	if m.rew != nil {
-		b.WriteString(m.rewindView() + "\n\n")
+		b.WriteString("\n" + m.rewindView() + "\n")
 	}
 
 	m.inputBodyOff = strings.Count(b.String(), "\n")
+	// composerTop is the first row of the composer *including* its top rule,
+	// whereas inputBodyOff points at the input text one row inside it. Spare
+	// rows must go above the rule or the frame splits in half.
+	m.composerTop = m.inputBodyOff
 	if m.iactive == nil {
 		var inputView string
 		if m.namePrompt != nil {
@@ -4038,26 +4130,17 @@ func (m *model) viewBody() string {
 		} else {
 			inputView = m.inputArgumentView(m.highlightInput(sanitizeInputView(m.input.View())))
 		}
-		frameWidth := max(m.width-2, 1)
+		frameWidth := max(m.width, 1)
 		m.inputLeft = 0
 		if m.ancientInput() {
 			inputView = m.ancientize(inputView)
 			b.WriteString(inputView)
 		} else {
-			frame := kbrainPromptFrame(m.height).Width(frameWidth)
+			frame := kbrainPromptFrame().Width(frameWidth)
 			m.inputBodyOff += frame.GetBorderTopSize() + frame.GetPaddingTop()
 			m.inputLeft = frame.GetBorderLeftSize() + frame.GetPaddingLeft()
 			b.WriteString(frame.Render(inputView))
 		}
-	}
-	if m.quit1 {
-
-		b.WriteString("\n" + errStyle.Render("press ctrl+c again to quit"))
-	}
-	if m.escClr {
-		b.WriteString("\n" + errStyle.Render("esc again: clear the input (↑ recalls it)"))
-	} else if m.esc1 && m.rew == nil && m.namePrompt == nil {
-		b.WriteString("\n" + dimStyle.Render("esc again: rewind the conversation"))
 	}
 	if m.menu != nil {
 
@@ -4067,9 +4150,13 @@ func (m *model) viewBody() string {
 	if dock := m.tasksDock(); dock != "" {
 		b.WriteString("\n" + dock)
 	}
-	notice := dimStyle.Render(ansi.Truncate(m.tr(m.transientNotice), max(m.width, 0), "…"))
-	footer := m.footerHints() + "\n" + notice + "\n" + m.statusView()
-	b.WriteString("\n" + footer)
+	hints, chipX := m.footerHintsAt()
+
+	b.WriteString("\n")
+	if chipX >= 0 {
+		m.effortRow, m.effortX = strings.Count(b.String(), "\n"), chipX
+	}
+	b.WriteString(hints + "\n" + m.footerRule() + "\n" + m.statusView())
 	return b.String()
 }
 
@@ -4085,7 +4172,7 @@ func (m *model) ancientize(s string) string {
 	return renderAncientText(ansi.Strip(s), w)
 }
 
-const inputPlaceholder = "Ask k-brain anything… (/ for commands, tab completes)"
+const inputPlaceholder = "Ask k-brain anything… (/ for commands, Tab completes)"
 
 func (m *model) syncInputPlaceholder() {
 	if m.input.Value() != "" {
@@ -4101,54 +4188,48 @@ func (m *model) syncInputPlaceholder() {
 	}
 }
 
+// statusView is the second of the two info rows under the input box: working
+// directory and goal on the left, provider and session spend on the right, with
+// the session title flush against the right edge.
 func (m *model) statusView() string {
-
-	model := m.modelName
-	if e := effortLabel(m.agent.Effort); e != "off" {
-		model += " (" + m.tr(e) + ")"
+	// The left half leads with the git readout, then the goal. The working
+	// directory lives in the banner instead.
+	left := m.git.render()
+	if m.goal != "" {
+		if left != "" {
+			left += "  "
+		}
+		left += dimStyle.Render("◎ " + truncLine(m.goal, 32))
 	}
+
 	u := m.agent.TotalUsage()
-	spend := fmtUsage(u)
+	spend := fmt.Sprintf("%s   %s", m.provName, fmtUsage(u))
 	if cost, ok := m.sessionCost(); ok {
 		spend += " · " + fmtCost(cost)
 	}
-
 	if last := m.lastResp; last.PromptTokens > 0 || last.CompletionTokens > 0 {
 		spend += m.tr(" · last ") + fmtUsage(last)
 	}
+	if m.agent.ContextLimit > 0 {
+		spend += fmt.Sprintf(" · %d%%/%d%% ctx", agent.EstimateTokens(m.agent.Messages)*100/m.agent.ContextLimit, m.compactPct())
+	}
+	if !m.follow {
+		spend += fmt.Sprintf(" · ↑ %d%%", int(m.vp.ScrollPercent()*100))
+	}
+	if n := m.runningTasks(); n > 0 {
+		spend += fmt.Sprintf(" · ⚙ %d sub", n)
+	}
 
-	const lead = " "
-	right := fmt.Sprintf("   %s   %s   %s", model, m.provName, spend)
 	titleSuffix := ""
 	if title := strings.Join(strings.Fields(m.sessTitle), " "); title != "" && m.width > 0 {
 		titleWidth := min(lipgloss.Width(title), max(m.width/2, 1))
 		title = ansi.Truncate(title, titleWidth, "…")
 		separator := strings.Repeat(" ", min(3, max(m.width-lipgloss.Width(title), 0)))
-		titleSuffix = separator + title
-		right = ansi.Truncate(right, max(m.width-lipgloss.Width(lead)-lipgloss.Width(titleSuffix), 0), "")
+		titleSuffix = statusTitleStyle.Render(separator + title)
 	}
-	dir := shortCWD()
-	budget := max(m.width, 0) - lipgloss.Width(lead) - lipgloss.Width(right) - lipgloss.Width(titleSuffix)
-	switch {
-	case lipgloss.Width(dir) <= budget:
 
-	case budget > 1:
-
-		keep := budget - 1
-		if drop := lipgloss.Width(dir) - keep; drop > 0 {
-			dir = "…" + ansi.TruncateLeft(dir, drop, "")
-		}
-	default:
-		dir = ""
-	}
-	line := lead + metaStyle.Render(dir) + dimStyle.Render(right)
-	if titleSuffix != "" {
-		if pad := m.width - lipgloss.Width(line) - lipgloss.Width(titleSuffix); pad > 0 {
-			line += strings.Repeat(" ", pad)
-		}
-		line += statusTitleStyle.Render(titleSuffix)
-	}
-	return ansi.Truncate(line, max(m.width, 0), "")
+	line := chromeColumns(left, dimStyle.Render(spend), max(m.width, 0)-lipgloss.Width(titleSuffix))
+	return ansi.Truncate(line+titleSuffix, max(m.width, 0), "")
 }
 
 func shortCWD() string {
@@ -4190,7 +4271,7 @@ func (m *model) pickerView() string {
 		rows = append(rows, previewBlock(youStyle.Render(glyphUser), prev[0], m.width)...)
 		rows = append(rows, previewBlock(botStyle.Render(glyphAssistant), prev[1], m.width)...)
 	}
-	rows = append(rows, dimStyle.Render(fmt.Sprintf(m.tr("  (%d/%d) ↑ older · ↓ newer · enter resume · esc cancel"), p.idx+1, len(p.metas))))
+	rows = append(rows, dimStyle.Render(fmt.Sprintf(m.tr("  (%d/%d) ↑ Older · ↓ Newer · Enter Resume · Esc Cancel"), p.idx+1, len(p.metas))))
 
 	for len(rows) < m.height-1 {
 		rows = append(rows, "")

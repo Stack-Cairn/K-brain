@@ -184,7 +184,7 @@ func (m *model) tasksDock() string {
 	}
 	m.dockTaskRows = offset
 	if lo > 0 || hi < len(tasks) {
-		more := fmt.Sprintf(m.tr("   ↑ %d more · ↓ %d more · ctrl+t browse"), lo, len(tasks)-hi)
+		more := fmt.Sprintf(m.tr("   ↑ %d More · ↓ %d More · Ctrl+T Browse"), lo, len(tasks)-hi)
 		rows = append(rows, dimStyle.Render(ansi.Truncate(more, max(m.width, 1), "…")))
 	}
 	return strings.Join(rows, "\n")
@@ -201,7 +201,7 @@ func (m *model) openTask(id string) {
 	tv.input.Prompt = "❯ "
 	tv.input.PromptStyle = accentStyle
 	tv.input.PlaceholderStyle = dimStyle
-	tv.input.Placeholder = m.tr("message this subagent (enter to send)")
+	tv.input.Placeholder = m.tr("message this subagent (Enter to send)")
 	tv.input.Focus()
 	fmt.Fprintf(&tv.buf, "%s %s  %s\n\n%s %s\n",
 		toolStyle.Render("⚙"), t.ID, t.Description,

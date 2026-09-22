@@ -22,9 +22,5 @@ func (m *model) ancientCommand(args []string) {
 		m.blocks[i].stale = true
 	}
 	m.refreshVP()
-	if m.ancientMode {
-		m.append(dimStyle.Render("ancient mode: on — vertical text, top-to-bottom and right-to-left"))
-	} else {
-		m.append(dimStyle.Render("ancient mode: off"))
-	}
+	// No confirmation line: the vertical/horizontal layout change is visible.
 }

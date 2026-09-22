@@ -6,6 +6,7 @@
 /k-brain-computer.exe
 /vendor/
 /dist/
+/.idea/
 internal/tui/k-brain-transcript-*.md
 
 

@@ -192,7 +192,7 @@ func (m *model) permView() string {
 	b.WriteString(dimStyle.Render("\n  always allows: " + ruleKey(d.req.Tool, rule)))
 	if d.rejecting {
 		b.WriteString("\n" + youStyle.Render("  reject with message: ") + d.rejectIn + "█")
-		b.WriteString(dimStyle.Render("\n  enter sends · esc back"))
+		b.WriteString(dimStyle.Render("\n  Enter sends · Esc Back"))
 		return b.String()
 	}
 	opts := []string{"allow once (a)", "allow always (A)", "reject (r)"}

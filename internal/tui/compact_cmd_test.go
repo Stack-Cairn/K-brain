@@ -141,7 +141,7 @@ func TestCompactCommandSelectsCatalogModel(t *testing.T) {
 	if m.cfg.CompactModel != "deepseek-v4-pro" {
 		t.Fatalf("config should persist the catalog pick, got %q", m.cfg.CompactModel)
 	}
-	if !strings.Contains(m.blocks[len(m.blocks)-1].text, "deepseek-v4-pro @ inference") {
+	if !strings.Contains(m.blocks[len(m.blocks)-1].text, "deepseek-v4-pro@inference") {
 		t.Fatalf("the note should name the resolved provider, got %v", m.blocks[len(m.blocks)-1].text)
 	}
 }

@@ -121,19 +121,19 @@ func helpTextFor(language string) string {
 	b.WriteString(tr(palHintRewind+" — "+palDescRewind) + "\n")
 	b.WriteString("!cmd " + registryFind("!cmd").helpHint(language) + "\n")
 	b.WriteString("!!cmd " + registryFind("!!cmd").helpHint(language) + "\n")
-	b.WriteString(tr("tab — complete"))
+	b.WriteString(tr("Tab — complete"))
 	for _, hint := range []string{
-		"shift+tab — cycle Normal / Plan / Always allow",
-		"ctrl+k — clear the conversation",
-		"ctrl+t — focus the subagents dock (↑/↓ select, enter opens, esc backs out)",
+		"Shift+Tab — cycle Normal / Plan / Always allow",
+		"Ctrl+K — clear the conversation",
+		"Ctrl+T — focus the subagents dock (↑/↓ select, Enter opens, Esc Backs out)",
 		palHintThinking + " — toggle thinking tokens",
-		"ctrl+e — expand the last tool result",
-		"ctrl+j / shift+enter — newline",
-		"ctrl+g — edit the current draft in an external editor",
-		"ctrl+v — paste image",
-		"esc — interrupt the agent",
-		"esc esc (idle) — " + palDescRewind + " (↑/↓ browse, enter rewinds, f forks)",
-		"while busy with queued messages: ↑/↓ select, del removes",
+		"Ctrl+E — expand the last tool result",
+		"Ctrl+J / Shift+Enter — newline",
+		"Ctrl+G — edit the current draft in an external editor",
+		"Ctrl+V — paste image",
+		"Esc — interrupt the agent",
+		"Esc Esc (idle) — " + palDescRewind + " (↑/↓ browse, Enter rewinds, f forks)",
+		"while busy with queued messages: ↑/↓ select, Del removes",
 		"PgUp/PgDn — scroll · wheel — scroll · drag — select/copy text",
 		palHintQuit + " — quit",
 	} {

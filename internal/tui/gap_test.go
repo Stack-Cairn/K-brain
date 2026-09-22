@@ -7,7 +7,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-func TestNoGapBetweenLastReplyAndInput(t *testing.T) {
+func TestComposerPinnedToBottom(t *testing.T) {
 	m := compactCmdModel()
 	m.Update(mkWinSize(80, 24))
 	m.append(" ❯ hi")
@@ -31,9 +31,12 @@ func TestNoGapBetweenLastReplyAndInput(t *testing.T) {
 		t.Fatalf("could not find reply (%d) or input (%d) rows:\n%s", lastReplyRow, inputRow, strings.Join(lines, "\n"))
 	}
 
-	if gap := inputRow - lastReplyRow - 1; gap > 1 {
-		t.Fatalf("found %d blank rows between last reply (row %d) and input (row %d):\n%s",
-			gap, lastReplyRow, inputRow, strings.Join(lines, "\n"))
+	// Bottom-anchored composer: the input row sits directly above the four
+	// footer rows (rule, hints, rule, status); spare rows pad the transcript
+	// above instead of dangling below the composer.
+	if want := len(lines) - 5; inputRow != want {
+		t.Fatalf("input row %d should be pinned just above the footer (row %d):\n%s",
+			inputRow, want, strings.Join(lines, "\n"))
 	}
 }
 

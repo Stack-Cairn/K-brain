@@ -176,7 +176,7 @@ func (m *model) interactiveView() string {
 			"  ⏳ waiting for input — cancels in %ds", m.iactive.awaitcd,
 		))
 	} else {
-		header += dimStyle.Render("  (type to respond; ctrl+c ctrl+c to cancel)")
+		header += dimStyle.Render("  (type to respond; Ctrl+C Ctrl+C to cancel)")
 	}
 	return header + "\n" + rendered
 }

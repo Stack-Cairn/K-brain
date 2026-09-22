@@ -16,7 +16,7 @@ func (m *model) setPermissionMode(mode string) {
 	if m.agent != nil {
 		m.agent.SetPlanMode(mode == "plan")
 	}
-	m.append(dimStyle.Render(m.tr("Mode: ") + m.permissionModeLabel()))
+	// No feedback line: the mode chip in the footer already shows the change.
 }
 
 func (m *model) permissionModeLabel() string {
@@ -28,6 +28,19 @@ func (m *model) permissionModeLabel() string {
 	default:
 		return m.tr("Normal")
 	}
+}
+
+// modeChip renders the permission mode as a filled badge. It keeps
+// permissionModeLabel's exact text so the chip stays translated.
+func (m *model) modeChip() string {
+	style := modeChipNormal
+	switch m.permissionMode {
+	case "plan":
+		style = modeChipPlan
+	case "always":
+		style = modeChipAlways
+	}
+	return style.Render(m.permissionModeLabel())
 }
 
 func (m *model) permissionCommand(args []string) {

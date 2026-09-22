@@ -104,7 +104,7 @@ func (m *model) taskDockRow(task agent.BackgroundTask, selected bool) string {
 
 func (m *model) taskViewChromeRows() int {
 	const detailHeaderRows, composerRows, footerRows = 2, 1, 2
-	return m.vpTopRows() + detailHeaderRows + composerRows + kbrainPromptFrame(m.height).GetVerticalFrameSize() + footerRows
+	return m.vpTopRows() + detailHeaderRows + composerRows + kbrainPromptFrame().GetVerticalFrameSize() + footerRows
 }
 
 func (m *model) taskViewView() string {
@@ -130,29 +130,29 @@ func (m *model) taskViewView() string {
 		position = fmt.Sprintf("↑ %d%%", int(tv.vp.ScrollPercent()*100))
 	}
 	meta = taskColumns(dimStyle.Render(meta), dimStyle.Render(position), m.width)
-	hint := m.tr("esc back")
+	hint := m.tr("Esc Back")
 	switch {
 	case task.Restored:
 		tv.input.Placeholder = m.tr("restored session — read-only")
 	case task.FollowingUp:
 		tv.input.Placeholder = m.tr("replying — your draft is kept until ready")
-		hint += m.tr(" · ctrl+x cancel")
+		hint += m.tr(" · Ctrl+X Cancel")
 	case task.Status == agent.TaskRunning:
 		tv.input.Placeholder = m.tr("send instructions to this running subagent")
-		hint += m.tr(" · enter steer · ctrl+x cancel")
+		hint += m.tr(" · Enter steer · Ctrl+X Cancel")
 	default:
-		tv.input.Placeholder = m.tr("message this subagent (enter to send)")
-		hint += m.tr(" · enter send")
+		tv.input.Placeholder = m.tr("message this subagent (Enter to send)")
+		hint += m.tr(" · Enter Send")
 	}
-	hint += m.tr(" · pgup/pgdn scroll · ctrl+end latest")
+	hint += m.tr(" · PgUp/PgDn Scroll · Ctrl+End Latest")
 	input := tv.input.View()
 	if task.Restored {
 		input = dimStyle.Render(tv.input.Placeholder)
 	}
-	input = ansi.Truncate(input, max(m.width-4, 1), "…")
-	frame := kbrainPromptFrame(m.height).Width(max(m.width-2, 1)).Render(input)
+	input = ansi.Truncate(input, max(m.width-chromeIndent, 1), "…")
+	frame := kbrainPromptFrame().Width(max(m.width, 1)).Render(input)
 	lines := []string{head, meta, sanitizeView(tv.vp.View()), frame,
-		shortcutStyle.Render(" " + hint), m.statusView()}
+		shortcutStyle.Render(strings.Repeat(" ", chromeIndent) + hint), m.statusView()}
 	out := strings.Join(lines, "\n")
 	rows := strings.Split(out, "\n")
 	for i := range rows {

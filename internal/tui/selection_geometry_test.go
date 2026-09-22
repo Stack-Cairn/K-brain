@@ -62,15 +62,11 @@ func TestSelectionUsesRenderedCoordinates(t *testing.T) {
 						t.Fatal("input selection highlighted transcript")
 					}
 					_, cmd := m.handleMouseSelect(tea.MouseMsg{Action: tea.MouseActionRelease, Button: tea.MouseButtonLeft, X: x + ansi.StringWidth(text), Y: y})
-					if cmd == nil || len(m.blocks) != blocks || m.vp.YOffset != offset {
-						t.Fatal("copy must show a transient notice without modifying the transcript")
+					if cmd != nil || len(m.blocks) != blocks || m.vp.YOffset != offset {
+						t.Fatal("release must keep the selection without modifying the transcript")
 					}
 					if _, afterY := renderedTextPosition(t, m.View(), text); afterY != y {
-						t.Fatalf("copy moved selected text: %d -> %d", y, afterY)
-					}
-					m.Update(noticeExpiredMsg(m.noticeGeneration))
-					if ansi.Strip(m.View()) != ansi.Strip(before) {
-						t.Fatal("expired notice changed the layout")
+						t.Fatalf("release moved selected text: %d -> %d", y, afterY)
 					}
 				})
 			}
@@ -93,26 +89,5 @@ func TestSelectionRejectsChromeWhenScrolled(t *testing.T) {
 		if _, ok := m.selPoint(4, y, false); ok {
 			t.Fatalf("non-transcript row %d is selectable", y)
 		}
-	}
-}
-
-func TestTransientNoticeExpiresOnlyMatchingGeneration(t *testing.T) {
-	m := selTestModel()
-	m.sessTitle = "Session title"
-	before := ansi.Strip(m.View())
-	m.showNotice("first")
-	old := m.noticeGeneration
-	m.showNotice("second")
-	m.Update(noticeExpiredMsg(old))
-	if m.transientNotice != "second" {
-		t.Fatal("old timer cleared a newer notice")
-	}
-	view := m.View()
-	if !strings.Contains(view, "second") || !strings.Contains(view, "Session title") {
-		t.Fatal("notice must leave the session title visible")
-	}
-	m.Update(noticeExpiredMsg(m.noticeGeneration))
-	if m.transientNotice != "" || ansi.Strip(m.View()) != before {
-		t.Fatal("notice did not expire without changing the layout")
 	}
 }
