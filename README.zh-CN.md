@@ -90,9 +90,19 @@ Computer-use helper 使用 `k-brain-computer-<os>-<arch>` 命名，重命名为 
 - `/model refresh` 从 `baseUrl + "/models"` 获取目录，上例对应 `/v1/models`；`/model` 选择模型。
 - 修改文件后重新启动。未填写 API 也可进入 TUI，但发送模型请求需要有效配置。
 
+### 提示词层级
+
+氪脑按“系统提示词 → 用户提示词 → 项目提示词”的顺序组装指令。默认系统提示词首次启动时写入 `~/.k-brain/system.md`，可用 `/system` 编辑；`kn run` 可以使用 `-system` 或 `-system-file` 仅替换本次运行的系统提示词。
+
+- **用户级提示词**：`~/.k-brain/brain.md`（Windows：`%USERPROFILE%\.k-brain\brain.md`）。首次启动时自动创建，也可以在 TUI 中使用 `/brain` 编辑。
+- **项目级提示词**：工作区或任意父目录中的 `AGENTS.md` 与 `.k-brain/brain.md`。文件按项目根目录到当前目录的顺序加载，越靠近当前目录的文件越晚追加，可用于细化上层规则。
+- TUI、`kn run` 和 ACP 都会从各自的工作目录读取项目提示词；空行和注释行会被忽略。
+
 三种协议均按顺序发送混合图文输入。Responses 使用 `input_image`；Anthropic 使用 base64 或 URL 图片来源，并保留全部系统指令。图片能力仍取决于所选模型和服务端，Anthropic 内嵌图片须为 JPEG、PNG、GIF 或 WebP。无效图片引用会在本地报错，不再静默丢弃。会话文件保留图文内容块，ACP 加载会话时也会按顺序回放内嵌图片和文字。
 
 浏览器与 Computer-use 截图会附在对应工具结果中，并保存在会话历史里。并行工具和子代理的图片分别归属各自调用，接收截图的模型须支持图片。TUI、CLI、ACP 共用后端的附件传递逻辑，各入口的工具启用策略保持不变。
+
+完整用户指南位于 [`docs/user-guide/`](docs/user-guide/README.md)，涵盖提示词文件、配置、会话、扩展、沙箱和 ACP。
 
 可以为 Agent 生命周期事件配置本地 Hook。命令通过 `K_BRAIN_HOOK_EVENT` 环境变量接收 JSON 事件；`PreToolUse` Hook 返回非零状态时会拒绝本次工具调用。
 
@@ -116,13 +126,14 @@ CLI、TUI 和 ACP 共用配置钩子与已启用插件钩子的事件入口。�
 ```text
 ~/.k-brain/
   config.json
+  system.md
   brain.md
   sessions/<project-id>/
     <session-id>/
       session.jsonl
 ```
 
-使用 `kn sessions` 查看按项目分组的会话，使用 `kn sessions search <query>` 搜索，或用 `archive/delete` 管理；使用 `kn --resume <session-id>` 恢复会话。长期工作指令保存在 `~/.k-brain/brain.md`，通过 `/brain` 编辑；TUI 中 `/status` 显示当前会话文件路径。JSONL 记录包含元数据、消息、任务、压缩、定时任务和回退快照引用。不再支持 SQLite 存储或旧库迁移，也不会读取或修改已有数据库文件。
+使用 `kn sessions` 查看按项目分组的会话，使用 `kn sessions search <query>` 搜索，或用 `archive/delete` 管理；使用 `kn --resume <session-id>` 恢复会话。系统提示词保存在 `~/.k-brain/system.md`，通过 `/system` 编辑；用户级常驻指令保存在 `~/.k-brain/brain.md`，通过 `/brain` 编辑；项目级指令放在 `AGENTS.md` 或 `.k-brain/brain.md`。TUI 中 `/status` 显示当前会话文件路径。JSONL 记录包含元数据、消息、任务、压缩、定时任务和回退快照引用。不再支持 SQLite 存储或旧库迁移，也不会读取或修改已有数据库文件。
 
 项目授权使用 TOML 格式，保存于 `~/.k-brain/trusted_folders.toml`（Windows：`~\.k-brain\trusted_folders.toml`），每个目录使用 `[folders."<绝对路径>"]`，并记录 `trusted` 与 `decided_at`。
 

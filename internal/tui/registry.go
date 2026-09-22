@@ -68,6 +68,7 @@ var registry = []registryEntry{
 	{Name: "/subagent", Args: "[-m model] <prompt>", Hint: "spawn a background subagent", Category: "Session"},
 	{Name: "/subagents", Args: "[id]", Hint: "subagent dock / live view (alias /tasks)", Keybind: "ctrl+t", Category: "Session"},
 	{Name: "/status", Hint: "show session details (alias: /session-info)", Category: "Session"},
+	{Name: "/system", Hint: "edit the system prompt in system.md", Category: "Agent"},
 	{Name: "/theme", Args: "[light|dark|auto]", Hint: "color scheme", Category: "Display"},
 	{Name: "/title", Args: "[title]", Hint: "retitle this session (alias: /rename)", Category: "Session"},
 	{Name: "/undo", Hint: "rewind the conversation to an earlier turn", Category: "Session"},

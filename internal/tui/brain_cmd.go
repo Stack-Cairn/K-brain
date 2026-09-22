@@ -27,7 +27,30 @@ func (m *model) openBrain() tea.Cmd {
 	})
 }
 
+func (m *model) openSystem() tea.Cmd {
+	path := config.SystemPath()
+	if path == "" {
+		m.append(errStyle.Render("/system: cannot locate ~/.k-brain"))
+		return nil
+	}
+	c, err := editor.Command(path)
+	if err != nil {
+		m.append(errStyle.Render("/system: " + err.Error()))
+		return nil
+	}
+	m.append(dimStyle.Render("editing " + path + " — save and quit to apply (next turn picks it up)"))
+	c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
+	return tea.ExecProcess(c, func(err error) tea.Msg {
+		return systemEditedMsg{path, err}
+	})
+}
+
 type brainEditedMsg struct {
+	path string
+	err  error
+}
+
+type systemEditedMsg struct {
 	path string
 	err  error
 }

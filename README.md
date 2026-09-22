@@ -90,9 +90,19 @@ Replace `baseUrl`, `apiKey`, `model1`, and `model2` with your provider's values.
 - `/model refresh` fetches `baseUrl + "/models"`, which is `/v1/models` in this example. Use `/model` to select a model.
 - Restart after editing the file. The TUI can open without API credentials, but model requests require a valid configuration.
 
+### Prompt hierarchy
+
+K-brain assembles instructions in this order: the system prompt, the user prompt file, then project prompt files. The default system prompt is seeded into `~/.k-brain/system.md` and can be edited with `/system`; `kn run` can replace it for one invocation with `-system` or `-system-file`.
+
+- **User-level instructions**: `~/.k-brain/brain.md` (Windows: `%USERPROFILE%\.k-brain\brain.md`). It is created on first start and can be edited with `/brain`.
+- **Project-level instructions**: `AGENTS.md` and `.k-brain/brain.md` in the workspace or any parent directory. Files are loaded from the project root toward the current directory, so a closer file is appended later and can refine parent rules.
+- Project prompt files are read by the TUI, `kn run`, and ACP from their requested working directory. Comments and blank lines are ignored.
+
 All three protocols send mixed text and image inputs in order. Responses uses `input_image`; Anthropic uses base64 or URL image sources and retains all system instructions. Image support still depends on the selected model and endpoint. Anthropic inline images must use JPEG, PNG, GIF, or WebP. Invalid image references fail locally instead of being silently omitted. Stored conversations retain their content blocks, and ACP session loading replays inline images alongside the surrounding text.
 
 Browser and Computer-use screenshots are attached to the originating tool result and retained in session history. Parallel calls and subagents keep their images separate; the selected model must support images. This attachment path is shared by the agent backend across TUI, CLI, and ACP, without changing which tools each entry point enables.
+
+The complete user guide is in [`docs/user-guide/`](docs/user-guide/README.md), including prompt files, configuration, sessions, extensions, sandbox, and ACP.
 
 Optional lifecycle hooks can run a local command for an agent event. The command receives a JSON event in `K_BRAIN_HOOK_EVENT`; a non-zero `PreToolUse` hook denies that tool call.
 
@@ -116,13 +126,14 @@ Sessions live under `~/.k-brain/sessions/<project-id>/<session-id>/session.jsonl
 ```text
 ~/.k-brain/
   config.json
+  system.md
   brain.md
   sessions/<project-id>/
     <session-id>/
       session.jsonl
 ```
 
-Run `kn sessions` to list project-grouped session IDs. Use `kn sessions search <query>`, `kn sessions archive <id>`, or `kn sessions delete <id>` for navigation. Resume with `kn --resume <session-id>`; `/status` shows the current session file. Persistent standing instructions are stored in `~/.k-brain/brain.md` and edited with `/brain`. JSONL records include metadata, messages, tasks, compactions, schedules, and rewind snapshot references. SQLite storage and migration are no longer supported; existing database files are not read or modified.
+Run `kn sessions` to list project-grouped session IDs. Use `kn sessions search <query>`, `kn sessions archive <id>`, or `kn sessions delete <id>` for navigation. Resume with `kn --resume <session-id>`; `/status` shows the current session file. The system prompt is stored in `~/.k-brain/system.md` and edited with `/system`; user standing instructions are stored in `~/.k-brain/brain.md` and edited with `/brain`. JSONL records include metadata, messages, tasks, compactions, schedules, and rewind snapshot references. SQLite storage and migration are no longer supported; existing database files are not read or modified.
 
 Project trust decisions use TOML at `~/.k-brain/trusted_folders.toml` (Windows: `~\.k-brain\trusted_folders.toml`), with one `[folders."<absolute-path>"]` table containing `trusted` and `decided_at` fields.
 
