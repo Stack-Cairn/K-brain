@@ -32,6 +32,7 @@ import (
 	"github.com/Stack-Cairn/K-brain/internal/lsp"
 	"github.com/Stack-Cairn/K-brain/internal/mcp"
 	"github.com/Stack-Cairn/K-brain/internal/plugins"
+	"github.com/Stack-Cairn/K-brain/internal/prompts"
 	"github.com/Stack-Cairn/K-brain/internal/routing"
 	"github.com/Stack-Cairn/K-brain/internal/sandbox"
 	"github.com/Stack-Cairn/K-brain/internal/session"
@@ -157,6 +158,7 @@ type model struct {
 	modelName     string
 	provName      string
 	sysPrompt     string
+	promptManaged bool
 	sandboxPolicy *sandbox.Policy
 	pluginMgr     *plugins.Manager
 
@@ -376,7 +378,7 @@ func Run(cfg *config.Config, modelName, provName, sysPrompt, resumeID string, ca
 		showThinking = *cfg.Thinking
 	}
 	m := &model{
-		cfg: cfg, agent: ag, modelName: mn, provName: pn, sysPrompt: sysPrompt,
+		cfg: cfg, agent: ag, modelName: mn, provName: pn, sysPrompt: sysPrompt, promptManaged: true,
 		sandboxPolicy: cfg.Sandbox.Policy(cwd()),
 		input:         ti, spin: spinner.New(spinner.WithSpinner(spinner.Dot)), follow: true, saved: 1,
 		catalogs: config.LoadCatalogs(), mouseOn: mouseOn, now: time.Now, showThinking: showThinking,
@@ -1833,6 +1835,16 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case systemEditedMsg:
+		if msg.err != nil {
+			m.append(errStyle.Render("/system: editor failed: " + msg.err.Error()))
+		} else if n := len(config.SystemInstructions()); n > 0 {
+			m.append(dimStyle.Render("✓ system.md saved — system prompt updated (" + strconv.Itoa(n) + " chars)"))
+		} else {
+			m.append(dimStyle.Render("system.md saved — default system prompt will be used"))
+		}
+		return m, nil
+
 	case interactiveStartMsg:
 
 		m.flushThink()
@@ -3146,6 +3158,9 @@ func (m *model) skillCands() []cand {
 }
 
 func (m *model) prepareTurn(text string) (string, []ai.ContentPart) {
+	if m.promptManaged && m.agent != nil {
+		m.sysPrompt = prompts.Build(m.agent.WorkingDir, time.Now())
+	}
 	sk := skills.Scan(skills.DefaultDirs()...)
 	sys := m.sysPrompt + skills.PromptBlock(sk)
 	if m.pluginMgr != nil {
@@ -3454,6 +3469,8 @@ func (m *model) command(text string) (tea.Model, tea.Cmd) {
 		return m, m.openPromptEditor()
 	case "/brain":
 		return m, m.openBrain()
+	case "/system":
+		return m, m.openSystem()
 	case "/compact":
 		if len(fields) > 1 {
 			switch fields[1] {

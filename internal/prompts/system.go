@@ -1,6 +1,7 @@
 package prompts
 
 import (
+	"fmt"
 	"os/user"
 	"runtime"
 	"strings"
@@ -68,8 +69,17 @@ Here is some useful information about the environment you are running in:
   Current date/time: ` + now.Format("Mon Jan 2, 2006 15:04:05 MST (UTC-07:00)") + `
   User: ` + username() + `
 </env>`
+	if custom := config.SystemInstructions(); custom != "" {
+		prompt = custom
+		if !strings.Contains(prompt, "<env>") {
+			prompt += fmt.Sprintf("\n\n<env>\n  Working directory: %s\n  Platform: %s\n  Default shell: %s\n  Current date/time: %s\n  User: %s\n</env>", wd, runtime.GOOS, bashrun.DefaultShell(), now.Format("Mon Jan 2, 2006 15:04:05 MST (UTC-07:00)"), username())
+		}
+	}
 	if extra := config.BrainInstructions(); extra != "" {
 		prompt += "\n\nStanding instructions from the user (~/.k-brain/brain.md — treat as user rules):\n" + extra
+	}
+	for _, file := range config.ProjectPromptFiles(wd) {
+		prompt += fmt.Sprintf("\n\nProject instructions from %s (%s — treat as project rules):\n%s", file.Scope, file.Path, file.Text)
 	}
 
 	return prompt
