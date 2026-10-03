@@ -118,6 +118,7 @@ type runtimeSession struct {
 	terminalContexts map[string]context.Context
 	permissions      map[string]*permissionWaiter
 	questions        map[string]*questionWaiter
+	clientTools      map[string]*clientToolWaiter
 	eventDir         string
 	mcpActivation    *mcp.ToolActivation
 	memoryRuntime    agent.MemoryRuntime
@@ -423,6 +424,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(parts) == 3 && parts[1] == "questions" && parts[2] != "" && r.Method == http.MethodPost {
 		s.answerQuestion(w, r, id, parts[2])
+		return
+	}
+	if len(parts) == 3 && parts[1] == "client-tools" && parts[2] != "" && r.Method == http.MethodPost {
+		s.resolveClientTool(w, r, id, parts[2])
 		return
 	}
 	writeJSONError(w, http.StatusNotFound, "route not found")
@@ -940,7 +945,7 @@ func (s *Server) startRun(w http.ResponseWriter, r *http.Request, id string) {
 
 func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, runID string, in protocol.PromptRequest, options protocol.RunOptions) {
 	rt.mu.Lock()
-	restoreRunOptions := applyRunOptions(rt.agent, options)
+	restoreRunOptions := applyRunOptionsWith(rt.agent, options, s.clientTools(rt, options.ClientTools))
 	rt.mu.Unlock()
 	defer func() {
 		rt.mu.Lock()

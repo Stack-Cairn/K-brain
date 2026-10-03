@@ -46,6 +46,23 @@ func (a *attachments) close() []ai.ContentPart {
 	return parts
 }
 
+// AttachImage attaches an image of the given extension (png, jpg, gif, webp) to the current
+// tool result when the model supports vision.
+func AttachImage(ctx context.Context, ext string, data []byte) bool {
+	a, _ := ctx.Value(attachmentKey{}).(*attachments)
+	if a == nil || len(data) == 0 || ctx.Err() != nil {
+		return false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !a.enabled || a.closed || ctx.Err() != nil {
+		return false
+	}
+	ext, data = ai.NormalizeImage(ext, data)
+	a.parts = append(a.parts, ai.ImagePart(ext, data))
+	return true
+}
+
 func AttachScreenshot(ctx context.Context, jpeg []byte) bool {
 	a, _ := ctx.Value(attachmentKey{}).(*attachments)
 	if a == nil || len(jpeg) == 0 || ctx.Err() != nil {

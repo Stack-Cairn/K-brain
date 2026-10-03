@@ -41,6 +41,8 @@ const (
 	EventPermissionResult    = "permission.resolved"
 	EventQuestionRequested   = "question.requested"
 	EventQuestionResolved    = "question.resolved"
+	EventClientToolRequested = "client_tool.requested"
+	EventClientToolResolved  = "client_tool.resolved"
 	EventSubagentStarted     = "subagent.started"
 	EventSubagentUpdate      = "subagent.updated"
 	EventSubagentCompleted   = "subagent.completed"
@@ -319,6 +321,50 @@ type RunOptions struct {
 	Tools           *ToolSelection  `json:"tools,omitempty"`
 	PlanModeEnabled bool            `json:"plan_mode_enabled,omitempty"`
 	MCPServerIDs    []string        `json:"mcp_server_ids,omitempty"`
+	// ClientTools are tools the connected client executes itself (for example the LiveAgent
+	// desktop Browser). They are offered to the model for this run only; a call is published
+	// as client_tool.requested and completes when the client posts the result.
+	ClientTools []ClientTool `json:"client_tools,omitempty"`
+}
+
+type ClientTool struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	Parameters  json.RawMessage `json:"parameters"`
+}
+
+type ClientToolRequest struct {
+	CallID     string          `json:"call_id"`
+	ToolCallID string          `json:"tool_call_id"`
+	RunID      string          `json:"run_id"`
+	Tool       string          `json:"tool"`
+	Arguments  json.RawMessage `json:"arguments"`
+	DeadlineAt int64           `json:"deadline_at"`
+}
+
+type ClientToolImage struct {
+	MimeType string `json:"mime_type"`
+	Data     string `json:"data"`
+}
+
+type ClientToolResultRequest struct {
+	ConversationID string            `json:"conversation_id"`
+	RunID          string            `json:"run_id"`
+	Text           string            `json:"text"`
+	Images         []ClientToolImage `json:"images,omitempty"`
+	IsError        bool              `json:"is_error,omitempty"`
+}
+
+type ClientToolResolution struct {
+	CallID     string `json:"call_id"`
+	ToolCallID string `json:"tool_call_id"`
+	RunID      string `json:"run_id"`
+	Tool       string `json:"tool"`
+	Text       string `json:"text"`
+	ImageCount int    `json:"image_count,omitempty"`
+	IsError    bool   `json:"is_error,omitempty"`
+	TimedOut   bool   `json:"timed_out,omitempty"`
+	Cancelled  bool   `json:"cancelled,omitempty"`
 }
 type WorkspaceRoot struct {
 	Path   string `json:"path"`

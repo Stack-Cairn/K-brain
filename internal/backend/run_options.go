@@ -78,6 +78,12 @@ func normalizeRunOptions(in *protocol.RunOptions, cwd string, available []tools.
 			return protocol.RunOptions{}, fmt.Errorf("workspace root %q is unavailable", r.Path)
 		}
 	}
+	clientTools, err := normalizeClientTools(out.ClientTools, available)
+	if err != nil {
+		return protocol.RunOptions{}, err
+	}
+	out.ClientTools = clientTools
+	available = append(append([]tools.Tool(nil), available...), clientToolDefs(clientTools)...)
 	if out.Tools != nil {
 		if out.Tools.Policies == nil && (len(out.Tools.Enabled) > 0 || len(out.Tools.Disabled) > 0) {
 			out.Tools.Policies = map[string]string{}
@@ -122,10 +128,16 @@ func normalizeRunOptions(in *protocol.RunOptions, cwd string, available []tools.
 }
 
 func applyRunOptions(a *agent.Agent, options protocol.RunOptions) func() {
+	return applyRunOptionsWith(a, options, nil)
+}
+
+// applyRunOptionsWith also offers run-scoped extra tools (client tools) alongside the agent's
+// own, under the same policy filtering.
+func applyRunOptionsWith(a *agent.Agent, options protocol.RunOptions, extra []tools.Tool) func() {
 	oldTools := append([]tools.Tool(nil), a.RunTools...)
 	oldToolsSet, oldEffort, oldSearch, oldPlan := a.RunToolsSet, a.Effort, a.NativeWebSearch, a.PlanMode()
 	a.SetPlanMode(options.PlanModeEnabled)
-	available := a.AvailableTools()
+	available := append(a.AvailableTools(), extra...)
 
 	if options.PlanModeEnabled {
 		available = append(available, exitPlanModeTool())
