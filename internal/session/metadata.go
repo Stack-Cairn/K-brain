@@ -59,6 +59,9 @@ func (s *Store) SetPinned(id string, pinned bool) error {
 func (s *Store) SetArchived(id string, archived bool) error {
 	return s.update(id, func(d *sessionData) error { d.Meta.Archived = archived; return nil })
 }
+func (s *Store) SetCWD(id, cwd string) error {
+	return s.update(id, func(d *sessionData) error { d.Meta.CWD = cwd; return nil })
+}
 func (s *Store) SetShared(id, token string, enabled, redactToolContent bool) error {
 	return s.update(id, func(d *sessionData) error {
 		if enabled && !d.Meta.Shared {

@@ -395,6 +395,9 @@ type UpdateSessionRequest struct {
 	Archived        *bool     `json:"archived,omitempty"`
 	Shared          *bool     `json:"shared,omitempty"`
 	ShareRedactTool *bool     `json:"share_redact_tool,omitempty"`
+	// CWD moves the session to another workspace. It must be an absolute path to an
+	// existing directory; tools in later turns run there.
+	CWD *string `json:"cwd,omitempty"`
 }
 
 type HistoryMessageRef struct {

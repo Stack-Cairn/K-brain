@@ -148,9 +148,17 @@ func (s *Server) updateSession(w http.ResponseWriter, r *http.Request, id string
 	if err := decodeJSON(w, r, &in); err != nil {
 		return
 	}
-	if (in.Model == nil && in.Title == nil && in.Pinned == nil && in.Archived == nil) || in.Shared != nil || in.ShareRedactTool != nil {
-		writeJSONError(w, 400, "provide title, pinned, archived, or model; use /share for sharing")
+	if (in.Model == nil && in.Title == nil && in.Pinned == nil && in.Archived == nil && in.CWD == nil) || in.Shared != nil || in.ShareRedactTool != nil {
+		writeJSONError(w, 400, "provide title, pinned, archived, model, or cwd; use /share for sharing")
 		return
+	}
+	if in.CWD != nil {
+		cwd, err := validSessionCWD(*in.CWD)
+		if err != nil {
+			writeJSONError(w, 400, err.Error())
+			return
+		}
+		in.CWD = &cwd
 	}
 	if in.Model != nil && strings.TrimSpace(in.Model.Model) == "" {
 		writeJSONError(w, 400, "model.model is required")
@@ -169,6 +177,12 @@ func (s *Server) updateSession(w http.ResponseWriter, r *http.Request, id string
 	if in.Model != nil {
 		if err := s.switchModelLocked(rt, *in.Model); err != nil {
 			writeJSONError(w, 400, "model switch failed: "+err.Error())
+			return
+		}
+	}
+	if in.CWD != nil {
+		if err := s.switchWorkingDirLocked(rt, *in.CWD); err != nil {
+			writeJSONError(w, 400, "workspace switch failed: "+err.Error())
 			return
 		}
 	}
@@ -191,6 +205,20 @@ func (s *Server) updateSession(w http.ResponseWriter, r *http.Request, id string
 		return
 	}
 	writeJSON(w, 200, view)
+}
+
+// validSessionCWD accepts only an absolute path to an existing directory, so a session can
+// never be pointed at a relative or missing workspace.
+func validSessionCWD(raw string) (string, error) {
+	cwd := strings.TrimSpace(raw)
+	if cwd == "" || !filepath.IsAbs(cwd) {
+		return "", errors.New("cwd must be an absolute directory path")
+	}
+	info, err := os.Stat(cwd)
+	if err != nil || !info.IsDir() {
+		return "", errors.New("cwd must be an existing directory")
+	}
+	return filepath.Clean(cwd), nil
 }
 
 func (s *Server) deleteSession(w http.ResponseWriter, r *http.Request, id string) {

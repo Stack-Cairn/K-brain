@@ -607,6 +607,29 @@ func (s *Server) switchModelLocked(rt *runtimeSession, selected protocol.ModelRe
 			cwd = meta.CWD
 		}
 	}
+	return s.rebuildAgentLocked(rt, selected, cwd)
+}
+
+// switchWorkingDirLocked moves a session to another workspace. A loaded agent is rebuilt with
+// the same model so tools, memory and project instructions follow the new directory; an
+// unloaded session only needs the stored metadata, which the next load reads.
+func (s *Server) switchWorkingDirLocked(rt *runtimeSession, cwd string) error {
+	if rt.agent != nil && rt.agent.WorkingDir != cwd {
+		selected := protocol.ModelRef{Provider: rt.agent.Provider, Model: rt.agent.ModelName}
+		if err := s.rebuildAgentLocked(rt, selected, cwd); err != nil {
+			return err
+		}
+	}
+	return s.store.SetCWD(rt.id, cwd)
+}
+
+func (s *Server) rebuildAgentLocked(rt *runtimeSession, selected protocol.ModelRef, cwd string) error {
+	s.mu.Lock()
+	closed := s.closed
+	s.mu.Unlock()
+	if closed {
+		return errors.New("backend is closed")
+	}
 	ag, err := s.factory(context.Background(), cwd, selected)
 	if err != nil {
 		return err
