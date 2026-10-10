@@ -35,7 +35,7 @@ func TestFailoverRetryPolicyUsesLiveAgentTotalAttemptCount(t *testing.T) {
 			"primary":  {API: ai.APIChatCompletions, BaseURL: primary.URL, APIKey: "key", RetryPolicy: policy},
 			"fallback": {API: ai.APIChatCompletions, BaseURL: fallback.URL, APIKey: "key", RetryPolicy: map[string]any{"mode": "off", "failover": map[string]any{"maxSwitches": 1}}},
 		},
-		Models: map[string]config.Model{"model": {ID: "model", Providers: []string{"primary", "fallback"}}},
+		Models: map[string]config.Model{"model": {ID: "model", Context: 200000, Providers: []string{"primary", "fallback"}}},
 	}
 	route, err := ResolveFailoverRouteContext(t.Context(), cfg, "model", "primary", false)
 	if err != nil {

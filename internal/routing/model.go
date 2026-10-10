@@ -19,5 +19,5 @@ func SupportsVision(cfg *config.Config, modelName, modelID string, catalogs map[
 	if vision, found := catalogs[provider].SupportsVision(modelID); found {
 		return vision
 	}
-	return cfg != nil && cfg.Models[modelName].Vision
+	return cfg != nil && cfg.Models[modelName].ForProvider(provider).Vision
 }

@@ -8,7 +8,6 @@ import (
 	"maps"
 	"net/http"
 	"net/url"
-	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -162,10 +161,11 @@ func projectSettings(cfg *config.Config) settingsProjection {
 	for id, p := range cfg.Providers {
 		pv := settingsProvider{ID: id, Name: p.Name, Type: p.Type, API: p.API, BaseURL: publicBaseURL(p.BaseURL), IsFullURL: p.IsFullURL, ModelsURL: publicModelsURL(p.ModelsURL), APIKeyConfigured: p.APIKey != "", CustomHeaders: publicHeaders(p.CustomHeaders), ModelOrder: slices.Clone(p.ModelOrder), ActiveModels: slices.Clone(p.ActiveModels), RequestFormat: p.RequestFormat, Reasoning: p.Reasoning, PromptCachingEnabled: p.PromptCachingEnabled, PromptCacheHintMode: p.PromptCacheHintMode, PromptCacheRetention: p.PromptCacheRetention, NativeWebSearchEnabled: p.NativeWebSearchEnabled, UseSystemProxy: p.UseSystemProxy, RetryPolicy: p.RetryPolicy, UsageQuery: publicMetadata(p.UsageQuery), Metadata: publicMetadata(p.Metadata), Models: []settingsModel{}}
 		pv.CacheCapabilities, pv.CacheSessionAffinity, pv.CacheControlFormat = p.CacheCapabilities, p.CacheSessionAffinity, p.CacheControlFormat
-		for modelID, m := range cfg.Models {
-			if !slices.Contains(m.Providers, id) {
+		for modelID, shared := range cfg.Models {
+			if !slices.Contains(shared.Providers, id) {
 				continue
 			}
+			m := shared.ForProvider(id)
 			mv := settingsModel{Provider: id, ID: modelID, Name: m.Name, DisplayName: m.DisplayName, OwnedBy: m.OwnedBy, LimitsSource: m.LimitsSource, ContextWindow: m.Context, MaxOutputTokens: m.MaxOut, MaxOutputToken: m.MaxOut, InputModalities: slices.Clone(m.InputModalities), Vision: m.Vision}
 			// Provider settings must expose disabled models so editing and saving a
 			// provider cannot delete them. The top-level catalog remains active-only.
@@ -271,7 +271,7 @@ func applySettings(cfg *config.Config, update settingsUpdate) error {
 	}
 	remove := func(id string) {
 		for mid, m := range cfg.Models {
-			m.Providers = slices.DeleteFunc(slices.Clone(m.Providers), func(x string) bool { return x == id })
+			m.DropProvider(id)
 			if len(m.Providers) == 0 {
 				delete(cfg.Models, mid)
 			} else {
@@ -304,9 +304,9 @@ func applySettings(cfg *config.Config, update settingsUpdate) error {
 					return fmt.Errorf("models require unique IDs")
 				}
 				ids[mid] = true
-				m := old[mid]
-				m.ID = mid
-				m.Providers = nil
+				// Start from this provider's current view of the model (or the shared
+				// metadata when the provider is new to it) and overlay the update.
+				m := old[mid].ForProvider(id)
 				if item.Name != nil {
 					m.Name = *item.Name
 				}
@@ -342,20 +342,16 @@ func applySettings(cfg *config.Config, update settingsUpdate) error {
 				if item.Vision != nil {
 					m.Vision = *item.Vision
 				}
-				if shared, exists := old[mid]; exists {
-					providers := slices.DeleteFunc(slices.Clone(shared.Providers), func(providerID string) bool { return providerID == id })
-					if len(providers) > 0 {
-						shared.Providers = nil
-						shared.ID = mid
-						m.Providers = nil
-						if !reflect.DeepEqual(shared, m) {
-							return fmt.Errorf("shared model %q requires identical metadata across providers", mid)
-						}
-					}
-					m.Providers = providers
+				// Other providers may share this model ID with different metadata;
+				// record this provider's variant without touching theirs.
+				rec, exists := cfg.Models[mid]
+				if !exists {
+					rec = m.Metadata()
 				}
-				m.Providers = append(m.Providers, id)
-				cfg.Models[mid] = m
+				rec.ID = mid
+				rec.Providers = append(slices.Clone(rec.Providers), id)
+				rec.SetProviderMetadata(id, m)
+				cfg.Models[mid] = rec
 			}
 		}
 		for _, mid := range p.ActiveModels {

@@ -3,6 +3,7 @@ package routing
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/Stack-Cairn/K-brain/internal/ai"
@@ -27,6 +28,13 @@ func ResolveFailoverRouteContext(ctx context.Context, cfg *config.Config, modelN
 	if providerName == "" {
 		return Route{}, fmt.Errorf("no provider configured for model %q", modelName)
 	}
+	catalogs := config.LoadCatalogs()
+	ctxLimit, maxOut := TokenLimits(model, catalogs[providerName], apiID)
+	primaryVision := SupportsVision(cfg, modelName, apiID, catalogs, providerName)
+	primaryModalities := slices.Clone(model.InputModalities)
+	if primaryVision && !slices.Contains(primaryModalities, "image") {
+		primaryModalities = append(primaryModalities, "image")
+	}
 	primaryVendor := providerVendor(providerName, primaryProvider)
 	providerNames := append([]string{providerName}, model.Providers...)
 	providerNames = uniqueStrings(providerNames)
@@ -40,6 +48,24 @@ func ResolveFailoverRouteContext(ctx context.Context, cfg *config.Config, modelN
 		}
 		if provider.ActiveModels != nil && !containsModel(provider.ActiveModels, apiID) {
 			continue
+		}
+		candidateModel := model
+		if shared, exists := cfg.Models[modelName]; exists {
+			candidateModel = shared.ForProvider(name)
+		}
+		candidateContext, candidateMax := TokenLimits(candidateModel, catalogs[name], apiID)
+		if name != providerName {
+			// Failover reuses the already-prepared history; never send it to a narrower or unknown context.
+			if ctxLimit <= 0 || candidateContext <= 0 || candidateContext < ctxLimit {
+				continue
+			}
+			modalities := slices.Clone(candidateModel.InputModalities)
+			if SupportsVision(cfg, modelName, apiID, catalogs, name) {
+				modalities = append(modalities, "image")
+			}
+			if slices.ContainsFunc(primaryModalities, func(modality string) bool { return modality != "text" && !slices.Contains(modalities, modality) }) {
+				continue
+			}
 		}
 		settings, settingsErr := ParseProviderRuntimeSettings(provider)
 		if settingsErr != nil {
@@ -60,7 +86,7 @@ func ResolveFailoverRouteContext(ctx context.Context, cfg *config.Config, modelN
 			continue
 		}
 		applyRetryPolicy(client, settings.Retry)
-		candidates = append(candidates, failoverCandidate{name: name, provider: provider, client: client, settings: settings})
+		candidates = append(candidates, failoverCandidate{name: name, provider: provider, client: client, settings: settings, maxOutput: candidateMax})
 	}
 	if len(candidates) == 0 {
 		if lastErr != nil {
@@ -82,8 +108,6 @@ func ResolveFailoverRouteContext(ctx context.Context, cfg *config.Config, modelN
 		candidates[0], candidates[primaryIndex] = candidates[primaryIndex], candidates[0]
 	}
 	client := &FailoverClient{candidates: candidates, primary: 0, maxSwitches: candidates[0].settings.Failover.MaxSwitches}
-	catalogs := config.LoadCatalogs()
-	ctxLimit, maxOut := TokenLimits(model, catalogs[providerName], apiID)
 	return Route{
 		ModelName: modelName, ProviderName: providerName,
 		Provider: primaryProvider, Model: model, APIModel: apiID,

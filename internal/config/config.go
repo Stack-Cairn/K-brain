@@ -8,7 +8,6 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"strings"
 
@@ -105,6 +104,10 @@ type Model struct {
 	Vision bool `json:"vision,omitempty"`
 
 	SamplingParams *SamplingParams `json:"samplingParams,omitempty"`
+
+	// ProviderMetadata holds per-provider metadata that differs from the
+	// shared fields above; use ForProvider to read a provider's view of the model.
+	ProviderMetadata map[string]Model `json:"providerMetadata,omitempty"`
 }
 
 type SamplingParams struct {
@@ -327,11 +330,14 @@ func parseConfigJSONC(data []byte, cfg *Config) error {
 		return fmt.Errorf("unsupported sandbox.backend %q", cfg.Sandbox.Backend)
 	}
 	cfg.Models = make(map[string]Model)
-	sharedMetadata := make(map[string]PiModel)
 	for _, name := range slices.Sorted(maps.Keys(cfg.Providers)) {
 		provider := cfg.Providers[name]
 		if err := provider.CacheCapabilities.Validate(); err != nil {
 			return fmt.Errorf("provider %q: %w", name, err)
+		}
+		overrides, err := takeModelOverrides(&provider)
+		if err != nil {
+			return fmt.Errorf("provider %q: invalid %s: %w", name, modelOverridesMetadataKey, err)
 		}
 		if provider.CacheControlFormat != "" && provider.CacheControlFormat != "anthropic" {
 			return fmt.Errorf("provider %q: unsupported cacheControlFormat", name)
@@ -367,19 +373,25 @@ func parseConfigJSONC(data []byte, cfg *Config) error {
 				return fmt.Errorf("model %q: contextWindow and maxTokens must be non-negative", pm.ID)
 			}
 
-			if previous, ok := sharedMetadata[pm.ID]; ok && !reflect.DeepEqual(previous, pm) {
-				return fmt.Errorf("model %q has conflicting metadata across providers; shared model IDs require identical metadata", pm.ID)
+			shared := metadataFromPiModel(pm)
+			meta := shared
+			if override, ok := overrides[pm.ID]; ok {
+				if override.ContextWindow < 0 || override.MaxTokens < 0 {
+					return fmt.Errorf("model %q: contextWindow and maxTokens must be non-negative", pm.ID)
+				}
+				meta = metadataFromPiModel(override)
 			}
-			sharedMetadata[pm.ID] = pm
 			m, exists := cfg.Models[pm.ID]
 			if !exists {
-				m = Model{ID: pm.ID, Name: pm.Name, DisplayName: pm.DisplayName, OwnedBy: pm.OwnedBy, LimitsSource: pm.LimitsSource, InputModalities: pm.InputModalities, Context: pm.ContextWindow,
-					MaxOut: pm.MaxTokens, Vision: slices.Contains(pm.Input, "image") || slices.Contains(pm.InputModalities, "image"),
-					SamplingParams: pm.SamplingParams}
+				m = shared
+				m.ID = pm.ID
 			}
 			if !slices.Contains(m.Providers, name) {
 				m.Providers = append(m.Providers, name)
 			}
+			// Providers may declare different metadata for a shared model ID; keep
+			// each provider's variant instead of rejecting the whole config.
+			m.SetProviderMetadata(name, meta)
 			cfg.Models[pm.ID] = m
 			if cfg.DefaultModel == "" {
 				cfg.DefaultModel = pm.ID
@@ -507,24 +519,7 @@ func (c *Config) Save() error {
 	return nil
 }
 
-func validateProviderModelMetadata(c *Config) error {
-	seen := make(map[string]PiModel)
-	for providerName, provider := range c.Providers {
-		for _, model := range provider.Models {
-			if previous, ok := seen[model.ID]; ok && !reflect.DeepEqual(previous, model) {
-				return fmt.Errorf("model %q has conflicting metadata across providers (including %q)", model.ID, providerName)
-			}
-			seen[model.ID] = model
-		}
-	}
-	return nil
-}
-
 func marshalConfig(c *Config) ([]byte, error) {
-	if err := validateProviderModelMetadata(c); err != nil {
-		return nil, err
-	}
-
 	wire := *c
 	wire.Models = nil
 	wire.Providers = piProviders(c)
@@ -548,6 +543,7 @@ func piProviders(c *Config) map[string]Provider {
 	for name, provider := range c.Providers {
 		p := provider
 		p.Models = make([]PiModel, 0)
+		var overrides map[string]PiModel
 		for _, modelName := range slices.Sorted(maps.Keys(c.Models)) {
 			model := c.Models[modelName]
 			if !slices.Contains(model.Providers, name) {
@@ -557,13 +553,17 @@ func piProviders(c *Config) map[string]Provider {
 			if id == "" {
 				id = modelName
 			}
-			pm := PiModel{ID: id, Name: model.Name, DisplayName: model.DisplayName, OwnedBy: model.OwnedBy, LimitsSource: model.LimitsSource, InputModalities: model.InputModalities, ContextWindow: model.ContextWindow(),
-				MaxTokens: model.MaxOut, SamplingParams: model.SamplingParams}
-			if model.Vision {
-				pm.Input = []string{"text", "image"}
+			// Every provider lists the shared metadata so older K-brain builds, which
+			// require identical metadata per model ID, can still load this file.
+			p.Models = append(p.Models, piModelFor(id, model))
+			if _, ok := model.ProviderMetadata[name]; ok {
+				if overrides == nil {
+					overrides = map[string]PiModel{}
+				}
+				overrides[id] = piModelFor(id, model.ForProvider(name))
 			}
-			p.Models = append(p.Models, pm)
 		}
+		p.Metadata = withModelOverrides(provider.Metadata, overrides)
 		providers[name] = p
 	}
 	return providers
@@ -596,7 +596,7 @@ func (c *Config) Resolve(model, provider string) (Provider, Model, string, error
 	if id == "" {
 		id = model
 	}
-	return p, m, id, nil
+	return p, m.ForProvider(provider), id, nil
 }
 
 type UnknownModelError struct {

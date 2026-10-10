@@ -143,7 +143,7 @@ func TestFailoverHTTPFaultFallsBackAndKeepsSameVendorQueue(t *testing.T) {
 			"fallback": {API: ai.APIChatCompletions, BaseURL: fallback.URL, APIKey: "key", RetryPolicy: map[string]any{"mode": "off", "failover": map[string]any{"maxSwitches": 1}}},
 			"foreign":  {API: ai.APIResponses, BaseURL: fallback.URL, APIKey: "key"},
 		},
-		Models: map[string]config.Model{"model": {ID: "model", Providers: []string{"primary", "fallback", "foreign"}}},
+		Models: map[string]config.Model{"model": {ID: "model", Context: 200000, Providers: []string{"primary", "fallback", "foreign"}}},
 	}
 	route, err := ResolveFailoverRouteContext(t.Context(), cfg, "model", "primary", false)
 	if err != nil {

@@ -190,10 +190,19 @@ func providerVendor(name string, provider config.Provider) string {
 }
 
 type failoverCandidate struct {
-	name     string
-	provider config.Provider
-	client   ai.Client
-	settings FailoverSettings
+	name      string
+	provider  config.Provider
+	client    ai.Client
+	settings  FailoverSettings
+	maxOutput int
+}
+
+// request caps output without mutating the request reused by other candidates.
+func (c failoverCandidate) request(req ai.Request) ai.Request {
+	if c.maxOutput > 0 && (req.MaxTokens <= 0 || req.MaxTokens > c.maxOutput) {
+		req.MaxTokens = c.maxOutput
+	}
+	return req
 }
 
 // FailoverClient is the backend-owned provider queue. It buffers callbacks
@@ -259,7 +268,7 @@ func (c *FailoverClient) Complete(ctx context.Context, req ai.Request) (string, 
 	for i, candidate := range plan {
 		ai.ObserveRuntimeDiagnostic(ctx, ai.RuntimeDiagnostic{Kind: "attempt", Provider: candidate.name, Endpoint: candidate.client.Endpoint(), Attempt: i + 1, TargetIndex: i})
 		previousErr := last
-		text, usage, err := candidate.client.Complete(ctx, req)
+		text, usage, err := candidate.client.Complete(ctx, candidate.request(req))
 		if i > 0 {
 			errorText := ""
 			if previousErr != nil {
@@ -316,7 +325,7 @@ func (c *FailoverClient) Stream(ctx context.Context, req ai.Request, onText, onT
 				flush()
 			}
 		}
-		message, usage, err := candidate.client.Stream(ctx, req,
+		message, usage, err := candidate.client.Stream(ctx, candidate.request(req),
 			func(delta string) {
 				if committed {
 					if onText != nil {

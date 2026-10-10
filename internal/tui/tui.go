@@ -2810,14 +2810,14 @@ func (m *model) cursorOnLastLine() bool {
 func (m *model) contextLimitFor(provName, apiID string) int {
 	mdl := config.Model{}
 	if m.cfg != nil {
-		mdl = m.cfg.Models[apiID]
+		mdl = m.cfg.Models[apiID].ForProvider(provName)
 		if selected, ok := m.cfg.Models[m.modelName]; ok {
 			id := selected.ID
 			if id == "" {
 				id = m.modelName
 			}
 			if id == apiID && provName == m.provName {
-				mdl = selected
+				mdl = selected.ForProvider(provName)
 			}
 		}
 	}

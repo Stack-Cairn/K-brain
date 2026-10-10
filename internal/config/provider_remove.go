@@ -3,17 +3,11 @@ package config
 func (c *Config) RemoveProvider(name string) {
 	delete(c.Providers, name)
 	for id, m := range c.Models {
-		var keep []string
-		for _, p := range m.Providers {
-			if p != name {
-				keep = append(keep, p)
-			}
-		}
-		if len(keep) == 0 {
+		m.DropProvider(name)
+		if len(m.Providers) == 0 {
 			delete(c.Models, id)
 			continue
 		}
-		m.Providers = keep
 		c.Models[id] = m
 	}
 	for _, pin := range []*string{&c.DefaultProvider, &c.CompactProvider, &c.TaskProvider} {
