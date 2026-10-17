@@ -28,6 +28,7 @@ type openAIRequest struct {
 	Format         string     `json:"output_format,omitempty"`
 	Compression    *int       `json:"output_compression,omitempty"`
 	Background     string     `json:"background,omitempty"`
+	Moderation     string     `json:"moderation,omitempty"`
 	Images         []imageRef `json:"images,omitempty"`
 	Mask           *imageRef  `json:"mask,omitempty"`
 }
@@ -47,8 +48,13 @@ type googleContent struct {
 type googleRequest struct {
 	Contents []googleContent `json:"contents"`
 	Config   struct {
-		Modalities []string `json:"responseModalities"`
+		Modalities  []string           `json:"responseModalities"`
+		ImageConfig *googleImageConfig `json:"imageConfig,omitempty"`
 	} `json:"generationConfig"`
+}
+type googleImageConfig struct {
+	AspectRatio string `json:"aspectRatio,omitempty"`
+	ImageSize   string `json:"imageSize,omitempty"`
 }
 type arkRequest struct {
 	Model          string   `json:"model"`
@@ -73,21 +79,10 @@ func (a *Adapter) request(ctx context.Context, r imaging.ExecuteRequest) (string
 	if (r.Target.Adapter != a.id && !(a.profile == "rolldek" && r.Target.Adapter == "rolldek-images")) || r.Target.AdapterVersion != Version || r.Target.Kind != "model" || r.Target.WorkflowMapping != nil {
 		return "", nil, unsupported()
 	}
-	switch a.id {
-	case OpenAIID:
-		if r.Target.RemoteID != "gpt-image-2" && r.Target.RemoteID != "gpt-image-2-2026-04-21" && !(a.profile == "rolldek" && r.Target.RemoteID == "gpt-image-2.5") {
-			return "", nil, unsupported()
-		}
-	case GoogleID:
-		if r.Target.RemoteID != "gemini-nano-banana-2.1" {
-			return "", nil, unsupported()
-		}
-	case VolcengineID:
-		// Endpoint IDs are allowed only when the registry has independently bound
-		// that endpoint to this exact Seedream 5.0 pro profile.
-		if r.Target.RemoteID != "doubao-seedream-5-0-pro-260628" && !endpointID(r.Target.RemoteID) {
-			return "", nil, unsupported()
-		}
+	// Models are user-chosen (listed or typed), so only the name's shape is
+	// checked; the service itself rejects models it does not serve.
+	if !modelName(r.Target.RemoteID) {
+		return "", nil, unsupported()
 	}
 	inputs, mask, err := a.inputs(ctx, r)
 	if err != nil {
@@ -97,7 +92,7 @@ func (a *Adapter) request(ctx context.Context, r imaging.ExecuteRequest) (string
 	case OpenAIID:
 		b := openAIRequest{Model: r.Target.RemoteID, Prompt: r.Request.Prompt, N: 1}
 		if a.profile == "rolldek" {
-			if r.Request.Operation != imaging.OperationGenerate || len(r.Request.Parameters) != 0 {
+			if r.Request.Operation != imaging.OperationGenerate && r.Request.Operation != imaging.OperationReference {
 				return "", nil, unsupported()
 			}
 			b.ResponseFormat = "b64_json"
@@ -105,7 +100,9 @@ func (a *Adapter) request(ctx context.Context, r imaging.ExecuteRequest) (string
 		for k, v := range r.Request.Parameters {
 			switch k {
 			case "size":
-				b.Size, err = enum(v, "1024x1024", "1536x1024", "1024x1536")
+				b.Size, err = openAISize(v)
+			case "moderation":
+				b.Moderation, err = enum(v, "auto", "low")
 			case "quality":
 				b.Quality, err = enum(v, "low", "medium", "high", "auto")
 			case "output_format":
@@ -139,8 +136,22 @@ func (a *Adapter) request(ctx context.Context, r imaging.ExecuteRequest) (string
 		}
 		return path, b, nil
 	case GoogleID:
-		if len(r.Request.Parameters) != 0 {
-			return "", nil, badInput()
+		var imageConfig *googleImageConfig
+		for k, v := range r.Request.Parameters {
+			if imageConfig == nil {
+				imageConfig = &googleImageConfig{}
+			}
+			switch k {
+			case "aspect_ratio":
+				imageConfig.AspectRatio, err = enum(v, "1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9")
+			case "image_size":
+				imageConfig.ImageSize, err = enum(v, "1K", "2K", "4K")
+			default:
+				err = badInput()
+			}
+			if err != nil {
+				return "", nil, err
+			}
 		}
 		parts := []googlePart{{Text: r.Request.Prompt}}
 		for _, in := range inputs {
@@ -148,6 +159,7 @@ func (a *Adapter) request(ctx context.Context, r imaging.ExecuteRequest) (string
 		}
 		b := googleRequest{Contents: []googleContent{{Role: "user", Parts: parts}}}
 		b.Config.Modalities = []string{"TEXT", "IMAGE"}
+		b.Config.ImageConfig = imageConfig
 		return "/models/" + r.Target.RemoteID + ":generateContent", b, nil
 	case VolcengineID:
 		// Ark defaults to JPEG. Freeze the local default to PNG so the
@@ -190,6 +202,42 @@ func (a *Adapter) request(ctx context.Context, r imaging.ExecuteRequest) (string
 		return "/images/generations", b, nil
 	}
 	return "", nil, unsupported()
+}
+
+// modelName accepts the model ids services publish: printable, no spaces or
+// path separators that could escape the request path, at most 200 bytes.
+func modelName(s string) bool {
+	if s == "" || len(s) > 200 || !utf8.ValidString(s) {
+		return false
+	}
+	for _, c := range s {
+		if c <= ' ' || c == 0x7f || c == '/' || c == '?' || c == '#' || c == '%' || c == '\\' {
+			return false
+		}
+	}
+	return true
+}
+
+// openAISize accepts "auto" or a WxH the caller already normalized; the bounds
+// are the documented gpt-image limits so a malformed value never leaves.
+func openAISize(v any) (string, error) {
+	s, ok := v.(string)
+	if !ok {
+		return "", badInput()
+	}
+	if s == "auto" {
+		return s, nil
+	}
+	parts := strings.Split(s, "x")
+	if len(parts) != 2 {
+		return "", badInput()
+	}
+	w, e1 := strconv.Atoi(parts[0])
+	h, e2 := strconv.Atoi(parts[1])
+	if e1 != nil || e2 != nil || w < 16 || h < 16 || w > 3840 || h > 3840 || strconv.Itoa(w) != parts[0] || strconv.Itoa(h) != parts[1] {
+		return "", badInput()
+	}
+	return s, nil
 }
 
 func endpointID(s string) bool {

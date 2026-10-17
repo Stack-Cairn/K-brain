@@ -5,10 +5,10 @@ import "time"
 // VerificationSummary is read-only public evidence. It contains no binding
 // fingerprint, credential reference, provider handle, endpoint or output URL.
 type VerificationSummary struct {
-	State          string    `json:"state"`
-	JobID          string    `json:"jobId,omitempty"`
+	State          string     `json:"state"`
+	JobID          string     `json:"jobId,omitempty"`
 	LiveVerifiedAt *time.Time `json:"liveVerifiedAt,omitempty"`
-	Reason         string    `json:"reason,omitempty"`
+	Reason         string     `json:"reason,omitempty"`
 }
 
 type VerifyTargetRequest struct {

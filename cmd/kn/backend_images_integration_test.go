@@ -29,7 +29,7 @@ func TestImageRuntimeNativeAdapterToDurableAsset(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
 		if r.URL.Path != "/v1/images/generations" || r.Method != http.MethodPost || r.Header.Get("Authorization") != "Bearer fake-image-key" || r.Header.Get("X-Image-Test") != "inherited" {
-			t.Error("adapter request did not inherit its trusted connection")
+			t.Error("image request did not use the provider credential and headers")
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -38,7 +38,7 @@ func TestImageRuntimeNativeAdapterToDurableAsset(t *testing.T) {
 	}))
 	defer upstream.Close()
 	cfg := config.Default()
-	cfg.Providers["image-test"] = config.Provider{API: "openai-completions", BaseURL: upstream.URL + "/v1", APIKey: "fake-image-key", CustomHeaders: []config.CustomHeader{{Key: "X-Image-Test", Value: "inherited"}}}
+	cfg.Providers["image-test"] = config.Provider{Name: "Test", API: "openai-completions", BaseURL: upstream.URL + "/v1", APIKey: "fake-image-key", ActiveModels: []string{"chat-model", "gpt-image-2"}, CustomHeaders: []config.CustomHeader{{Key: "X-Image-Test", Value: "inherited"}}}
 	// This evidence belongs only to the synthetic fixture, never a production target.
 	cfg.Image = &imaging.ImageSettings{Revision: 1, Connections: []imaging.ImageConnection{{ID: "ic_test", Name: "test", Vendor: "openai", Enabled: true, MaxConcurrent: 2, Binding: imaging.ConnectionBinding{Kind: "provider_ref", ProviderID: "image-test"}}}, Targets: []imaging.ImageTarget{{ID: "it_test", Name: "test", ConnectionID: "ic_test", Adapter: direct.OpenAIID, AdapterVersion: direct.Version, Kind: "model", RemoteID: "gpt-image-2", Revision: 1, Enabled: true, Capabilities: imaging.TargetCapabilities{Operations: []imaging.Operation{imaging.OperationGenerate}, MaxCount: 1, OutputFormats: []string{"png"}}, Verification: imaging.TargetVerification{ContractComplete: true, LiveVerifiedAt: time.Now(), ConnectionID: "ic_test", AdapterVersion: direct.Version, TargetRevision: 1}}}}
 	runtime, err := openImageRuntime(context.Background(), t.TempDir(), backend.NewSettingsStore(cfg, func(*config.Config) error { return nil }), true)
@@ -57,7 +57,13 @@ func TestImageRuntimeNativeAdapterToDurableAsset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := imaging.CreateJobRequest{ProjectID: project.ID, TargetID: "it_test", Operation: imaging.OperationGenerate, Prompt: "synthetic test", Count: 1}
+	// The chat provider is the image service; only its image models are offered.
+	profiles := runtime.module.Profiles.Source.Current().Profiles
+	if len(profiles) != 1 || profiles[0].Platform != imaging.PlatformOpenAI || len(profiles[0].Models) != 1 || profiles[0].Models[0] != "gpt-image-2" {
+		t.Fatalf("provider not exposed as an image service: %+v", profiles)
+	}
+	target := imaging.ProfileTargetID(profiles[0].ID, "gpt-image-2")
+	request := imaging.CreateJobRequest{ProjectID: project.ID, TargetID: target, Operation: imaging.OperationGenerate, Prompt: "synthetic test", Count: 1}
 	job, replay, err := runtime.module.Jobs.CreateJob(context.Background(), scope, "fixture-key", request)
 	if err != nil || replay {
 		t.Fatalf("accept: replay=%v err=%v", replay, err)

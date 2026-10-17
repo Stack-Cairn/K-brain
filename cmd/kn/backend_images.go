@@ -72,21 +72,20 @@ func openImageRuntime(ctx context.Context, root string, settings *backend.Settin
 	if err != nil {
 		return nil, err
 	}
-	service = imaging.NewService(store, manager, nil, imaging.ServiceOptions{
+	// Image services come straight from the chat provider configuration:
+	// one service per provider with a key, its image models as the models.
+	source := backend.ProviderImageSource{Settings: settings}
+	registry := imaging.ProfileRegistry{Store: source, Secrets: source}
+	service = imaging.NewService(store, registry, nil, imaging.ServiceOptions{
 		AssetSink: assets, InputResolver: assets,
 		AdapterResolver: func(ctx context.Context, scope imaging.Scope, target imaging.TargetSnapshot) (imaging.Adapter, error) {
-			return resolveVerifiedImageAdapter(ctx, manager, verification, scope, target)
+			if target.VerificationID != "" {
+				return resolveVerifiedImageAdapter(ctx, manager, verification, scope, target)
+			}
+			return resolveProfileAdapter(registry, target)
 		},
 		ConnectionConcurrency: func(scope imaging.Scope, id string) int {
-			current, err := manager.ImageSettings(scope)
-			if err == nil {
-				for _, connection := range current.Connections {
-					if connection.ID == id {
-						return connection.MaxConcurrent
-					}
-				}
-			}
-			return 1
+			return 2
 		},
 	})
 	verification = backend.NewImageVerificationManager(manager, service, assets)
@@ -95,7 +94,7 @@ func openImageRuntime(ctx context.Context, root string, settings *backend.Settin
 		return nil, err
 	}
 	return &imageRuntime{
-		module:    &backend.ImageModule{Verification: verification, Settings: manager, Store: store, Assets: assets, Jobs: service, AllowLocalImageScope: allowLocal},
+		module:    &backend.ImageModule{Verification: verification, Settings: manager, Profiles: backend.NewProviderImageProfiles(source), Store: store, Assets: assets, Jobs: service, AllowLocalImageScope: allowLocal},
 		scheduler: scheduler, assets: assets, store: store,
 		maintenance: startImageMaintenance(ctx, store, assets),
 	}, nil

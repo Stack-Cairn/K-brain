@@ -43,6 +43,8 @@ type ErrorDetails struct {
 	ActualRevision    *uint64 `json:"actualRevision,omitempty"`
 	FirstAvailableSeq *uint64 `json:"firstAvailableSeq,omitempty"`
 	LastEventSeq      *uint64 `json:"lastEventSeq,omitempty"`
+	// Reason is a backend-authored validation note, never upstream text.
+	Reason string `json:"reason,omitempty"`
 }
 
 func (e ImageError) Error() string { return e.Code + ": " + errorMessage(e.Code) }
@@ -71,7 +73,7 @@ func PublicError(e *ImageError) *ImageError {
 	v := &ImageError{Code: code, Message: errorMessage(code), RequestID: e.RequestID, Retryable: e.Retryable}
 	if e.Details != nil {
 		d := e.Details
-		v.Details = &ErrorDetails{ParameterKey: d.ParameterKey, ConnectionID: d.ConnectionID, TargetID: d.TargetID, ExpectedRevision: cloneUint(d.ExpectedRevision), ActualRevision: cloneUint(d.ActualRevision), FirstAvailableSeq: cloneUint(d.FirstAvailableSeq), LastEventSeq: cloneUint(d.LastEventSeq)}
+		v.Details = &ErrorDetails{ParameterKey: d.ParameterKey, ConnectionID: d.ConnectionID, TargetID: d.TargetID, ExpectedRevision: cloneUint(d.ExpectedRevision), ActualRevision: cloneUint(d.ActualRevision), FirstAvailableSeq: cloneUint(d.FirstAvailableSeq), LastEventSeq: cloneUint(d.LastEventSeq), Reason: d.Reason}
 	}
 	return v
 }

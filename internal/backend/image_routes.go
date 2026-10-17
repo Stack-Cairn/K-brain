@@ -49,8 +49,11 @@ type ImageScopeResolver func(*http.Request) (ImageAuthorization, error)
 // the same store used by Jobs so snapshots and event positions are atomic.
 // The process owner starts/recovers and closes Jobs before closing Assets/Store.
 type ImageModule struct {
-	Verification         *ImageVerificationManager
-	Settings             *ImageSettingsManager
+	Verification *ImageVerificationManager
+	Settings     *ImageSettingsManager
+	// Profiles is the simplified configuration layer. When set, the image
+	// configuration routes serve it instead of the legacy settings document.
+	Profiles             *ImageProfilesManager
 	Store                *imaging.Store
 	Assets               ImageAssets
 	Jobs                 ImageJobs
@@ -248,6 +251,8 @@ func (s *Server) handleImage(w http.ResponseWriter, r *http.Request) {
 	}
 	scope := authorization.Scope
 	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/v1/image/"), "/")
+	// Profiles are a read-only view of chat providers without key values, so
+	// listing them needs only execute access, like the old target list.
 	if (parts[0] == "settings" || parts[0] == "secrets") && !authorization.CanConfigure {
 		imageHTTPError(w, r, imageError(imaging.CodeForbidden))
 		return
@@ -257,6 +262,23 @@ func (s *Server) handleImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch parts[0] {
+	case "profiles":
+		if s.image.Profiles == nil {
+			imageHTTPError(w, r, imageError(imaging.CodeUnavailable))
+			return
+		}
+		s.image.Profiles.routes(w, r, scope, parts)
+		return
+	case "platforms":
+		if s.image.Profiles == nil {
+			imageHTTPError(w, r, imageError(imaging.CodeUnavailable))
+			return
+		}
+		if !imageMethod(w, r, http.MethodGet) {
+			return
+		}
+		imageJSON(w, r, 200, map[string]any{"platforms": s.image.Profiles.Platforms()})
+		return
 	case "settings", "targets", "secrets":
 		if len(parts) != 1 {
 			break

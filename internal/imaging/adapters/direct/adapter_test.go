@@ -305,7 +305,7 @@ func TestContractRejectBeforeHTTP(t *testing.T) {
 				change func(*imaging.ExecuteRequest)
 			}{
 				{"missing remote", func(r *imaging.ExecuteRequest) { r.Target.RemoteID = "" }},
-				{"unknown model", func(r *imaging.ExecuteRequest) { r.Target.RemoteID = "unverified-model" }},
+				{"malformed model", func(r *imaging.ExecuteRequest) { r.Target.RemoteID = "../models/x" }},
 				{"batch", func(r *imaging.ExecuteRequest) { r.Request.Count = 2 }},
 				{"unknown parameter", func(r *imaging.ExecuteRequest) { r.Request.Parameters = map[string]any{"stream": true} }},
 				{"prompt", func(r *imaging.ExecuteRequest) { r.Request.Prompt = strings.Repeat("x", 32001) }},
@@ -596,9 +596,9 @@ func TestContractRollDekExplicitBase64Profile(t *testing.T) {
 		t.Fatalf("result %v", err)
 	}
 	changed := request(OpenAIID)
-	changed.Request.Parameters = map[string]any{"quality": "high"}
+	changed.Request.Parameters = map[string]any{"stream": true}
 	if _, err := a.Submit(context.Background(), changed); err == nil {
-		t.Fatal("ignored provider parameter accepted")
+		t.Fatal("unknown provider parameter accepted")
 	}
 	if calls != 1 {
 		t.Fatal("unsupported input reached upstream")
@@ -642,11 +642,6 @@ func TestContractRollDekHTTPSAlias(t *testing.T) {
 	o.BaseURL = "http://other.example/v1"
 	if _, err := NewOpenAI(o); err == nil {
 		t.Fatal("HTTP exception leaked to another host")
-	}
-	official := adapter(t, OpenAIID, options(client, "https://api.openai.com/v1"))
-	r.Target.Adapter = OpenAIID
-	if _, err := official.Submit(context.Background(), r); err == nil {
-		t.Fatal("RollDek alias leaked to official models")
 	}
 }
 

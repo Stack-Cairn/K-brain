@@ -36,9 +36,37 @@ func (s *Server) imageJobs(w http.ResponseWriter, r *http.Request, scope imaging
 			imageHTTPError(w, r, imageError(imaging.CodeInvalidInput))
 			return
 		}
-		var input imaging.CreateJobRequest
-		if !imageDecode(w, r, &input) {
+		var body struct {
+			imaging.CreateJobRequest
+			// Params is the unified shape from the workbench. When present the
+			// backend derives the native parameters; sending both is rejected so
+			// one request never carries two competing sources of truth.
+			Params *imaging.GenerationParams `json:"params,omitempty"`
+		}
+		if !imageDecode(w, r, &body) {
 			return
+		}
+		input := body.CreateJobRequest
+		fields := map[string]any{}
+		if body.Params != nil {
+			if s.image.Profiles == nil || len(input.Parameters) != 0 {
+				imageHTTPError(w, r, imageError(imaging.CodeInvalidInput))
+				return
+			}
+			native, applied, fixes, err := s.image.Profiles.JobParameters(input.TargetID, *body.Params)
+			if err != nil {
+				imageHTTPError(w, r, err)
+				return
+			}
+			input.Parameters = native
+			// The engine splits Count into items that each execute once, so the
+			// normalized image count becomes the job's item count.
+			input.Count = applied.N
+			if fixes == nil {
+				fixes = []imaging.ParamCorrection{}
+			}
+			fields["appliedParams"] = applied
+			fields["corrections"] = fixes
 		}
 		job, replay, err := jobs.CreateJob(r.Context(), scope, keys[0], input)
 		if err != nil {
@@ -49,7 +77,9 @@ func (s *Server) imageJobs(w http.ResponseWriter, r *http.Request, scope imaging
 		if replay {
 			status = http.StatusOK
 		}
-		imageJSON(w, r, status, map[string]any{"job": imaging.PublicJob(job), "replayed": replay})
+		fields["job"] = imaging.PublicJob(job)
+		fields["replayed"] = replay
+		imageJSON(w, r, status, fields)
 		return
 	}
 	if len(parts) == 2 && parts[1] != "" {
