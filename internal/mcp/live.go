@@ -150,7 +150,29 @@ func (m *LiveManager) Replace(ctx context.Context, settings LiveSettings) error 
 	}
 	m.mu.RLock()
 	save := m.save
+	previousServers := make(map[string]LiveServer, len(m.settings.Servers))
+	for _, server := range m.settings.Servers {
+		previousServers[server.ID] = server
+	}
 	m.mu.RUnlock()
+	// GET redacts secrets; an omitted field on a settings round trip keeps it.
+	// Explicit empty maps still clear credentials.
+	for i := range settings.Servers {
+		server := &settings.Servers[i]
+		previous, exists := previousServers[server.ID]
+		if !exists {
+			continue
+		}
+		if server.Env == nil {
+			server.Env = cloneMap(previous.Env)
+		}
+		if server.Headers == nil {
+			server.Headers = cloneMap(previous.Headers)
+		}
+		if server.Auth != nil && previous.Auth != nil && server.Auth.Type == "oauth" && previous.Auth.Type == "oauth" && server.Auth.CredentialRef == "" {
+			server.Auth.CredentialRef = previous.Auth.CredentialRef
+		}
+	}
 	if save != nil {
 		if err := save(settings); err != nil {
 			return err
@@ -566,7 +588,7 @@ func cloneLiveSettings(in LiveSettings) LiveSettings {
 }
 
 func cloneMap(in map[string]string) map[string]string {
-	if len(in) == 0 {
+	if in == nil {
 		return nil
 	}
 	out := make(map[string]string, len(in))
