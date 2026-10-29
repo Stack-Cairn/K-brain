@@ -15,6 +15,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 )
 
 var enabled atomic.Bool
@@ -31,6 +32,10 @@ type rule struct {
 	rx         *regexp.Regexp
 	valueGroup int
 	check      func(string) bool
+	// digitBoundary rejects matches that touch another ASCII digit, so a
+	// phone-shaped run inside a longer number (timestamps, IDs) is ignored.
+	digitBoundary bool
+	bounded       *regexp.Regexp
 }
 
 var rules = []rule{
@@ -44,15 +49,25 @@ var rules = []rule{
 	{name: "JWT", rx: regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b`), check: validJWT},
 	{name: "CONNSTR", rx: regexp.MustCompile(`(?i)\b[a-z][a-z0-9+.-]{0,63}://[^\s:@/]+:([^\s@/]{4,})@`), valueGroup: 1},
 	{name: "EMAIL", rx: regexp.MustCompile(`(?i)(?:[A-Z0-9._%+\-\x{4e00}-\x{9fff}]+)@(?:[A-Z0-9\-\x{4e00}-\x{9fff}]+\.)+[A-Z\x{4e00}-\x{9fff}]{2,}`)},
-	{name: "PHONE", rx: regexp.MustCompile(`(?:\+?86[\s-]?)?1[3-9][0-9](?:[\s-]?[0-9]{4}){2}`)},
+	{name: "PHONE", rx: regexp.MustCompile(`(?:(?:\+|00)?86[\s-]?|0)?1[3-9][0-9](?:[\s-]?[0-9]{4}){2}`), digitBoundary: true},
 	{name: "IP", rx: regexp.MustCompile(`\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b`), check: validIPv4},
 	{name: "IPV6", rx: regexp.MustCompile(`(?i)[0-9a-f:]{2,45}`), check: validIPv6},
 	{name: "IDCARD", rx: regexp.MustCompile(`\b[1-9][0-9]{5}(?:19|20)[0-9]{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12][0-9]|3[01])[0-9]{3}[0-9Xx]\b`), check: validIDCard},
-	{name: "LANDLINE", rx: regexp.MustCompile(`(?:\+?86[\s-]?)?(?:\(0\d{2,3}\)|0\d{2,3})[\s-]?[2-9]\d{6,7}(?:[\s-]?(?:转|分机|ext\.?|x|#)[\s-]?\d{1,5})?`)},
+	{name: "LANDLINE", rx: regexp.MustCompile(`(?:\+?86[\s-]?)?(?:\(0\d{2,3}\)|0\d{2,3})[\s-]?[2-9]\d{6,7}(?:[\s-]?(?:转|分机|ext\.?|x|#)[\s-]?\d{1,5})?`), digitBoundary: true},
 	{name: "CARD", rx: regexp.MustCompile(`\b[3-6][0-9]{12,18}\b`), check: validCardNumber},
 	{name: "IBAN", rx: regexp.MustCompile(`\b[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}\b`), check: validIBAN},
 	{name: "MAC", rx: regexp.MustCompile(`(?i)\b[0-9a-f]{2}(?::[0-9a-f]{2}){5}\b`)},
 	{name: "SECRET", rx: regexp.MustCompile(`(?i)(?:api[_-]?key|access[_-]?token|auth[_-]?token|password|passwd|pwd|secret|token|private[_-]?key|密码|口令|令牌|密钥|秘钥|凭据|凭证|私钥)["'“”「」]?\s*[:=：＝]\s*["'“”「」]?([A-Za-z0-9!@#$%^&*_~+=-]{6,64})`), valueGroup: 1, check: validSecret},
+}
+
+func init() {
+	for i := range rules {
+		if rules[i].digitBoundary {
+			// The trailing non-digit lets the regexp itself fall back to a shorter
+			// alternative (e.g. a landline without an over-long extension).
+			rules[i].bounded = regexp.MustCompile(`(` + rules[i].rx.String() + `)(?:[^0-9]|$)`)
+		}
+	}
 }
 
 var (
@@ -145,7 +160,7 @@ func MaskText(text string) (string, map[string]string) {
 		return token
 	}
 	for _, r := range rules {
-		text = r.rx.ReplaceAllStringFunc(text, func(match string) string {
+		text = r.replaceAll(text, func(match string) string {
 			if strings.Contains(match, "__KBR_") {
 				return match
 			}
@@ -168,6 +183,41 @@ func MaskText(text string) (string, map[string]string) {
 	}
 	return text, values
 }
+
+// replaceAll behaves like ReplaceAllStringFunc. For digitBoundary rules a match
+// must not touch another digit on either side: the right side is part of the
+// bounded regexp, and a match preceded by a digit is skipped with the search
+// resuming one rune later. "proc-1793291828607127000" is left alone while
+// "008613812345678" and "021-62345678转123456" are still found.
+func (r rule) replaceAll(text string, fn func(string) string) string {
+	if !r.digitBoundary {
+		return r.rx.ReplaceAllStringFunc(text, fn)
+	}
+	var out strings.Builder
+	last, pos := 0, 0
+	for pos < len(text) {
+		loc := r.bounded.FindStringSubmatchIndex(text[pos:])
+		if loc == nil {
+			break
+		}
+		start, end := pos+loc[2], pos+loc[3]
+		if start > 0 && isASCIIDigit(text[start-1]) {
+			_, size := utf8.DecodeRuneInString(text[start:])
+			pos = start + size
+			continue
+		}
+		out.WriteString(text[last:start])
+		out.WriteString(fn(text[start:end]))
+		last, pos = end, end
+	}
+	if last == 0 {
+		return text
+	}
+	out.WriteString(text[last:])
+	return out.String()
+}
+
+func isASCIIDigit(c byte) bool { return c >= '0' && c <= '9' }
 
 func rememberToken(token, key, value string) {
 	now := time.Now()
@@ -578,7 +628,7 @@ func (r *restoreReader) Close() error { return r.src.Close() }
 func RedactText(text string) (string, bool) {
 	changed := false
 	for _, rule := range rules {
-		text = rule.rx.ReplaceAllStringFunc(text, func(match string) string {
+		text = rule.replaceAll(text, func(match string) string {
 			value := match
 			if rule.valueGroup > 0 {
 				groups := rule.rx.FindStringSubmatch(match)

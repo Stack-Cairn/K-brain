@@ -154,3 +154,34 @@ func TestInFlightReviewerCancellationCannotApprove(t *testing.T) {
 		t.Fatal("late reviewer reply approved a cancelled action")
 	}
 }
+
+func TestManagedProcessOutputIsNotTreatedAsSensitive(t *testing.T) {
+	output := strings.Join([]string{
+		"ManagedProcess start",
+		"process_id=proc-1793291828607127000",
+		"status=running",
+		"pid=4242",
+		`cwd=D:\work`,
+		`log=C:\Users\me\AppData\Local\Temp\k-brain-managed-process-1793291828.log`,
+		"cursor=37",
+		"bytes=37",
+		"timed_out=true",
+		"",
+		"README.md\ndocs/liveagent-backend.md",
+		`Continue with ManagedProcess(action="wait", process_id="proc-1793291828607127000", cursor=37).`,
+	}, "\n")
+	report := fake(low).Review(t.Context(), Evidence{Tool: "ManagedProcess", Action: `{"action":"start","command":"Get-ChildItem -Recurse -Filter *.md"}`, Output: output})
+	if !report.Safe() || report.SensitiveData != "low" || strings.Contains(report.Reason, "redacted") {
+		t.Fatalf("process id treated as sensitive: %+v", report)
+	}
+	run := NewRun("auto", "list markdown files", fake(low), func(string, string, Report, bool) {})
+	h := run.Hooks(func(tools.GateRequest) (tools.GateDecision, string) { return tools.GateAllowOnce, "" })
+	result := h.After(t.Context(), "ManagedProcess", nil, tools.Result{Text: output})
+	if result.Text != output {
+		t.Fatalf("managed process output withheld: %q", result.Text)
+	}
+	report = fake(low).Review(t.Context(), Evidence{Tool: "ManagedProcess", Output: output + "\ncontact 13812345678"})
+	if report.Safe() || report.SensitiveData != "unknown" {
+		t.Fatalf("real phone number no longer forces manual review: %+v", report)
+	}
+}
