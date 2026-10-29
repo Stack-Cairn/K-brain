@@ -96,6 +96,8 @@ Return ONLY one JSON object with exactly these required string fields: risk, san
 Each risk field must be low, medium, high, or unknown. reason is a concise explanation, not instructions; never reproduce secrets.
 Only classify all fields low if the complete operation is demonstrably low risk. Review does not grant sandbox escape or override host policy.`
 
+var userIdentifierKinds = map[string]bool{"EMAIL": true, "PHONE": true, "LANDLINE": true, "IP": true, "IPV6": true, "MAC": true}
+
 func (r *Reviewer) Review(ctx context.Context, e Evidence) Report {
 	if ctx.Err() != nil {
 		return Unknown("Review cancelled; manual approval required")
@@ -104,18 +106,38 @@ func (r *Reviewer) Review(ctx context.Context, e Evidence) Report {
 		return Unknown("Reviewer unavailable; manual approval required")
 	}
 	sensitive := false
-	redact := func(value string) string {
+	// Identifiers the user typed in this request disclose nothing new when an action or its
+	// output repeats them. They get stable placeholders so the reviewer can still compare them;
+	// credentials and every other value stay redacted and require manual approval.
+	userValues := map[string]string{}
+	redactWith := func(value string, record bool) string {
 		for _, secret := range r.secrets {
 			if strings.Contains(value, secret) {
 				value = strings.ReplaceAll(value, secret, "[REDACTED_CREDENTIAL]")
 				sensitive = true
 			}
 		}
-		value, found := privacy.RedactText(value)
+		value, found := privacy.RedactTextFunc(value, func(kind, match string) (string, bool) {
+			if !userIdentifierKinds[kind] {
+				return "[REDACTED_" + kind + "]", true
+			}
+			key := kind + "\x00" + match
+			placeholder, ok := userValues[key]
+			if !ok && !record {
+				return "[REDACTED_" + kind + "]", true
+			}
+			if !ok {
+				placeholder = fmt.Sprintf("[USER_%s_%d]", kind, len(userValues)+1)
+				userValues[key] = placeholder
+			}
+			return placeholder, false
+		})
 		sensitive = sensitive || found
 		return value
 	}
-	e.Tool, e.Action, e.UserIntent, e.Output = redact(e.Tool), redact(e.Action), redact(e.UserIntent), redact(e.Output)
+	redact := func(value string) string { return redactWith(value, false) }
+	e.UserIntent = redactWith(e.UserIntent, true)
+	e.Tool, e.Action, e.Output = redact(e.Tool), redact(e.Action), redact(e.Output)
 	raw, _ := json.Marshal(e)
 	masked := string(raw)
 	if len(masked) > MaxEvidence {

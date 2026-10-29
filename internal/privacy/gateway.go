@@ -660,6 +660,12 @@ func (r *restoreReader) Close() error { return r.src.Close() }
 // RedactText irreversibly masks recognized sensitive values without retaining a
 // restoration map. Use this when forwarding evidence to a separate reviewer.
 func RedactText(text string) (string, bool) {
+	return RedactTextFunc(text, func(kind, _ string) (string, bool) { return "[REDACTED_" + kind + "]", true })
+}
+
+// RedactTextFunc is RedactText with a caller-chosen replacement for each
+// recognized value; changed reports whether any replace call returned true.
+func RedactTextFunc(text string, replace func(kind, value string) (string, bool)) (string, bool) {
 	changed := false
 	for _, rule := range rules {
 		text = rule.rx.ReplaceAllStringFunc(text, func(match string) string {
@@ -679,11 +685,13 @@ func RedactText(text string) (string, bool) {
 				if !ok {
 					return match
 				}
-				changed = true
-				return match[:start] + "[REDACTED_" + rule.name + "]" + match[end:]
+				out, sensitive := replace(rule.name, match[start:end])
+				changed = changed || sensitive
+				return match[:start] + out + match[end:]
 			}
-			changed = true
-			return "[REDACTED_" + rule.name + "]"
+			out, sensitive := replace(rule.name, value)
+			changed = changed || sensitive
+			return out
 		})
 	}
 	return text, changed

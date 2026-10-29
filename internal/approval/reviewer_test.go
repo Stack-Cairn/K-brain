@@ -179,3 +179,29 @@ func TestInFlightReviewerCancellationCannotApprove(t *testing.T) {
 		t.Fatal("late reviewer reply approved a cancelled action")
 	}
 }
+
+func TestUserProvidedIdentifiersKeepStablePlaceholders(t *testing.T) {
+	var evidence string
+	r := &Reviewer{model: "small", complete: func(_ context.Context, req ai.Request) (string, ai.Usage, error) {
+		evidence = req.Messages[1].Content
+		return low, ai.Usage{}, nil
+	}}
+	intent := "ping 2001:db8:4860::1 and mail ops@example.com"
+	report := r.Review(t.Context(), Evidence{Phase: "tool_output", Tool: "Bash", Action: `{"command":"ping 2001:db8:4860::1"}`, UserIntent: intent, Output: "reply from 2001:db8:4860::1 to ops@example.com"})
+	if !report.Safe() || strings.Contains(evidence, "2001:db8") || strings.Contains(evidence, "ops@example.com") {
+		t.Fatalf("report=%+v evidence=%s", report, evidence)
+	}
+	if strings.Count(evidence, "[USER_IPV6_2]") != 3 || strings.Count(evidence, "[USER_EMAIL_1]") != 2 {
+		t.Fatalf("placeholders do not line up: %s", evidence)
+	}
+	for name, e := range map[string]Evidence{
+		"other address":     {Action: "ping 2001:db8:4860::2", UserIntent: intent},
+		"credential":        {Action: "use sk-abcdefghijklmnopqrstuv", UserIntent: "use sk-abcdefghijklmnopqrstuv"},
+		"only in output":    {Output: "ops@example.org", UserIntent: intent},
+		"intent case drift": {Action: "mail OPS@example.com", UserIntent: intent},
+	} {
+		if report := r.Review(t.Context(), e); report.Safe() || report.SensitiveData != "unknown" {
+			t.Fatalf("%s approved: %+v", name, report)
+		}
+	}
+}
