@@ -144,6 +144,9 @@ func (c *Gemini) Complete(ctx context.Context, req Request) (string, Usage, erro
 	if _, err := result.emit(&msg, nil, nil); err != nil {
 		return "", usage, err
 	}
+	if len(result.Candidates) > 0 && result.Candidates[0].FinishReason == "MAX_TOKENS" {
+		return msg.Content, usage, &OutputLimitError{Reason: "MAX_TOKENS"}
+	}
 	return msg.Content, usage, nil
 }
 
