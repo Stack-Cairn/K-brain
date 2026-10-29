@@ -16,7 +16,7 @@ const cargoE0308 = "   Compiling demo v0.1.0 (D:/tmp/demo)\nerror[E0308]: mismat
 
 // thinkingReviewer serves an OpenAI-compatible reviewer whose hidden reasoning counts toward
 // max_tokens, as deepseek-flash does: reasoning past the budget ends with finish_reason=length.
-func thinkingReviewer(t *testing.T, reasoning int, content string, alwaysTruncate bool) (*Reviewer, *atomic.Int32) {
+func thinkingReviewer(t *testing.T, reasoning, modelMaxOut int, content string, alwaysTruncate bool) (*Reviewer, *atomic.Int32) {
 	t.Setenv("K_BRAIN_HOME", t.TempDir())
 	calls := new(atomic.Int32)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -29,6 +29,10 @@ func thinkingReviewer(t *testing.T, reasoning int, content string, alwaysTruncat
 			MaxTokens int `json:"max_tokens"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&req)
+		if modelMaxOut > 0 && req.MaxTokens > modelMaxOut {
+			http.Error(w, `{"error":{"message":"max_tokens exceeds model limit"}}`, http.StatusBadRequest)
+			return
+		}
 		visible := (len(content) + 3) / 4
 		finish, text, used := "stop", content, reasoning+visible
 		if req.MaxTokens <= 0 || used > req.MaxTokens || alwaysTruncate {
@@ -44,7 +48,7 @@ func thinkingReviewer(t *testing.T, reasoning int, content string, alwaysTruncat
 	t.Cleanup(srv.Close)
 	cfg := &config.Config{
 		Providers:  map[string]config.Provider{"reviewer": {API: "openai-completions", BaseURL: srv.URL + "/v1", APIKey: "test-key", ActiveModels: []string{"deepseek-flash"}}},
-		Models:     map[string]config.Model{"deepseek-flash": {Providers: []string{"reviewer"}}},
+		Models:     map[string]config.Model{"deepseek-flash": {Providers: []string{"reviewer"}, MaxOut: modelMaxOut}},
 		AIApproval: config.AIApprovalConfig{Mode: "auto", Provider: "reviewer", Model: "deepseek-flash"},
 	}
 	r := New(t.Context(), cfg)
@@ -56,7 +60,7 @@ func thinkingReviewer(t *testing.T, reasoning int, content string, alwaysTruncat
 
 func TestThinkingReviewerFitsOutputBudget(t *testing.T) {
 	// Observed with deepseek-flash on a cargo E0308 build: up to ~760 completion tokens, mostly reasoning.
-	r, calls := thinkingReviewer(t, 700, low, false)
+	r, calls := thinkingReviewer(t, 700, 0, low, false)
 	run := NewRun("auto", "build my rust crate", r, func(string, string, Report, bool) {})
 	h := run.Hooks(func(tools.GateRequest) (tools.GateDecision, string) { return tools.GateAllowOnce, "" })
 	result := h.After(t.Context(), "Bash", json.RawMessage(`{"command":"cargo build"}`), tools.Result{Text: cargoE0308})
@@ -69,11 +73,20 @@ func TestTruncatedReviewNeverApproves(t *testing.T) {
 	// Even a complete low-risk JSON object must not count when the provider reports truncation.
 	for name, reasoning := range map[string]int{"complete json": 0, "reasoning only": MaxOutputTokens} {
 		t.Run(name, func(t *testing.T) {
-			r, calls := thinkingReviewer(t, reasoning, low, true)
+			r, calls := thinkingReviewer(t, reasoning, 0, low, true)
 			report := r.Review(t.Context(), Evidence{Phase: "tool_output", Tool: "Bash", Action: `{"command":"cargo build"}`, Output: cargoE0308})
 			if calls.Load() != 1 || report.Safe() || report.Reason != "Reviewer failed or timed out; manual approval required" {
 				t.Fatalf("calls=%d report=%+v", calls.Load(), report)
 			}
 		})
+	}
+}
+
+func TestReviewBudgetRespectsModelOutputLimit(t *testing.T) {
+	// A reviewer model whose configured output limit is below the review budget kept working at 512.
+	r, calls := thinkingReviewer(t, 300, 1024, low, false)
+	report := r.Review(t.Context(), Evidence{Phase: "tool_output", Tool: "Bash", Action: `{"command":"cargo build"}`, Output: cargoE0308})
+	if calls.Load() != 1 || !report.Safe() {
+		t.Fatalf("calls=%d report=%+v", calls.Load(), report)
 	}
 }

@@ -87,6 +87,9 @@ func New(_ context.Context, cfg *config.Config) *Reviewer {
 			return "", ai.Usage{}, routeErr
 		}
 		req.Model = route.APIModel
+		if route.MaxOutput > 0 && req.MaxTokens > route.MaxOutput {
+			req.MaxTokens = route.MaxOutput
+		}
 		return route.Client.Complete(ctx, req)
 	}}
 }
