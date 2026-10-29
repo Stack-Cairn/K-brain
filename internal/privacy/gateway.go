@@ -31,6 +31,8 @@ type rule struct {
 	rx         *regexp.Regexp
 	valueGroup int
 	check      func(string) bool
+	// locate returns the sensitive span inside a match; text outside it is kept.
+	locate func(string) (int, int, bool)
 }
 
 var rules = []rule{
@@ -46,7 +48,7 @@ var rules = []rule{
 	{name: "EMAIL", rx: regexp.MustCompile(`(?i)(?:[A-Z0-9._%+\-\x{4e00}-\x{9fff}]+)@(?:[A-Z0-9\-\x{4e00}-\x{9fff}]+\.)+[A-Z\x{4e00}-\x{9fff}]{2,}`)},
 	{name: "PHONE", rx: regexp.MustCompile(`(?:\+?86[\s-]?)?1[3-9][0-9](?:[\s-]?[0-9]{4}){2}`)},
 	{name: "IP", rx: regexp.MustCompile(`\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b`), check: validIPv4},
-	{name: "IPV6", rx: regexp.MustCompile(`(?i)[0-9a-z_]*:[0-9a-z_]*:[0-9a-z_:]*`), check: validIPv6},
+	{name: "IPV6", rx: regexp.MustCompile(`(?i)[0-9a-z_]*:[0-9a-z_]*:[0-9a-z_:]*`), locate: locateIPv6},
 	{name: "IDCARD", rx: regexp.MustCompile(`\b[1-9][0-9]{5}(?:19|20)[0-9]{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12][0-9]|3[01])[0-9]{3}[0-9Xx]\b`), check: validIDCard},
 	{name: "LANDLINE", rx: regexp.MustCompile(`(?:\+?86[\s-]?)?(?:\(0\d{2,3}\)|0\d{2,3})[\s-]?[2-9]\d{6,7}(?:[\s-]?(?:转|分机|ext\.?|x|#)[\s-]?\d{1,5})?`)},
 	{name: "CARD", rx: regexp.MustCompile(`\b[3-6][0-9]{12,18}\b`), check: validCardNumber},
@@ -151,6 +153,13 @@ func MaskText(text string) (string, map[string]string) {
 			}
 			if r.check != nil && !r.check(match) {
 				return match
+			}
+			if r.locate != nil {
+				start, end, ok := r.locate(match)
+				if !ok {
+					return match
+				}
+				return match[:start] + mask(r.name, match[start:end]) + match[end:]
 			}
 			if r.valueGroup > 0 {
 				parts := r.rx.FindStringSubmatchIndex(match)
@@ -318,11 +327,48 @@ func luhn(value string) bool {
 	return sum%10 == 0
 }
 
-// validIPv6 receives the whole identifier-like run around the colons, so code
-// paths such as std::io::Result or crate::fs::read fail to parse instead of
-// leaking a hex fragment ("d::"). Addresses without any decimal digit (a::b,
-// fd::ab, "::") are skipped too: in tool output they are far more often
-// C++/Rust paths than real addresses.
+// locateIPv6 finds an address inside a whole identifier-like run around the
+// colons. An address holds only hex digits and colons, so it starts after the
+// last other letter or underscore: "ip6:2001:db8::" and "[IPv6:2001:db8::25]"
+// are found (a hex tail of the tag, "6:" or "c:" in "src:", is masked along
+// with the address), while std::io::Result and crate::fs::read have nothing left.
+// A cut inside a segment that "::" follows is a code path ("crate::abc1"), not
+// an address. A tag colon in front and a single colon behind
+// ("2001:db8::1: icmp_seq") are not part of the address.
+func locateIPv6(match string) (int, int, bool) {
+	start, end := 0, len(match)
+	for i := len(match) - 1; i >= 0; i-- {
+		if c := match[i] | 0x20; c != ':' && (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			start = i + 1
+			break
+		}
+	}
+	rest := match[start:]
+	if start > 0 {
+		switch {
+		case strings.HasPrefix(rest, ":::"):
+			start++
+		case strings.HasPrefix(rest, "::"):
+			return 0, 0, false
+		case strings.HasPrefix(rest, ":"):
+			start++
+		default:
+			if seg := strings.IndexByte(rest, ':'); seg >= 0 && strings.HasPrefix(rest[seg:], "::") {
+				return 0, 0, false
+			}
+		}
+	}
+	if strings.HasSuffix(match[start:], ":") && !strings.HasSuffix(match[start:], "::") {
+		end--
+	}
+	if start >= end || !validIPv6(match[start:end]) {
+		return 0, 0, false
+	}
+	return start, end, true
+}
+
+// validIPv6 skips addresses without any decimal digit (a::b, fd::ab, "::"):
+// in tool output they are far more often C++/Rust paths than real addresses.
 func validIPv6(value string) bool {
 	if strings.Count(value, ":") < 2 || !strings.ContainsAny(value, "0123456789") {
 		return false
@@ -594,6 +640,14 @@ func RedactText(text string) (string, bool) {
 			}
 			if rule.name != "SECRET" && rule.check != nil && !rule.check(value) {
 				return match
+			}
+			if rule.locate != nil {
+				start, end, ok := rule.locate(match)
+				if !ok {
+					return match
+				}
+				changed = true
+				return match[:start] + "[REDACTED_" + rule.name + "]" + match[end:]
 			}
 			changed = true
 			return "[REDACTED_" + rule.name + "]"

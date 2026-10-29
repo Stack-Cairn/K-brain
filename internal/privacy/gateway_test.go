@@ -98,6 +98,7 @@ func TestIPv6RuleIgnoresCodePaths(t *testing.T) {
 		"call ns::fn(x) then fd::ab and dead::beef",
 		"impl ad::Be for cafe::Dead {}",
 		"crate::fs::read_to_string",
+		"crate::abc1 and Foo::f00d2()",
 		"   Compiling k-brain v0.1.0 (D:\\work)\nerror: could not compile `cc::Build`",
 		"std::vector<int> v; std::cout << v.size();",
 		"Foo :: Bar",
@@ -119,6 +120,13 @@ func TestIPv6RuleStillFindsAddresses(t *testing.T) {
 		{"loopback ::1.", "loopback [REDACTED_IPV6]."},
 		{"full 2001:0DB8:85A3:0000:0000:8A2E:0370:7334,", "full [REDACTED_IPV6],"},
 		{"地址2001:db8::1。", "地址[REDACTED_IPV6]。"},
+		{"ip_2001:db8::1", "ip_[REDACTED_IPV6]"},
+		{"x2001:db8::1", "x[REDACTED_IPV6]"},
+		{"tag:fe80::1c2d:3e4f", "tag:[REDACTED_IPV6]"},
+		{"src:fe80::1c2d:3e4f", "sr[REDACTED_IPV6]"},
+		{"[IPv6:2001:db8::25]", "[IPv[REDACTED_IPV6]]"},
+		{"lo:::1", "lo:[REDACTED_IPV6]"},
+		{"64 bytes from 2001:db8::1: icmp_seq=1", "64 bytes from [REDACTED_IPV6]: icmp_seq=1"},
 	} {
 		if masked, changed := RedactText(tc.input); !changed || masked != tc.want {
 			t.Errorf("RedactText(%q) = %q, %v; want %q", tc.input, masked, changed, tc.want)
