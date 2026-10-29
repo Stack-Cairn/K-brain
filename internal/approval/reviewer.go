@@ -117,10 +117,20 @@ func (r *Reviewer) Review(ctx context.Context, e Evidence) Report {
 				sensitive = true
 			}
 		}
-		value, found := privacy.RedactTextFunc(value, func(kind, match string) (string, bool) {
-			if !userIdentifierKinds[kind] {
-				return "[REDACTED_" + kind + "]", true
+		// Identifiers stay in place for this scan, so one inside a longer value (an ID or card
+		// number, a password) leaves that value to its own rule; such a field gets no exemption.
+		_, other := privacy.RedactTextFunc(value, func(kind, match string) (string, bool) {
+			if userIdentifierKinds[kind] {
+				return match, false
 			}
+			return "[REDACTED_" + kind + "]", true
+		})
+		if other {
+			value, _ = privacy.RedactText(value)
+			sensitive = true
+			return value
+		}
+		value, found := privacy.RedactTextFunc(value, func(kind, match string) (string, bool) {
 			key := kind + "\x00" + match
 			placeholder, ok := userValues[key]
 			if !ok && !record {
