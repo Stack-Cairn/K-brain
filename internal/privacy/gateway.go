@@ -148,7 +148,8 @@ func MaskText(text string) (string, map[string]string) {
 	}
 	for _, r := range rules {
 		text = r.rx.ReplaceAllStringFunc(text, func(match string) string {
-			if strings.Contains(match, "__KBR_") {
+			// A located span is hex and colons only, so it never overlaps a token.
+			if r.locate == nil && strings.Contains(match, "__KBR_") {
 				return match
 			}
 			if r.check != nil && !r.check(match) {
@@ -334,9 +335,11 @@ func luhn(value string) bool {
 // with the address), while std::io::Result and crate::fs::read have nothing left.
 // A cut inside a segment that "::" follows is a code path ("crate::abc1"), not
 // an address. A tag colon in front and a single colon behind
-// ("2001:db8::1: icmp_seq") are not part of the address.
+// ("2001:db8::1: icmp_seq") are not part of the address. When the hex tail
+// of a tag breaks a full address ("src:2001:db8:85a3:0:0:8a2e:370:7334",
+// "added:2001:db8::1"), the part after the tag colon is tried as well.
 func locateIPv6(match string) (int, int, bool) {
-	start, end := 0, len(match)
+	start := 0
 	for i := len(match) - 1; i >= 0; i-- {
 		if c := match[i] | 0x20; c != ':' && (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 			start = i + 1
@@ -344,20 +347,34 @@ func locateIPv6(match string) (int, int, bool) {
 		}
 	}
 	rest := match[start:]
-	if start > 0 {
-		switch {
-		case strings.HasPrefix(rest, ":::"):
-			start++
-		case strings.HasPrefix(rest, "::"):
+	switch {
+	case strings.HasPrefix(rest, ":::"):
+		start++
+	case strings.HasPrefix(rest, "::"):
+		if start > 0 {
 			return 0, 0, false
-		case strings.HasPrefix(rest, ":"):
-			start++
-		default:
-			if seg := strings.IndexByte(rest, ':'); seg >= 0 && strings.HasPrefix(rest[seg:], "::") {
+		}
+	case strings.HasPrefix(rest, ":"):
+		// Tag colon, also after a tag the run does not include ("地址:", "]:").
+		start++
+	default:
+		seg := strings.IndexByte(rest, ':')
+		if seg >= 0 && strings.HasPrefix(rest[seg:], "::") {
+			if start > 0 {
 				return 0, 0, false
 			}
+		} else if seg > 0 {
+			if s, e, ok := ipv6Span(match, start); ok {
+				return s, e, true
+			}
+			start += seg + 1
 		}
 	}
+	return ipv6Span(match, start)
+}
+
+func ipv6Span(match string, start int) (int, int, bool) {
+	end := len(match)
 	if strings.HasSuffix(match[start:], ":") && !strings.HasSuffix(match[start:], "::") {
 		end--
 	}
