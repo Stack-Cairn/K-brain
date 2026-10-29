@@ -20,6 +20,10 @@ import (
 const MaxEvidence = 12000
 const Timeout = 15 * time.Second
 
+// MaxOutputTokens leaves room for hidden reasoning, which thinking models (deepseek, gpt-5) count
+// against max_tokens; truncated replies still fail closed. Timeout bounds the slow path.
+const MaxOutputTokens = 4096
+
 type Evidence struct {
 	Phase      string `json:"phase"`
 	Tool       string `json:"tool"`
@@ -134,7 +138,7 @@ func (r *Reviewer) Review(ctx context.Context, e Evidence) Report {
 			return Unknown("Reviewer busy; manual approval required")
 		}
 	}
-	text, _, err := r.complete(bounded, ai.Request{Model: r.model, MaxTokens: 512, Messages: []ai.Message{{Role: "system", Content: policy}, {Role: "user", Content: masked}}})
+	text, _, err := r.complete(bounded, ai.Request{Model: r.model, MaxTokens: MaxOutputTokens, Messages: []ai.Message{{Role: "system", Content: policy}, {Role: "user", Content: masked}}})
 	if err != nil || bounded.Err() != nil {
 		return Unknown("Reviewer failed or timed out; manual approval required")
 	}

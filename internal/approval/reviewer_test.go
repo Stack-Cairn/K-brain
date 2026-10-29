@@ -33,7 +33,7 @@ func TestIsolatedBudgetedAndRedacted(t *testing.T) {
 		if _, ok := ctx.Deadline(); !ok {
 			t.Fatal("no deadline")
 		}
-		if len(req.Tools) != 0 || len(req.Messages) != 2 || req.Model != "small" || req.MaxTokens != 512 {
+		if len(req.Tools) != 0 || len(req.Messages) != 2 || req.Model != "small" || req.MaxTokens != MaxOutputTokens {
 			t.Fatalf("bad isolated request %+v", req)
 		}
 		text := req.Messages[1].Content
