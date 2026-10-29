@@ -11,6 +11,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode"
 
 	"github.com/Stack-Cairn/K-brain/internal/ai"
 	"github.com/Stack-Cairn/K-brain/internal/config"
@@ -98,7 +99,36 @@ Each risk field must be low, medium, high, or unknown. reason is a concise expla
 Only classify all fields low if the complete operation is demonstrably low risk. Review does not grant sandbox escape or override host policy.`
 
 var userIdentifierKinds = map[string]bool{"EMAIL": true, "PHONE": true, "LANDLINE": true, "IP": true, "IPV6": true, "MAC": true}
-var gluedNumber = regexp.MustCompile(`[0-9A-Za-z_]\[USER_(?:PHONE|LANDLINE)_|\[USER_(?:PHONE|LANDLINE)_[0-9]+\][0-9A-Za-z_]`)
+var joinableValue = regexp.MustCompile(`\[USER_(?:PHONE|LANDLINE|EMAIL)_[0-9]+\]`)
+
+// joinedUserValue reports a phone, landline or email placeholder that is not set off by
+// whitespace or prose punctuation: "user:secret", "13800138000#x" or a longer token may hide
+// a credential that no rule recognizes. Non-ASCII neighbours (CJK text) count as separators.
+func joinedUserValue(text string) bool {
+	const before, after, quotes = "([{<\"'`=:,;/]", ")]}>\"'`,.;!?/\\[", "\"'`"
+	separated := func(i int, allowed string) bool {
+		if i < 0 || i >= len(text) {
+			return true
+		}
+		c := text[i]
+		return c >= 0x80 || unicode.IsSpace(rune(c)) || strings.IndexByte(allowed, c) >= 0
+	}
+	for _, span := range joinableValue.FindAllStringIndex(text, -1) {
+		start, end := span[0], span[1]
+		if !separated(start-1, before) {
+			return true
+		}
+		// A colon ends a clause ("call 138…: done") but also joins user:password.
+		if end < len(text) && text[end] == ':' {
+			if !separated(end+1, quotes) {
+				return true
+			}
+		} else if !separated(end, after) {
+			return true
+		}
+	}
+	return false
+}
 
 func (r *Reviewer) Review(ctx context.Context, e Evidence) Report {
 	if ctx.Err() != nil {
@@ -152,9 +182,7 @@ func (r *Reviewer) Review(ctx context.Context, e Evidence) Report {
 			}
 			return placeholder, false
 		})
-		if gluedNumber.MatchString(out) {
-			// PHONE and LANDLINE have no word boundary: a number glued to other characters
-			// may start a password or sit inside a longer value, so it is not the user's.
+		if joinedUserValue(out) {
 			out, _ = privacy.RedactText(value)
 			sensitive = true
 			return out
