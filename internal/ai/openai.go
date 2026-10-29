@@ -492,7 +492,9 @@ func fullURLModelCatalog(endpoint, version string) string {
 		}
 	}
 	if root == "" {
-		if index := strings.LastIndex(path, "/"); index > 0 {
+		if strings.HasSuffix(lowerPath, "/chat/completions") {
+			root = path[:len(path)-len("/chat/completions")]
+		} else if index := strings.LastIndex(path, "/"); index > 0 {
 			root = path[:index]
 		}
 	}

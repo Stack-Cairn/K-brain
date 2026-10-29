@@ -39,6 +39,8 @@ func TestCompatibleModelCatalogURLs(t *testing.T) {
 			{name: "prefixed relay", base: "/tenant", catalog: "/tenant/v1/models"},
 			{name: "escaped relay", base: "/tenant%2Fname", catalog: "/tenant%2Fname/v1/models"},
 			{name: "full address", base: "/tenant/v1/responses", catalog: "/tenant/v1/models", full: true},
+			{name: "full unversioned completions", base: "/chat/completions", catalog: "/v1/models", full: true},
+			{name: "full prefixed completions", base: "/tenant/chat/completions", catalog: "/tenant/v1/models", full: true},
 			{name: "explicit address", catalog: "/catalog?region=cn", override: true},
 		} {
 			if api == APIMessages && (tc.name == "root models" || tc.name == "responses address") {

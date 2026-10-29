@@ -3,8 +3,10 @@ package backend
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"slices"
@@ -351,7 +353,7 @@ func (s *Server) handleProviderModels(w http.ResponseWriter, r *http.Request) {
 	}
 	models, err := client.Models(ctx)
 	if err != nil {
-		writeJSONError(w, 502, "model discovery failed")
+		writeJSONError(w, 502, modelDiscoveryError(err))
 		return
 	}
 	out := make([]settingsModel, 0, len(models))
@@ -366,4 +368,32 @@ func (s *Server) handleProviderModels(w http.ResponseWriter, r *http.Request) {
 		out = append(out, mv)
 	}
 	writeJSON(w, 200, map[string]any{"version": protocol.Version, "provider": id, "models": out})
+}
+
+func modelDiscoveryError(err error) string {
+	const prefix = "model discovery failed: "
+	// Upstream bodies and network errors may contain credentials or private URLs.
+	var upstream *ai.HTTPError
+	if errors.As(err, &upstream) {
+		switch upstream.StatusCode {
+		case http.StatusUnauthorized:
+			return prefix + "provider rejected the API key (HTTP 401)"
+		case http.StatusForbidden:
+			return prefix + "provider denied access to models (HTTP 403)"
+		case http.StatusNotFound, http.StatusMethodNotAllowed:
+			return prefix + fmt.Sprintf("model endpoint unavailable (HTTP %d); check Base URL and Models URL", upstream.StatusCode)
+		case http.StatusTooManyRequests:
+			return prefix + "provider rate limit reached (HTTP 429); retry later"
+		default:
+			return prefix + fmt.Sprintf("provider returned HTTP %d", upstream.StatusCode)
+		}
+	}
+	var network net.Error
+	if errors.Is(err, context.DeadlineExceeded) || errors.As(err, &network) && network.Timeout() {
+		return prefix + "request timed out; check the connection and proxy settings"
+	}
+	if errors.As(err, &network) {
+		return prefix + "could not connect to provider; check Base URL and proxy settings"
+	}
+	return "model discovery failed"
 }
