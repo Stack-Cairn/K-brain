@@ -90,6 +90,45 @@ func TestMaskTextRejectsMalformedStructuredValues(t *testing.T) {
 	}
 }
 
+func TestIPv6RuleIgnoresCodePaths(t *testing.T) {
+	for _, input := range []string{
+		"error[E0308]: expected `std::io::Result<()>`, found `()`",
+		"use std::io::Result;",
+		"a::b",
+		"call ns::fn(x) then fd::ab and dead::beef",
+		"impl ad::Be for cafe::Dead {}",
+		"crate::fs::read_to_string",
+		"   Compiling k-brain v0.1.0 (D:\\work)\nerror: could not compile `cc::Build`",
+		"std::vector<int> v; std::cout << v.size();",
+		"Foo :: Bar",
+	} {
+		if masked, changed := RedactText(input); changed || masked != input {
+			t.Errorf("RedactText(%q) = %q, %v; want unchanged", input, masked, changed)
+		}
+		if masked, values := MaskText(input); len(values) != 0 || masked != input {
+			t.Errorf("MaskText(%q) = %q, %v; want unchanged", input, masked, values)
+		}
+	}
+}
+
+func TestIPv6RuleStillFindsAddresses(t *testing.T) {
+	for _, tc := range []struct{ input, want string }{
+		{"ip=2001:db8::1", "ip=[REDACTED_IPV6]"},
+		{"[2001:db8::42]:8080", "[[REDACTED_IPV6]]:8080"},
+		{"link fe80::1%eth0 up", "link [REDACTED_IPV6]%eth0 up"},
+		{"loopback ::1.", "loopback [REDACTED_IPV6]."},
+		{"full 2001:0DB8:85A3:0000:0000:8A2E:0370:7334,", "full [REDACTED_IPV6],"},
+		{"地址2001:db8::1。", "地址[REDACTED_IPV6]。"},
+	} {
+		if masked, changed := RedactText(tc.input); !changed || masked != tc.want {
+			t.Errorf("RedactText(%q) = %q, %v; want %q", tc.input, masked, changed, tc.want)
+		}
+		if _, values := MaskText(tc.input); len(values) != 1 {
+			t.Errorf("MaskText(%q) values = %v; want one IPv6", tc.input, values)
+		}
+	}
+}
+
 func TestTransportMasksRequestAndRestoresStreamingResponse(t *testing.T) {
 	SetEnabled(true)
 	defer SetEnabled(false)

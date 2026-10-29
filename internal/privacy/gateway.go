@@ -46,7 +46,7 @@ var rules = []rule{
 	{name: "EMAIL", rx: regexp.MustCompile(`(?i)(?:[A-Z0-9._%+\-\x{4e00}-\x{9fff}]+)@(?:[A-Z0-9\-\x{4e00}-\x{9fff}]+\.)+[A-Z\x{4e00}-\x{9fff}]{2,}`)},
 	{name: "PHONE", rx: regexp.MustCompile(`(?:\+?86[\s-]?)?1[3-9][0-9](?:[\s-]?[0-9]{4}){2}`)},
 	{name: "IP", rx: regexp.MustCompile(`\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b`), check: validIPv4},
-	{name: "IPV6", rx: regexp.MustCompile(`(?i)[0-9a-f:]{2,45}`), check: validIPv6},
+	{name: "IPV6", rx: regexp.MustCompile(`(?i)[0-9a-z_]*:[0-9a-z_]*:[0-9a-z_:]*`), check: validIPv6},
 	{name: "IDCARD", rx: regexp.MustCompile(`\b[1-9][0-9]{5}(?:19|20)[0-9]{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12][0-9]|3[01])[0-9]{3}[0-9Xx]\b`), check: validIDCard},
 	{name: "LANDLINE", rx: regexp.MustCompile(`(?:\+?86[\s-]?)?(?:\(0\d{2,3}\)|0\d{2,3})[\s-]?[2-9]\d{6,7}(?:[\s-]?(?:转|分机|ext\.?|x|#)[\s-]?\d{1,5})?`)},
 	{name: "CARD", rx: regexp.MustCompile(`\b[3-6][0-9]{12,18}\b`), check: validCardNumber},
@@ -318,8 +318,13 @@ func luhn(value string) bool {
 	return sum%10 == 0
 }
 
+// validIPv6 receives the whole identifier-like run around the colons, so code
+// paths such as std::io::Result or crate::fs::read fail to parse instead of
+// leaking a hex fragment ("d::"). Addresses without any decimal digit (a::b,
+// fd::ab, "::") are skipped too: in tool output they are far more often
+// C++/Rust paths than real addresses.
 func validIPv6(value string) bool {
-	if strings.Count(value, ":") < 2 {
+	if strings.Count(value, ":") < 2 || !strings.ContainsAny(value, "0123456789") {
 		return false
 	}
 	return net.ParseIP(value) != nil

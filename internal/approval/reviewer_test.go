@@ -105,6 +105,31 @@ func TestRunReviewModesAndNestedCalls(t *testing.T) {
 		t.Fatal("host denial bypassed")
 	}
 }
+func TestManagedProcessBuildOutputWithRustPathsIsNotSensitive(t *testing.T) {
+	output := strings.Join([]string{
+		"ManagedProcess start",
+		"status=exited",
+		"exit_code=101",
+		`   Compiling demo v0.1.0 (D:\work\demo)`,
+		"error[E0308]: mismatched types",
+		"  --> src/main.rs:4:5",
+		"  |     expected `std::io::Result<()>`, found `()`",
+		"  = note: use std::io::Result; see a::b and fd::ab",
+	}, "\n")
+	report := fake(low).Review(t.Context(), Evidence{Tool: "ManagedProcess", Action: `{"action":"start","command":"cargo build"}`, Output: output})
+	if !report.Safe() || report.SensitiveData != "low" || strings.Contains(report.Reason, "redacted") {
+		t.Fatalf("rust path treated as sensitive: %+v", report)
+	}
+	run := NewRun("auto", "build the crate", fake(low), func(string, string, Report, bool) {})
+	h := run.Hooks(func(tools.GateRequest) (tools.GateDecision, string) { return tools.GateAllowOnce, "" })
+	if result := h.After(t.Context(), "ManagedProcess", nil, tools.Result{Text: output}); result.Text != output {
+		t.Fatalf("build output withheld: %q", result.Text)
+	}
+	report = fake(low).Review(t.Context(), Evidence{Tool: "ManagedProcess", Output: output + "\nlisten 2001:db8::1"})
+	if report.Safe() || report.SensitiveData != "unknown" {
+		t.Fatalf("real IPv6 address no longer forces manual review: %+v", report)
+	}
+}
 func TestRiskyOutputWithheldAndTaintsNextAction(t *testing.T) {
 	high := strings.Replace(low, `"injection":"low"`, `"injection":"high"`, 1)
 	for _, mode := range []string{"risk_only", "auto"} {
