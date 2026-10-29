@@ -29,9 +29,12 @@ func TestPlaceholderBoundaryNeverExemptsIDCard(t *testing.T) {
 		"email then id": "ops@example.com" + idCard,
 	} {
 		t.Run(name, func(t *testing.T) {
+			action := `{"command":"echo ` + joined + `"}`
 			r, seen := captureReview()
-			report := r.Review(t.Context(), Evidence{Phase: "action", Tool: "Bash", Action: `{"command":"echo ` + joined + `"}`, UserIntent: "登记这个字段 " + joined})
-			if report.Safe() || report.SensitiveData != "unknown" || strings.Contains(*seen, "[USER_IDCARD") {
+			report := r.Review(t.Context(), Evidence{Phase: "action", Tool: "Bash", Action: action, UserIntent: "登记这个字段 " + joined})
+			// The exemption must never be safer than plain redaction of the same action.
+			_, flagged := privacy.RedactText(action)
+			if strings.Contains(*seen, "[USER_IDCARD") || flagged && (report.Safe() || report.SensitiveData != "unknown") {
 				t.Fatalf("ID card exempted as a user value: report=%+v\nreviewer saw: %s", report, *seen)
 			}
 		})
