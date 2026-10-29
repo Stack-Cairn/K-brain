@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -97,6 +98,7 @@ Each risk field must be low, medium, high, or unknown. reason is a concise expla
 Only classify all fields low if the complete operation is demonstrably low risk. Review does not grant sandbox escape or override host policy.`
 
 var userIdentifierKinds = map[string]bool{"EMAIL": true, "PHONE": true, "LANDLINE": true, "IP": true, "IPV6": true, "MAC": true}
+var gluedNumber = regexp.MustCompile(`[0-9A-Za-z_]\[USER_(?:PHONE|LANDLINE)_|\[USER_(?:PHONE|LANDLINE)_[0-9]+\][0-9A-Za-z_]`)
 
 func (r *Reviewer) Review(ctx context.Context, e Evidence) Report {
 	if ctx.Err() != nil {
@@ -130,20 +132,38 @@ func (r *Reviewer) Review(ctx context.Context, e Evidence) Report {
 			sensitive = true
 			return value
 		}
-		value, found := privacy.RedactTextFunc(value, func(kind, match string) (string, bool) {
+		added := map[string]string{}
+		out, found := privacy.RedactTextFunc(value, func(kind, match string) (string, bool) {
+			// Placeholders add word boundaries, so later rules can match here what they did not above.
+			if !userIdentifierKinds[kind] {
+				return "[REDACTED_" + kind + "]", true
+			}
 			key := kind + "\x00" + match
 			placeholder, ok := userValues[key]
+			if !ok {
+				placeholder, ok = added[key]
+			}
 			if !ok && !record {
 				return "[REDACTED_" + kind + "]", true
 			}
 			if !ok {
-				placeholder = fmt.Sprintf("[USER_%s_%d]", kind, len(userValues)+1)
-				userValues[key] = placeholder
+				placeholder = fmt.Sprintf("[USER_%s_%d]", kind, len(userValues)+len(added)+1)
+				added[key] = placeholder
 			}
 			return placeholder, false
 		})
+		if gluedNumber.MatchString(out) {
+			// PHONE and LANDLINE have no word boundary: a number glued to other characters
+			// may start a password or sit inside a longer value, so it is not the user's.
+			out, _ = privacy.RedactText(value)
+			sensitive = true
+			return out
+		}
+		for key, placeholder := range added {
+			userValues[key] = placeholder
+		}
 		sensitive = sensitive || found
-		return value
+		return out
 	}
 	redact := func(value string) string { return redactWith(value, false) }
 	e.UserIntent = redactWith(e.UserIntent, true)
