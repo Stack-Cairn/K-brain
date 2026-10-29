@@ -338,7 +338,23 @@ func luhn(value string) bool {
 // ("2001:db8::1: icmp_seq") are not part of the address. When the hex tail
 // of a tag breaks a full address ("src:2001:db8:85a3:0:0:8a2e:370:7334",
 // "added:2001:db8::1"), the part after the tag colon is tried as well.
+// MaskText tokens from earlier rules ("2001:db8:64::__KBR_IP_0001__" for an
+// embedded IPv4) split the run, so each piece between them is tried on its own.
 func locateIPv6(match string) (int, int, bool) {
+	prev := 0
+	for _, token := range maskTokenRx.FindAllStringIndex(match, -1) {
+		if start, end, ok := locateIPv6Run(match[prev:token[0]]); ok {
+			return prev + start, prev + end, true
+		}
+		prev = token[1]
+	}
+	start, end, ok := locateIPv6Run(match[prev:])
+	return prev + start, prev + end, ok
+}
+
+var maskTokenRx = regexp.MustCompile(`__KBR_[A-Z0-9_]+?_[0-9]+__`)
+
+func locateIPv6Run(match string) (int, int, bool) {
 	start := 0
 	for i := len(match) - 1; i >= 0; i-- {
 		if c := match[i] | 0x20; c != ':' && (c < '0' || c > '9') && (c < 'a' || c > 'f') {
