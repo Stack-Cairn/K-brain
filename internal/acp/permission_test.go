@@ -11,11 +11,16 @@ import (
 )
 
 func gatedProbe(ran *bool) tools.Tool {
+	return commandProbe("probe", "make build", ran)
+}
+
+// commandProbe is a tool that asks the gate to run command before doing anything.
+func commandProbe(name, command string, ran *bool) tools.Tool {
 	*ran = false
 	return tools.Tool{
-		Def: llmTool("probe"),
+		Def: llmTool(name),
 		Run: func(ctx context.Context, args json.RawMessage) (string, error) {
-			if err := tools.Authorize(ctx, "bash", "rm -rf x"); err != nil {
+			if err := tools.Authorize(ctx, "bash", command); err != nil {
 				return "", err
 			}
 			*ran = true
@@ -191,5 +196,36 @@ func TestAllowAlwaysCoversRepeatCalls(t *testing.T) {
 	}
 	if len(client.perms) != 1 {
 		t.Errorf("permission requests = %d, want 1 (second call covered by always-rule)", len(client.perms))
+	}
+}
+
+// Regression: allow-always on `make build` must not cover a later compound command
+// whose other segment was never approved.
+func TestAllowAlwaysDoesNotCoverCompoundCommand(t *testing.T) {
+	srv := scriptServer(t, []step{
+		{toolName: "probe", toolArgs: `{}`},
+		{toolName: "chained", toolArgs: `{}`},
+		{text: "done"},
+	})
+	ran, chainedRan := false, false
+	client := &fakeClient{
+		answer: func(acp.RequestPermissionRequest) permAnswer { return permAnswer{optionID: optAllowAlways} },
+	}
+	f := newFixture(t, client, nil, factoryFor(srv, []tools.Tool{gatedProbe(&ran), commandProbe("chained", "make build && rm -rf x", &chainedRan)}))
+	f.initialize(t)
+	id := f.newSession(t, t.TempDir())
+	if _, err := f.conn.SetSessionMode(context.Background(), acp.SetSessionModeRequest{SessionId: id, ModeId: ModeAsk}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.prompt(t, id, "chain"); err != nil {
+		t.Fatal(err)
+	}
+	if len(client.perms) != 2 {
+		t.Fatalf("permission requests = %d, want 2 (the chained rm must prompt)", len(client.perms))
+	}
+	for _, o := range client.perms[1].Options {
+		if o.Kind == acp.PermissionOptionKindAllowAlways {
+			t.Fatalf("a removal must not be offered as always-allow: %+v", client.perms[1].Options)
+		}
 	}
 }

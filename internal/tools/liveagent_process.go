@@ -275,7 +275,14 @@ func (m *liveagentProcessManager) stop(id string) (*liveagentProcess, bool, erro
 	var killErr error
 	p.stopOnce.Do(func() { killErr = process.Kill(p.cmd) })
 	if killErr != nil && !errors.Is(killErr, os.ErrProcessDone) && !errors.Is(killErr, os.ErrPermission) {
-		return p, false, killErr
+		// The process can exit on its own between the status check and Kill; on
+		// Windows Kill then fails with "invalid argument". It is stopped if it is gone.
+		select {
+		case <-p.done:
+			return p, true, nil
+		case <-time.After(liveagentProcessStopWait):
+			return p, false, killErr
+		}
 	}
 	select {
 	case <-p.done:

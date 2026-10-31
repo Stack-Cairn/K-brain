@@ -99,7 +99,9 @@ func (r *RunReviewer) Hooks(gate func(tools.GateRequest) (tools.GateDecision, st
 			return tools.WithProcessStarted(ctx, r.recordOwned), nil
 		}
 		r.publish("action", name, report, false)
-		decision, reason := gate(tools.GateRequest{Context: ctx, Tool: name, Command: string(args), Description: report.Description()})
+		req := tools.GateRequestFor(ctx, name, args)
+		req.Description = report.Description()
+		decision, reason := gate(req)
 		automatic := r.Mode == "auto" && report.Safe() && decision == tools.GateAllowOnce
 		if automatic {
 			r.publish("action", name, report, true)

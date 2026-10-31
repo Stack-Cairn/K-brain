@@ -3,9 +3,11 @@ package acp
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	acp "github.com/coder/acp-go-sdk"
 
+	"github.com/Stack-Cairn/K-brain/internal/permissions"
 	"github.com/Stack-Cairn/K-brain/internal/tools"
 )
 
@@ -45,17 +47,17 @@ func (b *Bridge) requestPermission(ctx context.Context, s *acpSession, req tools
 		return tools.GateAllowOnce, ""
 	}
 
-	rule := req.Rule
-	if req.Tool != "bash" {
-		rule = req.Command
-	}
-	key := req.Tool + ":" + rule
+	// Rules are session-scoped and matched per command segment, so remembering
+	// `make build` does not cover `make build && rm -rf x`.
+	preq := permissions.Request{Tool: req.Tool, Command: req.Command, Shell: req.Shell}
+	opts := permissions.Options{ProjectRoot: s.ag.WorkingDir}
 	s.turnMu.Lock()
-	covered := s.allowed[key]
+	covered := permissions.Evaluate(preq, opts, s.allowed).Effect == permissions.Allow
 	s.turnMu.Unlock()
 	if covered {
 		return tools.GateAllowOnce, ""
 	}
+	suggested := permissions.Suggest(preq, opts)
 
 	name := req.Tool
 	if req.Command != "" {
@@ -65,10 +67,10 @@ func (b *Bridge) requestPermission(ctx context.Context, s *acpSession, req tools
 		{OptionId: optAllowOnce, Name: "Allow once", Kind: acp.PermissionOptionKindAllowOnce},
 		{OptionId: optReject, Name: "Reject", Kind: acp.PermissionOptionKindRejectOnce},
 	}
-	if req.Rule != "" {
+	if len(suggested) > 0 {
 		options = append(options, acp.PermissionOption{
 			OptionId: optAllowAlways,
-			Name:     fmt.Sprintf("Always allow %q", req.Rule),
+			Name:     "Always allow " + strings.Join(suggested, ", "),
 			Kind:     acp.PermissionOptionKindAllowAlways,
 		})
 	}
@@ -94,8 +96,13 @@ func (b *Bridge) requestPermission(ctx context.Context, s *acpSession, req tools
 		case optAllowOnce:
 			return tools.GateAllowOnce, ""
 		case optAllowAlways:
+			if len(suggested) == 0 {
+				return tools.GateAllowOnce, ""
+			}
 			s.turnMu.Lock()
-			s.allowed[key] = true
+			for _, rule := range suggested {
+				s.allowed.Rules = append(s.allowed.Rules, permissions.StoredRule{Rule: rule, Effect: permissions.Allow})
+			}
 			s.turnMu.Unlock()
 			return tools.GateAllowAlways, ""
 		default:

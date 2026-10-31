@@ -172,6 +172,14 @@ func TestE2EDedicated(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open dedicated: %v", err)
 	}
+	// Close only detaches from a dedicated browser, which keeps running for later
+	// sessions; stop it before TempDir removes the profile it is still writing.
+	prof := dedicatedProfileDir(home, "default")
+	t.Cleanup(func() {
+		cctx, ccancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer ccancel()
+		killProfileChrome(cctx, t, prof)
+	})
 	defer b.Close()
 	if err := b.Navigate(ctx, url); err != nil {
 		t.Fatal(err)

@@ -73,11 +73,13 @@ func TestMemoryOrganizerProductionSchedulerStartupAndShutdown(t *testing.T) {
 		}
 		time.Sleep(time.Millisecond)
 	}
-	beforeClose, err := memoryStore.ListOrganizeRuns()
-	if err != nil {
+	// Close waits for the scheduler goroutine, so a run that ticked before Close
+	// returned is legitimate; only runs recorded after it are not.
+	if err := server.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err := server.Close(); err != nil {
+	atClose, err := memoryStore.ListOrganizeRuns()
+	if err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(10 * time.Millisecond)
@@ -85,7 +87,7 @@ func TestMemoryOrganizerProductionSchedulerStartupAndShutdown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(afterClose["runs"].([]memory.OrganizeRun)) != len(beforeClose["runs"].([]memory.OrganizeRun)) {
+	if len(afterClose["runs"].([]memory.OrganizeRun)) != len(atClose["runs"].([]memory.OrganizeRun)) {
 		t.Fatal("memory organizer scheduler continued after backend close")
 	}
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/Stack-Cairn/K-brain/internal/agent"
 	"github.com/Stack-Cairn/K-brain/internal/ai"
 	"github.com/Stack-Cairn/K-brain/internal/mcp"
+	"github.com/Stack-Cairn/K-brain/internal/permissions"
 	"github.com/Stack-Cairn/K-brain/internal/session"
 	"github.com/Stack-Cairn/K-brain/internal/session/recording"
 )
@@ -80,7 +81,7 @@ type acpSession struct {
 	cancel    context.CancelFunc
 	mode      string
 	titleSent bool
-	allowed   map[string]bool
+	allowed   permissions.RuleSet
 	closed    bool
 	closeOnce sync.Once
 }
@@ -88,7 +89,7 @@ type acpSession struct {
 func newACPSession(id acp.SessionId, ag *agent.Agent, m *mcp.Manager) *acpSession {
 	ag.SetSessionID(string(id))
 	ag.Tasks().SetSessionID(string(id))
-	s := &acpSession{id: id, ag: ag, mcp: m, mode: ModeAuto, allowed: map[string]bool{}}
+	s := &acpSession{id: id, ag: ag, mcp: m, mode: ModeAuto, allowed: permissions.RuleSet{Scope: permissions.ScopeSession}}
 	s.turnCh = make(chan struct{}, 1)
 	return s
 }
