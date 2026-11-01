@@ -28,6 +28,9 @@ var interpreters = map[string]bool{
 // simple command (read-only ones are skipped when opts lets them through anyway);
 // edits get their directory.
 func Suggest(req Request, opts Options) []string {
+	if req.Poll {
+		return nil // a poll is read-only; there is nothing to remember
+	}
 	switch kindOfTool(req.Tool) {
 	case kindShell:
 		// ManagedProcess and TerminalSession also gate actions such as status, stop
@@ -39,10 +42,16 @@ func Suggest(req Request, opts Options) []string {
 		if !ok {
 			return nil
 		}
+		// A rule matches a command, not the directory a cd put it in: remembering the
+		// git status after a cd would allow git status after any cd, in every project.
+		if movedReadOnly(segments, req.OtherDir) {
+			return nil
+		}
 		readOnly := opts.AllowReadOnly && readOnlyShell(req.Shell)
+		readOnlyAt := readOnlySegments(segments, req.OtherDir)
 		var out []string
-		for _, seg := range segments {
-			if readOnly && readOnlySegment(seg) {
+		for i, seg := range segments {
+			if readOnly && readOnlyAt[i] {
 				continue
 			}
 			prefix := CommandPrefix(seg)

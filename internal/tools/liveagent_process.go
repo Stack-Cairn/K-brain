@@ -438,7 +438,8 @@ func liveagentProcessStart(ctx context.Context, manager *liveagentProcessManager
 	if err != nil || !info.IsDir() {
 		return "", errors.New("ManagedProcess.cwd must be a directory")
 	}
-	if deny := checkGate(ctx, "ManagedProcess", command); deny != "" {
+	other := laString(a, "cwd") != "" && !sameDirectory(cwd, WorkingDir(ctx))
+	if deny := checkGateRequest(ctx, GateRequest{Context: ctx, Tool: "ManagedProcess", Command: command, Rule: CommandRule(command), OtherDir: other}); deny != "" {
 		return "", errors.New(deny)
 	}
 	var timeout time.Duration

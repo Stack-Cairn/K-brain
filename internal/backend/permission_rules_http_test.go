@@ -205,7 +205,7 @@ func TestPermissionRulesHTTPReadOnlyCommandRunsWithoutPrompt(t *testing.T) {
 }
 
 func TestPermissionRulesHTTPRememberForProjectCoversNextRun(t *testing.T) {
-	base, _ := newRulesServer(t, &rulesClient{batches: [][]string{{"hostname"}, {"hostname"}}})
+	base, _ := newRulesServer(t, &rulesClient{batches: [][]string{{"git --help"}, {"git --help"}}})
 	sess := createTestSession(t, base)
 	_, prompts := runRules(t, base, sess.ID, "normal", func(p protocol.PermissionRequest) protocol.PermissionDecision {
 		return protocol.PermissionDecision{Decision: "allow_always", Scope: "project"}
@@ -214,7 +214,7 @@ func TestPermissionRulesHTTPRememberForProjectCoversNextRun(t *testing.T) {
 		t.Fatalf("prompts=%+v", prompts)
 	}
 	p := prompts[0]
-	if p.Suggestion == nil || len(p.Suggestion.Rules) != 1 || p.Suggestion.Rules[0] != "Bash(hostname:*)" || p.Suggestion.DefaultScope != "project" {
+	if p.Suggestion == nil || len(p.Suggestion.Rules) != 1 || p.Suggestion.Rules[0] != "Bash(git --help:*)" || p.Suggestion.DefaultScope != "project" {
 		t.Fatalf("suggestion=%+v", p.Suggestion)
 	}
 	if p.Shell == "" {
@@ -231,11 +231,11 @@ func TestPermissionRulesHTTPRememberForProjectCoversNextRun(t *testing.T) {
 	if len(prompts) != 0 {
 		t.Fatalf("the remembered rule covers the second run: %+v", prompts)
 	}
-	if auto := autoResolved(events); len(auto) != 1 || auto[0].Source != "rule" || auto[0].Rule != "Bash(hostname:*)" || auto[0].Scope != "project" {
+	if auto := autoResolved(events); len(auto) != 1 || auto[0].Source != "rule" || auto[0].Rule != "Bash(git --help:*)" || auto[0].Scope != "project" {
 		t.Fatalf("auto_resolved=%+v", auto)
 	}
 	listed := listRules(t, base, "workspace="+sess.CWD)
-	if len(listed.Rules) != 1 || listed.Rules[0].Scope != "project" || listed.Rules[0].Rule != "Bash(hostname:*)" || listed.Rules[0].SourceSession != sess.ID {
+	if len(listed.Rules) != 1 || listed.Rules[0].Scope != "project" || listed.Rules[0].Rule != "Bash(git --help:*)" || listed.Rules[0].SourceSession != sess.ID {
 		t.Fatalf("listed=%+v", listed)
 	}
 	// Another project does not see it.
@@ -248,7 +248,7 @@ func TestPermissionRulesHTTPRememberForProjectCoversNextRun(t *testing.T) {
 // Clients from before rules send allow_always without a scope and tell the user it
 // lasts for the session; it must not be stored any wider.
 func TestPermissionRulesHTTPAllowAlwaysWithoutScopeIsSessionOnly(t *testing.T) {
-	client := &rulesClient{batches: [][]string{{"hostname"}, {"hostname"}, {"hostname"}}}
+	client := &rulesClient{batches: [][]string{{"git --help"}, {"git --help"}, {"git --help"}}}
 	base, _ := newRulesServer(t, client)
 	sess := createTestSession(t, base)
 	runRules(t, base, sess.ID, "normal", func(protocol.PermissionRequest) protocol.PermissionDecision {
@@ -270,10 +270,10 @@ func TestPermissionRulesHTTPAllowAlwaysWithoutScopeIsSessionOnly(t *testing.T) {
 }
 
 func TestPermissionRulesHTTPDenyRuleRefusesInAlwaysMode(t *testing.T) {
-	base, _ := newRulesServer(t, &rulesClient{batches: [][]string{{"hostname"}}})
+	base, _ := newRulesServer(t, &rulesClient{batches: [][]string{{"git --help"}}})
 	sess := createTestSession(t, base)
 	var created protocol.PermissionRule
-	resp := postJSON(t, http.DefaultClient, base+"/v1/permissions/rules", protocol.PermissionRuleCreate{Rule: "Bash(hostname:*)", Effect: "deny", Scope: "user"}, &created)
+	resp := postJSON(t, http.DefaultClient, base+"/v1/permissions/rules", protocol.PermissionRuleCreate{Rule: "Bash(git --help:*)", Effect: "deny", Scope: "user"}, &created)
 	if resp.StatusCode != http.StatusCreated || created.ID == "" || created.Scope != "user" {
 		t.Fatalf("create status=%d rule=%+v", resp.StatusCode, created)
 	}
@@ -282,7 +282,7 @@ func TestPermissionRulesHTTPDenyRuleRefusesInAlwaysMode(t *testing.T) {
 		t.Fatalf("a deny rule refuses without asking: %+v", prompts)
 	}
 	results := toolResults(t, events)
-	if len(results) != 1 || !results[0].Failed || !strings.Contains(results[0].Output, "Bash(hostname:*)") {
+	if len(results) != 1 || !results[0].Failed || !strings.Contains(results[0].Output, "Bash(git --help:*)") {
 		t.Fatalf("results=%+v", results)
 	}
 	// Deleting the rule through the API lets the next run ask normally.
@@ -307,7 +307,7 @@ func TestPermissionRulesHTTPDenyRuleRefusesInAlwaysMode(t *testing.T) {
 }
 
 func TestPermissionRulesHTTPRememberCoversLaterCallInSameRun(t *testing.T) {
-	base, _ := newRulesServer(t, &rulesClient{batches: [][]string{{"hostname", "hostname"}}})
+	base, _ := newRulesServer(t, &rulesClient{batches: [][]string{{"git --help", "git --help"}}})
 	sess := createTestSession(t, base)
 	answers := 0
 	events, prompts := runRules(t, base, sess.ID, "normal", func(protocol.PermissionRequest) protocol.PermissionDecision {
@@ -331,9 +331,9 @@ func TestSettleCoveredPermissionsReleasesOnlyCoveredWaiters(t *testing.T) {
 	waiter := func(command string, settleable bool) *permissionWaiter {
 		return &permissionWaiter{gate: tools.GateRequest{Tool: "Bash", Command: command, Shell: "bash"}, ruleSettleable: settleable, result: make(chan tools.GateDecision, 1), reason: make(chan string, 1)}
 	}
-	covered, held, other := waiter("hostname", true), waiter("hostname -s", false), waiter("whoami", true)
+	covered, held, other := waiter("git --help", true), waiter("git --help -a", false), waiter("git help -a", true)
 	rt.permissions["covered"], rt.permissions["held"], rt.permissions["other"] = covered, held, other
-	if _, err := permissions.AddRule(s.sessionRulesPath(rt.id), "", permissions.StoredRule{Rule: "Bash(hostname:*)", Effect: permissions.Allow}); err != nil {
+	if _, err := permissions.AddRule(s.sessionRulesPath(rt.id), "", permissions.StoredRule{Rule: "Bash(git --help:*)", Effect: permissions.Allow}); err != nil {
 		t.Fatal(err)
 	}
 	s.settleCoveredPermissions(rt)
@@ -361,7 +361,7 @@ func TestSettleCoveredPermissionsReleasesOnlyCoveredWaiters(t *testing.T) {
 }
 
 func TestPermissionRulesHTTPRejectsUnknownScopeAndKeepsPrompt(t *testing.T) {
-	base, _ := newRulesServer(t, &rulesClient{batches: [][]string{{"hostname"}}})
+	base, _ := newRulesServer(t, &rulesClient{batches: [][]string{{"git --help"}}})
 	sess := createTestSession(t, base)
 	tries := 0
 	runRules(t, base, sess.ID, "normal", func(p protocol.PermissionRequest) protocol.PermissionDecision {
@@ -382,7 +382,7 @@ func TestPermissionRulesHTTPRejectsUnknownScopeAndKeepsPrompt(t *testing.T) {
 }
 
 func TestPermissionRulesHTTPDeleteSessionRemovesItsRules(t *testing.T) {
-	base, eventDir := newRulesServer(t, &rulesClient{batches: [][]string{{"hostname"}}})
+	base, eventDir := newRulesServer(t, &rulesClient{batches: [][]string{{"git --help"}}})
 	sess := createTestSession(t, base)
 	runRules(t, base, sess.ID, "normal", func(protocol.PermissionRequest) protocol.PermissionDecision {
 		return protocol.PermissionDecision{Decision: "allow_always", Scope: "session"}

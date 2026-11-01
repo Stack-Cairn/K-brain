@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/Stack-Cairn/K-brain/internal/permissions"
@@ -12,6 +14,15 @@ import (
 
 func Authorize(ctx context.Context, tool, command string) error {
 	if deny := checkGate(ctx, tool, command); deny != "" {
+		return errors.New(deny)
+	}
+	return nil
+}
+
+// AuthorizePoll gates a call that only reads the output of a process or terminal this
+// session started; id names it. The caller still checks that the session owns it.
+func AuthorizePoll(ctx context.Context, tool, id string) error {
+	if deny := checkGateRequest(ctx, GateRequest{Context: ctx, Tool: tool, Command: id, Rule: CommandRule(id), Poll: true}); deny != "" {
 		return errors.New(deny)
 	}
 	return nil
@@ -34,6 +45,12 @@ type GateRequest struct {
 	Shell       string
 	Rule        string
 	Description string
+	// Poll marks a call that only reads the output of a process or terminal this
+	// session started; the tool checks ownership after the gate.
+	Poll bool
+	// OtherDir marks a command that runs outside the session's working directory
+	// because of a cwd argument.
+	OtherDir bool
 }
 
 var Gate func(GateRequest) (GateDecision, string)
@@ -90,6 +107,7 @@ func GateRequestFor(ctx context.Context, tool string, args json.RawMessage) Gate
 		Command string `json:"command"`
 		Shell   string `json:"shell"`
 		Path    string `json:"path"`
+		Cwd     string `json:"cwd"`
 	}
 	if json.Unmarshal(args, &a) == nil {
 		switch tool {
@@ -101,9 +119,15 @@ func GateRequestFor(ctx context.Context, tool string, args json.RawMessage) Gate
 			if a.Command != "" {
 				req.Command, req.Shell = a.Command, liveagentShell(ctx, a.Shell)
 			}
+			req.OtherDir = cwdOutsideWorkingDir(ctx, a.Cwd, "Bash")
 		case "write", "edit":
 			if a.Path != "" {
 				req.Command = ResolvePath(ctx, a.Path)
+			}
+		case "ProcessWait", "ReadTerminal", "ManagedProcess", "ProcessStop":
+			pollRequest(&req, args)
+			if tool == "ManagedProcess" && !req.Poll {
+				req.OtherDir = cwdOutsideWorkingDir(ctx, a.Cwd, "ManagedProcess")
 			}
 		case "Write", "Edit", "Delete", "Read":
 			if a.Path != "" {
@@ -126,8 +150,72 @@ func checkGate(ctx context.Context, tool, command string) string {
 	return checkShellGate(ctx, tool, command, "")
 }
 
+// pollRequest fills the request the process and terminal tools gate with: the id for
+// a poll (wait, status, read_log, ReadTerminal) or a stop, the command line for a start.
+func pollRequest(req *GateRequest, args json.RawMessage) {
+	var a struct {
+		Action    string `json:"action"`
+		Command   string `json:"command"`
+		ProcessID string `json:"process_id"`
+		SessionID string `json:"session_id"`
+	}
+	if json.Unmarshal(args, &a) != nil {
+		return
+	}
+	id := strings.TrimSpace(a.ProcessID)
+	if id == "" {
+		id = strings.TrimSpace(a.SessionID)
+	}
+	switch req.Tool {
+	case "ProcessWait", "ReadTerminal":
+		req.Command, req.Poll = id, true
+	case "ProcessStop":
+		req.Command = id
+	case "ManagedProcess":
+		switch strings.ToLower(strings.TrimSpace(a.Action)) {
+		case "status":
+			req.Command, req.Poll = id, true
+			if id == "" {
+				req.Command = "status"
+			}
+		case "read_log", "wait":
+			req.Command, req.Poll = id, true
+		case "start":
+			req.Command = a.Command
+		case "stop":
+			req.Command = id
+		}
+	}
+}
+
+// cwdOutsideWorkingDir reports a cwd argument naming a directory other than the
+// session's working directory. An empty or unresolvable cwd is not one: the tool
+// refuses a cwd it cannot resolve.
+func cwdOutsideWorkingDir(ctx context.Context, cwd, tool string) bool {
+	if strings.TrimSpace(cwd) == "" {
+		return false
+	}
+	dir, err := liveagentPath(ctx, cwd, "write", tool, true)
+	if err != nil {
+		return false
+	}
+	return !sameDirectory(dir, WorkingDir(ctx))
+}
+
+func sameDirectory(a, b string) bool {
+	a, b = filepath.Clean(a), filepath.Clean(b)
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(a, b)
+	}
+	return a == b
+}
+
 // checkShellGate is checkGate for a command that shell will run.
 func checkShellGate(ctx context.Context, tool, command, shell string) string {
+	return checkGateRequest(ctx, GateRequest{Context: ctx, Tool: tool, Command: command, Shell: shell, Rule: CommandRule(command)})
+}
+
+func checkGateRequest(ctx context.Context, req GateRequest) string {
 	var gate func(GateRequest) (GateDecision, string)
 	if scoped, ok := ctx.Value(gateContextKey{}).(contextGate); ok {
 		gate = scoped.check
@@ -137,7 +225,7 @@ func checkShellGate(ctx context.Context, tool, command, shell string) string {
 	if gate == nil {
 		return ""
 	}
-	decision, redirect := gate(GateRequest{Context: ctx, Tool: tool, Command: command, Shell: shell, Rule: CommandRule(command)})
+	decision, redirect := gate(req)
 	if decision == GateReject {
 		if redirect == "" {
 			redirect = "the user rejected this action"

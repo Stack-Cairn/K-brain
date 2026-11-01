@@ -49,7 +49,7 @@ func (b *Bridge) requestPermission(ctx context.Context, s *acpSession, req tools
 
 	// Rules are session-scoped and matched per command segment, so remembering
 	// `make build` does not cover `make build && rm -rf x`.
-	preq := permissions.Request{Tool: req.Tool, Command: req.Command, Shell: req.Shell}
+	preq := permissions.Request{Tool: req.Tool, Command: req.Command, Shell: req.Shell, Poll: req.Poll, OtherDir: req.OtherDir}
 	opts := permissions.Options{ProjectRoot: s.ag.WorkingDir}
 	s.turnMu.Lock()
 	covered := permissions.Evaluate(preq, opts, s.allowed).Effect == permissions.Allow

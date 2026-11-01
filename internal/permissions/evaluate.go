@@ -15,6 +15,12 @@ type Request struct {
 	Tool    string
 	Command string
 	Shell   string
+	// Poll marks a call that only reads the output of a process or terminal the
+	// session started (wait, status, read_log, ReadTerminal); Command is its id.
+	Poll bool
+	// OtherDir marks a command that runs outside the session's working directory (a
+	// cwd argument): judged as if a cd came first.
+	OtherDir bool
 }
 
 type Options struct {
@@ -65,6 +71,21 @@ func compile(sets []RuleSet, tool string) []compiled {
 // read-only; a command that cannot be split safely is never decided by a rule.
 func Evaluate(req Request, opts Options, sets ...RuleSet) Decision {
 	rules := compile(sets, req.Tool)
+	if req.Poll {
+		// Command is a process or terminal id, not a command line: rules match it as
+		// text, and a poll is read-only.
+		match := func(r Rule) bool { return r.matchesOther(req.Command) }
+		if d, ok := first(rules, Deny, match); ok {
+			return d
+		}
+		if d, ok := first(rules, Allow, match); ok {
+			return d
+		}
+		if opts.AllowReadOnly {
+			return Decision{Effect: Allow, Source: SourceReadOnly}
+		}
+		return Decision{}
+	}
 	switch kindOfTool(req.Tool) {
 	case kindShell:
 		return evaluateShell(req, opts, rules)
@@ -125,9 +146,10 @@ func evaluateShell(req Request, opts Options, rules []compiled) Decision {
 		}
 	}
 	readOnly := opts.AllowReadOnly && readOnlyShell(req.Shell)
+	readOnlyAt := readOnlySegments(segments, req.OtherDir)
 	var matched []string
 	var scope Scope
-	for _, seg := range segments {
+	for i, seg := range segments {
 		d, ok := first(rules, Allow, func(r Rule) bool { return r.matchesSegment(seg) })
 		switch {
 		case ok:
@@ -137,7 +159,7 @@ func evaluateShell(req Request, opts Options, rules []compiled) Decision {
 			if !contains(matched, d.Rule) {
 				matched = append(matched, d.Rule)
 			}
-		case readOnly && readOnlySegment(seg):
+		case readOnly && readOnlyAt[i]:
 		default:
 			return Decision{}
 		}
