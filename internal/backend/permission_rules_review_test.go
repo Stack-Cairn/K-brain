@@ -85,7 +85,7 @@ func TestReviewConcurrentRejectLeavesNoRememberedRule(t *testing.T) {
 	const tries = 20
 	leaked := 0
 	for i := 0; i < tries; i++ {
-		client := &rulesClient{batches: [][]string{{"hostname"}}}
+		client := &rulesClient{batches: [][]string{{"git --help"}}}
 		base, _ := newRulesServer(t, client)
 		sess := createTestSession(t, base)
 		var mu sync.Mutex
@@ -164,13 +164,13 @@ func TestReviewRiskOnlyHighRiskReadStillAsks(t *testing.T) {
 
 // P2 compatibility: LiveAgent before rules shows `rule` as the scope of
 // allow_always ("本会话始终允许 {rule}") and sends it without a scope. For
-// `hostname; whoami` the prompt says rule=hostname, but every suggested rule,
-// Bash(whoami:*) too, is stored, so a later bare `whoami` runs without asking.
+// `git --help; git help -a` the prompt says rule=git --help, but every suggested rule,
+// Bash(git help:*) too, is stored, so a later bare `git help -a` runs without asking.
 func TestReviewLegacyAllowAlwaysStoresOnlyWhatRuleShows(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Setenv("K_BRAIN_SHELL", "powershell.exe")
 	}
-	base, _ := newRulesServer(t, &rulesClient{batches: [][]string{{"hostname; whoami"}, {"whoami"}}})
+	base, _ := newRulesServer(t, &rulesClient{batches: [][]string{{"git --help; git help -a"}, {"git help -a"}}})
 	sess := createTestSession(t, base)
 	_, prompts := reviewRunRules(t, base, sess.ID, protocol.RunOptions{Mode: "agent", PermissionMode: "normal"}, func(protocol.PermissionRequest) protocol.PermissionDecision {
 		return protocol.PermissionDecision{Decision: "allow_always"}
@@ -181,7 +181,7 @@ func TestReviewLegacyAllowAlwaysStoresOnlyWhatRuleShows(t *testing.T) {
 	shown := prompts[0].Rule
 	_, second := reviewRunRules(t, base, sess.ID, protocol.RunOptions{Mode: "agent", PermissionMode: "normal"}, nil)
 	if len(second) != 1 {
-		t.Fatalf("legacy client showed allow_always scope %q, backend stored %v; bare whoami then ran without a prompt", shown, prompts[0].Suggestion.Rules)
+		t.Fatalf("legacy client showed allow_always scope %q, backend stored %v; bare git help -a then ran without a prompt", shown, prompts[0].Suggestion.Rules)
 	}
 }
 
@@ -431,7 +431,7 @@ func TestReviewDefaultScopeIsStorableWithoutRulesDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	client := &rulesClient{batches: [][]string{{"hostname"}}}
+	client := &rulesClient{batches: [][]string{{"git --help"}}}
 	backendServer, err := New(Options{Store: store, EventDir: t.TempDir(), DefaultCWD: t.TempDir(), Models: []protocol.ModelRef{{Provider: "fixture", Model: "fixture-model"}}, Factory: func(_ context.Context, _ string, selected protocol.ModelRef) (*agent.Agent, error) {
 		ag := agent.New(client, selected.Model, 1024, "system")
 		ag.ModelName, ag.Provider = selected.Model, selected.Provider

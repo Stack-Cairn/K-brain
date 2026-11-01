@@ -22,7 +22,7 @@ func liveagentTerminalSession(ctx context.Context, manager *TerminalManager, arg
 
 func liveagentReadTerminal(ctx context.Context, manager *TerminalManager, args map[string]any) (string, error) {
 	id := strings.TrimSpace(laString(args, "session_id"))
-	if err := Authorize(ctx, "ReadTerminal", id); err != nil {
+	if err := AuthorizePoll(ctx, "ReadTerminal", id); err != nil {
 		return "", err
 	}
 	if id == "" {

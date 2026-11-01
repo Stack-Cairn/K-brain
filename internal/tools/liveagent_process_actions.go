@@ -13,10 +13,14 @@ func liveagentManagedProcess(ctx context.Context, manager *liveagentProcessManag
 	case "start":
 		return liveagentProcessStart(ctx, manager, a)
 	case "status":
-		if err := Authorize(ctx, "ManagedProcess", "status"); err != nil {
+		id := strings.TrimSpace(laString(a, "process_id"))
+		pollID := id
+		if pollID == "" {
+			pollID = "status"
+		}
+		if err := AuthorizePoll(ctx, "ManagedProcess", pollID); err != nil {
 			return "", err
 		}
-		id := strings.TrimSpace(laString(a, "process_id"))
 		if id == "" {
 			manager.mu.Lock()
 			processes := make([]*liveagentProcess, 0, len(manager.processes))
@@ -42,7 +46,7 @@ func liveagentManagedProcess(ctx context.Context, manager *liveagentProcessManag
 		}
 		return liveagentProcessText("status", p.snapshot(), "", 0, 0, false, false), nil
 	case "read_log":
-		if err := Authorize(ctx, "ManagedProcess", laString(a, "process_id")); err != nil {
+		if err := AuthorizePoll(ctx, "ManagedProcess", strings.TrimSpace(laString(a, "process_id"))); err != nil {
 			return "", err
 		}
 		p, err := manager.getOwned(ctx, laString(a, "process_id"))
@@ -75,8 +79,8 @@ func liveagentProcessWaitWithTool(ctx context.Context, manager *liveagentProcess
 	if id == "" {
 		id = strings.TrimSpace(laString(a, "session_id"))
 	}
-	if deny := checkGate(ctx, tool, id); deny != "" {
-		return "", errors.New(deny)
+	if err := AuthorizePoll(ctx, tool, id); err != nil {
+		return "", err
 	}
 	return liveagentProcessWait(ctx, manager, a)
 }

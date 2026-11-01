@@ -54,7 +54,7 @@ func permOptions(readOnly bool) permissions.Options {
 }
 
 func permRequestOf(req tools.GateRequest) permissions.Request {
-	return permissions.Request{Tool: req.Tool, Command: req.Command, Shell: req.Shell}
+	return permissions.Request{Tool: req.Tool, Command: req.Command, Shell: req.Shell, Poll: req.Poll, OtherDir: req.OtherDir}
 }
 
 // project returns the project-scope rules for root, reading them on first use.

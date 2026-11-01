@@ -71,7 +71,7 @@ func (s *Server) ruleSets(sessionID, root string) ([]permissions.RuleSet, error)
 // aside (a merely cautious review lets them stand). Deny rules always count.
 func (s *Server) evaluateRules(sessionID, root string, req tools.GateRequest) permissions.Decision {
 	sets, err := s.ruleSets(sessionID, root)
-	decision := permissions.Evaluate(permissions.Request{Tool: req.Tool, Command: req.Command, Shell: req.Shell}, permissions.Options{ProjectRoot: root, AllowReadOnly: approval.ReadOnlyUsable(req.Context)}, sets...)
+	decision := permissions.Evaluate(permissions.Request{Tool: req.Tool, Command: req.Command, Shell: req.Shell, Poll: req.Poll, OtherDir: req.OtherDir}, permissions.Options{ProjectRoot: root, AllowReadOnly: approval.ReadOnlyUsable(req.Context)}, sets...)
 	if err != nil && decision.Effect != permissions.Deny {
 		return permissions.Decision{Effect: permissions.Ask}
 	}
@@ -84,7 +84,7 @@ func (s *Server) evaluateRules(sessionID, root string, req tools.GateRequest) pe
 // suggestionFor is what allow_always would remember for req, or nil. The default
 // scope is one this backend can store.
 func (s *Server) suggestionFor(req tools.GateRequest, root string) *protocol.PermissionSuggestion {
-	rules := permissions.Suggest(permissions.Request{Tool: req.Tool, Command: req.Command, Shell: req.Shell}, permissions.Options{ProjectRoot: root, AllowReadOnly: true})
+	rules := permissions.Suggest(permissions.Request{Tool: req.Tool, Command: req.Command, Shell: req.Shell, Poll: req.Poll, OtherDir: req.OtherDir}, permissions.Options{ProjectRoot: root, AllowReadOnly: true})
 	if len(rules) == 0 {
 		return nil
 	}

@@ -395,7 +395,8 @@ func liveagentBash(ctx context.Context, manager *liveagentProcessManager, a map[
 	if !info.IsDir() {
 		return "", errors.New("Bash.cwd must be a directory")
 	}
-	if deny := checkShellGate(ctx, "Bash", command, liveagentShell(ctx, "")); deny != "" {
+	other := laString(a, "cwd") != "" && !sameDirectory(dir, WorkingDir(ctx))
+	if deny := checkGateRequest(ctx, GateRequest{Context: ctx, Tool: "Bash", Command: command, Shell: liveagentShell(ctx, ""), Rule: CommandRule(command), OtherDir: other}); deny != "" {
 		return "", errors.New(deny)
 	}
 	if err := ctx.Err(); err != nil {
