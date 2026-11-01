@@ -74,7 +74,7 @@
       "compare": "eq",
       "value": 1,
       "firstRelease": "v0.107.6-beta.27",
-      "evidenceCommit": "pending",
+      "evidenceCommit": "73dc417",
       "missing": "Ignore permission.requested suggestion; offer only allow once (and the computer session grant), send allow_always without scope, hide the permission rules settings and ignore permission.auto_resolved."
     },
     {
@@ -83,7 +83,7 @@
       "compare": "eq",
       "value": 1,
       "firstRelease": "v0.107.6-beta.27",
-      "evidenceCommit": "pending",
+      "evidenceCommit": "73dc417",
       "missing": "Expect read-only tools and commands to prompt in normal mode; set an explicit allow policy to skip those prompts."
     },
     {
