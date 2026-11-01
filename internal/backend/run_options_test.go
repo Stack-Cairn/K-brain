@@ -10,6 +10,7 @@ import (
 
 	"github.com/Stack-Cairn/K-brain/internal/agent"
 	"github.com/Stack-Cairn/K-brain/internal/ai"
+	"github.com/Stack-Cairn/K-brain/internal/permissions"
 	"github.com/Stack-Cairn/K-brain/internal/protocol"
 	"github.com/Stack-Cairn/K-brain/internal/tools"
 )
@@ -63,7 +64,7 @@ func TestApplyRunOptionsFiltersToolsAndRestoresAgent(t *testing.T) {
 }
 
 func TestRunToolGateEnforcesPerToolPoliciesAndPlanMode(t *testing.T) {
-	if decision, _ := runToolGate(protocol.RunOptions{ApprovalPolicy: "deny", Tools: &protocol.ToolSelection{Policies: map[string]string{"Write": "allow"}}}, tools.GateRequest{Tool: "Write"}, nil); decision != tools.GateReject {
+	if decision, _ := runToolGate(protocol.RunOptions{ApprovalPolicy: "deny", Tools: &protocol.ToolSelection{Policies: map[string]string{"Write": "allow"}}}, tools.GateRequest{Tool: "Write"}, permissions.Decision{}, nil); decision != tools.GateReject {
 		t.Fatal("global deny was bypassed")
 	}
 	askCalls := 0
@@ -71,19 +72,19 @@ func TestRunToolGateEnforcesPerToolPoliciesAndPlanMode(t *testing.T) {
 		askCalls++
 		return tools.GateAllowOnce, "asked"
 	}
-	if decision, _ := runToolGate(protocol.RunOptions{ApprovalPolicy: "ask", Tools: &protocol.ToolSelection{Policies: map[string]string{"Write": "allow", "Bash": "ask", "Read": "deny"}}}, tools.GateRequest{Tool: "Write"}, ask); decision != tools.GateAllowOnce {
+	if decision, _ := runToolGate(protocol.RunOptions{ApprovalPolicy: "ask", Tools: &protocol.ToolSelection{Policies: map[string]string{"Write": "allow", "Bash": "ask", "Read": "deny"}}}, tools.GateRequest{Tool: "Write"}, permissions.Decision{}, ask); decision != tools.GateAllowOnce {
 		t.Fatal("per-tool allow did not override default ask")
 	}
-	if decision, _ := runToolGate(protocol.RunOptions{ApprovalPolicy: "auto", Tools: &protocol.ToolSelection{Policies: map[string]string{"Write": "deny"}}}, tools.GateRequest{Tool: "Write"}, ask); decision != tools.GateReject {
+	if decision, _ := runToolGate(protocol.RunOptions{ApprovalPolicy: "auto", Tools: &protocol.ToolSelection{Policies: map[string]string{"Write": "deny"}}}, tools.GateRequest{Tool: "Write"}, permissions.Decision{}, ask); decision != tools.GateReject {
 		t.Fatal("per-tool deny did not override global auto")
 	}
-	if decision, _ := runToolGate(protocol.RunOptions{ApprovalPolicy: "auto", Tools: &protocol.ToolSelection{Policies: map[string]string{"Bash": "ask"}}}, tools.GateRequest{Tool: "Bash"}, ask); decision != tools.GateAllowOnce || askCalls != 1 {
+	if decision, _ := runToolGate(protocol.RunOptions{ApprovalPolicy: "auto", Tools: &protocol.ToolSelection{Policies: map[string]string{"Bash": "ask"}}}, tools.GateRequest{Tool: "Bash"}, permissions.Decision{}, ask); decision != tools.GateAllowOnce || askCalls != 1 {
 		t.Fatal("per-tool ask was not enforced")
 	}
-	if decision, _ := runToolGate(protocol.RunOptions{ApprovalPolicy: "auto", PlanModeEnabled: true}, tools.GateRequest{Tool: "Write"}, ask); decision != tools.GateReject {
+	if decision, _ := runToolGate(protocol.RunOptions{ApprovalPolicy: "auto", PlanModeEnabled: true}, tools.GateRequest{Tool: "Write"}, permissions.Decision{}, ask); decision != tools.GateReject {
 		t.Fatal("plan mode allowed a write")
 	}
-	if decision, _ := runToolGate(protocol.RunOptions{ApprovalPolicy: "auto", PlanModeEnabled: true}, tools.GateRequest{Tool: "Read"}, ask); decision != tools.GateAllowOnce {
+	if decision, _ := runToolGate(protocol.RunOptions{ApprovalPolicy: "auto", PlanModeEnabled: true}, tools.GateRequest{Tool: "Read"}, permissions.Decision{}, ask); decision != tools.GateAllowOnce {
 		t.Fatal("plan mode blocked a read")
 	}
 }
@@ -122,7 +123,7 @@ func TestRunOptionsExecuteGrantedRootsAndToolPolicies(t *testing.T) {
 				ctx := tools.WithWorkingDir(context.Background(), primary)
 				ctx = tools.WithWorkspaceRoots(ctx, []tools.WorkspaceRoot{{Path: primary, Access: "write"}, {Path: external, Access: access}})
 				ctx = tools.WithGate(ctx, func(req tools.GateRequest) (tools.GateDecision, string) {
-					return runToolGate(options, req, func(tools.GateRequest) (tools.GateDecision, string) { asks++; return tools.GateReject, "test refusal" })
+					return runToolGate(options, req, permissions.Decision{}, func(tools.GateRequest) (tools.GateDecision, string) { asks++; return tools.GateReject, "test refusal" })
 				})
 				args, _ := json.Marshal(map[string]string{"path": filepath.Join(external, "a.txt")})
 				read := tools.ExecuteResult(ctx, catalog, "Read", args, false)

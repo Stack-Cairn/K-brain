@@ -264,6 +264,11 @@ type ToolStatus struct {
 	Compaction bool   `json:"compaction,omitempty"`
 }
 
+// EventPermissionAutoResolved says a gated call ran without asking because a
+// remembered rule or the read-only allowance covered it (capability
+// permission_rules).
+const EventPermissionAutoResolved = "permission.auto_resolved"
+
 type PermissionOption struct {
 	ID    string `json:"id"`
 	Label string `json:"label"`
@@ -271,12 +276,17 @@ type PermissionOption struct {
 }
 
 type PermissionRequest struct {
-	PermissionID string             `json:"permission_id"`
-	Tool         string             `json:"tool"`
-	Command      string             `json:"command,omitempty"`
-	Rule         string             `json:"rule,omitempty"`
-	Description  string             `json:"description,omitempty"`
-	Options      []PermissionOption `json:"options,omitempty"`
+	PermissionID string `json:"permission_id"`
+	Tool         string `json:"tool"`
+	Command      string `json:"command,omitempty"`
+	// Shell runs Command, when the tool runs one.
+	Shell       string             `json:"shell,omitempty"`
+	Rule        string             `json:"rule,omitempty"`
+	Description string             `json:"description,omitempty"`
+	Options     []PermissionOption `json:"options,omitempty"`
+	// Suggestion is what allow_always would remember; absent when the action can
+	// only be allowed once (capability permission_rules).
+	Suggestion *PermissionSuggestion `json:"suggestion,omitempty"`
 	// Scope "session" means approving also grants this kind of action for the
 	// rest of the session, so clients can say so before the user decides.
 	Scope string `json:"scope,omitempty"`
@@ -289,6 +299,53 @@ type PermissionDecision struct {
 	PermissionID string `json:"permission_id"`
 	Decision     string `json:"decision"`
 	Reason       string `json:"reason,omitempty"`
+	// Scope picks where allow_always stores the suggested rules: session, project
+	// or user. Empty keeps the pre-rules meaning, this session only.
+	Scope string `json:"scope,omitempty"`
+}
+
+// PermissionSuggestion lists the rules allow_always stores, all of them together,
+// and the scope a client should preselect.
+type PermissionSuggestion struct {
+	Rules        []string `json:"rules"`
+	DefaultScope string   `json:"default_scope"`
+}
+
+// PermissionAutoResolved is the payload of permission.auto_resolved.
+type PermissionAutoResolved struct {
+	ToolCallID string `json:"tool_call_id,omitempty"`
+	Tool       string `json:"tool"`
+	Command    string `json:"command,omitempty"`
+	// Source is "rule" or "read_only".
+	Source string `json:"source"`
+	Rule   string `json:"rule,omitempty"`
+	Scope  string `json:"scope,omitempty"`
+}
+
+// PermissionRule is one remembered rule as the rules API returns it.
+type PermissionRule struct {
+	ID            string `json:"id"`
+	Rule          string `json:"rule"`
+	Effect        string `json:"effect"`
+	Scope         string `json:"scope"`
+	CreatedAt     string `json:"created_at,omitempty"`
+	SourceSession string `json:"source_session,omitempty"`
+}
+
+// PermissionRulesResponse answers GET /v1/permissions/rules.
+type PermissionRulesResponse struct {
+	ProjectRoot string           `json:"project_root,omitempty"`
+	Rules       []PermissionRule `json:"rules"`
+}
+
+// PermissionRuleCreate is the body of POST /v1/permissions/rules. Workspace names
+// the project for project scope; SessionID the session for session scope.
+type PermissionRuleCreate struct {
+	Rule      string `json:"rule"`
+	Effect    string `json:"effect"`
+	Scope     string `json:"scope"`
+	Workspace string `json:"workspace,omitempty"`
+	SessionID string `json:"session_id,omitempty"`
 }
 
 type QuestionOption struct {

@@ -112,12 +112,26 @@ CLI 可用 `-config FILE -session-dir DIR` 指定配置与存储目录；省略�
 - `run.accepted`, `user.message.appended`
 - `assistant.text.delta`, `assistant.thinking.delta`, `assistant.message.created`
 - `tool.call`, `tool.result`, `tool.status`
-- `permission.requested`, `permission.resolved`
+- `permission.requested`, `permission.resolved`, `permission.auto_resolved`
 - `subagent.started`, `subagent.updated`, `subagent.completed`, `subagent.failed`
 - `usage.updated`
 - `run.completed`, `run.failed`, `run.cancelled`
 
 流连接结束与运行终态是两个不同事实。客户端只有消费终态事件后才能确认运行结束。
+
+### 记住的权限规则（`capabilities.permission_rules: 1`、`readonly_auto_allow: 1`）
+
+规则写法参照 Claude Code：`Bash(npm test:*)` 前缀、`Bash(git status)` 精确、`Edit(src/**)` 项目内路径（Write/Edit 共用）、`mcp__srv__tool` 整个工具；规则引擎在 `internal/permissions`，TUI、ACP 与 HTTP 后端共用。复合命令每一段都要被规则或只读判定覆盖才放行；命令替换、子 shell、写文件重定向、包装命令等看不清的命令不受 allow 规则影响。
+
+规则分三个作用域：会话（`<EventDir>/<会话 id>.permission-rules.json`，随会话删除）、项目（数据目录 `permissions/projects/<项目根哈希>.json`，项目根取运行第一个可写的 `workspace_roots`，否则会话工作目录）、用户（数据目录 `permission-rules.json`，与 TUI 共用）。`kn backend` 的数据目录与 TUI 相同；嵌入方不设 `Options.PermissionRulesDir` 时只有会话规则。
+
+判定顺序：计划模式 → `approval_policy: deny` → 工具策略 deny → deny 规则（任何模式都拒绝）→ 看不清又有 deny 规则的命令必须询问（任何模式）→ 工具策略 allow/ask → `always`/`full_access` → allow 规则或只读放行 → 权限模式。AI 审查判定需人工确认时照常询问；只有审查只判 medium、其余维度都是 low 时，命中的 allow 规则可以代替询问。规则文件读不出时按"必须询问"处理。
+
+- `permission.requested` 增加 `shell` 与 `suggestion:{rules,default_scope}`；有建议时 `options` 带 `allow_always`。删除类命令、Delete 工具与 computer use 不给建议。
+- `POST /v1/sessions/{id}/permissions/{pid}` 的 `decision.scope` 取 `session|project|user`，`allow_always` 把建议里的全部规则存进该作用域；**省略 scope 等于 session**（旧客户端把这个选项显示为"本会话允许"）。作用域无效或写入失败返回 400，审批继续等待。记住后，同会话中被新规则覆盖、且没有被审查送去人工的其他等待审批一并放行。
+- 因规则或只读判定直接放行时发 `permission.auto_resolved {tool_call_id,tool,command,source:"rule"|"read_only",rule,scope}`。
+- `GET /v1/permissions/rules?workspace=<项目根>&session_id=<id>` 返回这些作用域的规则；`POST /v1/permissions/rules {rule,effect:"allow"|"deny",scope,workspace?,session_id?}` 新增；`DELETE /v1/permissions/rules/{id}?scope=&workspace=&session_id=` 删除。
+- normal、auto_edit、auto_review 模式下，Read/Image/List/Glob/Grep 与只读命令（ls、cat、rg、git status/diff/log 等白名单）直接执行；cmd 会先在工作目录查找程序，cmd（以及 Windows 上未知的 shell）不做只读放行。显式的工具策略 ask 仍然询问。
 
 ## Fixtures 与验证入口
 

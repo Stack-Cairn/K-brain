@@ -344,7 +344,7 @@ func (s *Server) deleteSession(w http.ResponseWriter, r *http.Request, id string
 	}
 	close(rt.changed)
 	rt.changed = make(chan struct{})
-	for _, suffix := range []string{".jsonl", ".runs.json", ".queue.json"} {
+	for _, suffix := range []string{".jsonl", ".runs.json", ".queue.json", ".permission-rules.json"} {
 		if err := os.Remove(filepath.Join(s.eventDir, id+suffix)); err != nil && !errors.Is(err, os.ErrNotExist) {
 			mutationError(w, err)
 			return

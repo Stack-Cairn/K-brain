@@ -19,6 +19,7 @@ import (
 	"github.com/Stack-Cairn/K-brain/internal/agent"
 	"github.com/Stack-Cairn/K-brain/internal/ai"
 	"github.com/Stack-Cairn/K-brain/internal/backend"
+	"github.com/Stack-Cairn/K-brain/internal/config"
 	"github.com/Stack-Cairn/K-brain/internal/mcp"
 	"github.com/Stack-Cairn/K-brain/internal/memory"
 	"github.com/Stack-Cairn/K-brain/internal/memoryruntime"
@@ -200,6 +201,7 @@ func backendCLI(args []string) error {
 		DefaultCWD:              cwd(),
 		FilesystemRoots:         filesystemRoots,
 		Build:                   protocol.NewBuild(version, revision),
+		PermissionRulesDir:      permissionRulesDir(),
 	})
 	if err != nil {
 		return err
@@ -250,4 +252,14 @@ func watchParentStdio(r io.Reader) <-chan struct{} {
 
 type backendModel struct {
 	name, provider, id string
+}
+
+// permissionRulesDir is the data directory for user and project permission rules,
+// shared with the TUI; empty, when unavailable, keeps remembered rules per session.
+func permissionRulesDir() string {
+	dir, err := config.Dir()
+	if err != nil {
+		return ""
+	}
+	return dir
 }

@@ -339,7 +339,9 @@ func TestSuggest(t *testing.T) {
 		{Request{Tool: "Delete", Command: filepath.Join(root, "a.go")}, nil},
 		{Request{Tool: "computer_exec", Command: "call:x"}, nil},
 		{Request{Tool: "mcp__x__y", Command: "{}"}, []string{"mcp__x__y"}},
-		{Request{Tool: "ManagedProcess", Command: "npm run dev", Shell: "bash"}, []string{"ManagedProcess(npm run dev:*)"}},
+		{Request{Tool: "ManagedProcess", Command: "npm run dev", Shell: "bash"}, nil},
+		{Request{Tool: "TerminalSession", Command: "input term-1 Write-Output hi", Shell: "pwsh"}, nil},
+		{Request{Tool: "CronTaskManager", Command: "delete 1"}, nil},
 	} {
 		if got := Suggest(tc.req, opts); !reflect.DeepEqual(got, tc.want) {
 			t.Errorf("Suggest(%+v) = %q, want %q", tc.req, got, tc.want)

@@ -331,3 +331,32 @@ func TestEditRuleIsRememberedForThisProjectOnly(t *testing.T) {
 		t.Fatal("the project rule persists for project A")
 	}
 }
+
+// With AI review on, a remembered rule stands in for asking when the review only
+// urged caution; concrete findings still ask.
+func TestRememberedRuleSkipsCautiousReview(t *testing.T) {
+	t.Setenv("K_BRAIN_HOME", t.TempDir())
+	rules := permRules{user: permissions.RuleSet{Scope: permissions.ScopeUser, Rules: []permissions.StoredRule{{Rule: "Bash(go version:*)", Effect: permissions.Allow}}}}
+	for _, tc := range []struct {
+		name    string
+		report  approval.Report
+		command string
+		prompt  bool
+	}{
+		{"cautious review, remembered", approval.Report{Risk: "medium", Sandbox: "low", SensitiveData: "low", ModelBehavior: "low", Injection: "low"}, "go version", false},
+		{"cautious review, not remembered", approval.Report{Risk: "medium", Sandbox: "low", SensitiveData: "low", ModelBehavior: "low", Injection: "low"}, "go env", true},
+		{"injection finding", approval.Report{Risk: "medium", Sandbox: "low", SensitiveData: "low", ModelBehavior: "low", Injection: "unknown"}, "go version", true},
+		{"high risk", approval.Report{Risk: "high", Sandbox: "low", SensitiveData: "low", ModelBehavior: "low", Injection: "low"}, "go version", true},
+		{"sensitive data", approval.Report{Risk: "medium", Sandbox: "low", SensitiveData: "medium", ModelBehavior: "low", Injection: "low"}, "go version", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := &model{permissionMode: "normal", cfg: &config.Config{AIApproval: config.AIApprovalConfig{Mode: "auto"}}, perms: rules}
+			ctx := context.WithValue(t.Context(), approval.ActionReportKey{}, tc.report)
+			reply := make(chan permAnswer, 1)
+			m.receivePermission(permRequest{req: tools.GateRequest{Context: ctx, Tool: "bash", Command: tc.command, Shell: "pwsh"}, reply: reply})
+			if (m.permDialog != nil) != tc.prompt {
+				t.Fatalf("prompt=%v, want %v", m.permDialog != nil, tc.prompt)
+			}
+		})
+	}
+}

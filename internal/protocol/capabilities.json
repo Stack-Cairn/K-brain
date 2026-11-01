@@ -69,6 +69,24 @@
       "missing": "Do not send review_scope; keep the global AI approval setting visible (it applies to every permission mode and auto review needs a configured reviewer model)."
     },
     {
+      "name": "permission_rules",
+      "type": "integer",
+      "compare": "eq",
+      "value": 1,
+      "firstRelease": "v0.107.6-beta.27",
+      "evidenceCommit": "pending",
+      "missing": "Ignore permission.requested suggestion; offer only allow once (and the computer session grant), send allow_always without scope, hide the permission rules settings and ignore permission.auto_resolved."
+    },
+    {
+      "name": "readonly_auto_allow",
+      "type": "integer",
+      "compare": "eq",
+      "value": 1,
+      "firstRelease": "v0.107.6-beta.27",
+      "evidenceCommit": "pending",
+      "missing": "Expect read-only tools and commands to prompt in normal mode; set an explicit allow policy to skip those prompts."
+    },
+    {
       "name": "permission_modes",
       "type": "string[]",
       "compare": "members",

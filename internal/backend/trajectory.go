@@ -214,6 +214,10 @@ func redactTrajectoryEvents(events []protocol.Event) []protocol.Event {
 			p["command"] = "[redacted]"
 			p["description"] = "[redacted]"
 			p["rule"] = "[redacted]"
+			delete(p, "suggestion")
+		case protocol.EventPermissionAutoResolved:
+			p["command"] = "[redacted]"
+			p["rule"] = "[redacted]"
 		case protocol.EventPermissionResult:
 			p["reason"] = "[redacted]"
 		case protocol.EventAssistantMessage:

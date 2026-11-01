@@ -25,6 +25,7 @@ import (
 	"github.com/Stack-Cairn/K-brain/internal/mcp"
 	"github.com/Stack-Cairn/K-brain/internal/memory"
 	"github.com/Stack-Cairn/K-brain/internal/memoryruntime"
+	"github.com/Stack-Cairn/K-brain/internal/permissions"
 	"github.com/Stack-Cairn/K-brain/internal/planning"
 	"github.com/Stack-Cairn/K-brain/internal/protocol"
 	"github.com/Stack-Cairn/K-brain/internal/resources"
@@ -59,6 +60,9 @@ type Options struct {
 	MCPCredentialBridge     mcp.CredentialBridge
 	// Build identifies this binary in /v1/health; zero value reports a dev build.
 	Build protocol.Build
+	// PermissionRulesDir is the data directory holding user and project permission
+	// rules. Empty limits remembered rules to the session.
+	PermissionRulesDir string
 }
 
 type Server struct {
@@ -71,6 +75,7 @@ type Server struct {
 	usage                *ProviderUsageService
 	prompts              *resources.PromptStore
 	eventDir             string
+	permissionDir        string
 	defaultCWD           string
 	filesystemRoots      []string
 	filesystemMu         sync.Mutex
@@ -116,6 +121,11 @@ type permissionWaiter struct {
 	request protocol.PermissionRequest
 	result  chan tools.GateDecision
 	reason  chan string
+	// gate and root re-evaluate the prompt when a rule is remembered meanwhile;
+	// ruleSettleable is false when a review sent the call to a person.
+	gate           tools.GateRequest
+	root           string
+	ruleSettleable bool
 }
 
 type runtimeSession struct {
@@ -194,7 +204,7 @@ func New(opts Options) (*Server, error) {
 		filesystemRoots: append([]string(nil), opts.FilesystemRoots...),
 		store:           opts.Store, factory: opts.Factory, token: opts.Token, models: append([]protocol.ModelRef(nil), opts.Models...),
 		settings: opts.Settings, usage: NewProviderUsageService(opts.Settings), prompts: opts.Prompts,
-		eventDir: opts.EventDir, defaultCWD: opts.DefaultCWD, memoryStore: memoryStore, questionWait: opts.QuestionTimeout, memoryRuntimeFactory: opts.MemoryRuntimeFactory, cron: cron, hookStore: hookStore, hookRunner: NewBackendHookRunner(hookStore), mcp: opts.MCP, sessions: make(map[string]*runtimeSession), snapshots: make(map[string]sessionHTTPSnapshot),
+		eventDir: opts.EventDir, permissionDir: opts.PermissionRulesDir, defaultCWD: opts.DefaultCWD, memoryStore: memoryStore, questionWait: opts.QuestionTimeout, memoryRuntimeFactory: opts.MemoryRuntimeFactory, cron: cron, hookStore: hookStore, hookRunner: NewBackendHookRunner(hookStore), mcp: opts.MCP, sessions: make(map[string]*runtimeSession), snapshots: make(map[string]sessionHTTPSnapshot),
 		build: opts.Build,
 	}
 	if len(server.filesystemRoots) == 0 && opts.DefaultCWD != "" {
@@ -392,6 +402,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == http.MethodGet && r.URL.Path == "/v1/commands" {
 		s.handleSlashCommands(w, r)
+		return
+	}
+	if r.URL.Path == "/v1/permissions/rules" || strings.HasPrefix(r.URL.Path, "/v1/permissions/rules/") {
+		s.permissionRules(w, r)
 		return
 	}
 	if r.URL.Path == "/v1/settings" {
@@ -1271,6 +1285,11 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, runID strin
 	message.Content = append(message.Content, in.Content...)
 	converted, _ := message.ToAIMessage()
 	reviewer := s.newRunReviewer(ctx, rt, in.Prompt, options.PermissionMode, options.ReviewScope, options.Reasoning)
+	// Loop and cron workers rebuild rt.agent under rt.mu; read it the same way.
+	rt.mu.Lock()
+	workingDir := rt.agent.WorkingDir
+	rt.mu.Unlock()
+	ruleRoot := projectRootFor(options, workingDir)
 	gate := func(req tools.GateRequest) (tools.GateDecision, string) {
 		if options.Mode == "chat" {
 			return tools.GateReject, "chat mode disables tools"
@@ -1319,7 +1338,14 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, runID strin
 				gateOptions.Tools = &protocol.ToolSelection{Policies: policies}
 			}
 		}
+		rules := s.evaluateRules(rt.id, ruleRoot, req)
+		// A run that names this tool "ask" wants every call confirmed by the user:
+		// no rule is offered or settles its prompts.
+		explicitToolAsk := gateOptions.Tools != nil && gateOptions.Tools.Policies[req.Tool] == "ask"
 		manualReview := reviewer != nil && reviewer.RequiresManual(req.Context)
+		if manualReview && approval.RuleStandsInForReview(req.Context, rules.Effect == permissions.Allow && rules.Source == permissions.SourceRule) {
+			manualReview = false
+		}
 		if manualReview {
 			gateOptions.ApprovalPolicy = "ask"
 			gateOptions.PermissionMode = "normal"
@@ -1334,7 +1360,7 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, runID strin
 			}
 			gateOptions.Tools = &protocol.ToolSelection{Policies: policies}
 		}
-		return runToolGate(gateOptions, req, func(req tools.GateRequest) (tools.GateDecision, string) {
+		decision, reason := runToolGate(gateOptions, req, rules, func(req tools.GateRequest) (tools.GateDecision, string) {
 			rt.mu.Lock()
 			active := rt.runID == runID && !rt.runDone && !rt.deleted
 			rt.mu.Unlock()
@@ -1368,7 +1394,12 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, runID strin
 			// Approving any Cua call grants the session; batch and install tools
 			// still ask on their own next time.
 			sessionGrant := req.Tool == "computer_exec" && strings.HasPrefix(req.Rule, "call:") && !manualReview && !explicitComputerAsk
-			decision, reason := s.waitPermission(rt, runID, req, sessionGrant, req.Context)
+			rememberable := !sessionGrant && !explicitToolAsk && approval.RulesUsable(req.Context)
+			var suggestion *protocol.PermissionSuggestion
+			if rememberable {
+				suggestion = s.suggestionFor(req, ruleRoot)
+			}
+			decision, reason := s.waitPermission(rt, runID, req, sessionGrant, req.Context, permissionPrompt{suggestion: suggestion, root: ruleRoot, settleable: rememberable && !manualReview})
 			if decision != tools.GateReject && sessionGrant {
 				rt.mu.Lock()
 				rt.computerAllowAll = true
@@ -1393,6 +1424,14 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, runID strin
 			}
 			return decision, reason
 		})
+		// A call the review gate already decided reaches this gate again from the tool
+		// itself; report the automatic decision once.
+		if decision == tools.GateAllowOnce && (reason == ruleAllowReason || reason == readOnlyAllowReason) {
+			if reviewed, _ := req.Context.Value(approval.ReviewedActionKey{}).(string); reviewed != req.Tool {
+				s.publishAutoResolved(rt, req, rules)
+			}
+		}
+		return decision, reason
 	}
 	roots := make([]tools.WorkspaceRoot, len(options.WorkspaceRoots))
 	for i, root := range options.WorkspaceRoots {
@@ -1610,7 +1649,15 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, runID strin
 
 // waitPermission asks the client; sessionGrant marks a prompt whose approval also
 // grants the session, labelling allow_once accordingly.
-func (s *Server) waitPermission(rt *runtimeSession, runID string, req tools.GateRequest, sessionGrant bool, ctx context.Context) (tools.GateDecision, string) {
+// permissionPrompt carries what a prompt can remember: the suggested rules, the
+// project root they resolve against, and whether remembered rules may settle it.
+type permissionPrompt struct {
+	suggestion *protocol.PermissionSuggestion
+	root       string
+	settleable bool
+}
+
+func (s *Server) waitPermission(rt *runtimeSession, runID string, req tools.GateRequest, sessionGrant bool, ctx context.Context, prompt permissionPrompt) (tools.GateDecision, string) {
 	id := newRunID()
 	allow := protocol.PermissionOption{ID: "allow_once", Label: "Allow once", Kind: "allow_once"}
 	scope := ""
@@ -1618,7 +1665,12 @@ func (s *Server) waitPermission(rt *runtimeSession, runID string, req tools.Gate
 		allow.Label, scope = "Allow for this session", "session"
 	}
 	options := []protocol.PermissionOption{allow, {ID: "reject", Label: "Reject", Kind: "reject_once"}}
-	p := &permissionWaiter{request: protocol.PermissionRequest{PermissionID: id, Tool: req.Tool, Command: req.Command, Rule: req.Rule, Description: req.Description, Options: options, Scope: scope, ToolCallID: tools.ToolCallID(ctx)}, result: make(chan tools.GateDecision, 1), reason: make(chan string, 1)}
+	if prompt.suggestion != nil {
+		options = append(options, protocol.PermissionOption{ID: "allow_always", Label: "Allow and remember", Kind: "allow_always"})
+	}
+	gateReq := req
+	gateReq.Context = nil
+	p := &permissionWaiter{request: protocol.PermissionRequest{PermissionID: id, Tool: req.Tool, Command: req.Command, Shell: req.Shell, Rule: req.Rule, Description: req.Description, Options: options, Suggestion: prompt.suggestion, Scope: scope, ToolCallID: tools.ToolCallID(ctx)}, result: make(chan tools.GateDecision, 1), reason: make(chan string, 1), gate: gateReq, root: prompt.root, ruleSettleable: prompt.settleable && !sessionGrant}
 	rt.mu.Lock()
 	_, _, rememberable := computerApprovalRule(req.Command)
 	if sessionGrant && rememberable && rt.computerAllowAll {
@@ -1812,6 +1864,8 @@ func (s *Server) permission(w http.ResponseWriter, r *http.Request, id, pid stri
 		writeJSONError(w, http.StatusBadRequest, "unsupported permission decision")
 		return
 	}
+	// Claim the prompt before storing anything, so only the answer that wins it can
+	// remember a rule.
 	rt.mu.Lock()
 	p := rt.permissions[pid]
 	delete(rt.permissions, pid)
@@ -1820,6 +1874,19 @@ func (s *Server) permission(w http.ResponseWriter, r *http.Request, id, pid stri
 		writeJSONError(w, http.StatusNotFound, "permission request not found")
 		return
 	}
+	remember := d == tools.GateAllowAlways && p.request.Suggestion != nil
+	if remember {
+		if err := s.rememberSuggestion(rt, p, in.Decision.Scope); err != nil {
+			// A refused scope or a failed write leaves the prompt waiting.
+			rt.mu.Lock()
+			if _, taken := rt.permissions[pid]; !taken {
+				rt.permissions[pid] = p
+			}
+			rt.mu.Unlock()
+			writeJSONError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
 	if in.Decision.Reason != "" {
 		select {
 		case p.reason <- in.Decision.Reason:
@@ -1827,6 +1894,9 @@ func (s *Server) permission(w http.ResponseWriter, r *http.Request, id, pid stri
 		}
 	}
 	p.result <- d
+	if remember {
+		s.settleCoveredPermissions(rt)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
