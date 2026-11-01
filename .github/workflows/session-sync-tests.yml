@@ -172,21 +172,6 @@ jobs:
           echo "Clean baseline full-suite exit: $task_baseline_status" | tee "$RUNNER_TEMP/session-sync-clean-baseline-status.log"
           # Preserve the current full-suite failure; this comparison is diagnostic.
           exit 0
-      - name: Race session summaries (30x)
-        if: ${{ !cancelled() && runner.os == 'Linux' }}
-        run: go test -race ./internal/session -run 'Test(Summary|TUIStore)' -count=30 -timeout 30m
-      - name: Race blocking task subscriber fixture (30x)
-        if: ${{ !cancelled() && runner.os == 'Linux' }}
-        run: go test -race ./internal/agent -run '^TestBroadcastBlockingSubscriberCannotDeadlock$' -count=30 -timeout 5m
-      - name: Race privacy streaming restoration (30x)
-        if: ${{ !cancelled() && runner.os == 'Linux' }}
-        run: go test -race ./internal/privacy -count=30 -timeout 5m
-      - name: Race task history and live streaming (30x)
-        if: ${{ !cancelled() && runner.os == 'Linux' }}
-        run: go test -race ./internal/tui -run '^TestRunningTaskViewReplaysThenStreams(WithPrivacy)?$' -count=30 -timeout 5m
-      - name: Race backend synchronization (30x)
-        if: ${{ !cancelled() && runner.os == 'Linux' }}
-        run: go test -race ./internal/backend -run 'TestSession(Snapshot|Changes)' -count=30 -timeout 30m
       - name: Upload Linux verification evidence
         if: ${{ always() && runner.os == 'Linux' }}
         uses: actions/upload-artifact@v4
@@ -198,3 +183,43 @@ jobs:
             ${{ runner.temp }}/session-sync-*.jsonl
             ${{ runner.temp }}/session-sync-*-status.log
             ${{ runner.temp }}/task-stream-*.log
+
+  # The repeated race runs are independent of the Linux full suite, so they run
+  # on their own runner instead of extending the platform job's critical path.
+  race:
+    name: Session sync race (linux-amd64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Prepare pinned Computer Use runtime
+        run: python scripts/prepare-cua.py --target linux-amd64
+      - name: Race session summaries (30x)
+        if: ${{ !cancelled() }}
+        run: go test -race ./internal/session -run 'Test(Summary|TUIStore)' -count=30 -timeout 30m
+      - name: Race blocking task subscriber fixture (30x)
+        if: ${{ !cancelled() }}
+        run: go test -race ./internal/agent -run '^TestBroadcastBlockingSubscriberCannotDeadlock$' -count=30 -timeout 5m
+      # TestRedactTextMatchesPreviousImplementation is a single-goroutine
+      # differential check over every string literal in the privacy, approval
+      # and backend approval tests; under -race it takes ~7s per run and grows
+      # with that corpus. Repeating it cannot expose an interleaving, so it runs
+      # once under -race and the concurrent stream tests keep their 30 runs.
+      - name: Race privacy streaming restoration (30x)
+        if: ${{ !cancelled() }}
+        run: go test -race ./internal/privacy -skip '^TestRedactTextMatchesPreviousImplementation$' -count=30 -timeout 5m
+      - name: Race privacy redaction differential (1x)
+        if: ${{ !cancelled() }}
+        run: go test -race ./internal/privacy -run '^TestRedactTextMatchesPreviousImplementation$' -count=1 -timeout 5m
+      - name: Race task history and live streaming (30x)
+        if: ${{ !cancelled() }}
+        run: go test -race ./internal/tui -run '^TestRunningTaskViewReplaysThenStreams(WithPrivacy)?$' -count=30 -timeout 5m
+      - name: Race backend synchronization (30x)
+        if: ${{ !cancelled() }}
+        run: go test -race ./internal/backend -run 'TestSession(Snapshot|Changes)' -count=30 -timeout 30m
