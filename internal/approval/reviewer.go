@@ -50,6 +50,47 @@ func Unknown(reason string) Report {
 func (r Report) Safe() bool {
 	return r.Risk == "low" && r.Sandbox == "low" && r.SensitiveData == "low" && r.ModelBehavior == "low" && r.Injection == "low"
 }
+
+// CautionOnly reports a review that found nothing concrete: every dimension is low
+// and only the overall risk is medium, the reviewer being careful about an action's
+// effect. A rule the user saved may then stand in for asking again; injection,
+// sensitive data, high or unknown findings still need a person.
+func (r Report) CautionOnly() bool {
+	return r.Risk == "medium" && r.Sandbox == "low" && r.SensitiveData == "low" && r.ModelBehavior == "low" && r.Injection == "low"
+}
+
+// RuleStandsInForReview reports whether a remembered allow rule may skip the prompt
+// the review in ctx asked for: only when the review urged caution and found nothing
+// concrete. ruleAllows is whether a rule the user saved, not a mode or the read-only
+// allowance, covers the call.
+func RuleStandsInForReview(ctx context.Context, ruleAllows bool) bool {
+	if !ruleAllows || ctx == nil {
+		return false
+	}
+	report, ok := ctx.Value(ActionReportKey{}).(Report)
+	return ok && report.CautionOnly()
+}
+
+// ReadOnlyUsable reports whether the read-only allowance may skip a prompt: not when
+// a review of the call found anything at all.
+func ReadOnlyUsable(ctx context.Context) bool {
+	if ctx == nil {
+		return true
+	}
+	report, ok := ctx.Value(ActionReportKey{}).(Report)
+	return !ok || report.Safe()
+}
+
+// RulesUsable reports whether a remembered allow rule may skip a prompt: not when a
+// review of the call found something concrete, whatever the review mode.
+func RulesUsable(ctx context.Context) bool {
+	if ctx == nil {
+		return true
+	}
+	report, ok := ctx.Value(ActionReportKey{}).(Report)
+	return !ok || report.Safe() || report.CautionOnly()
+}
+
 func (r Report) Description() string {
 	return fmt.Sprintf("AI review [%s] sandbox=%s; sensitive_data=%s; model_behavior=%s; injection=%s: %s", r.Risk, r.Sandbox, r.SensitiveData, r.ModelBehavior, r.Injection, r.Reason)
 }

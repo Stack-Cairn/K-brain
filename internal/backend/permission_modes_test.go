@@ -3,6 +3,7 @@ package backend
 import (
 	"testing"
 
+	"github.com/Stack-Cairn/K-brain/internal/permissions"
 	"github.com/Stack-Cairn/K-brain/internal/protocol"
 	"github.com/Stack-Cairn/K-brain/internal/tools"
 )
@@ -32,7 +33,7 @@ func TestPermissionModesGatePrecedence(t *testing.T) {
 			}
 			options.Tools = &protocol.ToolSelection{Policies: map[string]string{tc.tool: tc.policy}}
 			prompted := false
-			decision, _ := runToolGate(options, tools.GateRequest{Tool: tc.tool}, func(tools.GateRequest) (tools.GateDecision, string) { prompted = true; return tools.GateReject, "test" })
+			decision, _ := runToolGate(options, tools.GateRequest{Tool: tc.tool}, permissions.Decision{}, func(tools.GateRequest) (tools.GateDecision, string) { prompted = true; return tools.GateReject, "test" })
 			if (decision == tools.GateAllowOnce) != tc.allowed || prompted != tc.prompted {
 				t.Fatalf("decision=%v prompted=%v", decision, prompted)
 			}

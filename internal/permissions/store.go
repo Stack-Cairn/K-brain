@@ -55,24 +55,34 @@ type File struct {
 // another process can lose an update but never leaves a torn file.
 var fileMu sync.RWMutex
 
-// UserRulesPath is the user-scope rules file.
+// UserRulesPath is the user-scope rules file in the K-brain data directory.
 func UserRulesPath() (string, error) {
 	dir, err := config.Dir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, userRulesFile), nil
+	return UserRulesPathIn(dir), nil
+}
+
+// UserRulesPathIn is the user-scope rules file of the data directory dir.
+func UserRulesPathIn(dir string) string {
+	return filepath.Join(dir, userRulesFile)
 }
 
 // ProjectRulesPath is the project-scope rules file for an absolute project root. It
 // lives in the K-brain data directory so that remembering a rule never writes into
 // the user's repository.
 func ProjectRulesPath(root string) (string, error) {
-	key, err := projectKey(root)
+	dir, err := config.Dir()
 	if err != nil {
 		return "", err
 	}
-	dir, err := config.Dir()
+	return ProjectRulesPathIn(dir, root)
+}
+
+// ProjectRulesPathIn is ProjectRulesPath for the data directory dir.
+func ProjectRulesPathIn(dir, root string) (string, error) {
+	key, err := projectKey(root)
 	if err != nil {
 		return "", err
 	}
@@ -242,10 +252,16 @@ func LoadRuleSet(path string, scope Scope) (RuleSet, error) {
 // LoadUserRules reads the user-scope rules. The first time, when no rules file exists
 // yet, it imports the TUI's legacy permissions.json and leaves that file as it is.
 func LoadUserRules() (RuleSet, error) {
-	path, err := UserRulesPath()
+	dir, err := config.Dir()
 	if err != nil {
 		return RuleSet{Scope: ScopeUser}, err
 	}
+	return LoadUserRulesIn(dir)
+}
+
+// LoadUserRulesIn is LoadUserRules for the data directory dir.
+func LoadUserRulesIn(dir string) (RuleSet, error) {
+	path := UserRulesPathIn(dir)
 	fileMu.Lock()
 	defer fileMu.Unlock()
 	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {

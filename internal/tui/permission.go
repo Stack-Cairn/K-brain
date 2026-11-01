@@ -176,6 +176,9 @@ func (m *model) receivePermission(msg permRequest) {
 	// A review report means the reviewer wants a say, so read-only commands are not
 	// waved through on their own; remembered rules still apply as before.
 	decision := m.perms.decide(msg.req, !reviewed)
+	if decision.Effect == permissions.Allow && decision.Source == permissions.SourceRule && !approval.RulesUsable(msg.req.Context) {
+		decision = permissions.Decision{}
+	}
 	switch {
 	case msg.req.Context != nil && msg.req.Context.Err() != nil:
 		msg.reply <- permAnswer{tools.GateReject, "cancelled"}
@@ -193,6 +196,9 @@ func (m *model) receivePermission(msg permRequest) {
 	case m.permissionMode == "always":
 		msg.reply <- permAnswer{decision: tools.GateAllowOnce}
 	case auto && reviewed && report.Safe():
+		msg.reply <- permAnswer{decision: tools.GateAllowOnce}
+	case auto && reviewed && approval.RuleStandsInForReview(msg.req.Context, decision.Effect == permissions.Allow && decision.Source == permissions.SourceRule):
+		// The review only urged caution and the user already remembered this action.
 		msg.reply <- permAnswer{decision: tools.GateAllowOnce}
 	case auto && reviewed && !report.Safe():
 		m.permDialog = &permDialog{req: msg.req, reply: msg.reply}

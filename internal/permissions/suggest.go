@@ -30,6 +30,11 @@ var interpreters = map[string]bool{
 func Suggest(req Request, opts Options) []string {
 	switch kindOfTool(req.Tool) {
 	case kindShell:
+		// ManagedProcess and TerminalSession also gate actions such as status, stop
+		// or terminal input whose Command is not a command line; only Bash is.
+		if family(req.Tool) != "Bash" {
+			return nil
+		}
 		segments, ok := SplitCommand(req.Command, req.Shell)
 		if !ok {
 			return nil
@@ -77,11 +82,12 @@ func Suggest(req Request, opts Options) []string {
 		}
 		return []string{"Edit(" + escapeGlob(filepath.ToSlash(target)) + ")"}
 	}
-	switch req.Tool {
-	case "computer_exec", "":
-		return nil
+	// Whole-tool rules only for MCP tools: built-in tools gate actions of very
+	// different weight under one name (cron create vs delete, process stop ids).
+	if strings.HasPrefix(req.Tool, "mcp__") {
+		return []string{req.Tool}
 	}
-	return []string{req.Tool}
+	return nil
 }
 
 // escapeGlob keeps literal path characters such as Next.js `[id]` from acting as globs.

@@ -224,17 +224,27 @@ func exitPlanModeTool() tools.Tool {
 	}
 }
 
-func runToolGate(options protocol.RunOptions, req tools.GateRequest, ask func(tools.GateRequest) (tools.GateDecision, string)) (tools.GateDecision, string) {
+// runToolGate decides a gated call. rules is the remembered-rule decision for req:
+// deny rules refuse in every mode, Ask forces a prompt in every mode, and an allow
+// (a rule or the read-only allowance) counts after explicit per-tool policies.
+func runToolGate(options protocol.RunOptions, req tools.GateRequest, rules permissions.Decision, ask func(tools.GateRequest) (tools.GateDecision, string)) (tools.GateDecision, string) {
 	if (options.PlanModeEnabled || options.PermissionMode == permissions.Plan) && req.Tool != "Read" && req.Tool != "Image" && req.Tool != "List" && req.Tool != "Glob" && req.Tool != "Grep" && req.Tool != "ExitPlanMode" && req.Tool != "read" && req.Tool != "question" && req.Tool != "AskUserQuestion" && req.Tool != "todowrite" {
 		return tools.GateReject, "plan mode blocks this tool until ExitPlanMode is approved"
 	}
 	if options.ApprovalPolicy == "deny" {
 		return tools.GateReject, "approval policy denies this action"
 	}
+	if options.Tools != nil && options.Tools.Policies[req.Tool] == "deny" {
+		return tools.GateReject, "per-tool policy denies this action"
+	}
+	switch rules.Effect {
+	case permissions.Deny:
+		return tools.GateReject, "denied by permission rule " + rules.Rule
+	case permissions.Ask:
+		return ask(req)
+	}
 	if options.Tools != nil {
 		switch options.Tools.Policies[req.Tool] {
-		case "deny":
-			return tools.GateReject, "per-tool policy denies this action"
 		case "allow":
 			return tools.GateAllowOnce, "per-tool policy allows this action"
 		case "ask":
@@ -242,6 +252,16 @@ func runToolGate(options protocol.RunOptions, req tools.GateRequest, ask func(to
 				return ask(req)
 			}
 		}
+	}
+	switch options.PermissionMode {
+	case permissions.FullAccess, permissions.Always:
+		return tools.GateAllowOnce, "per-run permission mode"
+	}
+	if rules.Effect == permissions.Allow {
+		if rules.Source == permissions.SourceReadOnly {
+			return tools.GateAllowOnce, readOnlyAllowReason
+		}
+		return tools.GateAllowOnce, ruleAllowReason
 	}
 	switch options.PermissionMode {
 	case permissions.Normal, permissions.Plan, permissions.AutoReview:
@@ -253,8 +273,6 @@ func runToolGate(options protocol.RunOptions, req tools.GateRequest, ask func(to
 			return tools.GateAllowOnce, "auto-edit permission mode"
 		}
 		return ask(req)
-	case permissions.FullAccess, permissions.Always:
-		return tools.GateAllowOnce, "per-run permission mode"
 	}
 	if req.Tool == "ExitPlanMode" || options.ApprovalPolicy == "auto" {
 		return tools.GateAllowOnce, "per-run approval policy"
