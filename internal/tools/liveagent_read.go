@@ -201,11 +201,34 @@ func liveagentAttach(ctx context.Context, part ai.ContentPart) bool {
 	a.parts = append(a.parts, part)
 	return true
 }
+
+// liveagentLooksSVG accepts a document whose first element is <svg>, after any
+// XML declaration, processing instructions, comments and DOCTYPE. Text that
+// merely mentions "<svg" is not an image and must not be attached whole.
+func liveagentLooksSVG(data []byte) bool {
+	decoder := xml.NewDecoder(bytes.NewReader(bytes.TrimPrefix(data[:min(len(data), 64<<10)], []byte("\xef\xbb\xbf"))))
+	decoder.Strict = false
+	for {
+		token, err := decoder.Token()
+		if err != nil {
+			return false
+		}
+		switch t := token.(type) {
+		case xml.StartElement:
+			return t.Name.Local == "svg"
+		case xml.CharData:
+			if len(bytes.TrimSpace(t)) > 0 {
+				return false
+			}
+		}
+	}
+}
+
 func liveagentImagePart(data []byte, mime string) (ai.ContentPart, error) {
 	if mime == "" {
 		mime = http.DetectContentType(data)
 	}
-	if strings.Contains(string(data[:min(len(data), 512)]), "<svg") {
+	if liveagentLooksSVG(data) {
 		mime = "image/svg+xml"
 	}
 	switch mime {
@@ -284,7 +307,7 @@ func liveagentImage(ctx context.Context, a map[string]any) (string, error) {
 			key := s.kind + "\x00" + v
 			if s.kind == "path" {
 				// One file spelled two ways (./a.png, a.png) is one image.
-				if resolved, err := liveagentPath(ctx, v, "read", "Image", false); err == nil {
+				if resolved, err := liveagentImagePath(ctx, v); err == nil {
 					key = "path\x00" + resolved
 				}
 			}
@@ -327,7 +350,7 @@ func liveagentImage(ctx context.Context, a map[string]any) (string, error) {
 			mime := laString(a, "mimeType")
 			switch s.kind {
 			case "path":
-				path, e := liveagentAuthorizePath(ctx, "Image", v, "read", false)
+				path, e := liveagentAuthorizeImagePath(ctx, v)
 				if e != nil {
 					return "", e
 				}

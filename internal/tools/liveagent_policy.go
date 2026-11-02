@@ -183,10 +183,71 @@ func liveagentPath(ctx context.Context, raw string, access string, tool string, 
 		}
 	}
 	if driveRootedPath(raw) {
-		return "", errors.New(tool + ".path is outside the authorized workspace roots (resolved to " + path +
-			`; on Windows a path starting with "/" or "\" is relative to the drive root, not the workspace or the system temp directory)`)
+		return "", &liveagentOutsideRootsError{path: path, msg: tool + ".path is outside the authorized workspace roots (resolved to " + path +
+			`; on Windows a path starting with "/" or "\" is relative to the drive root, not the workspace or the system temp directory)`}
 	}
-	return "", errors.New(tool + ".path is outside the authorized workspace roots")
+	return "", &liveagentOutsideRootsError{path: path, msg: tool + ".path is outside the authorized workspace roots"}
+}
+
+// liveagentOutsideRootsError is the rejection of a well-formed absolute path
+// that no workspace root covers; path is the resolved target.
+type liveagentOutsideRootsError struct{ path, msg string }
+
+func (e *liveagentOutsideRootsError) Error() string { return e.msg }
+
+// liveagentImagePath resolves an Image path. Besides the workspace roots it
+// accepts existing files in the system temp directory, where screenshots and
+// generated images land. The temp check is lexical first, so network and
+// device spellings are refused before anything is opened; the accepted path
+// is the resolved long form, which is what the gate and the read then use.
+func liveagentImagePath(ctx context.Context, raw string) (string, error) {
+	path, err := liveagentPath(ctx, raw, "read", "Image", false)
+	var outside *liveagentOutsideRootsError
+	if err == nil || !errors.As(err, &outside) {
+		return path, err
+	}
+	roots := liveagentTempRoots()
+	for _, root := range roots {
+		if !safeWorkspacePath(root, outside.path) {
+			continue
+		}
+		resolved, evalErr := filepath.EvalSymlinks(outside.path)
+		if evalErr != nil {
+			return "", err
+		}
+		for _, again := range roots {
+			if safeWorkspacePath(again, resolved) {
+				if info, statErr := os.Stat(resolved); statErr == nil && info.Mode().IsRegular() {
+					return resolved, nil
+				}
+			}
+		}
+		return "", err
+	}
+	return "", err
+}
+
+func liveagentTempRoots() []string {
+	temp := filepath.Clean(os.TempDir())
+	roots := []string{temp}
+	if long, err := filepath.EvalSymlinks(temp); err == nil && long != temp {
+		roots = append(roots, long)
+	}
+	return roots
+}
+
+func liveagentAuthorizeImagePath(ctx context.Context, raw string) (string, error) {
+	path, err := liveagentImagePath(ctx, raw)
+	if err != nil {
+		return "", err
+	}
+	if deny := checkGate(ctx, "Image", path); deny != "" {
+		return "", errors.New(deny)
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	return liveagentImagePath(ctx, path)
 }
 
 func safeWorkspacePath(root, target string) bool {
