@@ -15,6 +15,16 @@ import (
 )
 
 func TestOnToolOutputStreamsBash(t *testing.T) {
+	assertToolOutputStreams(t, "bash", tools.All())
+}
+
+// 桌面端走 LiveAgent 目录里的 Bash，也要推送运行中输出（#975）。
+func TestOnToolOutputStreamsLiveAgentBash(t *testing.T) {
+	assertToolOutputStreams(t, "Bash", tools.LiveAgentCatalog())
+}
+
+func assertToolOutputStreams(t *testing.T, toolName string, catalog []tools.Tool) {
+	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req ai.Request
 		json.NewDecoder(r.Body).Decode(&req)
@@ -24,14 +34,15 @@ func TestOnToolOutputStreamsBash(t *testing.T) {
 		if last.Role == "tool" {
 			fmt.Fprint(w, `data: {"choices":[{"delta":{"content":"done"},"finish_reason":"stop"}]}`+"\n\n")
 		} else {
-			fmt.Fprint(w, `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"tc1","type":"function","function":{"name":"bash","arguments":"{\"command\":\"echo early; sleep 0.3; echo late\"}"}}]}}]}`+"\n\n")
+			fmt.Fprint(w, `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"tc1","type":"function","function":{"name":"`+toolName+`","arguments":"{\"command\":\"echo early; sleep 0.3; echo late\"}"}}]}}]}`+"\n\n")
 		}
 		fmt.Fprint(w, "data: [DONE]\n\n")
 	}))
 	defer srv.Close()
 
 	ag := New(ai.New(srv.URL, "k"), "m", 100, "sys")
-	ag.Tools = tools.All()
+	ag.Tools = catalog
+	ag.WorkingDir = t.TempDir()
 
 	var mu sync.Mutex
 	var ids []string

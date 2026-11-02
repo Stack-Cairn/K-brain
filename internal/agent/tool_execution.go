@@ -97,7 +97,7 @@ func (a *Agent) runTools(ctx context.Context, calls []ai.ToolCall, ev Events) []
 			defer a.trackTool(name, -1)
 			start := time.Now()
 			callCtx := tools.WithToolCallID(ctx, tc.ID)
-			if ev.OnToolOutput != nil && name == "bash" {
+			if ev.OnToolOutput != nil && streamsToolOutput(name) {
 				callCtx = tools.WithOnUpdate(callCtx, func(soFar string) {
 					ev.OnToolOutput(tc.ID, soFar)
 				})
@@ -167,4 +167,10 @@ func toolExitCode(out string) int {
 		return 1
 	}
 	return 0
+}
+
+// streamsToolOutput 列出运行中会推送输出快照的工具：CLI 的 bash 与桌面端
+// LiveAgent 目录里的 Bash（两者都走 bashrun，快照有上限且按间隔节流）。
+func streamsToolOutput(name string) bool {
+	return name == "bash" || name == "Bash"
 }
