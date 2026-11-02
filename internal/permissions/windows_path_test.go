@@ -17,6 +17,9 @@ func TestPathRulesSeeThroughExtendedDriveSpelling(t *testing.T) {
 		{"Image(shots/**)", `D:\work\shots\a.png`, `\\?\D:\work`},
 		{"Image(shots/**)", `shots\a.png`, `\\?\D:\work`},
 		{`Image(\\?\D:/work/**)`, `D:\work\shots\a.png`, `D:\work`},
+		{`Image(\\?\UNC\host\share\work/**)`, `\\host\share\work\a.png`, `D:\work`},
+		{`Image(//?/unc/host/share/work/**)`, `\\?\UNC\host\share\work\a.png`, `D:\work`},
+		{`Image(//host/share/work/**)`, `\\?\UNC\host\share\work\a.png`, `D:\work`},
 	} {
 		d := Evaluate(Request{Tool: "Image", Command: tc.command}, Options{ProjectRoot: tc.root}, deny(tc.rule))
 		if d.Effect != Deny {

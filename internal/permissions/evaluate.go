@@ -243,12 +243,20 @@ func resolvePath(p, root string) string {
 	return filepath.Clean(p)
 }
 
-// trimExtendedPattern drops a \\?\ (or //?/) prefix before a drive letter from a
-// path rule as written. It runs before slashPath, which would read the \? as an
-// escaped glob character; patterns cannot go through winpath.Normalize.
+// trimExtendedPattern rewrites a path rule written in the Win32 file namespace to
+// the ordinary spelling requests are compared in: \\?\X:\ becomes X:\ and
+// \\?\UNC\server\ becomes \\server\ (either separator). It runs before slashPath,
+// which would read the \? as an escaped glob character; patterns cannot go through
+// winpath.Normalize.
 func trimExtendedPattern(pattern string) string {
-	if runtime.GOOS == "windows" && len(pattern) >= 6 && (strings.HasPrefix(pattern, `\\?\`) || strings.HasPrefix(pattern, `//?/`)) && pattern[5] == ':' {
+	if runtime.GOOS != "windows" || len(pattern) < 6 || !(strings.HasPrefix(pattern, `\\?\`) || strings.HasPrefix(pattern, `//?/`)) {
+		return pattern
+	}
+	if pattern[5] == ':' {
 		return pattern[4:]
+	}
+	if len(pattern) > 8 && strings.EqualFold(pattern[4:7], "UNC") && (pattern[7] == '\\' || pattern[7] == '/') {
+		return pattern[:2] + pattern[8:]
 	}
 	return pattern
 }

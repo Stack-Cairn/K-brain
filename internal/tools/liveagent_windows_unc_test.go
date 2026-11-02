@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -91,6 +92,67 @@ func TestWriteToolDenySeesEveryWindowsSpelling(t *testing.T) {
 			_, err := tool.Run(ctx, mustJSON(map[string]any{"path": spelling, "content": "leak", "old_string": "before", "new_string": "leak"}))
 			if data, _ := os.ReadFile(file); err == nil || string(data) != "before" {
 				t.Errorf("%s via %q passed the deny rule (err=%v, file holds %q)", tool.Def.Function.Name, spelling, err, data)
+			}
+		}
+	}
+}
+
+// #79 contract, extended spelling: \\?\UNC\host\share\... now maps to \\host\share\...;
+// it must still be refused before any SMB access and never reach the gate.
+func TestLiveAgentImageExtendedUNCNotOpenedBeforeGate(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("UNC paths are a Windows form")
+	}
+	outside := t.TempDir()
+	target := filepath.Join(outside, "a.png")
+	tempImagePNG(t, target)
+	tail := strings.Replace(target, ":", "$", 1)
+	if _, err := os.Stat(`\\127.0.0.1\` + tail); err != nil {
+		t.Skipf("loopback admin share unavailable: %v", err)
+	}
+	var gated []string
+	ctx := WithGate(WithWorkingDir(context.Background(), t.TempDir()), func(r GateRequest) (GateDecision, string) {
+		gated = append(gated, r.Command)
+		return GateReject, "denied by test"
+	})
+	for _, p := range []string{`\\?\UNC\127.0.0.1\` + tail, `\\?\unc\127.0.0.1\` + tail} {
+		gated = nil
+		raw, _ := json.Marshal(map[string]any{"path": p})
+		result := ExecuteResult(ctx, LiveAgentCatalog(), "Image", raw, true)
+		if !result.Failed || len(gated) != 0 {
+			t.Errorf("%s: failed=%v gated=%q text=%q", p, result.Failed, gated, result.Text)
+		}
+	}
+}
+
+// A deny rule written in either UNC spelling denies a write in either spelling.
+func TestDenyRuleInExtendedUNCSpellingStillDenies(t *testing.T) {
+	local := t.TempDir()
+	secret := filepath.Join(local, "secret")
+	if err := os.MkdirAll(secret, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	extSecret, plainSecret := uncExtended(t, secret)
+	for _, rule := range []string{
+		"Edit(" + filepath.ToSlash(plainSecret) + "/**)", // control: plain UNC rule
+		// The glob stays slash separated: a backslash before * escapes it in rules.
+		"Edit(" + extSecret + `/**)`,
+		"Edit(//?/UNC/" + filepath.ToSlash(plainSecret[2:]) + "/**)",
+	} {
+		rules := permissions.RuleSet{Scope: permissions.ScopeUser, Rules: []permissions.StoredRule{{Rule: rule, Effect: permissions.Deny}}}
+		ctx := WithGate(WithWorkingDir(context.Background(), local), func(req GateRequest) (GateDecision, string) {
+			if permissions.Evaluate(permissions.Request{Tool: req.Tool, Command: req.Command}, permissions.Options{ProjectRoot: local}, rules).Effect == permissions.Deny {
+				return GateReject, "denied by rule"
+			}
+			return GateAllowOnce, ""
+		})
+		file := filepath.Join(secret, "a.txt")
+		for _, spelling := range []string{filepath.Join(plainSecret, "a.txt"), filepath.Join(extSecret, "a.txt")} {
+			_ = os.Remove(file)
+			_, err := writeTool().Run(ctx, mustJSON(map[string]any{"path": spelling, "content": "leak"}))
+			if err == nil || !strings.Contains(err.Error(), "denied") {
+				data, _ := os.ReadFile(file)
+				t.Errorf("rule %s, write %s: err=%v, file holds %q", rule, spelling, err, data)
 			}
 		}
 	}
