@@ -135,6 +135,8 @@ CLI 可用 `-config FILE -session-dir DIR` 指定配置与存储目录；省略�
 - `GET /v1/permissions/rules?workspace=<项目根>&session_id=<id>` 返回这些作用域的规则；`POST /v1/permissions/rules {rule,effect:"allow"|"deny",scope,workspace?,session_id?}` 新增；`DELETE /v1/permissions/rules/{id}?scope=&workspace=&session_id=` 删除。
 - normal、auto_edit、auto_review 模式下，Read/Image/List/Glob/Grep 与只读命令（ls、cat、rg、git status/diff/log 等白名单）直接执行；cmd 会先在工作目录查找程序，cmd（以及 Windows 上未知的 shell）不做只读放行。显式的工具策略 ask 仍然询问。
 - 查看本会话自己启动的进程或终端的输出也按只读放行：`ProcessWait`、`ManagedProcess` 的 `status`/`read_log`/`wait`、`ReadTerminal`。这类请求的 `command` 是进程或终端 id，规则按文本匹配它；deny 规则照常生效，不生成可记住的规则。启动、停止进程与终端输入仍然询问。
+- 进程与终端归属会话：同一会话后续的运行可以查看、等待、停止之前运行启动的进程和终端（例如上一轮 Bash `yield_time_ms` 留下的 `session_id`）；其他会话、没有运行身份的调用一律拒绝。普通进程仍随启动它的运行结束而取消，之后读到的是 `cancelled` 等终态。
+- Windows 路径：`\\?\D:\...` 与 `\\?\UNC\server\share\...` 先还原成 `D:\...`、`\\server\share\...` 再比较授权根、匹配权限规则和读写；还原后含义会变的写法（`.`、`..`、`/`、末尾的点或空格、`:` 流、保留设备名）以及 `\\.\`、`\??\`、卷 GUID、GLOBALROOT 直接拒绝。
 - 只读命令白名单另含：`hostname`（不带参数）、`whoami`、`date`（不带参数或只带 `+格式`）、`Get-Date`、`Get-Process`/`ps`、`Get-FileHash`、任意程序只带 `--version`、`git stash list|show`、`git tag`（不带参数或 `-l/--list`）、`git config --get|--get-all|--get-regexp|--list|-l`、`cd`/`Set-Location`/`pushd`/`popd`，以及 PowerShell 管道里的 `Select-Object`、`Sort-Object`、`Measure-Object`、`Format-Table`、`Format-List`、`Format-Wide`、`Out-String`。
 - 不做只读放行：含 `$` 的变量展开（`echo $OPENAI_API_KEY`、`$env:X`）、PowerShell 非文件驱动器（`Env:`、`Variable:`、`Function:`、`Alias:`、`Cert:`、`HKLM:`、`HKCU:`、`WSMan:`、`Registry::`）、`git -C <目录>`，以及 `cd` 之后再运行的 git——git 读取所在仓库的配置，`core.fsmonitor`、`diff.external` 等配置会运行程序。
 
