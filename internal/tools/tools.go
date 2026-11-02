@@ -15,6 +15,7 @@ import (
 	"github.com/Stack-Cairn/K-brain/internal/ai"
 	"github.com/Stack-Cairn/K-brain/internal/sandbox"
 	"github.com/Stack-Cairn/K-brain/internal/tools/bashrun"
+	"github.com/Stack-Cairn/K-brain/internal/winpath"
 )
 
 type Tool struct {
@@ -60,6 +61,13 @@ func WithWorkingDir(ctx context.Context, dir string) context.Context {
 
 func WorkingDir(ctx context.Context) string {
 	return bashrun.WorkingDir(ctx)
+}
+
+// resolveFilePath is ResolvePath for a file a tool will gate and open: it returns
+// the ordinary spelling of a Windows extended path, so permission rules see the
+// file the tool opens, and refuses other Windows namespaces.
+func resolveFilePath(ctx context.Context, path string) (string, error) {
+	return winpath.Normalize(ResolvePath(ctx, path))
 }
 
 func ResolvePath(ctx context.Context, path string) string {
@@ -287,7 +295,10 @@ func readTool() Tool {
 			if err := json.Unmarshal(args, &a); err != nil {
 				return "", err
 			}
-			a.Path = ResolvePath(ctx, a.Path)
+			var err error
+			if a.Path, err = resolveFilePath(ctx, a.Path); err != nil {
+				return "", err
+			}
 			data, err := os.ReadFile(a.Path)
 			if err != nil {
 				return "", err
@@ -327,7 +338,10 @@ func writeTool() Tool {
 			if err := json.Unmarshal(args, &a); err != nil {
 				return "", err
 			}
-			a.Path = ResolvePath(ctx, a.Path)
+			var err error
+			if a.Path, err = resolveFilePath(ctx, a.Path); err != nil {
+				return "", err
+			}
 			if deny := checkGate(ctx, "write", a.Path); deny != "" {
 				return "", errors.New(deny)
 			}
@@ -369,7 +383,10 @@ func editTool() Tool {
 			if err := json.Unmarshal(args, &a); err != nil {
 				return "", err
 			}
-			a.Path = ResolvePath(ctx, a.Path)
+			var err error
+			if a.Path, err = resolveFilePath(ctx, a.Path); err != nil {
+				return "", err
+			}
 			if deny := checkGate(ctx, "edit", a.Path); deny != "" {
 				return "", errors.New(deny)
 			}

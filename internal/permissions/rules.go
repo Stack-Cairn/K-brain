@@ -121,7 +121,7 @@ func ParseRule(text string) (Rule, error) {
 		if r.Prefix {
 			return Rule{}, fmt.Errorf("permission rule %q: path patterns use globs, not :*", text)
 		}
-		r.Pattern = slashPath(inner)
+		r.Pattern = slashPath(trimExtendedPattern(inner))
 	default:
 		r.Pattern = inner
 	}

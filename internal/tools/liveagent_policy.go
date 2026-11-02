@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/Stack-Cairn/K-brain/internal/winpath"
 )
 
 // WorkspaceRoot is the backend's authoritative filesystem boundary.
@@ -132,8 +134,9 @@ func liveagentPath(ctx context.Context, raw string, access string, tool string, 
 		if access == "write" && grant.Access != "write" {
 			return "", errors.New("named root is read-only")
 		}
-		path := filepath.Join(grant.Path, filepath.FromSlash(strings.TrimPrefix(u.Path, "/")))
-		if !filepath.IsAbs(grant.Path) || !safeWorkspacePath(grant.Path, path) {
+		grantPath := winpath.Simplify(grant.Path)
+		path := filepath.Join(grantPath, filepath.FromSlash(strings.TrimPrefix(u.Path, "/")))
+		if !filepath.IsAbs(grantPath) || !safeWorkspacePath(grantPath, path) {
 			return "", errors.New("named root path escapes its grant")
 		}
 		return path, nil
@@ -141,7 +144,12 @@ func liveagentPath(ctx context.Context, raw string, access string, tool string, 
 	if strings.Contains(raw, "://") {
 		return "", errors.New("path root is not configured: " + raw)
 	}
-	path := ResolvePath(ctx, raw)
+	// Compare and return the ordinary spelling, so the boundary check, the gate's
+	// path rules and the read all see one form of the target.
+	path, err := resolveFilePath(ctx, raw)
+	if err != nil {
+		return "", errors.New(tool + ".path: " + err.Error())
+	}
 	if !filepath.IsAbs(path) {
 		return "", errors.New(tool + ".path must resolve to an absolute path")
 	}
@@ -251,6 +259,9 @@ func liveagentAuthorizeImagePath(ctx context.Context, raw string) (string, error
 }
 
 func safeWorkspacePath(root, target string) bool {
+	// Roots arrive from configuration in either Windows spelling; filepath.Rel
+	// cannot relate \\?\D:\ to D:\, which skipped read-only vetoes as well as grants.
+	root, target = winpath.Simplify(root), winpath.Simplify(target)
 	rootInfo, err := os.Lstat(root)
 	if err != nil || !rootInfo.IsDir() || rootInfo.Mode()&os.ModeSymlink != 0 {
 		return false

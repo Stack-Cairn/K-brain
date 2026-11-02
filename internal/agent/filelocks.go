@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"sync"
+
+	"github.com/Stack-Cairn/K-brain/internal/winpath"
 )
 
 type fileLocks struct {
@@ -75,6 +77,7 @@ func acquireLock(ctx context.Context, ch chan struct{}) (func(), error) {
 }
 
 func canonicalPathKey(path string) string {
+	path = winpath.Simplify(path)
 	if abs, err := filepath.Abs(path); err == nil {
 		path = abs
 	}
