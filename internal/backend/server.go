@@ -1516,6 +1516,10 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, runID strin
 		_, _ = rt.publish(protocol.EventHookWarning, map[string]any{"hookName": hook.Name, "hookType": hook.Type, "event": event, "message": err.Error()}, "")
 	})
 	ctx = agent.WithLifecycleStart(ctx, func() { hookEvents("agent_start") })
+	toolOutput := newToolOutputThrottle(toolOutputInterval, func(id, output string) {
+		_, _ = rt.publish(protocol.EventToolStatus, protocol.ToolStatus{ToolCallID: id, Status: "running", Message: output}, "")
+	})
+	defer toolOutput.close()
 	ev := agent.Events{OnPhase: progress.phase, OnCompactStart: func(int, int) { progress.phase("compacting") }, OnLifecycle: hookEvents, OnText: func(d string) {
 		if d != "" {
 			progress.phase("responding")
@@ -1538,10 +1542,9 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, runID strin
 		progress.phase("tool")
 		_, _ = rt.publish(protocol.EventToolCall, protocol.ToolCallEvent{ToolCall: protocol.ToolCall{ID: id, Name: name, Arguments: json.RawMessage(args)}}, "")
 	}, OnToolResult: func(id, name string, result tools.Result) {
+		toolOutput.finish(id)
 		_, _ = rt.publish(protocol.EventToolResult, protocol.ToolResultEvent{ToolResult: protocol.ToolResult{ID: id, Name: name, Output: result.Text, Content: protocol.FromAIMessage(ai.Message{Role: "tool", Parts: result.Parts}).Content, Failed: result.Failed, Cancelled: result.Cancelled}}, "")
-	}, OnToolOutput: func(id, output string) {
-		_, _ = rt.publish(protocol.EventToolStatus, protocol.ToolStatus{ToolCallID: id, Status: "running", Message: output}, "")
-	}, OnUsage: func(u ai.Usage) {
+	}, OnToolOutput: toolOutput.update, OnUsage: func(u ai.Usage) {
 		_, _ = rt.publish(protocol.EventUsage, protocol.Usage{InputTokens: u.PromptTokens, OutputTokens: u.CompletionTokens, CachedTokens: u.Cached(), CacheWriteTokens: u.CacheWrite()}, "")
 	}}
 	ev = agent.FanIn(rt.recorder.Events(), ev)
@@ -1557,6 +1560,7 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, runID strin
 	} else {
 		_, err = rt.agent.TurnParts(ctx, converted.Content, converted.Parts, ev)
 	}
+	toolOutput.close()
 	progress.phase("persisting")
 	var failedAssistant *protocol.Message
 	if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {

@@ -117,6 +117,8 @@ CLI 可用 `-config FILE -session-dir DIR` 指定配置与存储目录；省略�
 - `usage.updated`
 - `run.completed`, `run.failed`, `run.cancelled`
 
+`bash`/`Bash` 命令运行期间，后端以 `tool.status{tool_call_id,status:"running",message}` 推送输出：`message` 是截至此刻的输出尾部快照（最多 4 KiB，尽量从整行开始），客户端整体替换而非拼接；同一调用最多每 500ms 发一次，输出停住后补发最后一份，且全部排在该调用的 `tool.result` 之前。快照只进事件日志，会话历史仍只保存最终的 `tool.result`。不认识该字段的旧客户端可以忽略。
+
 流连接结束与运行终态是两个不同事实。客户端只有消费终态事件后才能确认运行结束。
 
 ### 记住的权限规则（`capabilities.permission_rules: 1`、`readonly_auto_allow: 1`）
