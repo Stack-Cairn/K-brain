@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -349,6 +350,58 @@ func TestLiveAgentImagesAndReadWindows(t *testing.T) {
 	out, err = read.Run(ctx, json.RawMessage(`{"path":"a.ipynb","cell_start":2,"cell_limit":1}`))
 	if err != nil || !strings.Contains(out, "second") || strings.Contains(out, "first") {
 		t.Fatalf("cell window=%q %v", out, err)
+	}
+}
+
+// Strict-schema models fill every Image field: blanks for unused ones and the
+// same local path repeated in paths, sources, urls and base64s (recorded calls).
+func TestLiveAgentImageToleratesStrictSchemaFilledFields(t *testing.T) {
+	dir := t.TempDir()
+	ctx := WithWorkingDir(context.Background(), dir)
+	ts := LiveAgentCatalog()
+	png, _ := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6WQAAAABJRU5ErkJggg==")
+	if err := os.MkdirAll(filepath.Join(dir, ".debug"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	local := ".debug/quote-desktop.png"
+	if err := os.WriteFile(filepath.Join(dir, local), png, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	absolute := filepath.Join(dir, local)
+	for name, call := range map[string]map[string]any{
+		"blank placeholders":     {"base64": "", "base64s": []string{""}, "mimeType": "", "path": local, "paths": []string{local}, "source": "", "sources": []string{local}, "url": "", "urls": []string{""}},
+		"path in every field":    {"base64": "", "base64s": []string{local}, "mimeType": "", "path": local, "paths": []string{local}, "source": local, "sources": []string{local}, "url": "", "urls": []string{local}},
+		"windows path as base64": {"base64": absolute, "path": "", "paths": []string{""}, "url": "", "urls": []string{""}},
+		"file url as url":        {"url": "file:///" + filepath.ToSlash(absolute)},
+	} {
+		raw, _ := json.Marshal(call)
+		result := ExecuteResult(ctx, ts, "Image", raw, true)
+		if result.Failed {
+			t.Fatalf("%s: failed: %s", name, result.Text)
+		}
+		if name == "file url as url" {
+			if len(result.Parts) != 1 {
+				t.Fatalf("%s: parts=%d", name, len(result.Parts))
+			}
+			continue
+		}
+		if len(result.Parts) != 1 {
+			t.Fatalf("%s: duplicate sources not collapsed, parts=%d text=%q", name, len(result.Parts), result.Text)
+		}
+		if !strings.HasPrefix(result.Parts[0].ImageURL.URL, "data:image/png;base64,") {
+			t.Fatalf("%s: part=%+v", name, result.Parts[0])
+		}
+	}
+	for name, call := range map[string]map[string]any{
+		"only blanks":         {"path": "", "paths": []string{""}, "urls": []string{"  "}},
+		"credential url":      {"url": "https://user:pass@example.test/a.png"},
+		"non-http scheme":     {"urls": []string{"ftp://example.test/a.png"}},
+		"bad base64 data url": {"base64": "data:image/png;base64,***"},
+	} {
+		raw, _ := json.Marshal(call)
+		if result := ExecuteResult(ctx, ts, "Image", raw, true); !result.Failed {
+			t.Fatalf("%s: accepted: %+v", name, result)
+		}
 	}
 }
 

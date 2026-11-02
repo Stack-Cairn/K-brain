@@ -201,11 +201,34 @@ func liveagentAttach(ctx context.Context, part ai.ContentPart) bool {
 	a.parts = append(a.parts, part)
 	return true
 }
+
+// liveagentLooksSVG accepts a document whose first element is <svg>, after any
+// XML declaration, processing instructions, comments and DOCTYPE. Text that
+// merely mentions "<svg" is not an image and must not be attached whole.
+func liveagentLooksSVG(data []byte) bool {
+	decoder := xml.NewDecoder(bytes.NewReader(bytes.TrimPrefix(data[:min(len(data), 64<<10)], []byte("\xef\xbb\xbf"))))
+	decoder.Strict = false
+	for {
+		token, err := decoder.Token()
+		if err != nil {
+			return false
+		}
+		switch t := token.(type) {
+		case xml.StartElement:
+			return t.Name.Local == "svg"
+		case xml.CharData:
+			if len(bytes.TrimSpace(t)) > 0 {
+				return false
+			}
+		}
+	}
+}
+
 func liveagentImagePart(data []byte, mime string) (ai.ContentPart, error) {
 	if mime == "" {
 		mime = http.DetectContentType(data)
 	}
-	if strings.Contains(string(data[:min(len(data), 512)]), "<svg") {
+	if liveagentLooksSVG(data) {
 		mime = "image/svg+xml"
 	}
 	switch mime {
@@ -215,20 +238,87 @@ func liveagentImagePart(data []byte, mime string) (ai.ContentPart, error) {
 	}
 	return ai.ImagePart(strings.TrimPrefix(mime, "image/"), data), nil
 }
+
+// liveagentImageSourceKind classifies one Image value by its content. The field
+// it came from only breaks ties: strict-schema models fill every field, so a
+// local path routinely arrives in url/urls or base64/base64s.
+func liveagentImageSourceKind(field, v string) string {
+	lower := strings.ToLower(v)
+	switch {
+	case strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://"):
+		return "url"
+	case strings.HasPrefix(lower, "data:image/") || strings.HasPrefix(v, "iVBOR") || strings.HasPrefix(v, "/9j/"):
+		return "base64"
+	case strings.HasPrefix(v, "<svg") || strings.HasPrefix(v, "<?xml"):
+		return "svg"
+	case field == "url" && strings.Contains(v, "://") && !liveagentLocalPathScheme(lower):
+		return "url" // rejected below with the URL rule
+	case (field == "base64" || field == "auto") && liveagentDecodesToImage(v):
+		return "base64"
+	}
+	return "path"
+}
+
+func liveagentLocalPathScheme(lower string) bool {
+	for _, scheme := range []string{"file://", "root://", "skill://"} {
+		if strings.HasPrefix(lower, scheme) {
+			return true
+		}
+	}
+	return false
+}
+
+// liveagentDecodesToImage tells raw base64 from a path that happens to use
+// only base64 characters (shots/latest): only real image bytes count.
+func liveagentDecodesToImage(v string) bool {
+	cleaned := strings.Join(strings.Fields(v), "")
+	if cleaned == "" || len(cleaned)%4 != 0 {
+		return false
+	}
+	data, err := base64.StdEncoding.DecodeString(cleaned)
+	if err != nil {
+		return false
+	}
+	_, err = liveagentImagePart(data, "")
+	return err == nil
+}
+
 func liveagentImage(ctx context.Context, a map[string]any) (string, error) {
 	type source struct{ kind, value string }
 	var sources []source
+	seen := map[string]bool{}
 	for _, pair := range [][3]string{{"source", "sources", "auto"}, {"path", "paths", "path"}, {"url", "urls", "url"}, {"base64", "base64s", "base64"}} {
+		values := []string{laString(a, pair[0])}
 		if many, ok := a[pair[1]].([]any); ok {
 			for _, v := range many {
-				sources = append(sources, source{pair[2], v.(string)})
+				if s, ok := v.(string); ok {
+					values = append(values, s)
+				}
 			}
-		} else if v := laString(a, pair[0]); v != "" {
-			sources = append(sources, source{pair[2], v})
+		}
+		// Blank placeholders and the same image repeated across fields are
+		// what strict-schema models send for unused fields; skip them.
+		for _, v := range values {
+			v = strings.TrimSpace(v)
+			if v == "" {
+				continue
+			}
+			s := source{liveagentImageSourceKind(pair[2], v), v}
+			key := s.kind + "\x00" + v
+			if s.kind == "path" {
+				// One file spelled two ways (./a.png, a.png) is one image.
+				if resolved, err := liveagentImagePath(ctx, v); err == nil {
+					key = "path\x00" + resolved
+				}
+			}
+			if !seen[key] {
+				seen[key] = true
+				sources = append(sources, s)
+			}
 		}
 	}
 	if len(sources) == 0 || len(sources) > 12 {
-		return "", errors.New("Image requires between 1 and 12 sources")
+		return "", errors.New("Image requires between 1 and 12 non-empty sources")
 	}
 	var parts []ai.ContentPart
 	var descriptions []string
@@ -236,22 +326,7 @@ func liveagentImage(ctx context.Context, a map[string]any) (string, error) {
 		if err := ctx.Err(); err != nil {
 			return "", err
 		}
-		v := strings.TrimSpace(s.value)
-		if v == "" {
-			return "", errors.New("Image source must be non-empty")
-		}
-		if s.kind == "auto" {
-			switch {
-			case strings.HasPrefix(v, "http://") || strings.HasPrefix(v, "https://"):
-				s.kind = "url"
-			case strings.HasPrefix(v, "data:image/") || strings.HasPrefix(v, "iVBOR") || strings.HasPrefix(v, "/9j/"):
-				s.kind = "base64"
-			case strings.HasPrefix(v, "<svg") || strings.HasPrefix(v, "<?xml"):
-				s.kind = "svg"
-			default:
-				s.kind = "path"
-			}
-		}
+		v := s.value
 		var part ai.ContentPart
 		if s.kind == "url" {
 			u, err := url.Parse(v)
@@ -275,7 +350,7 @@ func liveagentImage(ctx context.Context, a map[string]any) (string, error) {
 			mime := laString(a, "mimeType")
 			switch s.kind {
 			case "path":
-				path, e := liveagentAuthorizePath(ctx, "Image", v, "read", false)
+				path, e := liveagentAuthorizeImagePath(ctx, v)
 				if e != nil {
 					return "", e
 				}
