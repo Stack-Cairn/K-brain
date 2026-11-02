@@ -106,6 +106,11 @@ func liveagentPath(ctx context.Context, raw string, access string, tool string, 
 			return "", errors.New("invalid local file URL")
 		}
 		raw = u.Path
+		// file:///C:/a.png parses to "/C:/a.png", which Windows reads as
+		// drive-root relative; drop the slash before the drive letter.
+		if len(raw) >= 3 && raw[0] == '/' && raw[2] == ':' && filepath.VolumeName(raw[1:]) != "" {
+			raw = raw[1:]
+		}
 	}
 	if strings.HasPrefix(raw, "~/") {
 		home, err := os.UserHomeDir()
