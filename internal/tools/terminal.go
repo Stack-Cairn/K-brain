@@ -243,8 +243,7 @@ func (m *TerminalManager) read(s *terminalSession) {
 }
 
 func (m *TerminalManager) ownedSession(ctx context.Context, id string) (*terminalSession, error) {
-	identity, ok := RunIdentityFromContext(ctx)
-	if !ok {
+	if _, ok := RunIdentityFromContext(ctx); !ok {
 		return nil, errors.New("terminal session requires canonical run identity")
 	}
 	m.mu.Lock()
@@ -253,8 +252,8 @@ func (m *TerminalManager) ownedSession(ctx context.Context, id string) (*termina
 	if s == nil {
 		return nil, fmt.Errorf("terminal session not found: %s", id)
 	}
-	if s.identity != identity {
-		return nil, errors.New("terminal session belongs to another canonical run")
+	if !sharesConversation(ctx, s.identity) {
+		return nil, errors.New("terminal session belongs to another conversation")
 	}
 	return s, nil
 }
@@ -322,7 +321,7 @@ func (m *TerminalManager) Handle(ctx context.Context, req TerminalRequest) (Term
 		m.mu.Lock()
 		ids := make([]string, 0, len(m.sessions))
 		for id, s := range m.sessions {
-			if s.identity == identity {
+			if sharesConversation(ctx, s.identity) {
 				ids = append(ids, id)
 			}
 		}

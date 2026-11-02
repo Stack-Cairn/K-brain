@@ -224,7 +224,7 @@ func (m *liveagentProcessManager) getOwned(ctx context.Context, id string) (*liv
 	if err != nil {
 		return nil, err
 	}
-	identity, ok := RunIdentityFromContext(ctx)
+	_, ok := RunIdentityFromContext(ctx)
 	if !ok && p.conversationID == "" && p.runID == "" {
 		return p, nil
 	}
@@ -232,10 +232,10 @@ func (m *liveagentProcessManager) getOwned(ctx context.Context, id string) (*liv
 		return nil, errors.New("managed process requires canonical run identity")
 	}
 	p.mu.Lock()
-	conversationID, runID := p.conversationID, p.runID
+	owner := RunIdentity{ConversationID: p.conversationID, RunID: p.runID}
 	p.mu.Unlock()
-	if conversationID == "" || runID == "" || conversationID != identity.ConversationID || runID != identity.RunID {
-		return nil, errors.New("managed process belongs to another canonical run")
+	if owner.RunID == "" || !sharesConversation(ctx, owner) {
+		return nil, errors.New("managed process belongs to another conversation")
 	}
 	return p, nil
 }
