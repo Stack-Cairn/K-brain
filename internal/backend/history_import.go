@@ -39,9 +39,12 @@ type legacyHistoryImportRequest struct {
 }
 
 // maxLegacyHistoryBodyBytes caps one-shot conversation imports. Legacy clients
-// send the whole conversation, and their source metadata repeats it, so real
-// histories reach ~30 MiB; 64 MiB leaves 2x headroom over the largest observed.
-const maxLegacyHistoryBodyBytes = 64 << 20
+// send the whole conversation and their source metadata repeats it twice, so a
+// conversation with inline images can exceed 64 MiB (reported in the field).
+// Import is a one-time desktop migration, so the cap only guards against
+// runaway bodies; it stays below maxOversizedBodyDrainBytes so a rejected body
+// still gets a readable 413.
+const maxLegacyHistoryBodyBytes = 512 << 20
 
 func importFingerprint(in legacyHistoryImportRequest) string {
 	raw, _ := json.Marshal(in)
