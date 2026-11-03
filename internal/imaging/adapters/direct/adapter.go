@@ -50,15 +50,16 @@ type Limits struct {
 }
 
 type Adapter struct {
-	id        string
-	profile   string
-	client    http.Client
-	base      string
-	secrets   imaging.SecretResolver
-	scope     imaging.Scope
-	secretRef string
-	headers   http.Header
-	limits    Limits
+	officialOpenAI bool
+	id             string
+	profile        string
+	client         http.Client
+	base           string
+	secrets        imaging.SecretResolver
+	scope          imaging.Scope
+	secretRef      string
+	headers        http.Header
+	limits         Limits
 }
 
 var _ imaging.Adapter = (*Adapter)(nil)
@@ -106,7 +107,7 @@ func newAdapter(id string, o Options) (*Adapter, error) {
 	c := *o.HTTPClient
 	c.Jar = nil
 	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	return &Adapter{id: id, profile: o.Profile, client: c, base: strings.TrimRight(u.String(), "/"), secrets: o.SecretResolver, scope: o.Scope, secretRef: o.SecretRef, headers: headers, limits: l}, nil
+	return &Adapter{officialOpenAI: id == OpenAIID && strings.EqualFold(u.Hostname(), "api.openai.com"), id: id, profile: o.Profile, client: c, base: strings.TrimRight(u.String(), "/"), secrets: o.SecretResolver, scope: o.Scope, secretRef: o.SecretRef, headers: headers, limits: l}, nil
 }
 
 func (a *Adapter) Poll(context.Context, string) (imaging.RemoteResult, error) {
@@ -183,7 +184,7 @@ func (a *Adapter) Submit(ctx context.Context, r imaging.ExecuteRequest) (imaging
 	if err != nil || int64(len(b)) > a.limits.MaxResponseBytes {
 		return failed(failure(imaging.CodeResultUnknown, imaging.DeliveryUncertain))
 	}
-	return a.response(ctx, b)
+	return a.response(ctx, b, r.Target.Source == "provider")
 }
 
 func httpFailure(id string, status int, b []byte, readErr error) error {

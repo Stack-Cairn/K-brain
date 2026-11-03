@@ -43,7 +43,7 @@ func noImage() (imaging.RemoteResult, error) {
 	return imaging.RemoteResult{State: "failed", ErrorCode: imaging.CodeNoImageOutput}, nil
 }
 
-func (a *Adapter) response(ctx context.Context, b []byte) (imaging.RemoteResult, error) {
+func (a *Adapter) response(ctx context.Context, b []byte, providerTarget bool) (imaging.RemoteResult, error) {
 	if a.id == GoogleID {
 		return a.googleResponse(ctx, b)
 	}
@@ -96,10 +96,9 @@ func (a *Adapter) response(ctx context.Context, b []byte) (imaging.RemoteResult,
 			return unknown()
 		}
 	} else if item.URL != "" {
-		// GPT Image's selected profile returns base64, not the old DALL-E URL
-		// response format. Ark, RollDek and Agnes explicitly support URL results; the
-		// official OpenAI profile remains base64-only.
-		if (a.id != VolcengineID && a.profile == "") || !outputURL(item.URL) {
+		// Provider-backed OpenAI-compatible models may return HTTPS URLs.
+		// The official OpenAI profile remains base64-only.
+		if (a.id != VolcengineID && a.profile == "" && !providerTarget) || !outputURL(item.URL) {
 			return unknown()
 		}
 		mime := ""
@@ -109,6 +108,11 @@ func (a *Adapter) response(ctx context.Context, b []byte) (imaging.RemoteResult,
 			mime = "image/png"
 		case "jpeg":
 			mime = "image/jpeg"
+		case "webp":
+			if a.id != OpenAIID {
+				return unknown()
+			}
+			mime = "image/webp"
 		default:
 			return unknown()
 		}
