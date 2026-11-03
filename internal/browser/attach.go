@@ -118,9 +118,7 @@ func browserRunningForProfile(base string) bool {
 
 func portLive(port int) bool {
 	for _, host := range []string{"127.0.0.1", "::1"} {
-		c, err := net.DialTimeout("tcp", net.JoinHostPort(host, strconv.Itoa(port)), 500*time.Millisecond)
-		if err == nil {
-			_ = c.Close()
+		if hostPortLive(host, port) {
 			return true
 		}
 	}
@@ -164,7 +162,7 @@ func chromeWSURL(ctx context.Context, base string) (string, error) {
 	return v.WebSocketDebuggerURL, nil
 }
 
-func resolveWSURL(ctx context.Context, scheme, host string, port int, wsPath string) (string, error) {
+func resolveWSURL(ctx context.Context, scheme, host string, port int, wsPath string, awaitApproval bool) (string, error) {
 	if scheme == "" {
 		scheme = "http"
 	}
@@ -194,10 +192,23 @@ func resolveWSURL(ctx context.Context, scheme, host string, port int, wsPath str
 			return ws, nil
 		}
 	}
+	// A DevToolsActivePort file names the browser websocket directly. Chrome's
+	// chrome://inspect remote-debugging switch serves no /json endpoints and
+	// holds the websocket handshake open until the user clicks Allow, so for
+	// the user's own browser (awaitApproval) a short probe would always time
+	// out and trigger a second prompt. Hand the candidate to connectLive
+	// instead: it waits for the approval and rejects non-browser endpoints.
+	// k-brain's own dedicated Chrome never prompts, so it is still probed.
+	if wsPath != "" && awaitApproval {
+		for _, h := range hosts {
+			if hostPortLive(h, port) {
+				return wsScheme + "://" + net.JoinHostPort(h, strconv.Itoa(port)) + wsPath, nil
+			}
+		}
+	}
 	if permErr != nil {
 		return "", permErr
 	}
-
 	if wsPath != "" {
 		for _, h := range hosts {
 			if wsUpgradeAnswers(ctx, scheme, h, port, wsPath) {
@@ -209,7 +220,6 @@ func resolveWSURL(ctx context.Context, scheme, host string, port int, wsPath str
 }
 
 func wsUpgradeAnswers(ctx context.Context, scheme, host string, port int, path string) bool {
-
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet,
 		scheme+"://"+net.JoinHostPort(host, strconv.Itoa(port))+path, nil)
 	req.Header.Set("Connection", "Upgrade")
@@ -225,27 +235,62 @@ func wsUpgradeAnswers(ctx context.Context, scheme, host string, port int, path s
 	return resp.StatusCode == http.StatusSwitchingProtocols
 }
 
+func hostPortLive(host string, port int) bool {
+	c, err := net.DialTimeout("tcp", net.JoinHostPort(host, strconv.Itoa(port)), 500*time.Millisecond)
+	if err != nil {
+		return false
+	}
+	_ = c.Close()
+	return true
+}
+
+// DiscoverLiveWS returns the first live-browser websocket candidate.
 func DiscoverLiveWS(ctx context.Context) (string, error) {
+	candidates, err := discoverLiveCandidates(ctx)
+	if err != nil {
+		return "", err
+	}
+	return candidates[0], nil
+}
+
+// discoverLiveCandidates lists every websocket endpoint that may belong to the
+// user's running browser, in preference order. Candidates taken from a
+// DevToolsActivePort file are not verified here; connectLive does that.
+func discoverLiveCandidates(ctx context.Context) ([]string, error) {
 	ws := os.Getenv("K_BRAIN_CDP_WS")
 	if ws != "" {
-		return ws, nil
+		return []string{ws}, nil
 	}
 	httpURL := os.Getenv("K_BRAIN_CDP_URL")
 	if httpURL != "" {
 		scheme, host, port := splitEndpoint(httpURL)
-		return resolveWSURL(ctx, scheme, host, port, "")
+		ws, err := resolveWSURL(ctx, scheme, host, port, "", true)
+		if err != nil {
+			return nil, err
+		}
+		return []string{ws}, nil
+	}
+	var candidates []string
+	seen := map[string]bool{}
+	add := func(ws string) {
+		if ws != "" && !seen[ws] {
+			seen[ws] = true
+			candidates = append(candidates, ws)
+		}
 	}
 	var sawStaleFile bool
+	var permErr error
 	for _, base := range profileDirs() {
-		ws, stale, err := discoverProfileWS(ctx, base)
+		ws, stale, err := discoverProfileWS(ctx, base, true)
 		if err == nil {
-			return ws, nil
+			add(ws)
+			continue
 		}
 		if stale {
 			sawStaleFile = true
 		}
-		if errors.Is(err, ErrPermissionBlocked) {
-			return "", err
+		if errors.Is(err, ErrPermissionBlocked) && permErr == nil {
+			permErr = err
 		}
 	}
 
@@ -253,26 +298,33 @@ func DiscoverLiveWS(ctx context.Context) (string, error) {
 		if !portLive(port) {
 			continue
 		}
-		ws, err := resolveWSURL(ctx, "", "", port, "")
+		ws, err := resolveWSURL(ctx, "", "", port, "", true)
 		if err == nil {
-			return ws, nil
+			add(ws)
+			continue
 		}
-		if errors.Is(err, ErrPermissionBlocked) {
-			return "", err
+		if errors.Is(err, ErrPermissionBlocked) && permErr == nil {
+			permErr = err
 		}
+	}
+	if len(candidates) > 0 {
+		return candidates, nil
+	}
+	if permErr != nil {
+		return nil, permErr
 	}
 	if sawStaleFile {
-		return "", fmt.Errorf("%w: a closed browser left a stale DevToolsActivePort file — reopen Chrome with remote debugging enabled (chrome://inspect/#remote-debugging), or run in dedicated/headless mode", ErrNoLiveBrowser)
+		return nil, fmt.Errorf("%w: a closed browser left a stale DevToolsActivePort file — reopen Chrome with remote debugging enabled (chrome://inspect/#remote-debugging), or run in dedicated/headless mode", ErrNoLiveBrowser)
 	}
-	return "", fmt.Errorf("%w: no supported Chromium-family browser with remote debugging is running — enable chrome://inspect/#remote-debugging in Chrome, start Chrome with --remote-debugging-port=9222, or use dedicated/headless mode", ErrNoLiveBrowser)
+	return nil, fmt.Errorf("%w: no supported Chromium-family browser with remote debugging is running — enable chrome://inspect/#remote-debugging in Chrome, start Chrome with --remote-debugging-port=9222, or use dedicated/headless mode", ErrNoLiveBrowser)
 }
 
 func DiscoverWSForProfile(ctx context.Context, base string) (ws string, ok bool) {
-	ws, stale, err := discoverProfileWS(ctx, base)
+	ws, stale, err := discoverProfileWS(ctx, base, false)
 	return ws, err == nil && !stale
 }
 
-func discoverProfileWS(ctx context.Context, base string) (ws string, stale bool, err error) {
+func discoverProfileWS(ctx context.Context, base string, awaitApproval bool) (ws string, stale bool, err error) {
 	data, err := os.ReadFile(filepath.Join(base, "DevToolsActivePort"))
 	if err != nil {
 		return "", false, err
@@ -287,7 +339,7 @@ func discoverProfileWS(ctx context.Context, base string) (ws string, stale bool,
 	if !browserRunningForProfile(base) {
 		return "", false, fmt.Errorf("no live process holds %s", base)
 	}
-	ws, err = resolveWSURL(ctx, "", "", port, wsPath)
+	ws, err = resolveWSURL(ctx, "", "", port, wsPath, awaitApproval)
 	return ws, false, err
 }
 
