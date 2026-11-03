@@ -42,8 +42,12 @@ func TestTerminalManagerReadRequiresOwningCanonicalRun(t *testing.T) {
 	if !strings.Contains(output, "terminal-output") {
 		t.Fatalf("output=%q", output)
 	}
-	wrong := WithRunIdentity(context.Background(), RunIdentity{ConversationID: "session-1", RunID: "run-2"})
-	if _, err := manager.Read(wrong, id, 1024); err == nil || !strings.Contains(err.Error(), "another canonical run") {
+	later := WithRunIdentity(context.Background(), RunIdentity{ConversationID: "session-1", RunID: "run-2"})
+	if output, err := manager.Read(later, id, 1024); err != nil || !strings.Contains(output, "terminal-output") {
+		t.Fatalf("later run of the same conversation read=%q error=%v", output, err)
+	}
+	wrong := WithRunIdentity(context.Background(), RunIdentity{ConversationID: "session-2", RunID: "run-1"})
+	if _, err := manager.Read(wrong, id, 1024); err == nil || !strings.Contains(err.Error(), "another conversation") {
 		t.Fatalf("wrong owner read error=%v", err)
 	}
 }

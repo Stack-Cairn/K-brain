@@ -130,7 +130,18 @@ func TestManagedProcessCanonicalOwnershipAndReadPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := fieldValue(out, "process_id")
-	for _, ctx := range []context.Context{context.Background(), WithRunIdentity(owner, RunIdentity{ConversationID: "conversation", RunID: "other"}), WithRunIdentity(owner, RunIdentity{ConversationID: "other", RunID: "run"})} {
+	// A later run of the same conversation reads and stops what an earlier run started;
+	// other conversations and calls without a run identity never see it.
+	later := WithRunIdentity(owner, RunIdentity{ConversationID: "conversation", RunID: "later"})
+	for _, action := range []string{"status", "read_log", "wait"} {
+		if _, err := tool.Run(later, mustJSON(map[string]any{"action": action, "process_id": id, "yield_time_ms": 1})); err != nil {
+			t.Fatalf("later run %s: %v", action, err)
+		}
+	}
+	if out, err := tool.Run(later, mustJSON(map[string]any{"action": "status"})); err != nil || !strings.Contains(out, id) {
+		t.Fatalf("later run list=%q %v", out, err)
+	}
+	for _, ctx := range []context.Context{context.Background(), WithRunIdentity(owner, RunIdentity{ConversationID: "other", RunID: "run"})} {
 		for _, action := range []string{"status", "read_log", "wait", "stop"} {
 			if _, err := tool.Run(ctx, mustJSON(map[string]any{"action": action, "process_id": id, "yield_time_ms": 1})); err == nil {
 				t.Fatalf("foreign %s allowed", action)
@@ -147,8 +158,49 @@ func TestManagedProcessCanonicalOwnershipAndReadPolicy(t *testing.T) {
 			t.Fatalf("policy bypass: %s", action)
 		}
 	}
-	if _, err := tool.Run(owner, mustJSON(map[string]any{"action": "stop", "process_id": id})); err != nil {
+	if _, err := tool.Run(later, mustJSON(map[string]any{"action": "stop", "process_id": id})); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// The reported failure: Bash yielded a session in one run, the run ended, and the
+// next user turn's ProcessWait on that session_id was refused.
+func TestBashSessionOutputReadableInLaterRun(t *testing.T) {
+	root := t.TempDir()
+	base := WithWorkspaceRoots(WithWorkingDir(context.Background(), root), []WorkspaceRoot{{Path: root, Access: "write"}})
+	manager := NewManagedProcessManager()
+	defer manager.CloseAll()
+	catalog := LiveAgentCatalogWithManagers(nil, NewTerminalManager(), manager)
+	first, endFirst := context.WithCancel(WithRunIdentity(base, RunIdentity{ConversationID: "conversation", RunID: "run-1"}))
+	out, err := findToolForTest(catalog, "Bash").Run(first, mustJSON(map[string]any{"command": "echo cross-run-probe", "yield_time_ms": 1}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := fieldValue(out, "process_id")
+	if id == "" {
+		t.Fatalf("Bash did not yield a session: %q", out)
+	}
+	p, err := manager.get(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-p.done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("probe did not finish")
+	}
+	endFirst()
+	next := WithRunIdentity(base, RunIdentity{ConversationID: "conversation", RunID: "run-2"})
+	waited, err := findToolForTest(catalog, "ProcessWait").Run(next, mustJSON(map[string]any{"session_id": id, "cursor": 0, "yield_time_ms": 1000}))
+	if err != nil {
+		t.Fatalf("ProcessWait in the next run: %v", err)
+	}
+	if !strings.Contains(waited, "cross-run-probe") || !strings.Contains(waited, "status=completed") {
+		t.Fatalf("ProcessWait output=%q", waited)
+	}
+	other := WithRunIdentity(base, RunIdentity{ConversationID: "other", RunID: "run-2"})
+	if _, err := findToolForTest(catalog, "ProcessWait").Run(other, mustJSON(map[string]any{"session_id": id, "yield_time_ms": 1})); err == nil {
+		t.Fatal("another conversation read the session")
 	}
 }
 

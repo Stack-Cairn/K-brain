@@ -2,6 +2,7 @@ package permissions
 
 import (
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -100,10 +101,16 @@ func Suggest(req Request, opts Options) []string {
 }
 
 // escapeGlob keeps literal path characters such as Next.js `[id]` from acting as globs.
+// On Windows only brackets are escaped, matching slashPath: * and ? cannot be in a
+// file name there, and \* or \? would read back as a separator and a glob.
 func escapeGlob(p string) string {
+	escaped := "*?[]"
+	if runtime.GOOS == "windows" {
+		escaped = "[]"
+	}
 	var b strings.Builder
 	for _, r := range p {
-		if r == '*' || r == '?' || r == '[' || r == ']' {
+		if strings.ContainsRune(escaped, r) {
 			b.WriteRune('\\')
 		}
 		b.WriteRune(r)

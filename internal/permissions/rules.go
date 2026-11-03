@@ -3,6 +3,7 @@ package permissions
 import (
 	"fmt"
 	"regexp"
+	"runtime"
 	"strings"
 
 	"github.com/Stack-Cairn/K-brain/internal/commandline"
@@ -121,7 +122,7 @@ func ParseRule(text string) (Rule, error) {
 		if r.Prefix {
 			return Rule{}, fmt.Errorf("permission rule %q: path patterns use globs, not :*", text)
 		}
-		r.Pattern = slashPath(inner)
+		r.Pattern = slashPath(trimExtendedPattern(inner))
 	default:
 		r.Pattern = inner
 	}
@@ -224,12 +225,18 @@ func DefaultScope(text string) Scope {
 
 // slashPath turns Windows separators into slashes but keeps a backslash that escapes
 // a glob character, as Suggest writes for paths such as Next.js `[id]` routes.
+// Windows file names cannot contain * or ?, so there \* and \? are a separator
+// followed by a glob, as in D:\dir\**.
 func slashPath(p string) string {
+	escapable := "*?[]"
+	if runtime.GOOS == "windows" {
+		escapable = "[]"
+	}
 	var b strings.Builder
 	runes := []rune(p)
 	for i := 0; i < len(runes); i++ {
 		if runes[i] == '\\' {
-			if i+1 < len(runes) && strings.ContainsRune("*?[]", runes[i+1]) {
+			if i+1 < len(runes) && strings.ContainsRune(escapable, runes[i+1]) {
 				b.WriteRune('\\')
 				b.WriteRune(runes[i+1])
 				i++

@@ -10,6 +10,7 @@ import (
 
 	"github.com/Stack-Cairn/K-brain/internal/permissions"
 	"github.com/Stack-Cairn/K-brain/internal/tools/bashrun"
+	"github.com/Stack-Cairn/K-brain/internal/winpath"
 )
 
 func Authorize(ctx context.Context, tool, command string) error {
@@ -122,7 +123,7 @@ func GateRequestFor(ctx context.Context, tool string, args json.RawMessage) Gate
 			req.OtherDir = cwdOutsideWorkingDir(ctx, a.Cwd, "Bash")
 		case "write", "edit":
 			if a.Path != "" {
-				req.Command = ResolvePath(ctx, a.Path)
+				req.Command = winpath.Simplify(ResolvePath(ctx, a.Path))
 			}
 		case "ProcessWait", "ReadTerminal", "ManagedProcess", "ProcessStop":
 			pollRequest(&req, args)
@@ -203,7 +204,7 @@ func cwdOutsideWorkingDir(ctx context.Context, cwd, tool string) bool {
 }
 
 func sameDirectory(a, b string) bool {
-	a, b = filepath.Clean(a), filepath.Clean(b)
+	a, b = filepath.Clean(winpath.Simplify(a)), filepath.Clean(winpath.Simplify(b))
 	if runtime.GOOS == "windows" {
 		return strings.EqualFold(a, b)
 	}

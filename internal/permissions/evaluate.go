@@ -6,6 +6,8 @@ import (
 	"runtime"
 	"strings"
 	"unicode"
+
+	"github.com/Stack-Cairn/K-brain/internal/winpath"
 )
 
 // Request is one gated tool call. Command is the command line for shell tools and
@@ -230,6 +232,8 @@ func resolvePath(p, root string) string {
 	if p == "" {
 		return ""
 	}
+	// Rules are written against the ordinary spelling of a Windows path.
+	p, root = winpath.Simplify(p), winpath.Simplify(root)
 	if !filepath.IsAbs(p) {
 		if root == "" {
 			return ""
@@ -237,6 +241,24 @@ func resolvePath(p, root string) string {
 		p = filepath.Join(root, p)
 	}
 	return filepath.Clean(p)
+}
+
+// trimExtendedPattern rewrites a path rule written in the Win32 file namespace to
+// the ordinary spelling requests are compared in: \\?\X:\ becomes X:\ and
+// \\?\UNC\server\ becomes \\server\ (either separator). It runs before slashPath,
+// which would read the \? as an escaped glob character; patterns cannot go through
+// winpath.Normalize.
+func trimExtendedPattern(pattern string) string {
+	if runtime.GOOS != "windows" || len(pattern) < 6 || !(strings.HasPrefix(pattern, `\\?\`) || strings.HasPrefix(pattern, `//?/`)) {
+		return pattern
+	}
+	if pattern[5] == ':' {
+		return pattern[4:]
+	}
+	if len(pattern) > 8 && strings.EqualFold(pattern[4:7], "UNC") && (pattern[7] == '\\' || pattern[7] == '/') {
+		return pattern[:2] + pattern[8:]
+	}
+	return pattern
 }
 
 func foldPath(p string) string {
@@ -255,6 +277,7 @@ func matchPath(pattern, target, root string) bool {
 		return false
 	}
 	var subject string
+	root = winpath.Simplify(root)
 	if path.IsAbs(pattern) || filepath.IsAbs(filepath.FromSlash(pattern)) {
 		subject = foldPath(target)
 	} else {
