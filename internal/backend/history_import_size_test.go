@@ -63,7 +63,7 @@ func TestOversizedJSONBodiesReturnReadable413(t *testing.T) {
 		limit      string
 	}{
 		{name: "generic", path: "/v1/sessions", size: maxBodyBytes + 1<<20, limit: "4 MiB"},
-		{name: "migration", path: "/v1/migrations/liveagent-history", size: maxLegacyHistoryBodyBytes + 1<<20, limit: "64 MiB"},
+		{name: "migration", path: "/v1/migrations/liveagent-history", size: maxLegacyHistoryBodyBytes + 1<<20, limit: "512 MiB"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			// Write the whole body before reading, as browsers do; a server that
