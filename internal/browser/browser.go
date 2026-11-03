@@ -155,7 +155,7 @@ func openRod(ctx context.Context, mode Mode, sessionName string) (*Browser, erro
 	b := &Browser{mode: mode}
 	switch mode {
 	case ModeLive:
-		ws, err := DiscoverLiveWS(ctx)
+		rb, err := connectLiveBrowser(ctx)
 		if err != nil {
 			if !errors.Is(err, ErrNoLiveBrowser) {
 				return nil, err
@@ -168,14 +168,7 @@ func openRod(ctx context.Context, mode Mode, sessionName string) (*Browser, erro
 			fb.closeLauncher = true
 			return fb, nil
 		}
-		b.browser = rod.New().ControlURL(ws)
-		if err := b.browser.Connect(); err != nil {
-			msg := err.Error()
-			if strings.Contains(msg, "403") || strings.Contains(msg, "permission") || strings.Contains(msg, "timed out") {
-				return nil, fmt.Errorf("%w: Chrome's 'Allow remote debugging?' popup needs a click (or enable chrome://inspect/#remote-debugging): %s", ErrPermissionBlocked, msg)
-			}
-			return nil, fmt.Errorf("connect to live browser: %w", err)
-		}
+		b.browser = rb
 		b.obtained = ObtainedLive
 	case ModeDedicated, ModeHeadless:
 		home, err := os.UserHomeDir()
@@ -233,6 +226,29 @@ func openRod(ctx context.Context, mode Mode, sessionName string) (*Browser, erro
 		return nil, err
 	}
 	return b, nil
+}
+
+// connectLiveBrowser tries each live candidate in order. A candidate that
+// answers but is not a browser is skipped; one that is waiting for the user's
+// approval stops the search, so the caller reports it instead of silently
+// falling back to the dedicated browser.
+func connectLiveBrowser(ctx context.Context) (*rod.Browser, error) {
+	candidates, err := discoverLiveCandidates(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var refused []string
+	for _, ws := range candidates {
+		rb, err := connectLive(ctx, ws)
+		if err == nil {
+			return rb, nil
+		}
+		if !errors.Is(err, errLiveRefused) {
+			return nil, err
+		}
+		refused = append(refused, err.Error())
+	}
+	return nil, fmt.Errorf("%w: no candidate accepted a debugging connection (%s)", ErrNoLiveBrowser, strings.Join(refused, "; "))
 }
 
 func launchDedicated(ctx context.Context, profileDir string, newLauncher func() *launcher.Launcher) (*launcher.Launcher, string, error) {

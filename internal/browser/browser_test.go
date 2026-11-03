@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func noEnvCDP(t *testing.T) {
@@ -102,7 +103,7 @@ func TestDiscoverViaJSONVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ws, _, err := discoverProfileWS(context.Background(), prof)
+	ws, _, err := discoverProfileWS(context.Background(), prof, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,8 +129,21 @@ func TestDiscoverFallsBackToFileWSPath(t *testing.T) {
 	os.Symlink(fmt.Sprintf("h-%d", os.Getpid()), filepath.Join(prof, "SingletonLock"))
 	os.WriteFile(filepath.Join(prof, "DevToolsActivePort"),
 		[]byte(strconv.Itoa(port)+"\n/devtools/browser/fromfile\n"), 0o644)
-	if ws, _, err := discoverProfileWS(context.Background(), prof); err == nil || ws != "" {
-		t.Fatalf("404-only endpoint must be refused, got ws=%q err=%v", ws, err)
+	ws, _, err := discoverProfileWS(context.Background(), prof, true)
+	if err != nil {
+		t.Fatalf("file ws path must be offered as a candidate, got err=%v", err)
+	}
+	if want := fmt.Sprintf("ws://127.0.0.1:%d/devtools/browser/fromfile", port); ws != want {
+		t.Fatalf("got %q want %q", ws, want)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, err := connectLive(ctx, ws); !errors.Is(err, errLiveRefused) {
+		t.Fatalf("404-only endpoint must be refused at connect, got %v", err)
+	}
+	// k-brain's own dedicated profile is still probed before reattaching.
+	if ws, _, err := discoverProfileWS(context.Background(), prof, false); err == nil || ws != "" {
+		t.Fatalf("404-only endpoint must be refused for dedicated reattach, got ws=%q err=%v", ws, err)
 	}
 
 	ln2, err := net.Listen("tcp", "127.0.0.1:0")
@@ -162,7 +176,7 @@ func TestDiscoverFallsBackToFileWSPath(t *testing.T) {
 	os.Symlink(fmt.Sprintf("h-%d", os.Getpid()), filepath.Join(prof2, "SingletonLock"))
 	os.WriteFile(filepath.Join(prof2, "DevToolsActivePort"),
 		[]byte(strconv.Itoa(port2)+"\n/devtools/browser/fromfile\n"), 0o644)
-	ws, _, err := discoverProfileWS(context.Background(), prof2)
+	ws, _, err = discoverProfileWS(context.Background(), prof2, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,8 +206,18 @@ func TestDiscoverPermissionBlocked(t *testing.T) {
 	os.Symlink(fmt.Sprintf("h-%d", os.Getpid()), filepath.Join(prof, "SingletonLock"))
 	os.WriteFile(filepath.Join(prof, "DevToolsActivePort"), []byte(strconv.Itoa(port)+"\n/devtools/browser/x\n"), 0o644)
 
-	_, _, err = discoverProfileWS(context.Background(), prof)
-	if err == nil || !strings.Contains(err.Error(), "permission-blocked") {
+	// /json/version is forbidden until the user approves, but the file names
+	// the websocket: offer it so the real connection can wait for Allow.
+	ws, _, err := discoverProfileWS(context.Background(), prof, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := fmt.Sprintf("ws://127.0.0.1:%d/devtools/browser/x", port); ws != want {
+		t.Fatalf("got %q want %q", ws, want)
+	}
+
+	// Without a file path there is nothing to connect to, so the 403 surfaces.
+	if _, err := resolveWSURL(context.Background(), "", "", port, "", true); err == nil || !strings.Contains(err.Error(), "permission-blocked") {
 		t.Fatalf("want permission-blocked, got %v", err)
 	}
 }
@@ -296,7 +320,7 @@ func TestSquatterRejected(t *testing.T) {
 	go srv.Serve(ln)
 	defer srv.Close()
 
-	if ws, err := resolveWSURL(context.Background(), "", "", port, ""); err == nil || ws != "" {
+	if ws, err := resolveWSURL(context.Background(), "", "", port, "", true); err == nil || ws != "" {
 		t.Fatalf("squatter must not resolve: ws=%q err=%v", ws, err)
 	}
 
