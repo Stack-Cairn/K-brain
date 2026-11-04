@@ -446,6 +446,20 @@ type RunOptions struct {
 	// desktop Browser). They are offered to the model for this run only; a call is published
 	// as client_tool.requested and completes when the client posts the result.
 	ClientTools []ClientTool `json:"client_tools,omitempty"`
+	// Sandbox (capability run_sandbox) confines the run's shell commands, hooks
+	// and terminals with the platform sandbox. It can only tighten a sandbox the
+	// server is configured with. The run is refused when the machine cannot
+	// enforce it; it never falls back to running unconfined.
+	Sandbox *RunSandbox `json:"sandbox,omitempty"`
+}
+
+// RunSandbox is a run's request for OS-level confinement. Mode "workspace" lets
+// commands read the machine (credential and LiveAgent data directories masked)
+// and write only the workspace roots and temporary directories. Network false
+// blocks network access.
+type RunSandbox struct {
+	Mode    string `json:"mode,omitempty"`
+	Network bool   `json:"network"`
 }
 
 type ClientTool struct {

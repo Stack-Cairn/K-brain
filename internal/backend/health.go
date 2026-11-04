@@ -12,17 +12,32 @@ import (
 // representation (internal/protocol/capabilities.json). Frozen integers stay 1
 // forever; enhancements get new names so old `!== 1` checks keep working.
 type healthCapabilities struct {
-	SessionChanges          int           `json:"session_changes"`
-	SessionQueue            int           `json:"session_queue"`
-	ComputerSessionApproval int           `json:"computer_session_approval"`
-	MemorySwitch            int           `json:"memory_switch"`
-	ImageModelToggle        int           `json:"image_model_toggle"`
-	SessionExists           int           `json:"session_exists"`
-	AIReviewPerRun          int           `json:"ai_review_per_run"`
-	PermissionRules         int           `json:"permission_rules"`
-	ReadOnlyAutoAllow       int           `json:"readonly_auto_allow"`
-	PermissionModes         []string      `json:"permission_modes"`
-	Image                   healthImageV1 `json:"image"`
+	SessionChanges          int                `json:"session_changes"`
+	SessionQueue            int                `json:"session_queue"`
+	ComputerSessionApproval int                `json:"computer_session_approval"`
+	MemorySwitch            int                `json:"memory_switch"`
+	ImageModelToggle        int                `json:"image_model_toggle"`
+	SessionExists           int                `json:"session_exists"`
+	AIReviewPerRun          int                `json:"ai_review_per_run"`
+	PermissionRules         int                `json:"permission_rules"`
+	ReadOnlyAutoAllow       int                `json:"readonly_auto_allow"`
+	PermissionModes         []string           `json:"permission_modes"`
+	Image                   healthImageV1      `json:"image"`
+	RunSandbox              healthRunSandboxV1 `json:"run_sandbox"`
+}
+
+// healthRunSandboxV1 describes per-run sandboxing (options.sandbox). Clients
+// offer sandbox modes only when supported is true, and the offline variant only
+// when network_control is true as well.
+type healthRunSandboxV1 struct {
+	Supported      bool     `json:"supported"`
+	Version        string   `json:"version"`
+	Mechanism      string   `json:"mechanism"`
+	Platform       string   `json:"platform"`
+	NetworkControl bool     `json:"network_control"`
+	ReadMasking    bool     `json:"read_masking"`
+	Modes          []string `json:"modes"`
+	Reason         string   `json:"reason,omitempty"`
 }
 
 type healthImageV1 struct {
@@ -98,6 +113,7 @@ func (s *Server) health() healthResponse {
 			ReadOnlyAutoAllow:       1,
 			PermissionModes:         append([]string(nil), permissionModes...),
 			Image:                   healthImageV1{Supported: s.image != nil, Version: imageWireVersion()},
+			RunSandbox:              runSandboxCapability(),
 		},
 	}
 }

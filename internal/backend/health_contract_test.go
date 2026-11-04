@@ -151,6 +151,32 @@ func loadCapabilityRegistry(t *testing.T) []registryEntry {
 	return doc.Capabilities
 }
 
+// objectFieldMatches checks one field of an "object" capability: the type names
+// boolean, string and string[] accept any value of that type; anything else is a
+// frozen literal.
+func objectFieldMatches(got, want any) bool {
+	switch want {
+	case "boolean":
+		_, ok := got.(bool)
+		return ok
+	case "string":
+		_, ok := got.(string)
+		return ok
+	case "string[]":
+		list, ok := got.([]any)
+		if !ok {
+			return false
+		}
+		for _, item := range list {
+			if _, ok := item.(string); !ok {
+				return false
+			}
+		}
+		return true
+	}
+	return got == want
+}
+
 // K01/A05: every advertised capability is registered and satisfies its
 // registered comparison; frozen integers never move off their value.
 func TestHealthCapabilitiesMatchRegistry(t *testing.T) {
@@ -203,8 +229,14 @@ func TestHealthCapabilitiesMatchRegistry(t *testing.T) {
 			if !ok {
 				t.Fatalf("%s = %#v, want object", entry.Name, got)
 			}
-			if _, ok := obj["supported"].(bool); !ok || obj["version"] != "kbrain.image.v1" {
-				t.Fatalf("%s = %#v", entry.Name, obj)
+			var shape map[string]any
+			if err := json.Unmarshal(entry.Value, &shape); err != nil {
+				t.Fatalf("%s value: %v", entry.Name, err)
+			}
+			for field, want := range shape {
+				if !objectFieldMatches(obj[field], want) {
+					t.Fatalf("%s.%s = %#v, want %#v", entry.Name, field, obj[field], want)
+				}
 			}
 		default:
 			t.Fatalf("%s has unknown compare %q", entry.Name, entry.Compare)

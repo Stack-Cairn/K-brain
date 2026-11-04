@@ -63,6 +63,9 @@ type Options struct {
 	// PermissionRulesDir is the data directory holding user and project permission
 	// rules. Empty limits remembered rules to the session.
 	PermissionRulesDir string
+	// SandboxMasked lists directories hidden from commands of sandboxed runs in
+	// addition to the credential directories: the backend's own data and config.
+	SandboxMasked []string
 }
 
 type Server struct {
@@ -76,6 +79,7 @@ type Server struct {
 	prompts              *resources.PromptStore
 	eventDir             string
 	permissionDir        string
+	sandboxMasked        []string
 	defaultCWD           string
 	filesystemRoots      []string
 	filesystemMu         sync.Mutex
@@ -206,7 +210,7 @@ func New(opts Options) (*Server, error) {
 		filesystemRoots: append([]string(nil), opts.FilesystemRoots...),
 		store:           opts.Store, factory: opts.Factory, token: opts.Token, models: append([]protocol.ModelRef(nil), opts.Models...),
 		settings: opts.Settings, usage: NewProviderUsageService(opts.Settings), prompts: opts.Prompts,
-		eventDir: opts.EventDir, permissionDir: opts.PermissionRulesDir, defaultCWD: opts.DefaultCWD, memoryStore: memoryStore, questionWait: opts.QuestionTimeout, memoryRuntimeFactory: opts.MemoryRuntimeFactory, cron: cron, hookStore: hookStore, hookRunner: NewBackendHookRunner(hookStore), mcp: opts.MCP, sessions: make(map[string]*runtimeSession), snapshots: make(map[string]sessionHTTPSnapshot),
+		eventDir: opts.EventDir, permissionDir: opts.PermissionRulesDir, sandboxMasked: append([]string(nil), opts.SandboxMasked...), defaultCWD: opts.DefaultCWD, memoryStore: memoryStore, questionWait: opts.QuestionTimeout, memoryRuntimeFactory: opts.MemoryRuntimeFactory, cron: cron, hookStore: hookStore, hookRunner: NewBackendHookRunner(hookStore), mcp: opts.MCP, sessions: make(map[string]*runtimeSession), snapshots: make(map[string]sessionHTTPSnapshot),
 		build: opts.Build,
 	}
 	if len(server.filesystemRoots) == 0 && opts.DefaultCWD != "" {
@@ -229,6 +233,8 @@ func New(opts Options) (*Server, error) {
 		server.organizerCancel = runtime.StartOrganizerScheduler(context.Background(), opts.DefaultCWD, interval)
 	}
 	server.startRuntimeReaper()
+	// Probe the platform sandbox off the request path; /v1/health reports it.
+	go sandbox.Probe()
 	return server, nil
 }
 
@@ -1260,7 +1266,7 @@ func (s *Server) startRun(w http.ResponseWriter, r *http.Request, id string) {
 	writeJSON(w, status, accepted)
 }
 
-func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, runID string, in protocol.PromptRequest, options protocol.RunOptions) {
+func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, runID string, in protocol.PromptRequest, options protocol.RunOptions, sandboxPolicy *sandbox.Policy) {
 	progress := &runProgress{started: time.Now(), publish: rt.publish}
 	progress.phase("preparing")
 	rt.mu.Lock()
@@ -1309,6 +1315,10 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, runID strin
 			return tools.GateReject, "unattended scheduled runs cannot request interactive approval"
 		}
 		gateOptions := options
+		if reviewer != nil {
+			// A configured reviewer still sees every command of a sandboxed run.
+			gateOptions.Sandbox = nil
+		}
 		computerReadOnly, computerRememberable := false, false
 		// A run that names computer_exec "ask" itself wants every call confirmed: the
 		// read-only exemption and the session grant must not override it.
@@ -1488,7 +1498,7 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, runID strin
 	ctx = context.WithValue(ctx, questionRunKey{}, runID)
 	ctx = tools.WithRunIdentity(ctx, tools.RunIdentity{ConversationID: rt.id, RunID: runID})
 	ctx = tools.WithWorkingDir(ctx, rt.agent.WorkingDir)
-	ctx = sandbox.WithPolicy(ctx, rt.agent.SandboxPolicy)
+	ctx = sandbox.WithPolicy(ctx, sandboxPolicy)
 	rt.mu.Lock()
 	if rt.terminalContexts == nil {
 		rt.terminalContexts = make(map[string]context.Context)
