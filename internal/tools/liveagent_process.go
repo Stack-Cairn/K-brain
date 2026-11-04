@@ -124,6 +124,10 @@ func (m *liveagentProcessManager) startWithID(ctx context.Context, prefix, comma
 			return nil, err
 		}
 	}
+	if cmd.Env == nil {
+		cmd.Env = os.Environ()
+	}
+	cmd.Env = bashrun.ScrubEnv(cmd.Env)
 	identity, _ := RunIdentityFromContext(ctx)
 	p := &liveagentProcess{
 		id: newLiveAgentProcessID(prefix), command: command, conversationID: identity.ConversationID, runID: identity.RunID, cwd: cwd, label: label,

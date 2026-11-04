@@ -27,6 +27,7 @@ import (
 	"github.com/Stack-Cairn/K-brain/internal/protocol"
 	"github.com/Stack-Cairn/K-brain/internal/routing"
 	"github.com/Stack-Cairn/K-brain/internal/storage"
+	"github.com/Stack-Cairn/K-brain/internal/tools/bashrun"
 )
 
 func backendCLI(args []string) error {
@@ -59,6 +60,10 @@ func backendCLI(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+	// The bearer token now lives in *token; drop it (and other parent-supplied
+	// secrets) from the environment so agent shells, MCP servers and hooks never
+	// inherit it.
+	bashrun.UnsetSecretEnv()
 	if *dataDir != "" {
 		root, err := filepath.Abs(*dataDir)
 		if err != nil {
