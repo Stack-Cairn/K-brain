@@ -98,7 +98,7 @@ func (a *Adapter) response(ctx context.Context, b []byte, providerTarget bool) (
 	} else if item.URL != "" {
 		// Provider-backed OpenAI-compatible models may return HTTPS URLs.
 		// The official OpenAI profile remains base64-only.
-		if (a.id != VolcengineID && a.profile == "" && !providerTarget) || !outputURL(item.URL) {
+		if (a.id != VolcengineID && a.profile == "" && (!providerTarget || a.officialOpenAI)) || !outputURL(item.URL) {
 			return unknown()
 		}
 		mime := ""

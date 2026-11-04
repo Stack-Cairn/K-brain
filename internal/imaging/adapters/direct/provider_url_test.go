@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/Stack-Cairn/K-brain/internal/imaging"
 )
 
 func TestProviderOpenAIURLResult(t *testing.T) {
@@ -44,6 +46,26 @@ func TestProviderOpenAIURLResult(t *testing.T) {
 			if _, err := json.Marshal(result); err == nil {
 				t.Fatal("provider URL must not be serialized into a public result")
 			}
+		})
+	}
+}
+
+func TestProviderOfficialOpenAIRemainsBase64Only(t *testing.T) {
+	for _, base := range []string{"https://api.openai.com/v1", "https://API.OpenAI.COM:443/v1"} {
+		t.Run(base, func(t *testing.T) {
+			calls := 0
+			client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				calls++
+				return &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"data":[{"url":"https://cdn.example.invalid/result.png"}]}`))}, nil
+			})}
+			a := adapter(t, OpenAIID, options(client, base))
+			r := request(OpenAIID)
+			r.Target.Source = "provider"
+			result, err := a.Submit(context.Background(), r)
+			if calls != 1 || len(result.Outputs) != 0 {
+				t.Fatalf("official provider URL was accepted: calls=%d result=%+v err=%v", calls, result, err)
+			}
+			assertError(t, result, err, imaging.CodeResultUnknown, imaging.DeliveryUncertain)
 		})
 	}
 }
