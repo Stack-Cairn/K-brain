@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"image"
 	"io"
 	"math"
@@ -31,6 +32,21 @@ type openAIRequest struct {
 	Format         string `json:"output_format,omitempty"`
 	Compression    *int   `json:"output_compression,omitempty"`
 	Background     string `json:"background,omitempty"`
+}
+
+// Compatible providers may follow prompt framing over size; reinforce an explicit canvas on the wire.
+func openAIProviderCanvasPrompt(prompt, size string) string {
+	w, h, _ := strings.Cut(size, "x")
+	width, _ := strconv.Atoi(w)
+	height, _ := strconv.Atoi(h)
+	orientation := "square"
+	if width < height {
+		orientation = "portrait"
+	} else if width > height {
+		orientation = "landscape"
+	}
+	divisor := gcd(width, height)
+	return prompt + fmt.Sprintf("\n\nCanvas requirement from the image settings: %s orientation, aspect ratio %d:%d, width %d pixels and height %d pixels. This canvas requirement takes precedence over any conflicting aspect ratio or horizontal/vertical instruction above. Preserve the subject and visual details.", orientation, width/divisor, height/divisor, width, height)
 }
 
 // Agnes takes inputs and the response format under extra_body, never top level.
@@ -165,6 +181,12 @@ func (a *Adapter) request(ctx context.Context, r imaging.ExecuteRequest) (string
 		}
 		if b.Background == "transparent" && b.Format != "png" && b.Format != "webp" {
 			return "", nil, badInput()
+		}
+		if r.Target.Source == "provider" && !a.officialOpenAI && a.profile == "" && b.Size != "" {
+			b.Prompt = openAIProviderCanvasPrompt(b.Prompt, b.Size)
+			if utf8.RuneCountInString(b.Prompt) > 32000 {
+				return "", nil, badInput()
+			}
 		}
 		if len(inputs) > 0 {
 			return "/images/edits", openAIEditRequest{Fields: b, Images: inputs, Mask: mask}, nil
