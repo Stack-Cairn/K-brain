@@ -112,7 +112,9 @@ func (c *responsesCalls) set(item responsesItem) (*ToolCall, error) {
 }
 
 func (c *Responses) Stream(ctx context.Context, req Request, onText, onThink func(string), onToolCall func(id, name, args string)) (Message, Usage, error) {
-	resp, err := c.request(ctx, req, true)
+	sctx, idleGuard := newIdleStream(ctx, idleOr(c.StreamIdle), "Responses")
+	defer idleGuard.close()
+	resp, err := c.request(sctx, req, true)
 	if err != nil {
 		return Message{}, Usage{}, err
 	}
@@ -141,7 +143,7 @@ func (c *Responses) Stream(ctx context.Context, req Request, onText, onThink fun
 			onToolCall(tc.ID, tc.Function.Name, tc.Function.Arguments)
 		}
 	}
-	sse := newSSEReader(resp.Body)
+	sse := newSSEReader(idleGuard.wrap(resp.Body))
 	for {
 		event, ok := sse.next()
 		if !ok {
