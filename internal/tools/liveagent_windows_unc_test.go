@@ -87,7 +87,7 @@ func TestWriteToolDenySeesEveryWindowsSpelling(t *testing.T) {
 	})
 	file := filepath.Join(secret, "a.txt")
 	for _, spelling := range []string{file, `\\?\` + file, `\\.\` + file, `//?/` + filepath.ToSlash(file), `//./` + filepath.ToSlash(file)} {
-		for _, tool := range []Tool{writeTool(), editTool()} {
+		for _, tool := range []Tool{writeTool(nil), editTool(nil)} {
 			_ = os.WriteFile(file, []byte("before"), 0o600)
 			_, err := tool.Run(ctx, mustJSON(map[string]any{"path": spelling, "content": "leak", "old_string": "before", "new_string": "leak"}))
 			if data, _ := os.ReadFile(file); err == nil || string(data) != "before" {
@@ -149,7 +149,7 @@ func TestDenyRuleInExtendedUNCSpellingStillDenies(t *testing.T) {
 		file := filepath.Join(secret, "a.txt")
 		for _, spelling := range []string{filepath.Join(plainSecret, "a.txt"), filepath.Join(extSecret, "a.txt")} {
 			_ = os.Remove(file)
-			_, err := writeTool().Run(ctx, mustJSON(map[string]any{"path": spelling, "content": "leak"}))
+			_, err := writeTool(nil).Run(ctx, mustJSON(map[string]any{"path": spelling, "content": "leak"}))
 			if err == nil || !strings.Contains(err.Error(), "denied") {
 				data, _ := os.ReadFile(file)
 				t.Errorf("rule %s, write %s: err=%v, file holds %q", rule, spelling, err, data)
