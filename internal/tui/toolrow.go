@@ -159,7 +159,7 @@ func renderDiffResult(diff, rest string, expanded bool, width int) string {
 		b.WriteString("\n" + renderDiffLine(l, width))
 	}
 	if n := len(rows) - len(shown); n > 0 {
-		b.WriteString(dimStyle.Render(fmt.Sprintf("\n    … +%d more (ctrl+e or click to expand)", n)))
+		b.WriteString(dimStyle.Render(fmt.Sprintf("\n    … +%d more (ctrl+e)", n)))
 	}
 
 	if trail := strings.TrimSpace(strings.Join(strings.Split(rest, "\n")[1:], "\n")); trail != "" {
@@ -177,4 +177,88 @@ func renderDiffLine(l string, width int) string {
 		return diffDelStyle.Render(row + strings.Repeat(" ", max(width-lipgloss.Width(row), 0)))
 	}
 	return dimStyle.Render(row)
+}
+
+// quietResultTool reports tools whose output is read by the model rather than
+// the user; their results fold to a line count.
+func quietResultTool(name string) bool {
+	switch name {
+	case "read", "grep", "glob", "list":
+		return true
+	}
+	return false
+}
+
+func quietResultUnit(name string, n int) string {
+	unit := "line"
+	switch name {
+	case "grep":
+		unit = "match"
+	case "glob", "list":
+		unit = "entry"
+	}
+	if n == 1 {
+		return unit
+	}
+	switch unit {
+	case "match":
+		return "matches"
+	case "entry":
+		return "entries"
+	}
+	return unit + "s"
+}
+
+// toolFamily reports blocks that belong to a tool call: queued, running and
+// finished headers plus their results.
+func toolFamily(k blockKind) bool {
+	return k == blockTool || k == blockToolRun || k == blockToolQueued
+}
+
+// gluedToPrev reports whether block i sits directly under the previous visible
+// block with no blank row: a result under its header, and back-to-back tool
+// calls, read as one compact group.
+func gluedToPrev(blocks []block, i int) bool {
+	j := i - 1
+	for j >= 0 && blocks[j].y0 < 0 && blocks[j].kind == blockBanner {
+		j--
+	}
+	if j < 0 {
+		return false
+	}
+	prev, cur := blocks[j].kind, blocks[i].kind
+	if cur == blockTool {
+		return prev == blockToolRun
+	}
+	return toolFamily(cur) && toolFamily(prev)
+}
+
+// dropLeadSpaces removes up to n leading spaces from s, skipping over any ANSI
+// escape sequences in front of them (glamour opens lines with empty styled
+// spans, so a plain TrimPrefix misses its margin).
+func dropLeadSpaces(s string, n int) string {
+	var b strings.Builder
+	i := 0
+	for i < len(s) && n > 0 {
+		if s[i] == '\x1b' {
+			j := i + 1
+			if j < len(s) && s[j] == '[' {
+				j++
+				for j < len(s) && (s[j] < 0x40 || s[j] > 0x7e) {
+					j++
+				}
+			}
+			j = min(j+1, len(s))
+			b.WriteString(s[i:j])
+			i = j
+			continue
+		}
+		if s[i] != ' ' {
+			break
+		}
+		i++
+		n--
+	}
+	b.WriteString(s[i:])
+	return b.String()
 }

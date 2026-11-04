@@ -78,10 +78,10 @@ func TestFirstTurnDisplaysSessionTitle(t *testing.T) {
 	if m.sessTitle != "Fix the build" {
 		t.Fatalf("fallback title = %q", m.sessTitle)
 	}
-	// The status row closes the top-anchored frame; blank padding follows it.
+	// The title rides on the composer's top rule, two rows above the info row.
 	lines := strings.Split(ansi.Strip(m.View()), "\n")
-	if !strings.HasSuffix(lines[m.viewH-1], "Fix the build") {
-		t.Fatalf("title is not on the status row's right edge: %q", lines[m.viewH-1])
+	if rule := lines[m.viewH-3]; !strings.HasSuffix(rule, "Fix the build ──") || !strings.HasPrefix(rule, "──") {
+		t.Fatalf("title is not on the composer rule: %q", rule)
 	}
 	m.Update(titleMsg{sessionID: m.sessionID, previousTitle: "Fix the build", title: "Build repair"})
 	if m.sessTitle != "Build repair" {

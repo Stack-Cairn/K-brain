@@ -70,9 +70,9 @@ func TestStyledChromePreservesFrameLayout(t *testing.T) {
 						t.Fatalf("frame overflow: %q", ansi.Strip(line))
 					}
 				}
-				status := ansi.Strip(m.statusView())
-				if !strings.HasSuffix(status, m.sessTitle) || lipgloss.Width(status) != m.width {
-					t.Fatalf("title not right aligned: %q", status)
+				info := ansi.Strip(m.footerHints())
+				if !strings.HasSuffix(info, m.effortChip()) || lipgloss.Width(info) != m.width {
+					t.Fatalf("effort chip not right aligned: %q", info)
 				}
 			})
 		}

@@ -28,7 +28,7 @@ func assertTopAnchored(t *testing.T, m *model) int {
 	if statusRow < 0 || statusRow >= len(lines) {
 		t.Fatalf("status row %d outside the %d rendered rows", statusRow, len(lines))
 	}
-	if got, want := lines[statusRow], ansi.Strip(m.statusView()); got != want {
+	if got, want := lines[statusRow], ansi.Strip(m.footerHints()); got != want {
 		t.Fatalf("frame row %d = %q, want status %q", statusRow, got, want)
 	}
 	for i := statusRow + 1; i < len(lines); i++ {

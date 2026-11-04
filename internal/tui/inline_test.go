@@ -112,8 +112,8 @@ func assertComposerWhole(t *testing.T, m *model) {
 		t.Fatalf("row above the input should be the composer's rule, got %q", lines[input-1])
 	}
 	if input+1 < len(lines) {
-		if below := strings.TrimSpace(lines[input+1]); strings.Trim(below, "─") != "" || below == "" {
-			t.Fatalf("row below the input should be the composer's rule, got %q", lines[input+1])
+		if below := lines[input+1]; below != ansi.Strip(m.footerHints()) {
+			t.Fatalf("row below the input should be the info row, got %q", below)
 		}
 	}
 }

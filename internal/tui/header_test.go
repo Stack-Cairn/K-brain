@@ -21,10 +21,10 @@ func TestFmtTok(t *testing.T) {
 	}
 }
 
-// footerRows returns the two info rows under the input box (the hints row and
-// the status row), which is where the old top header's fields now live.
+// footerRows returns the info row under the input box, which is where the old
+// top header's fields now live.
 func footerRows(m *model) string {
-	return ansi.Strip(m.footerHints() + "\n" + m.statusView())
+	return ansi.Strip(m.footerHints())
 }
 
 func TestFooterShowsUsage(t *testing.T) {
@@ -42,7 +42,7 @@ func TestFooterShowsUsage(t *testing.T) {
 	})
 	m.width = 200
 	rows := footerRows(m)
-	for _, want := range []string{"kimi-k3-fast", "✦ off", "12.3k(4.0k)/678 tok", "% ctx"} {
+	for _, want := range []string{"kimi-k3-fast", "✦ off", "13.0k tok", "% ctx"} {
 		if !strings.Contains(rows, want) {
 			t.Errorf("footer missing %q: %q", want, rows)
 		}
@@ -53,8 +53,8 @@ func TestFooterOmitsUsageUntilReported(t *testing.T) {
 	m := compactCmdModel()
 	m.width = 120
 	rows := footerRows(m)
-	if !strings.Contains(rows, "0/0 tok") {
-		t.Errorf("an unused session should read 0/0 tok: %q", rows)
+	if strings.Contains(rows, "tok") || strings.Contains(rows, "$") {
+		t.Errorf("an unused session should show no spend: %q", rows)
 	}
 	if !strings.Contains(rows, "✦ off") || !strings.Contains(rows, m.modelName) {
 		t.Errorf("model and effort always show: %q", rows)

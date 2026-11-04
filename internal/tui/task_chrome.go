@@ -152,7 +152,7 @@ func (m *model) taskViewView() string {
 	input = ansi.Truncate(input, max(m.width-chromeIndent, 1), "…")
 	frame := kbrainPromptFrame().Width(max(m.width, 1)).Render(input)
 	lines := []string{head, meta, sanitizeView(tv.vp.View()), frame,
-		shortcutStyle.Render(strings.Repeat(" ", chromeIndent) + hint), m.statusView()}
+		shortcutStyle.Render(strings.Repeat(" ", chromeIndent) + hint), m.infoRow()}
 	out := strings.Join(lines, "\n")
 	rows := strings.Split(out, "\n")
 	for i := range rows {

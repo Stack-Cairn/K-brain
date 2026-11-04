@@ -6,6 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
+
+	"github.com/charmbracelet/lipgloss"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -358,5 +361,15 @@ func TestRememberedRuleSkipsCautiousReview(t *testing.T) {
 				t.Fatalf("prompt=%v, want %v", m.permDialog != nil, tc.prompt)
 			}
 		})
+	}
+}
+
+func TestPermissionCommandTruncatesByDisplayWidth(t *testing.T) {
+	got := ansi_Truncate(strings.Repeat("删除文件", 20), 21)
+	if !utf8.ValidString(got) {
+		t.Fatalf("truncation split a rune: %q", got)
+	}
+	if w := lipgloss.Width(got); w > 21 {
+		t.Fatalf("truncated command is %d columns wide, want ≤ 21", w)
 	}
 }

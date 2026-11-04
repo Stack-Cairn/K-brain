@@ -28,11 +28,11 @@ func TestViewNeverTallerThanTerminal(t *testing.T) {
 	}
 
 	lines := strings.Split(m.View(), "\n")
-	if got, want := ansi.Strip(lines[len(lines)-1]), ansi.Strip(m.statusView()); got != want {
-		t.Fatalf("status row scrolled off: %q, want %q", got, want)
+	if got, want := ansi.Strip(lines[len(lines)-1]), ansi.Strip(m.footerHints()); got != want || !strings.Contains(got, m.permissionModeLabel()) {
+		t.Fatalf("info row scrolled off: %q, want %q", got, want)
 	}
-	if hints := ansi.Strip(lines[len(lines)-3]); !strings.Contains(hints, "Ctrl+P") || !strings.Contains(hints, m.permissionModeLabel()) {
-		t.Fatalf("hints row scrolled off: %q", hints)
+	if input := ansi.Strip(lines[len(lines)-2]); !strings.Contains(input, "Ctrl+P") {
+		t.Fatalf("composer with its shortcut placeholder scrolled off: %q", input)
 	}
 
 	check := func(name string, mut func()) {

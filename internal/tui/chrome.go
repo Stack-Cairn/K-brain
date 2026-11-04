@@ -25,9 +25,9 @@ func chromeColumns(left, right string, width int) string {
 	return ansi.Truncate(strings.Repeat(" ", lead)+left+strings.Repeat(" ", pad)+right, width, "")
 }
 
-// footerHints is the first of the two info rows under the input box: permission
-// mode and shortcuts on the left, the active model and reasoning effort on the
-// right.
+// footerHints is the single info row under the input box: permission mode,
+// git and goal on the left; context, spend, the model and reasoning effort on
+// the right. Shortcuts live in the composer placeholder.
 func (m *model) footerHints() string {
 	row, _ := m.footerHintsAt()
 	return row
@@ -43,8 +43,26 @@ func (m *model) footerHintsAt() (string, int) {
 		}
 		return ansi.Truncate(strings.Repeat(" ", min(chromeIndent, max(m.width, 0)))+shortcutStyle.Render(hint), max(m.width, 0), "…"), -1
 	}
-	left := m.modeChip() + dimStyle.Render(" · ") + shortcutStyle.Render(m.tr("Shift+Tab Mode  ·  Ctrl+C Cancel  ·  Ctrl+P Menu"))
-	row := chromeColumns(left, m.footerModelCell(), m.width)
+	return m.infoRowAt()
+}
+
+// infoRow is the info row without the task-dock override; the subagent view
+// shows it under its own composer.
+func (m *model) infoRow() string {
+	row, _ := m.infoRowAt()
+	return row
+}
+
+func (m *model) infoRowAt() (string, int) {
+	left := m.modeChip()
+	if st := m.statusLeft(); st != "" {
+		left += "  " + st
+	}
+	right := m.footerModelCell()
+	if stats := m.footerStats(); stats != "" {
+		right = dimStyle.Render(stats+" · ") + right
+	}
+	row := chromeColumns(left, right, m.width)
 
 	chipX := -1
 	if m.agent != nil {
@@ -69,22 +87,10 @@ func (m *model) effortChip() string {
 	return "✦ " + m.tr(effortLabel(m.agent.Effort))
 }
 
-// footerRule separates the hints row from the status row. It doubles as the
-// footerRule separates the hints row from the status row with a quiet rule that
-// starts after the shared gutter indent, lining up with the workspace row.
-func (m *model) footerRule() string {
-	width := max(m.width, 0)
-	if width == 0 {
-		return ""
-	}
-	lead := min(chromeIndent, width)
-	return strings.Repeat(" ", lead) + chromeRuleStyle.Render(strings.Repeat("─", width-lead))
-}
-
 // fixedFrameRows is what viewBody always spends outside the transcript and the
-// composer: the hints row, the rule under it and the status row. The composer's
-// top rule doubles as the separator above it, so no blank row is reserved there.
-const fixedFrameRows = 3
+// composer: the one info row. The composer's top rule doubles as the separator
+// above it, so no blank row is reserved there.
+const fixedFrameRows = 1
 
 // composerRows is how many rows the input box occupies, including its rules.
 func (m *model) composerRows() int {
@@ -98,12 +104,31 @@ func (m *model) composerRows() int {
 	}
 }
 
-// kbrainPromptFrame brackets the composer with a rule above and below instead of
-// boxing it in, so the input reads as a band across the terminal. The rules take
-// the theme accent colour.
+// kbrainPromptFrame opens the composer with a single accent rule instead of
+// boxing it in; the info row underneath closes the band.
 func kbrainPromptFrame() lipgloss.Style {
 	return lipgloss.NewStyle().
-		Border(lipgloss.Border{Top: "─", Bottom: "─"}, true, false).
+		Border(lipgloss.Border{Top: "─"}, true, false, false, false).
 		BorderForeground(accentColor).
 		Padding(0, 0, 0, chromeIndent)
+}
+
+// titledRule carries the session title on the right of the composer's top rule,
+// so the conversation stays named without spending a row on it.
+func (m *model) titledRule(frame string) string {
+	title := strings.Join(strings.Fields(m.sessTitle), " ")
+	width := max(m.width, 0)
+	if title == "" || width < 24 {
+		return frame
+	}
+	rule, rest, _ := strings.Cut(frame, "\n")
+	title = ansi.Truncate(title, width/2, "…")
+	const tail = 2
+	lead := width - lipgloss.Width(title) - 2 - tail
+	if lead < 4 || lipgloss.Width(rule) != width {
+		return frame
+	}
+	ruleStyle := lipgloss.NewStyle().Foreground(accentColor)
+	rule = ruleStyle.Render(strings.Repeat("─", lead)) + " " + statusTitleStyle.Render(title) + " " + ruleStyle.Render(strings.Repeat("─", tail))
+	return rule + "\n" + rest
 }

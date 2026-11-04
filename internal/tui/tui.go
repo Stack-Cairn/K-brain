@@ -966,7 +966,7 @@ const (
 	blockBanner
 )
 
-const toolPreviewLines = 5
+const toolPreviewLines = 3
 
 const minRenderWidth = 8
 
@@ -983,6 +983,9 @@ type block struct {
 	toolArgs string
 
 	live string
+
+	// think marks a thinking paragraph that later reasoning lines extend.
+	think bool
 
 	y0, y1 int
 
@@ -1026,25 +1029,33 @@ func (b block) render(width int) string {
 			w = 80
 		}
 		body := indentLines(renderMarkdown(b.text, w), 2)
-		return accentStyle.Render(glyphAssistant) + strings.TrimPrefix(body, "  ")
+		return accentStyle.Render(glyphAssistant) + dropLeadSpaces(body, 2)
 	case blockTool:
 
 		if diff, rest := extractDiff(strings.TrimRight(b.text, "\n")); diff != "" {
 			return renderDiffResult(diff, rest, b.expanded, width)
 		}
 		lines := strings.Split(strings.TrimRight(b.text, "\n"), "\n")
-
-		lines[0] = "⎿ " + lines[0]
+		for i := 1; i < len(lines); i++ {
+			lines[i] = "  " + lines[i] // continuation rows sit under the text, not the ⎿
+		}
 		style := dimStyle
-		if strings.HasPrefix(b.text, "Error") {
+		failed := strings.HasPrefix(b.text, "Error")
+		if failed {
 			style = errStyle
 		}
+		// Reads and searches are context for the model, not for the reader:
+		// fold them to a one-line count that still expands on demand.
+		if !b.expanded && !failed && quietResultTool(b.toolName) && len(lines) > 1 {
+			return wrap(dimStyle.Render(fmt.Sprintf("  ⎿ %d %s", len(lines), quietResultUnit(b.toolName, len(lines)))), width)
+		}
+		lines[0] = "⎿ " + lines[0]
 		if b.expanded || len(lines) <= toolPreviewLines {
 			return wrap(style.Render("  "+strings.Join(lines, "\n  ")), width)
 		}
 		preview := lines[:toolPreviewLines]
 		out := style.Render("  " + strings.Join(preview, "\n  "))
-		hint := fmt.Sprintf("\n  … +%d lines (ctrl+e or click to expand)", len(lines)-toolPreviewLines)
+		hint := fmt.Sprintf("\n    … +%d lines (ctrl+e)", len(lines)-toolPreviewLines)
 		return wrap(out+dimStyle.Render(hint), width)
 	case blockToolRun:
 
@@ -1115,9 +1126,12 @@ func (m *model) refreshVP() {
 			continue
 		}
 		if wrote {
-
-			b.WriteString("\n\n")
-			line++
+			if gluedToPrev(m.blocks, i) {
+				b.WriteString("\n")
+			} else {
+				b.WriteString("\n\n")
+				line++
+			}
 		}
 		r := m.blocks[i].renderAtMode(width, m.ancientMode)
 		m.blocks[i].y0 = line
@@ -1521,7 +1535,7 @@ func (m *model) dockTop() int {
 	if m.viewH > 0 {
 		bottom = m.viewTop + m.viewH
 	}
-	return bottom - 3 - m.dockRows + m.dockSkip
+	return bottom - fixedFrameRows - m.dockRows + m.dockSkip
 }
 
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -1816,7 +1830,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		result := block{kind: blockTool, text: msg.result}
+		result := block{kind: blockTool, text: msg.result, toolName: msg.name}
 		if hdr >= 0 && hdr+1 < len(m.blocks) {
 			m.blocks = append(m.blocks[:hdr+1], append([]block{result}, m.blocks[hdr+1:]...)...)
 
@@ -2779,14 +2793,8 @@ func (m *model) busyStats() string {
 	}
 	d := max(m.nowFn().Sub(m.turnStart), 0)
 	elapsed := d.Round(time.Second)
-	stats := fmt.Sprintf(" %d:%02d", int(elapsed.Minutes()), int(elapsed.Seconds())%60)
-	if u := m.agent.TotalUsage(); u.PromptTokens > 0 || u.CompletionTokens > 0 {
-		stats += fmt.Sprintf(" · %s tok", fmtTok(u.PromptTokens+u.CompletionTokens))
-	}
-	if m.agent.ContextLimit > 0 {
-		stats += fmt.Sprintf(" · %d%%", m.agent.ContextTokens()*100/m.agent.ContextLimit)
-	}
-	return stats
+	// Spend and context live in the info row; the busy row only says how long.
+	return fmt.Sprintf(" %d:%02d", int(elapsed.Minutes()), int(elapsed.Seconds())%60)
 }
 
 func (m *model) histPrev() {
@@ -3212,7 +3220,9 @@ func modelSupportsVision(cfg *config.Config, modelName, modelID string, catalogs
 
 func (m *model) appendAssistant(s string) {
 	if m.inMsg && len(m.blocks) > 0 && m.blocks[len(m.blocks)-1].kind == blockAssistant {
-		m.blocks[len(m.blocks)-1].text += "\n\n" + s
+		// The stream handler cuts each chunk at its last newline, so one
+		// newline restores the text exactly; two would double-space code.
+		m.blocks[len(m.blocks)-1].text += "\n" + s
 		m.blocks[len(m.blocks)-1].stale = true
 		m.keepFollow()
 		m.refreshVP()
@@ -3237,12 +3247,27 @@ func indentLines(s string, n int) string {
 	return strings.Join(lines, "\n")
 }
 
+// appendThink grows one thinking block per reasoning run instead of a block
+// per streamed line, so the transcript shows it as a single quiet paragraph.
 func (m *model) appendThink(s string) {
-	if !m.inThink {
-		s = "◌ " + s
+	body := strings.ReplaceAll(s, "\n", "\n  ")
+	if m.inThink {
+		if n := len(m.blocks); n > 0 && m.blocks[n-1].think {
+			last := &m.blocks[n-1]
+			last.text += "\n" + thinkingStyle.Render("  "+body)
+			last.stale = true
+			m.keepFollow()
+			m.refreshVP()
+			return
+		}
+		body = "  " + body
+	} else {
+		body = "◌ " + body
 		m.inThink = true
 	}
-	m.append(thinkingStyle.Render(s))
+	m.keepFollow()
+	m.blocks = append(m.blocks, block{kind: blockText, text: thinkingStyle.Render(body), think: true})
+	m.refreshVP()
 }
 
 func (m *model) toggleThinking() {
@@ -3876,7 +3901,7 @@ func (m *model) currentView() string {
 	if m.busy {
 		w := max(m.width-2, 1)
 		body := indentPlain(wrap(s, w), 2)
-		return botStyle.Render(glyphAssistant) + strings.TrimPrefix(body, "  ")
+		return botStyle.Render(glyphAssistant) + dropLeadSpaces(body, 2)
 	}
 	return wrap(s, m.width)
 }
@@ -4126,20 +4151,20 @@ func (m *model) viewBody() string {
 		b.WriteString("\n" + m.askView() + "\n")
 	}
 	if m.busy {
-		hint := " thinking… (Enter queues · /theme /mouse /effort run now · Esc interrupts · Ctrl+C Ctrl+C interrupts)"
+		hint := m.tr(" · Esc to interrupt")
 		if m.iactive != nil {
 			hint = " bash (interactive) — type to respond · Ctrl+C Ctrl+C to cancel"
 		} else if m.interrupt1 {
-			hint = " thinking… (Esc or Ctrl+C again to interrupt)"
+			hint = m.tr(" · Esc again to interrupt")
 		}
-		b.WriteString("\n" + m.spin.View() + dimStyle.Render(m.busyStats()+hint) + "\n")
+		b.WriteString("\n" + m.spin.View() + dimStyle.Render(m.tr(" thinking…")+m.busyStats()+hint) + "\n")
 	}
 	if len(m.queue) > 0 {
 		nav := ""
 		if m.busy && m.input.Value() == "" {
 			nav = " · ↑/↓ Select · Del Removes"
 		}
-		b.WriteString(dimStyle.Render(fmt.Sprintf("queued (%d) — Enter on empty input to steer into this turn%s", len(m.queue), nav)) + "\n")
+		b.WriteString(dimStyle.Render(fmt.Sprintf(m.tr("queued (%d) · Enter on empty input steers%s"), len(m.queue), nav)) + "\n")
 		for i, q := range m.queue {
 
 			line := ansi.Truncate(youStyle.Render(" "+glyphUser)+q, m.width, "…")
@@ -4178,7 +4203,7 @@ func (m *model) viewBody() string {
 			frame := kbrainPromptFrame().Width(frameWidth)
 			m.inputBodyOff += frame.GetBorderTopSize() + frame.GetPaddingTop()
 			m.inputLeft = frame.GetBorderLeftSize() + frame.GetPaddingLeft()
-			b.WriteString(frame.Render(inputView))
+			b.WriteString(m.titledRule(frame.Render(inputView)))
 		}
 	}
 	if m.menu != nil {
@@ -4195,7 +4220,7 @@ func (m *model) viewBody() string {
 	if chipX >= 0 {
 		m.effortRow, m.effortX = strings.Count(b.String(), "\n"), chipX
 	}
-	b.WriteString(hints + "\n" + m.footerRule() + "\n" + m.statusView())
+	b.WriteString(hints)
 	return b.String()
 }
 
@@ -4211,7 +4236,7 @@ func (m *model) ancientize(s string) string {
 	return renderAncientText(ansi.Strip(s), w)
 }
 
-const inputPlaceholder = "Ask k-brain anything… (/ for commands, Tab completes)"
+const inputPlaceholder = "Ask k-brain anything…  / commands · Shift+Tab mode · Ctrl+P menu"
 
 func (m *model) syncInputPlaceholder() {
 	if m.input.Value() != "" {
@@ -4227,12 +4252,9 @@ func (m *model) syncInputPlaceholder() {
 	}
 }
 
-// statusView is the second of the two info rows under the input box: working
-// directory and goal on the left, provider and session spend on the right, with
-// the session title flush against the right edge.
-func (m *model) statusView() string {
-	// The left half leads with the git readout, then the goal. The working
-	// directory lives in the banner instead.
+// statusLeft is the left half of the info row after the mode chip: the git
+// readout, then the goal. The working directory lives in the banner instead.
+func (m *model) statusLeft() string {
 	left := m.git.render()
 	if m.goal != "" {
 		if left != "" {
@@ -4240,35 +4262,29 @@ func (m *model) statusView() string {
 		}
 		left += dimStyle.Render("◎ " + truncLine(m.goal, 32))
 	}
+	return left
+}
 
-	u := m.agent.TotalUsage()
-	spend := fmt.Sprintf("%s   %s", m.provName, fmtUsage(u))
-	if cost, ok := m.sessionCost(); ok {
-		spend += " · " + fmtCost(cost)
+// footerStats is the quiet run readout in front of the model cell. Each item
+// only appears when it says something: no zero costs, no 0% scroll.
+func (m *model) footerStats() string {
+	var parts []string
+	if m.agent != nil && m.agent.ContextLimit > 0 {
+		parts = append(parts, fmt.Sprintf(m.tr("%d%% ctx"), m.agent.ContextTokens()*100/m.agent.ContextLimit))
 	}
-	if last := m.lastResp; last.PromptTokens > 0 || last.CompletionTokens > 0 {
-		spend += m.tr(" · last ") + fmtUsage(last)
+	if cost, ok := m.sessionCost(); ok && cost > 0 {
+		parts = append(parts, fmtCost(cost))
+	} else if u := m.agent.TotalUsage(); m.agent != nil && u.PromptTokens+u.CompletionTokens > 0 {
+		// Unpriced routes still get a sense of spend.
+		parts = append(parts, fmtTok(u.PromptTokens+u.CompletionTokens)+" tok")
 	}
-	if m.agent.ContextLimit > 0 {
-		spend += fmt.Sprintf(" · %d%%/%d%% ctx", m.agent.ContextTokens()*100/m.agent.ContextLimit, m.compactPct())
-	}
-	if !m.follow {
-		spend += fmt.Sprintf(" · ↑ %d%%", int(m.vp.ScrollPercent()*100))
+	if !m.follow && !m.vp.AtBottom() {
+		parts = append(parts, fmt.Sprintf("↑ %d%%", int(m.vp.ScrollPercent()*100)))
 	}
 	if n := m.runningTasks(); n > 0 {
-		spend += fmt.Sprintf(" · ⚙ %d sub", n)
+		parts = append(parts, fmt.Sprintf("⚙ %d sub", n))
 	}
-
-	titleSuffix := ""
-	if title := strings.Join(strings.Fields(m.sessTitle), " "); title != "" && m.width > 0 {
-		titleWidth := min(lipgloss.Width(title), max(m.width/2, 1))
-		title = ansi.Truncate(title, titleWidth, "…")
-		separator := strings.Repeat(" ", min(3, max(m.width-lipgloss.Width(title), 0)))
-		titleSuffix = statusTitleStyle.Render(separator + title)
-	}
-
-	line := chromeColumns(left, dimStyle.Render(spend), max(m.width, 0)-lipgloss.Width(titleSuffix))
-	return ansi.Truncate(line+titleSuffix, max(m.width, 0), "")
+	return strings.Join(parts, " · ")
 }
 
 func shortCWD() string {

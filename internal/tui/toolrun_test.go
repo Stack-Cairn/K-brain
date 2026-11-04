@@ -41,8 +41,13 @@ func TestToolRowCollapsesOnCompletion(t *testing.T) {
 	if res.kind != blockTool {
 		t.Fatal("the result block should follow the run row")
 	}
-	if got := ansi.Strip(res.render(m.width)); !strings.Contains(got, "⎿ file body") {
-		t.Fatalf("result block should show the result under ⎿, got %q", got)
+	got = ansi.Strip(res.render(m.width))
+	if !strings.Contains(got, "⎿ 6 lines") || strings.Contains(got, "file body") {
+		t.Fatalf("a read result should fold to its line count under ⎿, got %q", got)
+	}
+	res.toggle()
+	if got := ansi.Strip(res.render(m.width)); !strings.Contains(got, "⎿ file body") || !strings.Contains(got, "line6") {
+		t.Fatalf("an expanded read result should show the file, got %q", got)
 	}
 	if !row.toggle() {
 		t.Fatal("ctrl+e should still toggle the collapsed row")
