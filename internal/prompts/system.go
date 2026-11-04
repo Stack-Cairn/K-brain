@@ -89,7 +89,11 @@ Here is some useful information about the environment you are running in:
 	if extra := config.BrainInstructions(); extra != "" {
 		prompt += "\n\nStanding instructions from the user (~/.liveagent/brain.md — treat as user rules):\n" + extra
 	}
-	for _, file := range config.ProjectPromptFiles(wd) {
+	for _, file := range config.InstructionFiles(wd) {
+		if file.User {
+			prompt += fmt.Sprintf("\n\nStanding instructions from %s (%s — treat as user rules):\n%s", file.Scope, file.Path, file.Text)
+			continue
+		}
 		prompt += fmt.Sprintf("\n\nProject instructions from %s (%s — treat as project rules):\n%s", file.Scope, file.Path, file.Text)
 	}
 

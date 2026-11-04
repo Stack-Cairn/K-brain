@@ -28,4 +28,6 @@
 
 `baseUrl` 必须包含 `/v1`，模型目录固定从 `${baseUrl}/models`（即 `/v1/models`）读取。`context`、`maxOut`、`vision` 和采样参数都可按模型自定义，不会把特定模型写死在代码中。`apiKey` 可写明文、环境变量名或 `${VAR}` 引用。
 
-主要可选项：`defaultEffort`、`goalMaxRounds`、`mouse`、`thinking`、`collapsePaste`、`maxRetries`、`sandbox`、`browser`、`computer`、`hooks`、`mcp` 和 `lsp`。
+主要可选项：`defaultEffort`、`goalMaxRounds`、`mouse`、`thinking`、`collapsePaste`、`maxRetries`、`sandbox`、`browser`、`computer`、`hooks`、`mcp`、`lsp` 和 `rulesCompat`。
+
+`rulesCompat` 控制是否读取其他代理工具的规则文件，两项默认开启：`{"rulesCompat": {"claude": false, "cursor": false}}` 可分别关闭 Claude Code（`CLAUDE.md`、`CLAUDE.local.md`、`.claude/CLAUDE*.md`、`~/.claude/CLAUDE.md`、项目 `.claude/skills`）和 Cursor（`.cursor/rules`、`.cursorrules`）兼容。详见[提示词层级](02-prompts.md)。

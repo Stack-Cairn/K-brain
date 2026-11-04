@@ -27,3 +27,31 @@ func TestDirsForUsesRequestedProject(t *testing.T) {
 	}
 	t.Fatal("requested project skill not found")
 }
+
+func TestDirsForIncludesClaudeProjectSkills(t *testing.T) {
+	t.Setenv("LIVEAGENT_HOME", t.TempDir())
+	project := t.TempDir()
+	path := filepath.Join(project, ".claude", "skills", "claude-skill")
+	if err := os.MkdirAll(path, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(path, "SKILL.md"), []byte("---\nname: claude-skill\ndescription: from .claude/skills\n---\nBody.\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, skill := range Scan(DirsFor(project)...) {
+		found = found || skill.Name == "claude-skill"
+	}
+	if !found {
+		t.Fatal(".claude/skills project skill not found")
+	}
+
+	if err := os.WriteFile(filepath.Join(os.Getenv("LIVEAGENT_HOME"), "config.json"), []byte(`{"providers":{},"rulesCompat":{"claude":false}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, dir := range DirsFor(project) {
+		if dir == filepath.Join(project, ".claude", "skills") {
+			t.Fatal("rulesCompat.claude=false should drop .claude/skills")
+		}
+	}
+}
