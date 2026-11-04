@@ -4,8 +4,23 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Stack-Cairn/K-brain/internal/session"
 	"github.com/Stack-Cairn/K-brain/internal/skills"
 )
+
+// runReadRoots lists the read-only directories a run may read outside its workspace:
+// the skill directories, plus the session's compaction directory, which the compaction
+// summary points the model at. The compaction directory is granted even before it
+// exists so a compaction in the middle of a run is readable in that same run.
+func runReadRoots(store *session.Store, id, workdir string) []string {
+	dirs := skillReadRoots(workdir)
+	if store != nil {
+		if dir := store.CompactionDir(id); dir != "" {
+			dirs = append(dirs, dir)
+		}
+	}
+	return dirs
+}
 
 // skillReadRoots lists the directories the system prompt can advertise skills from for
 // this workspace (see prompts.SkillsPrompt): the managed user Skills root plus the

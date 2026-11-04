@@ -28,6 +28,7 @@ func Open(store *session.Store, id string, ag *agent.Agent) (*Recorder, error) {
 	}
 	ag.Messages = msgs
 	ag.RestoreUsage(meta.UsageSummary(stored))
+	ag.CompactionDir = func() string { return store.CompactionDir(id) }
 	return &Recorder{store: store, history: history, agent: ag, id: id}, nil
 }
 

@@ -33,6 +33,10 @@ func (m *model) ensureHistory(msgs []ai.Message) error {
 }
 
 func (m *model) bindSessionIdentity() {
+	if m.agent.CompactionDir == nil && m.store != nil {
+		ag, store := m.agent, m.store
+		ag.CompactionDir = func() string { return store.CompactionDir(ag.SessionIDValue()) }
+	}
 	if m.agent.SessionIDValue() == m.sessionID {
 		return
 	}

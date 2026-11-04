@@ -213,6 +213,16 @@ func (s *Store) TranscriptPath(id string) string {
 	return direct
 }
 
+// CompactionDir is the session directory's "compaction" subdirectory, where the agent
+// saves compacted-away turns as markdown. It moves and is deleted with the session.
+func (s *Store) CompactionDir(id string) string {
+	path := s.TranscriptPath(id)
+	if path == "" {
+		return ""
+	}
+	return filepath.Join(filepath.Dir(path), "compaction")
+}
+
 func (s *Store) withLock(fn func() error) (err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
