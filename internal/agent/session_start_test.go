@@ -23,7 +23,12 @@ func TestSessionStartRetryAndModelChange(t *testing.T) {
 	policy := &sandbox.Policy{Mode: "off", Root: ag.WorkingDir}
 	ag.SandboxPolicy = policy
 	calls := 0
+	var ended []hooks.Event
 	ag.PluginHook = func(ctx context.Context, event hooks.Event) error {
+		if event.Name == hooks.SessionEnd {
+			ended = append(ended, event)
+			return nil
+		}
 		calls++
 		if event.SessionID != ag.SessionIDValue() || event.CWD != ag.WorkingDir || sandbox.FromContext(ctx) != policy {
 			t.Fatalf("wrong hook context: %+v", event)
@@ -59,6 +64,21 @@ func TestSessionStartRetryAndModelChange(t *testing.T) {
 	}
 	if calls != 3 {
 		t.Fatal("new session did not start")
+	}
+	if len(ended) != 1 || ended[0].SessionID != "session-a" || ended[0].Reason != "switch" {
+		t.Fatalf("switch did not end the previous session: %+v", ended)
+	}
+	if err := ag.EndSession(t.Context(), "exit"); err != nil {
+		t.Fatal(err)
+	}
+	if err := ag.EndSession(t.Context(), "exit"); err != nil {
+		t.Fatal(err)
+	}
+	if len(ended) != 2 || ended[1].SessionID != "session-b" || ended[1].Reason != "exit" {
+		t.Fatalf("EndSession events: %+v", ended)
+	}
+	if err := ag.StartSession(t.Context()); err != nil || calls != 4 {
+		t.Fatalf("ended session did not start again: calls=%d err=%v", calls, err)
 	}
 }
 

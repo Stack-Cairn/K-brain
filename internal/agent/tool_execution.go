@@ -48,7 +48,7 @@ func (a *Agent) runTools(ctx context.Context, calls []ai.ToolCall, ev Events) []
 				defer ev.OnLifecycle("tool_execution_end")
 			}
 			if a.Hooks != nil || a.PluginHook != nil {
-				if err := a.runHook(ctx, hooks.Event{Name: "PreToolUse", ToolID: tc.ID, ToolName: name, ToolArgs: args}); err != nil {
+				if err := a.runHook(ctx, hooks.Event{Name: hooks.PreToolUse, ToolID: tc.ID, ToolName: name, ToolArgs: args}); err != nil {
 					out := "Error: hook PreToolUse denied tool call: " + err.Error()
 					if ev.OnToolEnd != nil {
 						ev.OnToolEnd(tc.ID, name, out)
@@ -108,8 +108,15 @@ func (a *Agent) runTools(ctx context.Context, calls []ai.ToolCall, ev Events) []
 			result := tools.ExecuteResult(callCtx, a.AllTools(), name, json.RawMessage(args), a.Vision)
 			out := result.Text
 			if a.Hooks != nil || a.PluginHook != nil {
-				if err := a.runHook(ctx, hooks.Event{Name: "PostToolUse", ToolID: tc.ID, ToolName: name, ToolArgs: args, ToolResult: out}); err != nil {
+				if err := a.runHook(ctx, hooks.Event{Name: hooks.PostToolUse, ToolID: tc.ID, ToolName: name, ToolArgs: args, ToolResult: out}); err != nil {
 					out += "\nHook PostToolUse failed: " + err.Error()
+				}
+				// PostToolUseFailure adds to PostToolUse for a tool that returned an
+				// error; an interrupted call is not a tool failure.
+				if result.Failed && !result.Cancelled {
+					if err := a.runHook(ctx, hooks.Event{Name: hooks.PostToolUseFailure, ToolID: tc.ID, ToolName: name, ToolArgs: args, ToolResult: result.Text}); err != nil {
+						out += "\nHook PostToolUseFailure failed: " + err.Error()
+					}
 				}
 			}
 			if len(a.Reminders) > 0 && !result.Cancelled {

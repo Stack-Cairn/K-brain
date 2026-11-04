@@ -219,6 +219,12 @@ func (s SandboxConfig) Policy(root string) *sandbox.Policy {
 	return sandbox.New(s.Mode, s.Backend, root, network, s.Writable, s.ReadOnly)
 }
 
+// HookEvents lists the lifecycle events a hooks entry may name.
+var HookEvents = []string{
+	"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
+	"PreCompact", "PostCompact", "Stop", "SessionEnd",
+}
+
 type Hook struct {
 	Command string `json:"command"`
 	Shell   string `json:"shell,omitempty"`
@@ -379,9 +385,7 @@ func parseConfigJSONC(data []byte, cfg *Config) error {
 		if strings.TrimSpace(event) == "" {
 			return fmt.Errorf("hook event name cannot be empty")
 		}
-		switch event {
-		case "SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop":
-		default:
+		if !slices.Contains(HookEvents, event) {
 			return fmt.Errorf("unsupported hook event %q", event)
 		}
 		for i, hook := range hooks {

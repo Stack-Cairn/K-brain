@@ -110,6 +110,11 @@ func (s *acpSession) close() {
 			s.turnCh <- struct{}{}
 			defer func() { <-s.turnCh }()
 		}
+		if s.ag != nil {
+			if err := s.ag.EndSession(context.Background(), "close"); err != nil {
+				config_logf("session %s: %v", s.id, err)
+			}
+		}
 		if s.mcp != nil {
 			s.mcp.Close()
 		}
