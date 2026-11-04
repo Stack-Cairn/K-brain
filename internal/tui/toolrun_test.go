@@ -5,6 +5,9 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Stack-Cairn/K-brain/internal/agent"
+	"github.com/Stack-Cairn/K-brain/internal/ai"
 )
 
 func TestToolRowCollapsesOnCompletion(t *testing.T) {
@@ -75,5 +78,47 @@ func TestToolRowFailureIsRed(t *testing.T) {
 	res := m.blocks[len(m.blocks)-1]
 	if got := ansi.Strip(res.render(m.width)); !strings.Contains(got, "Error: exit status 1") {
 		t.Fatalf("result block should carry the error text, got %q", got)
+	}
+}
+
+func TestToolBlocksGlueWithoutBlankRows(t *testing.T) {
+	m := compactCmdModel()
+	m.Update(mkWinSize(80, 30))
+	m.appendAssistantBlock("before")
+	m.Update(toolStartMsg{id: "1", name: "read", args: `{"path":"a.go"}`})
+	m.Update(toolEndMsg{id: "1", name: "read", result: "x\ny\n"})
+	m.Update(toolStartMsg{id: "2", name: "bash", args: `{"command":"ls"}`})
+	m.Update(toolEndMsg{id: "2", name: "bash", result: "ok"})
+	m.appendAssistantBlock("after")
+	rows := m.viewportPlain()
+	for i := range rows {
+		rows[i] = strings.TrimRight(rows[i], " ")
+	}
+	got := strings.Join(rows, "\n")
+	want := "● Read(a.go)\n  ⎿ 2 lines\n● Bash(ls)\n  ⎿ ok\n\n● after"
+	if !strings.Contains(got, want) {
+		t.Fatalf("tool group should render without blank rows:\n%s", got)
+	}
+	if !strings.Contains(got, "● before\n\n● Read") {
+		t.Fatalf("prose stays separated from the tool group:\n%s", got)
+	}
+}
+
+func TestSeedTranscriptHidesReminderOnlyUserMessages(t *testing.T) {
+	m := compactCmdModel()
+	m.Update(mkWinSize(80, 30))
+	m.seedTranscript([]ai.Message{
+		{Role: "user", Content: "real question", Authored: true},
+		{Role: "assistant", Content: "partial"},
+		{Role: "user", Content: agent.WrapReminder("Continue exactly where it stopped.")},
+		{Role: "assistant", Content: "rest"},
+	}, 0)
+	for _, b := range m.blocks {
+		if strings.Contains(b.text, "Continue exactly") {
+			t.Fatalf("a reminder-only message leaked into the transcript: %q", b.text)
+		}
+	}
+	if !strings.Contains(strings.Join(m.viewportPlain(), "\n"), "real question") {
+		t.Fatal("authored user messages must stay")
 	}
 }

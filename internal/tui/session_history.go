@@ -1,7 +1,12 @@
 package tui
 
 import (
+	"context"
 	"fmt"
+	"strings"
+
+	"github.com/Stack-Cairn/K-brain/internal/agent"
+	"github.com/Stack-Cairn/K-brain/internal/config"
 
 	"github.com/Stack-Cairn/K-brain/internal/ai"
 	"github.com/Stack-Cairn/K-brain/internal/tools/bashrun"
@@ -151,4 +156,22 @@ func (m *model) recordTurnSnapshot(msg turnDoneMsg) {
 			m.append(errStyle.Render("snapshot save failed: " + err.Error()))
 		}
 	}
+}
+
+// endSession runs the SessionEnd hook for the agent's current session before the
+// TUI drops or replaces it. Hook failures are logged, never shown as errors: the
+// session is ending either way.
+func (m *model) endSession(reason string) {
+	if m.agent == nil {
+		return
+	}
+	if err := m.agent.EndSession(context.Background(), reason); err != nil {
+		config.LogEvent("hooks.session_end", err.Error())
+	}
+}
+
+// reminderOnly reports a user message that is nothing but a wrapped reminder.
+func reminderOnly(text string) bool {
+	text = strings.TrimSpace(text)
+	return strings.HasPrefix(text, "<"+agent.ReminderTag+">") && strings.HasSuffix(text, "</"+agent.ReminderTag+">")
 }
