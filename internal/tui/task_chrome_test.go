@@ -79,7 +79,7 @@ func TestTaskChromeDetailFitsAndKeepsFooter(t *testing.T) {
 			if !strings.Contains(strings.Split(view, "\n")[0], "task-1") && m.width >= 40 {
 				t.Fatalf("task detail header clipped: %s", view)
 			}
-			if !strings.Contains(view, "DRAFT") || !strings.HasSuffix(view, m.sessTitle) {
+			if !strings.Contains(view, "DRAFT") || !strings.HasSuffix(view, ansi.Strip(m.infoRow())) {
 				t.Fatalf("composer or session footer missing: %s", view)
 			}
 			m.closeTaskView()

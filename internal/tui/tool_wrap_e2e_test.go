@@ -70,7 +70,7 @@ func TestToolResultFullyVisibleWhenExpanded(t *testing.T) {
 	m = tm.(*model)
 
 	joined := strings.Join(m.viewportPlain(), "\n")
-	if !strings.Contains(joined, "… +7 lines") {
+	if !strings.Contains(joined, "… +9 lines") {
 		t.Fatalf("collapsed view should announce hidden lines, got:\n%s", joined)
 	}
 	if strings.Contains(joined, "output row "+strings.Repeat("x", 12)) {

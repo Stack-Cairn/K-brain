@@ -5,7 +5,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-const defaultPlaceholder = "Ask k-brain anything… (/ for commands, Tab completes)"
+const defaultPlaceholder = inputPlaceholder
 
 func (m *model) applyAppearance() {
 	invalidateMDRenderer()

@@ -62,16 +62,16 @@ func TestGitStatusRender(t *testing.T) {
 	}
 }
 
-func TestStatusViewShowsGit(t *testing.T) {
+func TestInfoRowShowsGit(t *testing.T) {
 	m := compactCmdModel()
 	m.width = 140
 	m.git = gitStatus{Repo: "K-brain", Branch: "main", Added: 2}
-	v := ansi.Strip(m.statusView())
+	v := ansi.Strip(m.footerHints())
 	if !strings.Contains(v, "K-brain@main") || !strings.Contains(v, "+2") {
 		t.Fatalf("status row should carry the git readout, got %q", v)
 	}
 	m.git = gitStatus{}
-	v = ansi.Strip(m.statusView())
+	v = ansi.Strip(m.footerHints())
 	if strings.Contains(v, "@") {
 		t.Fatalf("without git data the status row should not show an empty @, got %q", v)
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/Stack-Cairn/K-brain/internal/approval"
+	"github.com/charmbracelet/x/ansi"
 	"strings"
 	"sync"
 
@@ -317,10 +318,8 @@ func ansi_Truncate(s string, width int) string {
 	if width <= 0 {
 		width = 80
 	}
-	if len(s) <= width {
-		return s
-	}
-	return s[:width-1] + "…"
+	// Truncate by display width: a byte cut splits CJK runes and overflows.
+	return ansi.Truncate(s, width, "…")
 }
 
 var _ = fmt.Sprint

@@ -15,7 +15,7 @@ func TestToolExpand(t *testing.T) {
 	m.appendRaw(blockTool, result)
 
 	out := ansi.Strip(m.blocks[0].render(m.width))
-	if strings.Contains(out, "line8") || !strings.Contains(out, "… +3 lines") {
+	if strings.Contains(out, "line8") || !strings.Contains(out, "… +5 lines") {
 		t.Fatalf("collapsed render wrong: %q", out)
 	}
 

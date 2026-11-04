@@ -21,7 +21,7 @@ func statusModel() *model {
 	return m
 }
 
-func TestStatusLineAlwaysShown(t *testing.T) {
+func TestInfoRowShowsModelEffortAndSpend(t *testing.T) {
 	m := statusModel()
 	m.modelName = "kimi-k3-fast"
 	m.provName = "inference"
@@ -29,104 +29,56 @@ func TestStatusLineAlwaysShown(t *testing.T) {
 	m.agent.AddUsage(ai.Usage{PromptTokens: 45230, CompletionTokens: 3120})
 
 	v := m.View()
-	for _, want := range []string{"kimi-k3-fast", "✦ high", "inference", "45.2k", "3.1k"} {
+	for _, want := range []string{"kimi-k3-fast", "✦ high", "48.4k tok"} {
 		if !strings.Contains(v, want) {
-			t.Errorf("info rows should show %q\n--- view tail ---\n%s", want, tailLines(v, 6))
+			t.Errorf("info row should show %q\n--- view tail ---\n%s", want, tailLines(v, 4))
+		}
+	}
+	if strings.Contains(v, "inference") {
+		t.Errorf("the provider no longer crowds the info row\n%s", tailLines(v, 4))
+	}
+}
+
+func TestInfoRowDefaults(t *testing.T) {
+	m := statusModel()
+	m.modelName = "m"
+	m.provName = "p"
+
+	hints := ansi.Strip(m.footerHints())
+	if !strings.HasSuffix(hints, "m · ✦ off") {
+		t.Errorf("model and effort should close the info row, got %q", hints)
+	}
+	for _, noise := range []string{"tok", "$", "↑", "sub"} {
+		if strings.Contains(hints, noise) {
+			t.Errorf("an idle session should not show %q: %q", noise, hints)
 		}
 	}
 }
 
-func TestStatusLineDefaults(t *testing.T) {
-	m := statusModel()
-	m.modelName = "m"
-	m.provName = "p"
-
-	v := m.View()
-	if !strings.Contains(v, "0/0 tok") {
-		t.Errorf("empty session should read 0/0 tok\n%s", tailLines(v, 6))
-	}
-	if strings.Contains(v, "m (") {
-		t.Errorf("effort off should not add parens\n%s", tailLines(v, 6))
-	}
-	if hints := ansi.Strip(m.footerHints()); !strings.HasSuffix(hints, "m · ✦ off") {
-		t.Errorf("model and effort should close the hints row, got %q", hints)
-	}
-	if !strings.Contains(ansi.Strip(m.statusView()), "p   0/0 tok") {
-		t.Errorf("provider should lead the spend cluster\n%s", tailLines(v, 6))
-	}
-}
-
-func TestStatusLineShowsCached(t *testing.T) {
-	m := statusModel()
-	m.modelName = "m"
-	m.provName = "p"
-	u := ai.Usage{PromptTokens: 10000, CompletionTokens: 500}
-	u.PromptTokensDetails = &struct {
-		CachedTokens int `json:"cached_tokens"`
-	}{CachedTokens: 4000}
-	m.agent.AddUsage(u)
-
-	if got := m.statusView(); !strings.Contains(got, "10.0k(4.0k)/500 tok") {
-		t.Errorf("cached tokens should show in the spend: %q", got)
-	}
-}
-
-func TestStatusLineBelowInputAndWarnings(t *testing.T) {
+func TestInfoRowIsLastRowBelowComposer(t *testing.T) {
 	m := statusModel()
 	m.modelName = "m"
 	m.provName = "p"
 	m.escClr = true
 
-	v := m.View()
-	lines := strings.Split(strings.TrimRight(v, "\n"), "\n")
-	var inputRow, statusRow int
+	lines := strings.Split(strings.TrimRight(m.View(), "\n"), "\n")
+	inputRow, infoRow := -1, -1
 	for i, l := range lines {
 		if strings.Contains(l, "Ask k-brain anything") {
 			inputRow = i
 		}
-		if strings.Contains(l, "0/0 tok") {
-			statusRow = i
+		if strings.Contains(l, "✦ off") {
+			infoRow = i
 		}
 	}
-	if statusRow <= inputRow {
-		t.Fatalf("status line should sit below the input (input=%d status=%d)\n%s", inputRow, statusRow, v)
+	if inputRow < 1 || infoRow != inputRow+1 {
+		t.Fatalf("info row should sit directly under the input (input=%d info=%d)\n%s", inputRow, infoRow, m.View())
 	}
-}
-
-func TestStatusLineSpacing(t *testing.T) {
-	m := statusModel()
-	m.modelName = "m"
-	m.provName = "p"
-
-	lines := strings.Split(m.View(), "\n")
-	statusRow := -1
-	for i, l := range lines {
-		if strings.Contains(l, "0/0 tok") {
-			statusRow = i
-		}
+	if got := ansi.Strip(lines[inputRow-1]); strings.Trim(strings.TrimSpace(got), "─") != "" {
+		t.Errorf("want the composer rule directly above the input, got %q", got)
 	}
-	if statusRow < 1 {
-		t.Fatalf("status line not found\n%s", m.View())
-	}
-	if got := ansi.Strip(lines[statusRow-1]); strings.Trim(strings.TrimSpace(got), "─") != "" {
-		t.Errorf("want the footer rule directly above the status line, got %q", got)
-	}
-
-	if statusRow != len(lines)-1 {
-		t.Errorf("status line should be the last row (row %d of %d lines)", statusRow, len(lines)-1)
-	}
-}
-
-func TestFooterRuleCarriesTheNotice(t *testing.T) {
-	m := statusModel()
-	m.width = 80
-
-	bare := ansi.Strip(m.footerRule())
-	if strings.Trim(strings.TrimSpace(bare), "─") != "" || lipgloss.Width(bare) != m.width {
-		t.Fatalf("an idle rule should span the width: %q", bare)
-	}
-	if lipgloss.Height(m.footerRule()) != 1 {
-		t.Error("the rule must stay a single row — that would shift the composer")
+	if infoRow != len(lines)-1 {
+		t.Errorf("info row should be the last row (row %d of %d lines)", infoRow, len(lines)-1)
 	}
 }
 
@@ -138,48 +90,25 @@ func tailLines(s string, n int) string {
 	return strings.Join(lines, "\n")
 }
 
-func TestStatusLineTruncatesCWDNotSpend(t *testing.T) {
-	m := statusModel()
-	m.modelName = "kimi-k3-fast"
-	m.provName = "inference"
-	m.agent.Effort = "high"
-	m.agent.AddUsage(ai.Usage{PromptTokens: 45230, CompletionTokens: 3120})
-
-	m.width = 58
-
-	v := m.statusView()
-	if !strings.Contains(v, "3.1k") {
-		t.Errorf("completion tokens must survive cwd truncation, got %q", v)
-	}
-	if !strings.Contains(v, "45.2k") {
-		t.Errorf("prompt tokens must survive cwd truncation, got %q", v)
-	}
-	if !strings.Contains(v, "inference") {
-		t.Errorf("provider must survive cwd truncation, got %q", v)
+func TestInfoRowTruncatesGoalNotModel(t *testing.T) {
+	for _, width := range []int{20, 40, 58, 120} {
+		m := statusModel()
+		m.width = width
+		m.modelName = "kimi-k3-fast"
+		m.agent.Effort = "high"
+		m.goal = strings.Repeat("ship the release ", 10)
+		m.agent.AddUsage(ai.Usage{PromptTokens: 45230, CompletionTokens: 3120})
+		line := ansi.Strip(m.footerHints())
+		if got := lipgloss.Width(line); got > width {
+			t.Fatalf("width %d: info row is %d wide: %q", width, got, line)
+		}
+		if width >= 58 && !strings.HasSuffix(line, "kimi-k3-fast · ✦ high") {
+			t.Fatalf("width %d: model and effort must survive goal truncation: %q", width, line)
+		}
 	}
 }
 
-func TestStatusLineCWDTruncationDisplayWidth(t *testing.T) {
-	m := statusModel()
-	m.modelName = "m"
-	m.provName = "p"
-	m.agent.AddUsage(ai.Usage{PromptTokens: 20000, CompletionTokens: 900})
-	m.Update(usageMsg(ai.Usage{PromptTokens: 10000, CompletionTokens: 300}))
-	m.width = 80
-
-	v := m.statusView()
-	if !strings.Contains(v, "last 10.0k/300 tok") {
-		t.Errorf("last-response spend (with tok suffix) must survive: %q", v)
-	}
-	if !strings.Contains(v, "20.0k/900 tok") {
-		t.Errorf("session spend must survive: %q", v)
-	}
-	if w := lipgloss.Width(ansi.Strip(v)); w > m.width {
-		t.Errorf("status line width %d exceeds terminal width %d: %q", w, m.width, v)
-	}
-}
-
-func TestStatusLineShowsCost(t *testing.T) {
+func TestInfoRowShowsCost(t *testing.T) {
 	m := statusModel()
 	m.modelName = "m"
 	m.provName = "p"
@@ -193,12 +122,16 @@ func TestStatusLineShowsCost(t *testing.T) {
 	}{CachedTokens: 8000}
 	m.agent.AddUsage(u)
 
-	if got := m.statusView(); !strings.Contains(got, "$0.0078") {
-		t.Errorf("cost should show in the spend: %q", got)
+	got := m.footerHints()
+	if !strings.Contains(got, "$0.0078") {
+		t.Errorf("cost should show in the info row: %q", got)
+	}
+	if strings.Contains(got, "tok") {
+		t.Errorf("a priced session shows cost instead of tokens: %q", got)
 	}
 }
 
-func TestStatusLineHidesCostWithoutPricing(t *testing.T) {
+func TestInfoRowHidesCostWithoutPricing(t *testing.T) {
 	m := statusModel()
 	m.modelName = "m"
 	m.provName = "p"
@@ -208,67 +141,35 @@ func TestStatusLineHidesCostWithoutPricing(t *testing.T) {
 	}
 	m.agent.AddUsage(ai.Usage{PromptTokens: 10000, CompletionTokens: 1000})
 
-	if got := m.statusView(); strings.Contains(got, "$") {
-		t.Errorf("unpriced model should hide cost: %q", got)
+	if got := m.footerHints(); strings.Contains(got, "$") || !strings.Contains(got, "11.0k tok") {
+		t.Errorf("unpriced model should fall back to a token count: %q", got)
 	}
 
 	m.catalogs = nil
-	if got := m.statusView(); strings.Contains(got, "$") {
+	if got := m.footerHints(); strings.Contains(got, "$") {
 		t.Errorf("missing catalog should hide cost: %q", got)
 	}
 }
 
-func TestStatusLineShowsLastResponse(t *testing.T) {
+func TestInfoRowShowsScrollOnlyWhenScrolledBack(t *testing.T) {
 	m := statusModel()
 	m.modelName = "m"
-	m.provName = "p"
-	m.agent.AddUsage(ai.Usage{PromptTokens: 20000, CompletionTokens: 900})
-	m.Update(usageMsg(ai.Usage{PromptTokens: 10000, CompletionTokens: 300}))
-
-	got := m.statusView()
-	if !strings.Contains(got, "last 10.0k/300 tok") {
-		t.Errorf("last response tokens should show in the status: %q", got)
+	m.follow = true
+	if got := ansi.Strip(m.footerHints()); strings.Contains(got, "↑") {
+		t.Errorf("following the tail should not show a scroll position: %q", got)
 	}
-
-	if !strings.Contains(got, "20.0k/900 tok") {
-		t.Errorf("session spend segment should be unchanged: %q", got)
+	m.follow = false
+	if got := ansi.Strip(m.footerHints()); strings.Contains(got, "↑") {
+		t.Errorf("sitting on the last row is not scrolled back: %q", got)
 	}
-}
-
-func TestStatusLineShowsSessionTitleAtRight(t *testing.T) {
-	m := statusModel()
-	m.modelName = "model1"
-	m.provName = "provider"
-	m.sessTitle = "Investigate the build"
-
-	got := m.statusView()
-	if !strings.Contains(got, "Investigate the build") {
-		t.Fatalf("session title should be shown in the bottom status line: %q", got)
+	for i := range 200 {
+		m.append("row " + strings.Repeat("x", i%7))
 	}
-	if strings.LastIndex(got, "Investigate the build") < strings.LastIndex(got, "provider") {
-		t.Fatalf("session title should be the rightmost status segment: %q", got)
-	}
-	plain := ansi.Strip(got)
-	if !strings.HasSuffix(plain, "Investigate the build") {
-		t.Fatalf("session title should be flush with the right edge: %q", plain)
-	}
-	if w := lipgloss.Width(plain); w != m.width {
-		t.Fatalf("status line width %d should fill terminal width %d: %q", w, m.width, got)
-	}
-}
-
-func TestStatusLineOmitsEmptySessionTitle(t *testing.T) {
-	m := statusModel()
-	m.modelName = "model1"
-	m.provName = "provider"
-	m.sessTitle = "   \n\t"
-
-	got := m.statusView()
-	withoutTitle := statusModel()
-	withoutTitle.modelName = m.modelName
-	withoutTitle.provName = m.provName
-	if want := withoutTitle.statusView(); got != want {
-		t.Fatalf("empty session title should not add a segment: got %q, want %q", got, want)
+	m.layout()
+	m.follow = false
+	m.vp.GotoTop()
+	if got := ansi.Strip(m.footerHints()); !strings.Contains(got, "↑ 0%") {
+		t.Errorf("scrolled back should show the scroll position: %q", got)
 	}
 }
 
@@ -341,23 +242,5 @@ func TestSessionCostUsesFetchedPricing(t *testing.T) {
 	m.agent.AddSubUsage("mystery-model @ elsewhere", ai.Usage{PromptTokens: 1})
 	if _, ok := m.sessionCost(); ok {
 		t.Error("an unpriceable sub must hide the cost segment")
-	}
-}
-
-func TestStatusTitleSurvivesCrowdedFooter(t *testing.T) {
-	for _, width := range []int{20, 40, 80, 120} {
-		m := statusModel()
-		m.width = width
-		m.modelName = strings.Repeat("model", 20)
-		m.provName = strings.Repeat("provider", 10)
-		m.lastResp = ai.Usage{PromptTokens: 10000, CompletionTokens: 300}
-		m.sessTitle = "修复构建"
-		line := ansi.Strip(m.statusView())
-		if !strings.HasSuffix(line, m.sessTitle) {
-			t.Fatalf("width %d hides title: %q", width, line)
-		}
-		if got := lipgloss.Width(line); got != width {
-			t.Fatalf("footer width %d, want %d", got, width)
-		}
 	}
 }
