@@ -55,12 +55,24 @@ type liveagentProcess struct {
 	done     chan struct{}
 	closed   bool
 	stopOnce sync.Once
+	// waiters counts wait calls in progress; a waiter reports the exit itself.
+	waiters int
 }
 
 type liveagentProcessManager struct {
 	mu        sync.Mutex
 	processes map[string]*liveagentProcess
 	closed    bool
+	onExit    func(text string)
+}
+
+// SetExitNotifier registers fn to receive a notice when a process ends on its own
+// (completed, failed or timed out) while no wait call is watching it. Processes
+// stopped through stop, run cancellation or CloseAll are not reported.
+func (m *liveagentProcessManager) SetExitNotifier(fn func(text string)) {
+	m.mu.Lock()
+	m.onExit = fn
+	m.mu.Unlock()
 }
 
 func newLiveAgentProcessManager() *liveagentProcessManager {
@@ -124,6 +136,10 @@ func (m *liveagentProcessManager) startWithID(ctx context.Context, prefix, comma
 			return nil, err
 		}
 	}
+	if cmd.Env == nil {
+		cmd.Env = os.Environ()
+	}
+	cmd.Env = bashrun.ScrubEnv(cmd.Env)
 	identity, _ := RunIdentityFromContext(ctx)
 	p := &liveagentProcess{
 		id: newLiveAgentProcessID(prefix), command: command, conversationID: identity.ConversationID, runID: identity.RunID, cwd: cwd, label: label,
@@ -216,7 +232,69 @@ func (m *liveagentProcessManager) reap(ctx context.Context, p *liveagentProcess,
 	_ = p.log.Sync()
 	_ = p.log.Close()
 	close(p.done)
+	status, watched := p.status, p.waiters > 0
 	p.mu.Unlock()
+
+	if watched || (status != liveagentProcessCompleted && status != liveagentProcessFailed && status != liveagentProcessTimedOut) {
+		return
+	}
+	m.mu.Lock()
+	notify := m.onExit
+	if m.closed {
+		notify = nil
+	}
+	m.mu.Unlock()
+	if notify != nil {
+		notify(liveagentProcessExitNotice(p.snapshot()))
+	}
+}
+
+const liveagentProcessNoticeTail = 4 << 10
+
+// liveagentProcessExitNotice is the message delivered to the owning session when a
+// process ends unobserved.
+func liveagentProcessExitNotice(snap liveagentProcessSnapshot) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "[process %s %s", snap.ID, snap.Status)
+	if snap.ExitCode != nil {
+		fmt.Fprintf(&b, " exit_code=%d", *snap.ExitCode)
+	}
+	b.WriteString("]")
+	if snap.Label != "" {
+		b.WriteString(" " + snap.Label)
+	}
+	b.WriteString("\n$ " + snap.Command)
+	if tail := liveagentProcessLogTail(snap.LogPath, liveagentProcessNoticeTail); strings.TrimSpace(tail) != "" {
+		b.WriteString("\n\nLast output:\n" + tail)
+	}
+	fmt.Fprintf(&b, "\n\nFull log: ManagedProcess(action=\"read_log\", process_id=\"%s\") or %s", snap.ID, snap.LogPath)
+	return b.String()
+}
+
+func liveagentProcessLogTail(path string, limit int64) string {
+	file, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return ""
+	}
+	start := max(0, info.Size()-limit)
+	data := make([]byte, info.Size()-start)
+	n, err := file.ReadAt(data, start)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return ""
+	}
+	text := string(data[:n])
+	if start > 0 {
+		if i := strings.IndexByte(text, '\n'); i >= 0 {
+			text = text[i+1:]
+		}
+		text = "[…]\n" + text
+	}
+	return strings.TrimRight(text, "\n")
 }
 
 func (m *liveagentProcessManager) getOwned(ctx context.Context, id string) (*liveagentProcess, error) {
@@ -353,6 +431,14 @@ func (m *liveagentProcessManager) wait(ctx context.Context, p *liveagentProcess,
 	if yield < 1 {
 		yield = 1
 	}
+	p.mu.Lock()
+	p.waiters++
+	p.mu.Unlock()
+	defer func() {
+		p.mu.Lock()
+		p.waiters--
+		p.mu.Unlock()
+	}()
 	deadline := time.NewTimer(time.Duration(yield) * time.Millisecond)
 	defer deadline.Stop()
 	for {

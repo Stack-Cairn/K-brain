@@ -166,6 +166,8 @@ type runtimeSession struct {
 	queue            *queueDocument
 	queueWorker      bool
 	queueDispatchID  string
+	// wake holds background notices that arrived while no turn was running.
+	wake wakeState
 }
 
 func New(opts Options) (*Server, error) {
@@ -1013,6 +1015,7 @@ func (s *Server) loadRuntime(id string, model protocol.ModelRef, cwd string) (*r
 		return nil, err
 	}
 	rt := &runtimeSession{id: id, agent: ag, memoryRuntime: memoryRuntime, recorder: rec, changed: make(chan struct{}), runs: map[string]runRecord{}, terminalManager: terminalManager, processManager: processManager, permissions: map[string]*permissionWaiter{}, questions: map[string]*questionWaiter{}, eventDir: s.eventDir, mcpActivation: activation}
+	processManager.SetExitNotifier(func(text string) { s.steerRuntime(rt, text) })
 	if err := rt.loadJournal(s.eventDir); err != nil {
 		return nil, err
 	}
@@ -1053,9 +1056,14 @@ func (s *Server) loadRuntime(id string, model protocol.ModelRef, cwd string) (*r
 
 func (s *Server) wireTasks(rt *runtimeSession, ag *agent.Agent) {
 	s.wireQuestions(rt, ag)
+	s.wireWakes(rt, ag)
 	ag.Tasks().SetSessionID(rt.id)
 	ag.Tasks().OnEvents = rt.trajectoryChildEvents
 	ag.Tasks().OnRecord = func(id string, task *agent.BackgroundTask) {
+		if task.Status != agent.TaskRunning {
+			// A settled child task may be all that kept pending notices waiting.
+			defer func() { go s.kickWakes(rt) }()
+		}
 		model, provider, _ := strings.Cut(task.SubModel, " @ ")
 		stored := session.Task{Model: model, Provider: provider, ID: task.ID, Description: task.Description, Prompt: task.Prompt, Status: string(task.Status), Report: task.Report, StartedAt: task.StartedAt, EndedAt: task.EndedAt}
 		if err := s.store.SaveTask(id, stored); err != nil {
@@ -1826,6 +1834,9 @@ func (s *Server) cancelRun(w http.ResponseWriter, r *http.Request, id, run strin
 		return
 	}
 	cancel := rt.cancel
+	// Stopping a turn the backend started on its own also keeps it from starting
+	// another until someone else starts a run.
+	rt.holdWakesLocked(true, false)
 	rt.mu.Unlock()
 	cancel()
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
@@ -1838,10 +1849,11 @@ func (s *Server) closeSession(w http.ResponseWriter, r *http.Request, id string)
 	}
 	defer s.releaseRuntime(rt)
 	rt.mu.Lock()
+	// A closed session does not wake itself; the next run reopens delivery.
+	rt.holdWakesLocked(false, true)
 	if rt.cancel != nil {
 		rt.cancel()
 	}
-
 	rt.mu.Unlock()
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "session_id": id})
 }

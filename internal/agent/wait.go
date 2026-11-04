@@ -257,6 +257,13 @@ func (r *waitRegistry) Close() {
 	}
 }
 
+// Active reports how many waits are still polling.
+func (r *waitRegistry) Active() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.waits)
+}
+
 func (r *waitRegistry) CancelWait(id string) bool {
 	r.mu.Lock()
 	w, ok := r.waits[id]
@@ -286,7 +293,7 @@ func tailLines(s string, n int) string {
 func waitTool(a *Agent) tools.Tool {
 	return tools.Tool{
 		Def: ai.NewTool("wait",
-			"Wait for an external condition without burning LLM turns: a background poller re-runs the shell command on the given interval (no model involvement while waiting) and you are notified EXACTLY ONCE when the condition is met, the timeout elapses, or the command keeps failing. Use this instead of `sleep N && check` loops (those spend a full turn per poll). Typical uses: CI finishing (`gh pr checks 55 | grep -q pass` or until the command exits 0), a deploy going live, a server coming up. The notification arrives as a message — do NOT poll for it.",
+			"Wait for an external condition without burning LLM turns: a background poller re-runs the shell command on the given interval (no model involvement while waiting) and you are notified EXACTLY ONCE when the condition is met, the timeout elapses, or the command keeps failing. Use this instead of `sleep N && check` loops (those spend a full turn per poll). Typical uses: CI finishing (`gh pr checks 55 | grep -q pass` or until the command exits 0), a deploy going live, a server coming up. The notification arrives as a message, starting a new turn if yours has already ended — do NOT poll for it.",
 			`{"type":"object","properties":{"command":{"type":"string","description":"Shell command to run repeatedly; success means exit 0"},"shell":{"type":"string","description":"Shell executable: powershell, pwsh, bash, wsl, or cmd; defaults to the platform shell"},"until":{"type":"string","description":"Optional regex the command's output must match (in addition to exit 0) to count as met"},"interval":{"type":"number","description":"Seconds between runs (default 10, min 2)"},"timeout":{"type":"number","description":"Seconds before giving up (default 600, max 3600)"}},"required":["command"]}`),
 		Run: func(ctx context.Context, args json.RawMessage) (string, error) {
 			var spec struct {

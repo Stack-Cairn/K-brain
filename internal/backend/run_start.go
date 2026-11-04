@@ -188,6 +188,7 @@ func (s *Server) startCanonicalRunWith(ctx context.Context, rt *runtimeSession, 
 	if err := rt.persistRuns(s.eventDir); err != nil {
 		return abort(err)
 	}
+	rt.noteRunAcceptedLocked(ctx, in)
 	rt.leases.Add(1)
 	rt.runWorkers.Add(1)
 	go func() {
@@ -200,6 +201,9 @@ func (s *Server) startCanonicalRunWith(ctx context.Context, rt *runtimeSession, 
 		if rt.queue != nil {
 			s.startQueueWorkerLocked(rt)
 		}
+		// Background notices that arrived during the run (or at its end) start the
+		// next turn once no user work is waiting.
+		s.dispatchWakesLocked(rt)
 		rt.mu.Unlock()
 	}()
 	return protocol.RunAccepted{Version: protocol.Version, ConversationID: rt.id, RunID: runID, AcceptedSeq: acceptedSeq}, http.StatusAccepted, nil

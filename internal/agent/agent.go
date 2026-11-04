@@ -212,11 +212,15 @@ type Agent struct {
 func (a *Agent) TurnRunning() bool { return a.running.Load() }
 
 func (a *Agent) Steer(text string) {
-	if !a.running.Load() && a.OnOrphanedSteer != nil {
-		a.OnOrphanedSteer(text)
+	// The running check and the append share a.mu with the end of a turn, so a
+	// message is either drained by that turn's teardown or handed to OnOrphanedSteer,
+	// never left in pending with no turn to read it.
+	a.mu.Lock()
+	if orphaned := a.OnOrphanedSteer; !a.running.Load() && orphaned != nil {
+		a.mu.Unlock()
+		orphaned(text)
 		return
 	}
-	a.mu.Lock()
 	a.pending = append(a.pending, pendingSteer{text: text})
 	a.mu.Unlock()
 }
@@ -543,7 +547,9 @@ func (a *Agent) turnPending(ctx context.Context, input string, parts []ai.Conten
 	}
 	a.running.Store(true)
 	defer func() {
+		a.mu.Lock()
 		a.running.Store(false)
+		a.mu.Unlock()
 		a.drainOrphanedSteers()
 	}()
 	if a.WorkingDir != "" {

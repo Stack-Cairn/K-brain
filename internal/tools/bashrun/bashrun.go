@@ -108,7 +108,7 @@ func Run(ctx context.Context, opts Options) Result {
 			return Result{Exit: err.Error()}
 		}
 	}
-	cmd.Env = append(os.Environ(), ChildMarkers...)
+	cmd.Env = append(ScrubEnv(os.Environ()), ChildMarkers...)
 	if len(opts.Env) > 0 {
 		cmd.Env = append(cmd.Env, opts.Env...)
 	}

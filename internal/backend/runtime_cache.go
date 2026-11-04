@@ -28,7 +28,9 @@ func (s *Server) reapRuntimes(now time.Time) {
 		idle := rt.leases.Load() == 0 && !rt.activeLocked() && rt.backgroundSettledLocked() && !rt.closing && rt.runtimeErr == nil &&
 			len(rt.permissions) == 0 && len(rt.questions) == 0 && len(rt.clientTools) == 0 &&
 			(rt.terminalManager == nil || !rt.terminalManager.HasRunningSessions()) &&
-			(rt.processManager == nil || !rt.processManager.HasRunningProcesses())
+			(rt.processManager == nil || !rt.processManager.HasRunningProcesses()) &&
+			// A pending wait or undelivered notice would otherwise be lost with the runtime.
+			(rt.agent == nil || rt.agent.Waits().Active() == 0) && !rt.wakesPendingLocked()
 		if idle && (now.Sub(rt.lastUsed) >= runtimeIdleTTL || len(s.sessions) > maxIdleRuntimes) {
 			// Readers acquire a lease while holding s.mu, so none can revive this instance.
 			rt.closing = true
