@@ -1440,7 +1440,7 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, runID strin
 	ctx = tools.WithWorkspaceRoots(ctx, roots)
 	// The system prompt points the model at SKILL.md files by absolute path; grant those
 	// directories read-only so following the prompt is not rejected by the root policy.
-	ctx = tools.WithSkillReadRoots(ctx, skillReadRoots(rt.agent.WorkingDir))
+	ctx = tools.WithSkillReadRoots(ctx, runReadRoots(s.store, rt.id, rt.agent.WorkingDir))
 	ctx = tools.WithGate(ctx, gate)
 	if reviewer != nil {
 		ctx = tools.WithReview(ctx, reviewer.Hooks(gate))

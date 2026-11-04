@@ -2,6 +2,7 @@ package recording
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/Stack-Cairn/K-brain/internal/agent"
@@ -75,5 +76,25 @@ func TestRecorderUsageSaveFailureAndReopen(t *testing.T) {
 	delete(u.Models, "original @ provider1")
 	if len(resumed.ModelUsage()) != 2 {
 		t.Fatal("snapshot aliases agent usage")
+	}
+}
+
+func TestRecorderPointsCompactionSegmentsAtSessionDir(t *testing.T) {
+	st, err := session.OpenProjectHome(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	id, err := st.Create(t.TempDir(), "m", "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ag := agent.New(ai.New("http://unused", "key"), "m", 100, "sys")
+	if _, err := Open(st, id, ag); err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(filepath.Dir(st.TranscriptPath(id)), "compaction")
+	if ag.CompactionDir == nil || ag.CompactionDir() != want || st.CompactionDir(id) != want {
+		t.Fatalf("compaction dir should live beside session.jsonl at %s", want)
 	}
 }

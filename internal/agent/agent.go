@@ -118,6 +118,15 @@ type Agent struct {
 
 	CompactThreshold float64
 
+	// CompactionDir resolves the directory that receives compacted-away turns as
+	// markdown segments (see compaction_segments.go). Nil or "" disables archiving.
+	CompactionDir func() string
+
+	pointerMu       sync.Mutex
+	pointerResolved bool
+	pointerSummary  string
+	pointerText     string
+
 	TaskDefault SubModel
 
 	ResolveModel func(model, provider string) (SubModel, error)
@@ -657,7 +666,7 @@ func (a *Agent) turnPending(ctx context.Context, input string, parts []ai.Conten
 		}
 		msg, usage, err := a.streamObserved(ctx, ai.Request{
 			Model:                a.Model,
-			Messages:             a.modeMessages(msgs),
+			Messages:             a.requestMessages(msgs),
 			Tools:                tools.Defs(requestTools),
 			MaxTokens:            a.MaxTokens,
 			ReasoningEffort:      a.Effort,
@@ -1001,7 +1010,7 @@ func (a *Agent) compact(ctx context.Context) (summary string, cutoff int, info C
 		},
 	}
 	if !dedicated && mdl == a.Model {
-		prefix := withPromptContext(a.modeMessages(a.Messages[:tailStart]))
+		prefix := withPromptContext(a.requestMessages(a.Messages[:tailStart]))
 		if a.turnTimeContext {
 			prefix = withTurnTimes(prefix)
 		}
@@ -1031,6 +1040,8 @@ func (a *Agent) compact(ctx context.Context) (summary string, cutoff int, info C
 	if summary == "" {
 		return "", 0, CompactInfo{}, errors.New("compaction summary is empty")
 	}
+	a.archiveCompaction(history, summary)
+	a.resetTranscriptPointer()
 	kept := append([]ai.Message(nil), tail...)
 	a.msgsMu.Lock()
 	a.Messages = append(append([]ai.Message{}, sysPrompt,
@@ -1173,7 +1184,7 @@ func (a *Agent) finalAnswer(ctx context.Context, ev Events) (string, error) {
 		ai.Message{Role: "system", Content: "You have reached the tool-call limit. Do NOT request any more tools. Give your final answer now using only what you have already gathered."})
 	msg, usage, err := a.streamObserved(ctx, ai.Request{
 		Model:                a.Model,
-		Messages:             a.modeMessages(msgs),
+		Messages:             a.requestMessages(msgs),
 		Tools:                nil,
 		ReasoningEffort:      a.Effort,
 		NativeWebSearch:      a.NativeWebSearch,

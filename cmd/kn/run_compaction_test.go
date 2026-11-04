@@ -163,8 +163,8 @@ func checkRunSummary(t *testing.T, req ai.Request, id, summary, system string) {
 	if req.PromptCacheKey != id {
 		t.Fatalf("cache key %q, want %q", req.PromptCacheKey, id)
 	}
-	if len(req.Messages) < 3 || req.Messages[0].Content != system || req.Messages[1].Content != "Summary of the conversation so far:\n\n"+summary {
-		t.Fatalf("summary or current system missing: %+v", req.Messages)
+	if len(req.Messages) < 3 || req.Messages[0].Content != system || !strings.HasPrefix(req.Messages[1].Content, "Summary of the conversation so far:\n\n"+summary+"\n\n<compacted_transcript>\n") {
+		t.Fatalf("summary, transcript pointer or current system missing: %+v", req.Messages)
 	}
 	for _, m := range req.Messages[2:] {
 		if m.Role == "system" && strings.HasPrefix(m.Content, "Summary of the conversation so far:") {
