@@ -15,7 +15,9 @@ type anthropicToolBlock struct {
 
 func (c *Anthropic) Stream(ctx context.Context, req Request, onText, onThink func(string), onToolCall func(id, name, args string)) (Message, Usage, error) {
 	req.Stream = true
-	resp, err := c.request(ctx, req, true)
+	sctx, idleGuard := newIdleStream(ctx, idleOr(c.StreamIdle), "Anthropic")
+	defer idleGuard.close()
+	resp, err := c.request(sctx, req, true)
 	if err != nil {
 		return Message{}, Usage{}, err
 	}
@@ -31,7 +33,7 @@ func (c *Anthropic) Stream(ctx context.Context, req Request, onText, onThink fun
 	var order []int
 	stopReason := ""
 	started := false
-	sse := newSSEReader(resp.Body)
+	sse := newSSEReader(idleGuard.wrap(resp.Body))
 	for {
 		event, ok := sse.next()
 		if !ok {

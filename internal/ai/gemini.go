@@ -32,6 +32,7 @@ type Gemini struct {
 	Headers    http.Header
 	HTTP       *http.Client
 	MaxRetries int
+	StreamIdle time.Duration
 	OnRetry    func(RetryEvent)
 
 	mu         sync.Mutex
@@ -58,6 +59,7 @@ func (c *Gemini) Clone() Client {
 		BaseURL: c.BaseURL, APIKey: c.APIKey, IsFullURL: c.IsFullURL, ModelsURL: c.ModelsURL, Headers: c.Headers.Clone(),
 		HTTP:       c.HTTP,
 		MaxRetries: c.MaxRetries,
+		StreamIdle: c.StreamIdle,
 		OnRetry:    c.OnRetry,
 	}
 	cp.usedIDs = make(map[string]bool, len(c.usedIDs))
@@ -151,12 +153,14 @@ func (c *Gemini) Complete(ctx context.Context, req Request) (string, Usage, erro
 }
 
 func (c *Gemini) Stream(ctx context.Context, req Request, onText, onThink func(string), onToolCall func(id, name, args string)) (Message, Usage, error) {
-	resp, err := c.do(ctx, req, true)
+	sctx, idleGuard := newIdleStream(ctx, idleOr(c.StreamIdle), "Gemini")
+	defer idleGuard.close()
+	resp, err := c.do(sctx, req, true)
 	if err != nil {
 		return Message{}, Usage{}, err
 	}
 	defer resp.Body.Close()
-	sse := newSSEReader(resp.Body)
+	sse := newSSEReader(idleGuard.wrap(resp.Body))
 	var msg Message
 	msg.Role = "assistant"
 	search := newSearchStream(ctx, "gemini")

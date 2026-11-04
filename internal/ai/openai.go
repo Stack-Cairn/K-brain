@@ -176,6 +176,12 @@ type OpenAI struct {
 
 	MaxRetries int
 
+	// StreamIdle bounds how long a streaming response may deliver no bytes
+	// before the connection is treated as stalled. Zero uses the package
+	// default; a negative value disables the watchdog. Embedded by the
+	// Anthropic and Responses clients, so it covers those APIs too.
+	StreamIdle time.Duration
+
 	OnRetry func(RetryEvent)
 
 	CacheKey                   string
@@ -637,7 +643,9 @@ func (c *OpenAI) Stream(ctx context.Context, req Request, onText, onThink func(s
 }
 
 func (c *OpenAI) streamOnce(ctx context.Context, body []byte, onText, onThink func(string), onToolCall func(id, name, args string), onUsage func()) (Message, Usage, error) {
-	resp, err := c.postJSONOnce(ctx, "/chat/completions", body, true, nil)
+	sctx, idleGuard := newIdleStream(ctx, idleOr(c.StreamIdle), "OpenAI")
+	defer idleGuard.close()
+	resp, err := c.postJSONOnce(sctx, "/chat/completions", body, true, nil)
 	if err != nil {
 		return Message{}, Usage{}, err
 	}
@@ -650,7 +658,7 @@ func (c *OpenAI) streamOnce(ctx context.Context, body []byte, onText, onThink fu
 	callPositions := make(map[int]int)
 	finish := ""
 	completed := false
-	sse := newSSEReader(resp.Body)
+	sse := newSSEReader(idleGuard.wrap(resp.Body))
 	for {
 		event, ok := sse.next()
 		if !ok {
