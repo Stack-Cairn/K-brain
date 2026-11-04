@@ -338,7 +338,7 @@ func TestMCPTestCLIReady(t *testing.T) {
 	if !strings.Contains(out, "✓ connected") {
 		t.Fatalf("doctor should report the connection:\n%s", out)
 	}
-	if !strings.Contains(out, "tools:") || !strings.Contains(out, "read") {
+	if !strings.Contains(out, "tools:") || !strings.Contains(out, "mcp__self__bash") {
 		t.Errorf("doctor should list the served tools:\n%s", out)
 	}
 }

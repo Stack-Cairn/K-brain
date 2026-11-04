@@ -15,6 +15,8 @@ func toolKind(name string) acp.ToolKind {
 	switch name {
 	case "read":
 		return acp.ToolKindRead
+	case "grep", "glob", "list":
+		return acp.ToolKindSearch
 	case "write", "edit":
 		return acp.ToolKindEdit
 	case "bash":
