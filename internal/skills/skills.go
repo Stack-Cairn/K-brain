@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/Stack-Cairn/K-brain/internal/config"
 	"github.com/Stack-Cairn/K-brain/internal/datapath"
 )
 
@@ -36,6 +37,10 @@ func DirsFor(project string) []string {
 	if project != "" {
 		datapath.Report(datapath.MigrateProjectDir(project))
 		dirs = append(dirs, filepath.Join(datapath.ProjectDir(project), "skills"), filepath.Join(project, ".agents", "skills"))
+		// Claude Code project skills; later directories lose name collisions.
+		if config.RulesCompatSettings().ClaudeEnabled() {
+			dirs = append(dirs, filepath.Join(project, ".claude", "skills"))
+		}
 	}
 	if home, err := datapath.UserDir(); err == nil {
 		dirs = append(dirs, filepath.Join(home, "skills"))

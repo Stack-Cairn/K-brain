@@ -26,6 +26,7 @@ func TestDefaultDirs(t *testing.T) {
 	want := []string{
 		filepath.Join(project, ".liveagent", "skills"),
 		filepath.Join(project, ".agents", "skills"),
+		filepath.Join(project, ".claude", "skills"),
 		filepath.Join(home, ".liveagent", "skills"),
 		filepath.Join(home, ".agents", "skills"),
 	}

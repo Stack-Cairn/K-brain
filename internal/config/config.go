@@ -182,7 +182,23 @@ type Config struct {
 	Computer   ComputerConfig    `json:"computer,omitzero"`
 	Sandbox    SandboxConfig     `json:"sandbox,omitzero"`
 	Hooks      map[string][]Hook `json:"hooks,omitempty"`
+
+	RulesCompat RulesCompatConfig `json:"rulesCompat,omitzero"`
 }
+
+// RulesCompatConfig toggles discovery of instruction files written for other agent
+// harnesses. Both sources default to on; set a field to false to opt out.
+//
+//	claude: CLAUDE.md, CLAUDE.local.md, .claude/CLAUDE*.md, ~/.claude/CLAUDE.md, .claude/skills
+//	cursor: .cursor/rules/*.md|*.mdc and the legacy .cursorrules
+type RulesCompatConfig struct {
+	Claude *bool `json:"claude,omitempty"`
+	Cursor *bool `json:"cursor,omitempty"`
+}
+
+func (r RulesCompatConfig) ClaudeEnabled() bool { return r.Claude == nil || *r.Claude }
+
+func (r RulesCompatConfig) CursorEnabled() bool { return r.Cursor == nil || *r.Cursor }
 
 type SandboxConfig struct {
 	Mode     string   `json:"mode,omitempty"`

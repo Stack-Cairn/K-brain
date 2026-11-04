@@ -110,6 +110,33 @@ func TestSystemPromptAppendsProjectInstructions(t *testing.T) {
 	}
 }
 
+func TestSystemPromptAppendsClaudeCompatInstructions(t *testing.T) {
+	t.Setenv("LIVEAGENT_HOME", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	project := filepath.Join(t.TempDir(), "project")
+	for path, text := range map[string]string{
+		filepath.Join(home, ".claude", "CLAUDE.md"): "- User-wide rule.\n",
+		filepath.Join(project, ".git", "HEAD"):      "ref: refs/heads/main\n",
+		filepath.Join(project, "CLAUDE.md"):         "- Project claude rule.\n",
+	} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	p := Build(project, time.Now())
+	userAt := strings.Index(p, "Standing instructions from user CLAUDE.md ("+filepath.Join(home, ".claude", "CLAUDE.md")+" — treat as user rules):\n- User-wide rule.")
+	projectAt := strings.Index(p, "Project instructions from project CLAUDE.md ("+filepath.Join(project, "CLAUDE.md")+" — treat as project rules):\n- Project claude rule.")
+	if userAt < 0 || projectAt < 0 || userAt > projectAt {
+		t.Fatalf("prompt should carry user then project CLAUDE.md rules:\n%s", p)
+	}
+}
+
 func TestWithWorkingDirectoryUpdatesOnlyEnvironment(t *testing.T) {
 	t.Setenv("LIVEAGENT_HOME", t.TempDir())
 	p := Build("/old", time.Now()) + "\nUser note: /old\n  Working directory: /old\n"
