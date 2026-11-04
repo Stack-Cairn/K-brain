@@ -5,6 +5,11 @@ import (
 	"strings"
 )
 
+var (
+	errEditAmbiguous = errors.New("lenient edit has ambiguous whitespace matches; Read and use exact text")
+	errEditNotFound  = errors.New("old_string not found; Read the file and use its exact contents")
+)
+
 func liveagentEditMatch(text, old, replacement string) (string, string, string, error) {
 	if strings.Contains(text, old) {
 		return old, replacement, "exact", nil
@@ -93,11 +98,11 @@ func liveagentEditMatch(text, old, replacement string) (string, string, string, 
 			first := matches[0]
 			for _, m := range matches[1:] {
 				if m != first {
-					return "", "", "", errors.New("lenient edit has ambiguous whitespace matches; Read and use exact text")
+					return "", "", "", errEditAmbiguous
 				}
 			}
 			return first.old, first.new, strategy, nil
 		}
 	}
-	return "", "", "", errors.New("old_string not found; Read the file and use its exact contents")
+	return "", "", "", errEditNotFound
 }

@@ -221,7 +221,7 @@ func TestEditDiffLineNumbers(t *testing.T) {
 func TestWriteToolDiffOnOverwrite(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "f.txt")
-	w := writeTool()
+	w := writeTool(nil)
 	first, _ := json.Marshal(map[string]string{"path": p, "content": "a\nb\n"})
 	out, err := w.Run(context.Background(), first)
 	if err != nil || strings.Contains(out, "```diff") {

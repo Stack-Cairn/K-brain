@@ -265,7 +265,7 @@ func (s *liveagentState) mutate(ctx context.Context, name string, a map[string]a
 	translated := map[string]any{"path": path}
 	strategy := "exact"
 	if name == "Write" {
-		run = writeTool()
+		run = writeTool(nil)
 		translated["content"] = laString(a, "content")
 	} else {
 		old, newText := laString(a, "old_string"), laString(a, "new_string")
@@ -284,7 +284,7 @@ func (s *liveagentState) mutate(ctx context.Context, name string, a map[string]a
 		if expected := laInt(a, "expected_replacements", 0); expected > 0 && expected != n {
 			return "", fmt.Errorf("expected %d replacements, found %d", expected, n)
 		}
-		run = editTool()
+		run = editTool(nil)
 		translated["old_string"] = actual
 		translated["new_string"] = replacement
 		translated["replace_all"] = laBool(a, "replace_all", false)

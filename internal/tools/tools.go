@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Stack-Cairn/K-brain/internal/ai"
@@ -40,7 +42,39 @@ var LSP interface {
 }
 
 func All() []Tool {
-	return []Tool{bashTool(), readTool(), writeTool(), editTool(), grepTool(), globTool(), listTool()}
+	reads := &readLedger{}
+	return []Tool{bashTool(), readTool(reads), writeTool(reads), editTool(reads), grepTool(), globTool(), listTool()}
+}
+
+// readLedger remembers the content read last returned for each file, so write can
+// refuse to overwrite changes made on disk since, and edit can explain why its text
+// no longer matches. One ledger serves the tools of one All() call; nil keeps none.
+type readLedger struct {
+	mu   sync.Mutex
+	seen map[string][32]byte
+}
+
+func (l *readLedger) record(path string, data []byte) {
+	if l == nil {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.seen == nil {
+		l.seen = map[string][32]byte{}
+	}
+	l.seen[path] = sha256.Sum256(data)
+}
+
+// changed reports a file read earlier whose content is now different.
+func (l *readLedger) changed(path string, data []byte) bool {
+	if l == nil {
+		return false
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	sum, ok := l.seen[path]
+	return ok && sum != sha256.Sum256(data)
 }
 
 type updateKey struct{}
@@ -215,7 +249,7 @@ func bashTool() Tool {
 				Timeout     float64 `json:"timeout"`
 				Interactive bool    `json:"interactive"`
 			}
-			if err := json.Unmarshal(args, &a); err != nil {
+			if err := decodeArgs("bash", args, &a, "command"); err != nil {
 				return "", err
 			}
 			if a.Timeout <= 0 {
@@ -287,7 +321,7 @@ func bashTool() Tool {
 	}
 }
 
-func readTool() Tool {
+func readTool(reads *readLedger) Tool {
 	return Tool{
 		Def: ai.NewTool("read",
 			"Read a file and return its contents with line numbers.",
@@ -298,7 +332,7 @@ func readTool() Tool {
 				Offset int    `json:"offset"`
 				Limit  int    `json:"limit"`
 			}
-			if err := json.Unmarshal(args, &a); err != nil {
+			if err := decodeArgs("read", args, &a, "path"); err != nil {
 				return "", err
 			}
 			var err error
@@ -312,6 +346,7 @@ func readTool() Tool {
 			if isBinary(data) {
 				return binaryPlaceholder(a.Path, len(data)), nil
 			}
+			reads.record(a.Path, data)
 			lines := strings.Split(string(data), "\n")
 			start := max(a.Offset-1, 0)
 			if start >= len(lines) {
@@ -331,7 +366,7 @@ func readTool() Tool {
 	}
 }
 
-func writeTool() Tool {
+func writeTool(reads *readLedger) Tool {
 	return Tool{
 		Def: ai.NewTool("write",
 			"Write content to a file, creating it (and parent directories) or overwriting it.",
@@ -341,7 +376,7 @@ func writeTool() Tool {
 				Path    string `json:"path"`
 				Content string `json:"content"`
 			}
-			if err := json.Unmarshal(args, &a); err != nil {
+			if err := decodeArgs("write", args, &a, "path", "content"); err != nil {
 				return "", err
 			}
 			var err error
@@ -353,6 +388,9 @@ func writeTool() Tool {
 			}
 
 			old, oldErr := os.ReadFile(a.Path)
+			if oldErr == nil && reads.changed(a.Path, old) {
+				return "", fmt.Errorf("%s changed on disk since you last read it; read it again before overwriting it, or those changes would be lost", a.Path)
+			}
 			BeforeFileMutation(ctx, a.Path)
 
 			if err := os.MkdirAll(filepath.Dir(a.Path), 0o755); err != nil {
@@ -362,6 +400,7 @@ func writeTool() Tool {
 			if err := os.WriteFile(a.Path, []byte(a.Content), 0o644); err != nil {
 				return "", err
 			}
+			reads.record(a.Path, []byte(a.Content))
 			out := fmt.Sprintf("Wrote %d bytes to %s", len(a.Content), a.Path)
 
 			if oldErr == nil {
@@ -374,11 +413,11 @@ func writeTool() Tool {
 	}
 }
 
-func editTool() Tool {
+func editTool(reads *readLedger) Tool {
 	return Tool{
 		Def: ai.NewTool("edit",
-			"Replace an exact string in a file. old_string must appear exactly once unless replace_all is true.",
-			`{"type":"object","properties":{"path":{"type":"string","description":"Path to the file"},"old_string":{"type":"string","description":"Exact text to replace"},"new_string":{"type":"string","description":"Replacement text"},"replace_all":{"type":"boolean","description":"Replace every occurrence"}},"required":["path","old_string","new_string"]}`),
+			"Replace a string in a file. old_string must appear exactly once unless replace_all is true. When it does not match exactly, a match that differs only in line endings, trailing whitespace, indentation or look-alike characters (smart quotes, dashes, non-breaking spaces) is used if it is unique; when nothing matches, the error names the closest line.",
+			`{"type":"object","properties":{"path":{"type":"string","description":"Path to the file"},"old_string":{"type":"string","description":"Text to replace, copied from the file"},"new_string":{"type":"string","description":"Replacement text"},"replace_all":{"type":"boolean","description":"Replace every occurrence"}},"required":["path","old_string","new_string"]}`),
 		Run: func(ctx context.Context, args json.RawMessage) (string, error) {
 			var a struct {
 				Path       string `json:"path"`
@@ -386,7 +425,7 @@ func editTool() Tool {
 				NewString  string `json:"new_string"`
 				ReplaceAll bool   `json:"replace_all"`
 			}
-			if err := json.Unmarshal(args, &a); err != nil {
+			if err := decodeArgs("edit", args, &a, "path", "old_string", "new_string"); err != nil {
 				return "", err
 			}
 			var err error
@@ -401,27 +440,42 @@ func editTool() Tool {
 				return "", err
 			}
 			s := string(data)
-			n := strings.Count(s, a.OldString)
-			switch {
-			case n == 0:
-				return "", fmt.Errorf("old_string not found in %s", a.Path)
-			case n > 1 && !a.ReplaceAll:
-				return "", fmt.Errorf("old_string appears %d times in %s; make it unique or set replace_all", n, a.Path)
+			stale := reads.changed(a.Path, data)
+			m, err := matchEdit(s, a.OldString, a.NewString, a.ReplaceAll)
+			if err != nil {
+				msg := a.Path + ": " + err.Error()
+				if stale {
+					msg += "\nThe file changed on disk since you last read it; read it again."
+				}
+				return "", errors.New(msg)
 			}
-			s = strings.ReplaceAll(s, a.OldString, a.NewString)
+			edited := m.apply(s)
 			BeforeFileMutation(ctx, a.Path)
 
-			if err := os.WriteFile(a.Path, []byte(s), 0o644); err != nil {
+			if err := os.WriteFile(a.Path, []byte(edited), 0o644); err != nil {
 				return "", err
 			}
+			reads.record(a.Path, []byte(edited))
+			n := len(m.spans)
 			out := fmt.Sprintf("Replaced %d occurrence(s) in %s", n, a.Path)
 
+			first := m.spans[0]
 			startLine := 0
 			if n == 1 {
-				startLine = 1 + strings.Count(string(data)[:strings.Index(string(data), a.OldString)], "\n")
+				startLine = 1 + strings.Count(s[:first[0]], "\n")
 			}
-			if d := editDiff(a.OldString, a.NewString, startLine); d != "" {
+			if d := editDiff(s[first[0]:first[1]], m.newText, startLine); d != "" {
 				out += "\n```diff\n" + d + "\n```"
+			}
+			switch m.strategy {
+			case "exact":
+			case "lookalike":
+				out += "\n(old_string matched after treating smart quotes, dashes and non-breaking spaces as their ASCII forms; new_string was written as given)"
+			default:
+				out += "\n(old_string matched ignoring " + strings.ReplaceAll(m.strategy, "-", " ") + "; copy exact text from read next time)"
+			}
+			if stale {
+				out += "\n(the file had changed on disk since you last read it; the edit applied to its current content)"
 			}
 			return out, nil
 		},
