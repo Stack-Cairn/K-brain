@@ -13,6 +13,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Stack-Cairn/K-brain/internal/ai"
 	"github.com/Stack-Cairn/K-brain/internal/config"
@@ -696,6 +697,7 @@ func (a *Agent) turnPending(ctx context.Context, input string, parts []ai.Conten
 		}
 		if err != nil {
 			if !a.compacted && ai.IsContextLimit(err) && ctx.Err() == nil {
+				a.learnContextLimit(err)
 				a.compacted = true
 				took := len(a.Messages)
 				if ev.OnCompactStart != nil {
@@ -997,7 +999,6 @@ func (a *Agent) compact(ctx context.Context) (summary string, cutoff int, info C
 		prior = strings.TrimPrefix(history[0].Content, summaryPrefix)
 		history = history[1:]
 	}
-	summaryPrompt := buildSummaryPrompt(history, prior)
 	cli, mdl := a.CompactClient, a.CompactModel
 	provider := a.CompactProvider
 	dedicated := cli != nil
@@ -1015,15 +1016,15 @@ func (a *Agent) compact(ctx context.Context) (summary string, cutoff int, info C
 			label = mdl + " @ " + u.Host
 		}
 	}
-	summaryRequest := ai.Request{
-		Model:     mdl,
-		MaxTokens: 4096,
-		Messages: []ai.Message{
-			sysPrompt,
-			{Role: "user", Content: summaryPrompt},
-		},
-	}
-	if !dedicated && mdl == a.Model {
+	usageLabel := mdl + " @ " + provider
+	var usage ai.Usage
+	var sum string
+	var cerr error
+	summarized := false
+	sameModel := !dedicated && mdl == a.Model
+	if sameModel {
+		// Re-send the conversation itself so the provider can serve it from the
+		// prompt cache, as long as it fits the window.
 		prefix := withPromptContext(a.requestMessages(a.Messages[:tailStart]))
 		if a.turnTimeContext {
 			prefix = withTurnTimes(prefix)
@@ -1036,17 +1037,40 @@ func (a *Agent) compact(ctx context.Context) (summary string, cutoff int, info C
 		definitions := tools.Defs(requestTools)
 		encodedTools, _ := json.Marshal(definitions)
 		if a.ContextLimit <= 0 || EstimateTokens(messages)+(len(encodedTools)+3)/4+4096 < a.ContextLimit {
-			summaryRequest.Messages = messages
-			summaryRequest.Tools = definitions
-			summaryRequest.ReasoningEffort = a.Effort
-			summaryRequest.Temperature = a.Temperature
-			summaryRequest.TopP = a.TopP
-			summaryRequest.NativeWebSearch = a.NativeWebSearch
-			summaryRequest.NativeSearchProvider = a.Provider
+			var u ai.Usage
+			sum, u, cerr = cli.Complete(ctx, ai.Request{
+				Model:                mdl,
+				MaxTokens:            4096,
+				Messages:             messages,
+				Tools:                definitions,
+				ReasoningEffort:      a.Effort,
+				Temperature:          a.Temperature,
+				TopP:                 a.TopP,
+				NativeWebSearch:      a.NativeWebSearch,
+				NativeSearchProvider: a.Provider,
+			})
+			a.addModelUsage(usageLabel, u)
+			addUsage(&usage, u)
+			summarized = true
+			// EstimateTokens is a byte heuristic and undercounts CJK text, images
+			// and dense JSON, and the catalog window can exceed what the endpoint
+			// accepts. When the provider rejects the prompt as too large, fall
+			// back to the bounded transcript path instead of failing compaction.
+			if cerr != nil && ai.IsContextLimit(cerr) && ctx.Err() == nil {
+				a.learnContextLimit(cerr)
+				summarized = false
+			}
 		}
 	}
-	sum, usage, cerr := cli.Complete(ctx, summaryRequest)
-	a.addModelUsage(mdl+" @ "+provider, usage)
+	if !summarized {
+		window := 0
+		if sameModel {
+			window = a.ContextLimit
+		}
+		var u ai.Usage
+		sum, u, cerr = a.summarizeTranscript(ctx, cli, mdl, usageLabel, sysPrompt, history, prior, window)
+		addUsage(&usage, u)
+	}
 	if cerr != nil {
 		return "", 0, CompactInfo{}, fmt.Errorf("compaction summary failed: %w", cerr)
 	}
@@ -1072,6 +1096,116 @@ func (a *Agent) compact(ctx context.Context) (summary string, cutoff int, info C
 const summaryPrefix = "Summary of the conversation so far:\n\n"
 
 const cachedSummaryInstruction = "Summarize the conversation above, merging any earlier summary with newer information. Capture the user's intent, decisions made, work completed, files touched, and open tasks with the exact next step. Use these sections: Objective / Key decisions / Completed / Active / Blocked / Relevant files. Be concise; do not include verbatim tool output. Reply only with the summary; do not call tools. End with a single line: Open task: <what the assistant was doing last, or none>."
+
+// learnContextLimit lowers the session's context window to the one a provider
+// reported when it rejected a prompt as too large. The catalog window can be
+// larger than what a relay or endpoint actually accepts; once the endpoint has
+// said otherwise, the threshold and pre-send checks must use its figure or the
+// session keeps overflowing. SetModel resets it for a new model.
+func (a *Agent) learnContextLimit(err error) {
+	if n := ai.ContextLimitFromError(err); n > 0 && (a.ContextLimit <= 0 || n < a.ContextLimit) {
+		a.ContextLimit = n
+	}
+}
+
+const (
+	// summaryOutputTokens is the MaxTokens every summary request reserves.
+	summaryOutputTokens = 4096
+	// summaryPromptOverhead covers the summary instructions around the transcript.
+	summaryPromptOverhead = 512
+	// overflowWindowShare is the share of the input window a transcript may fill
+	// once the provider has rejected a summary request as too large.
+	// EstimateTokens counts bytes/4, which undercounts CJK text and dense JSON,
+	// so after a real overflow leave generous headroom.
+	overflowWindowShare = 0.6
+	// minTranscriptBudget keeps chunks from shrinking to nothing on tiny windows.
+	minTranscriptBudget = 512
+	// maxTranscriptShrinks bounds retries after a too-large rejection.
+	maxTranscriptShrinks = 4
+)
+
+// transcriptBudget is the token budget for the transcript part of one chunked
+// summary request: overflowWindowShare of the window left after the output
+// reserve, minus the system prompt, the running summary and the instructions.
+func transcriptBudget(window int, sysPrompt ai.Message, prior string) int {
+	budget := int(float64(window-summaryOutputTokens)*overflowWindowShare) -
+		EstimateTokens([]ai.Message{sysPrompt}) - (len(prior)+3)/4 - summaryPromptOverhead
+	return max(budget, minTranscriptBudget)
+}
+
+// transcriptChunkEnd returns the end of the chunk starting at pos whose rendered
+// transcript fits budget. A chunk always holds at least one message, which
+// writeTranscript already truncates per field.
+func transcriptChunkEnd(history []ai.Message, pos, budget int) int {
+	used := 0
+	end := pos
+	for end < len(history) {
+		var b strings.Builder
+		writeTranscript(&b, history[end:end+1])
+		cost := (b.Len() + 3) / 4
+		if end > pos && used+cost > budget {
+			break
+		}
+		used += cost
+		end++
+	}
+	return max(end, min(pos+1, len(history)))
+}
+
+// summarizeTranscript summarizes history, merged into prior, with the plain
+// transcript prompt. The whole transcript goes out in one request first, as it
+// always has. Only if the provider rejects it as too large is the history split
+// into chunks sized to the provider-reported window (else the known one), with
+// headroom for estimation error, and folded into the running summary in order.
+// Each further rejection halves the window and re-chunks the remaining history,
+// keeping the summary built so far. window is the caller's known context
+// window, or 0 when unknown.
+func (a *Agent) summarizeTranscript(ctx context.Context, cli ai.Client, mdl, usageLabel string, sysPrompt ai.Message, history []ai.Message, prior string, window int) (string, ai.Usage, error) {
+	var total ai.Usage
+	current := prior
+	chunked := false
+	shrinks := 0
+	// Always send at least one request, even for an empty history, so the
+	// summary is regenerated from prior plus the instruction.
+	for pos := 0; ; {
+		end := len(history)
+		if chunked {
+			end = transcriptChunkEnd(history, pos, transcriptBudget(window, sysPrompt, current))
+		}
+		prompt := buildSummaryPrompt(history[pos:end], current)
+		messages := []ai.Message{sysPrompt, {Role: "user", Content: prompt}}
+		sum, u, err := cli.Complete(ctx, ai.Request{Model: mdl, MaxTokens: summaryOutputTokens, Messages: messages})
+		a.addModelUsage(usageLabel, u)
+		addUsage(&total, u)
+		if err != nil {
+			if ai.IsContextLimit(err) && ctx.Err() == nil && shrinks < maxTranscriptShrinks {
+				shrinks++
+				reported := ai.ContextLimitFromError(err)
+				switch {
+				case reported > 0 && (window <= 0 || reported < window):
+					window = reported
+				case !chunked && window > 0:
+					// First rejection: chunk within the known window first.
+				case window > 0:
+					window /= 2
+				default:
+					window = EstimateTokens(messages) / 2
+				}
+				chunked = true
+				continue // retry from the same position with smaller chunks
+			}
+			return "", total, err
+		}
+		current = strings.TrimSpace(sum)
+		if current == "" {
+			return "", total, errors.New("compaction summary is empty")
+		}
+		pos = end
+		if pos >= len(history) {
+			return current, total, nil
+		}
+	}
+}
 
 func buildSummaryPrompt(msgs []ai.Message, prior string) string {
 	var b strings.Builder
@@ -1148,7 +1282,13 @@ func truncateField(s string, n int) string {
 	s = strings.ReplaceAll(s, "\n", " ")
 	s = strings.TrimSpace(s)
 	if len(s) > n {
-		return s[:n-1] + "…"
+		// n counts bytes; back off to a rune boundary so multi-byte text
+		// (CJK, emoji) is not cut into invalid UTF-8.
+		cut := n - 1
+		for cut > 0 && !utf8.RuneStart(s[cut]) {
+			cut--
+		}
+		return s[:cut] + "…"
 	}
 	return s
 }
