@@ -67,7 +67,7 @@ func acpCLI(args []string) error {
 	defer startLSP(cfg)()
 
 	factory := func(ctx context.Context, wd string, servers map[string]mcp.ServerConfig) (*agent.Agent, *mcp.Manager, error) {
-		ag := agent.New(route.Client.Clone(), route.APIModel, route.MaxOutput, sysprompt.Build(wd, time.Now()), agent.WithExperimental(cfg.Experimental), withToolAvailability(cfg))
+		ag := agent.New(route.Client.Clone(), route.APIModel, route.MaxOutput, sysprompt.Build(wd, time.Now()), agent.WithExperimental(cfg.Experimental), agent.WithOutputLimitContinuation(), withToolAvailability(cfg))
 		ag.WorkingDir = wd
 		ag.WorktreeSubagents = cfg.WorktreeSubagents != nil && *cfg.WorktreeSubagents
 		ag.Hooks = hooks.New(cfg.Hooks)

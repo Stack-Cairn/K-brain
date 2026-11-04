@@ -71,6 +71,9 @@ func TestOutputLimitRetainsPartialResponse(t *testing.T) {
 			if text.String() != msg.Content || !strings.HasPrefix(msg.Content, "partial\n") || strings.Count(msg.Content, "tool calls discarded") != 1 {
 				t.Fatalf("stream/final text differ: %q, %q", text.String(), msg.Content)
 			}
+			if !TruncatedToolCalls(msg) || TruncatedToolCalls(prior) {
+				t.Fatalf("truncated tool calls not detected: %q", msg.Content)
+			}
 			if usage.PromptTokens != 37 || usage.CompletionTokens != 9 || usage.Cached() != 17 || usage.CacheWrite() != 5 {
 				t.Fatalf("partial usage: %+v", usage)
 			}

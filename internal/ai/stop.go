@@ -1,5 +1,7 @@
 package ai
 
+import "strings"
+
 type StopReason string
 
 const (
@@ -38,14 +40,24 @@ func finishMessage(msg Message, calls []ToolCall, raw string, onText func(string
 	return msg
 }
 
+const (
+	truncatedNote      = "\n[response truncated by output limit"
+	discardedToolsNote = "; tool calls discarded]"
+)
+
+// TruncatedToolCalls reports whether msg was cut off by the output limit while it
+// was still emitting tool calls. Those calls were dropped unexecuted.
+func TruncatedToolCalls(msg Message) bool {
+	return msg.StopReason == StopReasonLength && strings.HasSuffix(msg.Content, truncatedNote+discardedToolsNote)
+}
+
 func finishTruncatedMessage(msg Message, raw string, hadTools bool, onText func(string)) Message {
 	msg.StopReason, msg.RawStopReason = StopReasonLength, raw
 	msg.ToolCalls = nil
-	note := "\n[response truncated by output limit"
+	note := truncatedNote + "]"
 	if hadTools {
-		note += "; tool calls discarded"
+		note = truncatedNote + discardedToolsNote
 	}
-	note += "]"
 	msg.Content += note
 	if onText != nil {
 		onText(note)

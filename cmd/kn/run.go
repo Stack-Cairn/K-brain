@@ -170,7 +170,7 @@ func runCLI(args []string) (runErr error) {
 		sys = string(data)
 	}
 
-	ag := agent.New(route.Client, route.APIModel, route.MaxOutput, sys, agent.WithExperimental(cfg.Experimental), withToolAvailability(cfg), func(a *agent.Agent) { a.ComputerDisabled = true })
+	ag := agent.New(route.Client, route.APIModel, route.MaxOutput, sys, agent.WithExperimental(cfg.Experimental), agent.WithOutputLimitContinuation(), withToolAvailability(cfg), func(a *agent.Agent) { a.ComputerDisabled = true })
 	ag.WorkingDir = cwd()
 	ag.SetPlanMode(*permissionModeFlag == permissions.Plan)
 	ag.WorktreeSubagents = cfg.WorktreeSubagents != nil && *cfg.WorktreeSubagents
