@@ -70,6 +70,8 @@ func toolVerb(name string) string {
 	switch name {
 	case "read":
 		return "Reading"
+	case "grep", "glob", "list":
+		return "Searching"
 	case "write":
 		return "Writing"
 	case "edit":

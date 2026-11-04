@@ -1054,7 +1054,7 @@ func (b block) render(width int) string {
 		// Reads and searches are context for the model, not for the reader:
 		// fold them to a one-line count that still expands on demand.
 		if !b.expanded && !failed && quietResultTool(b.toolName) && len(lines) > 1 {
-			return wrap(dimStyle.Render(fmt.Sprintf("  ⎿ %d %s", len(lines), quietResultUnit(b.toolName, len(lines)))), width)
+			return wrap(dimStyle.Render("  ⎿ "+quietResultSummary(b.toolName, b.text, len(lines))), width)
 		}
 		lines[0] = "⎿ " + lines[0]
 		if b.expanded || len(lines) <= toolPreviewLines {

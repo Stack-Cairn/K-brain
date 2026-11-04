@@ -3,6 +3,8 @@ package tui
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -24,6 +26,12 @@ func toolHeaderName(name string) string {
 		return "Write"
 	case "read":
 		return "Read"
+	case "grep":
+		return "Grep"
+	case "glob":
+		return "Glob"
+	case "list":
+		return "List"
 	case "bash":
 		return "Bash"
 	case "subagent":
@@ -53,8 +61,16 @@ func toolSubject(name, args string) string {
 	case "bash":
 
 		s = strings.Join(strings.Fields(get("command")), " ")
-	case "read", "write", "edit":
+	case "read", "write", "edit", "list":
 		s = get("path")
+		if s == "" && name == "list" {
+			s = "."
+		}
+	case "grep", "glob":
+		s = get("pattern")
+		if p := get("path"); p != "" && s != "" {
+			s += " in " + p
+		}
 	case "subagent":
 		if s = get("description"); s == "" {
 			s = firstLine(get("prompt"))
@@ -189,12 +205,35 @@ func quietResultTool(name string) bool {
 	return false
 }
 
+var (
+	searchMatchesRe = regexp.MustCompile(`(?m)^matches=(\d+)`)
+	searchTotalRe   = regexp.MustCompile(`(?m)total=(\d+)`)
+)
+
+// quietResultSummary is the folded line for a read or search result. Searches
+// report their own counts in a header; output lines would count the header too.
+func quietResultSummary(name, text string, lines int) string {
+	n := lines
+	re := searchTotalRe
+	if name == "grep" {
+		re = searchMatchesRe
+	}
+	if name != "read" {
+		if m := re.FindStringSubmatch(text); m != nil {
+			n, _ = strconv.Atoi(m[1])
+		}
+	}
+	return fmt.Sprintf("%d %s", n, quietResultUnit(name, n))
+}
+
 func quietResultUnit(name string, n int) string {
 	unit := "line"
 	switch name {
 	case "grep":
 		unit = "match"
-	case "glob", "list":
+	case "glob":
+		unit = "file"
+	case "list":
 		unit = "entry"
 	}
 	if n == 1 {
