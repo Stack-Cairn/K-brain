@@ -6,7 +6,7 @@ import "strings"
 // root policy, not this list, keeps them from reading elsewhere.
 func IsReadOnlyTool(tool string) bool {
 	switch tool {
-	case "Read", "read", "Image", "List", "Glob", "Grep", "lsp":
+	case "Read", "read", "Image", "List", "Glob", "Grep", "list", "glob", "grep", "lsp":
 		return true
 	}
 	return false

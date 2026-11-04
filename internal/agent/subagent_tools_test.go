@@ -86,7 +86,7 @@ func TestSubagentPlanModeRemainsLive(t *testing.T) {
 	parent.Tools = append(parent.Tools, echoTool())
 	parent.SetPlanMode(true)
 	sub := parent.newSub(SubModel{})
-	if got := toolNames(sub.AllTools()); !reflect.DeepEqual(got, []string{"read"}) {
+	if got := toolNames(sub.AllTools()); !reflect.DeepEqual(got, []string{"read", "grep", "glob", "list"}) {
 		t.Fatalf("plan tools = %v", got)
 	}
 	parent.SetPlanMode(false)

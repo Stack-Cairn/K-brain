@@ -168,3 +168,26 @@ func TestSkillsPromptUsesSessionWorkspace(t *testing.T) {
 		t.Fatal("skill leaked across workspaces")
 	}
 }
+
+func TestSystemPromptNamesEachToolSetsSearchTools(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("LIVEAGENT_HOME", home)
+	// An empty system.md keeps the built-in prompt instead of the seeded one.
+	if err := os.WriteFile(filepath.Join(home, "system.md"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cli, backend := build("/w", "", cliSearchTools), build("/w", "", backendSearchTools)
+	if !strings.Contains(cli, "- grep: Search file contents") || !strings.Contains(cli, "Use grep, glob and list to search") {
+		t.Errorf("CLI prompt should name grep, glob and list:\n%s", cli)
+	}
+	if !strings.Contains(backend, "- Grep: Search file contents") || strings.Contains(backend, "- grep:") {
+		t.Errorf("backend prompt should name the LiveAgent Grep, Glob and List:\n%s", backend)
+	}
+}
+
+func TestSeededSystemPromptPrefersSearchTools(t *testing.T) {
+	t.Setenv("LIVEAGENT_HOME", t.TempDir())
+	if p := Build(t.TempDir(), time.Now()); !strings.Contains(p, "use the grep, glob, and list tools rather than grep, rg, find, or ls in bash") {
+		t.Errorf("the seeded system prompt should steer searches to the search tools:\n%s", p)
+	}
+}

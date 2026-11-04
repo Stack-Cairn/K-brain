@@ -40,7 +40,7 @@ var LSP interface {
 }
 
 func All() []Tool {
-	return []Tool{bashTool(), readTool(), writeTool(), editTool()}
+	return []Tool{bashTool(), readTool(), writeTool(), editTool(), grepTool(), globTool(), listTool()}
 }
 
 type updateKey struct{}

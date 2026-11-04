@@ -35,20 +35,32 @@ func username() string {
 }
 
 func Build(wd string, now time.Time) string {
-	return build(wd, "Current date/time: "+now.Format("Mon Jan 2, 2006 15:04:05 MST (UTC-07:00)"))
+	return build(wd, "Current date/time: "+now.Format("Mon Jan 2, 2006 15:04:05 MST (UTC-07:00)"), cliSearchTools)
 }
 
 // BuildStable keeps reloadable instructions independent of the wall clock.
 // Authored user messages carry their persisted send time in model requests.
 func BuildStable(wd string) string {
-	return build(wd, "Date/time: use the latest user message's <kbrain-turn-time> when present; otherwise query the system clock if needed.")
+	return build(wd, "Date/time: use the latest user message's <kbrain-turn-time> when present; otherwise query the system clock if needed.", backendSearchTools)
 }
 
-func build(wd, clock string) string {
+// searchTools names the read-only search tools of one tool set: the CLI's grep,
+// glob and list, or the backend's LiveAgent Grep, Glob and List.
+type searchTools struct{ grep, glob, list string }
+
+var (
+	cliSearchTools     = searchTools{"grep", "glob", "list"}
+	backendSearchTools = searchTools{"Grep", "Glob", "List"}
+)
+
+func build(wd, clock string, search searchTools) string {
 	prompt := `You are an expert coding assistant operating inside k-brain, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.
 
 Available tools:
 - read: Read file contents
+- ` + search.grep + `: Search file contents with a regular expression
+- ` + search.glob + `: Find files by path pattern
+- ` + search.list + `: List a directory tree
 - bash: Execute shell commands; select powershell, pwsh, bash, wsl or cmd with the shell parameter. Match the command syntax to the shell.
 - edit: Make precise file edits with exact text replacement
 - write: Create or overwrite files
@@ -57,6 +69,7 @@ Available tools:
 Guidelines:
 - Use the bash tool for shell commands, with syntax appropriate to the selected shell
 - Use read to examine files instead of cat or sed
+- Use ` + search.grep + `, ` + search.glob + ` and ` + search.list + ` to search and explore instead of grep, rg, find or ls in bash; they are read-only and keep output bounded
 - Use edit for precise changes (old_string must match exactly and be unique, or set replace_all)
 - Use write only for new files or complete rewrites
 - When the user tags a file with @, a note lists the tagged paths — inspect them with your tools as needed
