@@ -122,3 +122,22 @@ func TestSeedTranscriptHidesReminderOnlyUserMessages(t *testing.T) {
 		t.Fatal("authored user messages must stay")
 	}
 }
+
+func TestSearchResultsFoldToTheirOwnCounts(t *testing.T) {
+	cases := []struct{ name, args, result, head, fold string }{
+		{"grep", `{"pattern":"TODO","path":"internal"}`, "matches=3 files=2\nGrep: TODO\noffset=0 total=3 hasMore=false\na.go:1: TODO\na.go:9: TODO\nb.go:2: TODO", "Grep(TODO in internal)", "⎿ 3 matches"},
+		{"glob", `{"pattern":"**/*.go"}`, "Glob: **/*.go\noffset=0 total=1 hasMore=false\na.go", "Glob(**/*.go)", "⎿ 1 file"},
+		{"list", `{}`, "List: /w\noffset=0 total=2 hasMore=false\n[DIR] a\n[FILE] a/b.go", "List(.)", "⎿ 2 entries"},
+	}
+	for _, c := range cases {
+		m := compactCmdModel()
+		m.Update(mkWinSize(80, 30))
+		m.Update(toolStartMsg{id: "1", name: c.name, args: c.args})
+		m.Update(toolEndMsg{id: "1", name: c.name, result: c.result})
+		head := ansi.Strip(m.blocks[len(m.blocks)-2].render(m.width))
+		fold := ansi.Strip(m.blocks[len(m.blocks)-1].render(m.width))
+		if !strings.Contains(head, c.head) || !strings.Contains(fold, c.fold) {
+			t.Errorf("%s: header %q fold %q, want %q / %q", c.name, head, fold, c.head, c.fold)
+		}
+	}
+}
