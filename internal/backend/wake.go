@@ -146,7 +146,13 @@ func (s *Server) startWakeRun(rt *runtimeSession, texts []string, template wakeT
 	if err != nil && status == http.StatusBadRequest && in.Options != nil {
 		// Options remembered from an earlier run can go stale (a removed workspace
 		// root or tool); deliver with session defaults rather than lose the notice.
+		// A sandboxed session stays sandboxed: if the sandbox itself was refused,
+		// the retry is refused too instead of running the commands unconfined.
 		in.Options = nil
+		if template.options.Sandbox != nil {
+			sandbox := *template.options.Sandbox
+			in.Options = &protocol.RunOptions{Sandbox: &sandbox}
+		}
 		_, status, err = s.startCanonicalRun(ctx, rt, in)
 	}
 	if err == nil {

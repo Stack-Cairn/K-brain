@@ -103,6 +103,15 @@
       "firstRelease": "v0.107.6-beta.12",
       "evidenceCommit": "b1fe9f0",
       "missing": "Disable image UI; supported may change at runtime and bumps capabilityRevision."
+    },
+    {
+      "name": "run_sandbox",
+      "type": "object",
+      "compare": "object",
+      "value": {"supported": "boolean", "version": "kbrain.sandbox.v1", "mechanism": "string", "platform": "string", "network_control": "boolean", "read_masking": "boolean", "modes": "string[]"},
+      "firstRelease": "v0.107.16",
+      "evidenceCommit": "1971bcd",
+      "missing": "Disable sandbox modes and never send options.sandbox; the backend would ignore it and run commands unconfined."
     }
   ]
 }

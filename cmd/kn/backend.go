@@ -20,6 +20,7 @@ import (
 	"github.com/Stack-Cairn/K-brain/internal/ai"
 	"github.com/Stack-Cairn/K-brain/internal/backend"
 	"github.com/Stack-Cairn/K-brain/internal/config"
+	"github.com/Stack-Cairn/K-brain/internal/datapath"
 	"github.com/Stack-Cairn/K-brain/internal/mcp"
 	"github.com/Stack-Cairn/K-brain/internal/memory"
 	"github.com/Stack-Cairn/K-brain/internal/memoryruntime"
@@ -209,6 +210,7 @@ func backendCLI(args []string) error {
 		FilesystemRoots:         filesystemRoots,
 		Build:                   protocol.NewBuild(version, revision),
 		PermissionRulesDir:      permissionRulesDir(),
+		SandboxMasked:           sandboxMaskedDirs(store.SessionsDir()),
 	})
 	if err != nil {
 		return err
@@ -263,6 +265,23 @@ type backendModel struct {
 
 // permissionRulesDir is the data directory for user and project permission rules,
 // shared with the TUI; empty, when unavailable, keeps remembered rules per session.
+// sandboxMaskedDirs are the backend's data directories (configuration with API
+// keys, sessions, memory, permission rules), hidden from sandboxed commands so a
+// run cannot read credentials or grant itself permissions.
+func sandboxMaskedDirs(sessionsDir string) []string {
+	var dirs []string
+	if dir, err := config.Dir(); err == nil && dir != "" {
+		dirs = append(dirs, dir)
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		dirs = append(dirs, filepath.Join(home, datapath.LegacyDirName))
+	}
+	if sessionsDir != "" {
+		dirs = append(dirs, sessionsDir)
+	}
+	return dirs
+}
+
 func permissionRulesDir() string {
 	dir, err := config.Dir()
 	if err != nil {

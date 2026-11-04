@@ -137,6 +137,10 @@ func (s *Server) startCanonicalRunWith(ctx context.Context, rt *runtimeSession, 
 		return fail(400, err.Error())
 	}
 	in.Options = &options
+	runPolicy, err := s.runSandboxPolicy(rt.agent.SandboxPolicy, rt.agent.WorkingDir, options)
+	if err != nil {
+		return fail(400, "options.sandbox: "+err.Error())
+	}
 	hash := hashPrompt(in)
 	if s.mcp != nil {
 		mcpTools, filter := s.mcp.ToolsForTurn(ctx, rt.agent.WorkingDir, options.MCPServerIDs, rt.mcpActivation)
@@ -194,7 +198,7 @@ func (s *Server) startCanonicalRunWith(ctx context.Context, rt *runtimeSession, 
 	go func() {
 		defer rt.runWorkers.Done()
 		defer s.releaseRuntime(rt)
-		s.executeRun(rt, runCtx, runID, in, options)
+		s.executeRun(rt, runCtx, runID, in, options, runPolicy)
 		// The next goal round starts only after executeRun has marked this run done.
 		s.continueGoal(rt, runID, in)
 		rt.mu.Lock()

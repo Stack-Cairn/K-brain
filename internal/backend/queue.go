@@ -408,8 +408,11 @@ func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request, id string, 
 		writeJSONError(w, 429, "session queue capacity reached")
 		return
 	}
-	if _, err = normalizeRunOptions(submit.Request.Options, rt.workingDir(), rt.agent.KnownTools()); err != nil {
+	if options, err := normalizeRunOptions(submit.Request.Options, rt.workingDir(), rt.agent.KnownTools()); err != nil {
 		writeJSONError(w, 400, err.Error())
+		return
+	} else if _, err := s.runSandboxPolicy(rt.agent.SandboxPolicy, rt.workingDir(), options); err != nil {
+		writeJSONError(w, 400, "options.sandbox: "+err.Error())
 		return
 	}
 	entry := queueEntry{ID: newRunID(), Request: submit.Request, Source: submit.Source, CreatedAt: time.Now().UnixMilli(), DraftJSON: submit.DraftJSON, UploadedFilesJSON: submit.UploadedFilesJSON, MemoryOff: !s.memoryEnabledNow(rt)}
@@ -510,8 +513,11 @@ func (s *Server) queueActionLocked(w http.ResponseWriter, rt *runtimeSession, in
 				fail(400, "invalid_payload", err.Error())
 				return
 			}
-			if _, err := normalizeRunOptions(request.Options, rt.workingDir(), rt.agent.KnownTools()); err != nil {
+			if options, err := normalizeRunOptions(request.Options, rt.workingDir(), rt.agent.KnownTools()); err != nil {
 				fail(400, "invalid_payload", err.Error())
+				return
+			} else if _, err := s.runSandboxPolicy(rt.agent.SandboxPolicy, rt.workingDir(), options); err != nil {
+				fail(400, "invalid_payload", "options.sandbox: "+err.Error())
 				return
 			}
 			request.ConversationID = rt.id

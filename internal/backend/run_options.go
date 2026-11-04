@@ -32,6 +32,19 @@ func normalizeRunOptions(in *protocol.RunOptions, cwd string, available []tools.
 		}
 		out.WorkspaceRoots = slices.Clone(in.WorkspaceRoots)
 		out.MCPServerIDs = slices.Clone(in.MCPServerIDs)
+		if in.Sandbox != nil {
+			sandbox := *in.Sandbox
+			out.Sandbox = &sandbox
+		}
+	}
+	if out.Sandbox != nil {
+		out.Sandbox.Mode = strings.TrimSpace(out.Sandbox.Mode)
+		if out.Sandbox.Mode == "" {
+			out.Sandbox.Mode = "workspace"
+		}
+		if out.Sandbox.Mode != "workspace" {
+			return protocol.RunOptions{}, fmt.Errorf("options.sandbox.mode must be workspace")
+		}
 	}
 	if out.Mode == "" {
 		out.Mode = "agent"
@@ -227,6 +240,20 @@ func exitPlanModeTool() tools.Tool {
 // runToolGate decides a gated call. rules is the remembered-rule decision for req:
 // deny rules refuse in every mode, Ask forces a prompt in every mode, and an allow
 // (a rule or the read-only allowance) counts after explicit per-tool policies.
+const sandboxAllowReason = "confined by the run sandbox"
+
+// sandboxedCommandTools run their command through the run's sandbox policy. In
+// a sandboxed run the OS fence is the boundary for these, so the normal and
+// auto_edit modes stop asking for each command. Deny and ask rules, per-tool
+// policies, plan mode, auto_review and AI review still apply; in-process tools
+// (file edits, MCP, computer use) are not confined and keep the mode's rules.
+var sandboxedCommandTools = map[string]bool{
+	"Bash":            true,
+	"bash":            true,
+	"ManagedProcess":  true,
+	"TerminalSession": true,
+}
+
 func runToolGate(options protocol.RunOptions, req tools.GateRequest, rules permissions.Decision, ask func(tools.GateRequest) (tools.GateDecision, string)) (tools.GateDecision, string) {
 	if (options.PlanModeEnabled || options.PermissionMode == permissions.Plan) && req.Tool != "Read" && req.Tool != "Image" && req.Tool != "List" && req.Tool != "Glob" && req.Tool != "Grep" && req.Tool != "ExitPlanMode" && req.Tool != "read" && req.Tool != "lsp" && req.Tool != "question" && req.Tool != "AskUserQuestion" && req.Tool != "todowrite" {
 		return tools.GateReject, "plan mode blocks this tool until ExitPlanMode is approved"
@@ -262,6 +289,12 @@ func runToolGate(options protocol.RunOptions, req tools.GateRequest, rules permi
 			return tools.GateAllowOnce, readOnlyAllowReason
 		}
 		return tools.GateAllowOnce, ruleAllowReason
+	}
+	if options.Sandbox != nil && sandboxedCommandTools[req.Tool] {
+		switch options.PermissionMode {
+		case "", permissions.Normal, permissions.AutoEdit:
+			return tools.GateAllowOnce, sandboxAllowReason
+		}
 	}
 	switch options.PermissionMode {
 	case permissions.Normal, permissions.Plan, permissions.AutoReview:
