@@ -72,6 +72,8 @@ func toolVerb(name string) string {
 		return "Reading"
 	case "grep", "glob", "list":
 		return "Searching"
+	case "web_fetch":
+		return "Fetching"
 	case "write":
 		return "Writing"
 	case "edit":

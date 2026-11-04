@@ -126,3 +126,29 @@ func TestAnthropicServerToolDeltaDoesNotBecomeClientTool(t *testing.T) {
 		t.Fatalf("message=%+v error=%v", msg, err)
 	}
 }
+
+// A client tool that shares a native tool's name (the CLI's web_fetch) is still the
+// client's to run while native web search is on; an undeclared one is bridged.
+func TestAnthropicClientToolNamedLikeNativeFetchStaysClientTool(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, streamFrames(
+			`{"type":"message_start","message":{}}`,
+			`{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"call","name":"web_fetch","input":{}}}`,
+			`{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"url\":\"https://example.test\"}"}}`,
+			`{"type":"content_block_stop","index":0}`,
+			`{"type":"message_delta","delta":{"stop_reason":"tool_use"}}`,
+			`{"type":"message_stop"}`,
+		))
+	}))
+	defer srv.Close()
+	fetch := NewTool("web_fetch", "fetch", `{"type":"object","properties":{"url":{"type":"string"}}}`)
+	var notified []string
+	msg, _, err := NewAnthropic(srv.URL, "key").Stream(t.Context(), Request{Model: "m", NativeWebSearch: true, Tools: []Tool{fetch}}, nil, nil, func(id, name, args string) { notified = append(notified, name) })
+	if err != nil || len(msg.ToolCalls) != 1 || msg.ToolCalls[0].Function.Name != "web_fetch" || len(notified) != 1 {
+		t.Fatalf("declared web_fetch: message=%+v notified=%v error=%v", msg, notified, err)
+	}
+	msg, _, err = NewAnthropic(srv.URL, "key").Stream(t.Context(), Request{Model: "m", NativeWebSearch: true}, nil, nil, nil)
+	if err != nil || len(msg.ToolCalls) != 0 || !strings.Contains(msg.Content, "did not execute the provider-native web_fetch") {
+		t.Fatalf("undeclared web_fetch: message=%+v error=%v", msg, err)
+	}
+}

@@ -27,7 +27,7 @@ var interpreters = map[string]bool{
 // Suggest returns the rules that "allow and remember" would store for a request, or
 // nil when it should only be allowed once. Shell commands get one prefix rule per
 // simple command (read-only ones are skipped when opts lets them through anyway);
-// edits get their directory.
+// edits get their directory; web fetches get their host.
 func Suggest(req Request, opts Options) []string {
 	if req.Poll {
 		return nil // a poll is read-only; there is nothing to remember
@@ -91,6 +91,17 @@ func Suggest(req Request, opts Options) []string {
 			}
 		}
 		return []string{"Edit(" + escapeGlob(filepath.ToSlash(target)) + ")"}
+	case kindURL:
+		// Remembering a fetch allows its host, not just the one URL.
+		host := URLHost(req.Command)
+		if host == "" {
+			return nil
+		}
+		rule := "WebFetch(" + domainPrefix + host + ")"
+		if parsed, err := ParseRule(rule); err != nil || parsed.String() != rule {
+			return nil
+		}
+		return []string{rule}
 	}
 	// Whole-tool rules only for MCP tools: built-in tools gate actions of very
 	// different weight under one name (cron create vs delete, process stop ids).

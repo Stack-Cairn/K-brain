@@ -44,23 +44,29 @@ func BuildStable(wd string) string {
 	return build(wd, "Date/time: use the latest user message's <kbrain-turn-time> when present; otherwise query the system clock if needed.", backendSearchTools)
 }
 
-// searchTools names the read-only search tools of one tool set: the CLI's grep,
-// glob and list, or the backend's LiveAgent Grep, Glob and List.
-type searchTools struct{ grep, glob, list string }
+// searchTools names the read-only search tools of one tool set, the CLI's grep,
+// glob and list or the backend's LiveAgent Grep, Glob and List, and its URL fetch
+// tool: the CLI's web_fetch, none in the backend.
+type searchTools struct{ grep, glob, list, fetch string }
 
 var (
-	cliSearchTools     = searchTools{"grep", "glob", "list"}
-	backendSearchTools = searchTools{"Grep", "Glob", "List"}
+	cliSearchTools     = searchTools{"grep", "glob", "list", "web_fetch"}
+	backendSearchTools = searchTools{"Grep", "Glob", "List", ""}
 )
 
 func build(wd, clock string, search searchTools) string {
+	fetchTool, fetchGuide := "", ""
+	if search.fetch != "" {
+		fetchTool = "\n- " + search.fetch + ": Fetch an http(s) URL and read it as text"
+		fetchGuide = "\n- Use " + search.fetch + " to read a web page or other URL instead of curl or wget in bash"
+	}
 	prompt := `You are an expert coding assistant operating inside k-brain, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.
 
 Available tools:
 - read: Read file contents
 - ` + search.grep + `: Search file contents with a regular expression
 - ` + search.glob + `: Find files by path pattern
-- ` + search.list + `: List a directory tree
+- ` + search.list + `: List a directory tree` + fetchTool + `
 - bash: Execute shell commands; select powershell, pwsh, bash, wsl or cmd with the shell parameter. Match the command syntax to the shell.
 - edit: Make precise file edits with exact text replacement
 - write: Create or overwrite files
@@ -69,7 +75,7 @@ Available tools:
 Guidelines:
 - Use the bash tool for shell commands, with syntax appropriate to the selected shell
 - Use read to examine files instead of cat or sed
-- Use ` + search.grep + `, ` + search.glob + ` and ` + search.list + ` to search and explore instead of grep, rg, find or ls in bash; they are read-only and keep output bounded
+- Use ` + search.grep + `, ` + search.glob + ` and ` + search.list + ` to search and explore instead of grep, rg, find or ls in bash; they are read-only and keep output bounded` + fetchGuide + `
 - Use edit for precise changes (old_string must match exactly and be unique, or set replace_all)
 - Use write only for new files or complete rewrites
 - When the user tags a file with @, a note lists the tagged paths — inspect them with your tools as needed

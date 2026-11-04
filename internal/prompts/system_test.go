@@ -183,11 +183,21 @@ func TestSystemPromptNamesEachToolSetsSearchTools(t *testing.T) {
 	if !strings.Contains(backend, "- Grep: Search file contents") || strings.Contains(backend, "- grep:") {
 		t.Errorf("backend prompt should name the LiveAgent Grep, Glob and List:\n%s", backend)
 	}
+	if !strings.Contains(cli, "- web_fetch: Fetch an http(s) URL") || !strings.Contains(cli, "Use web_fetch to read a web page") {
+		t.Errorf("CLI prompt should name web_fetch:\n%s", cli)
+	}
+	if strings.Contains(backend, "web_fetch") {
+		t.Errorf("backend sessions have no web_fetch:\n%s", backend)
+	}
 }
 
 func TestSeededSystemPromptPrefersSearchTools(t *testing.T) {
 	t.Setenv("LIVEAGENT_HOME", t.TempDir())
-	if p := Build(t.TempDir(), time.Now()); !strings.Contains(p, "use the grep, glob, and list tools rather than grep, rg, find, or ls in bash") {
+	p := Build(t.TempDir(), time.Now())
+	if !strings.Contains(p, "use the grep, glob, and list tools rather than grep, rg, find, or ls in bash") {
 		t.Errorf("the seeded system prompt should steer searches to the search tools:\n%s", p)
+	}
+	if !strings.Contains(p, "use web_fetch when it is available rather than curl or wget") {
+		t.Errorf("the seeded system prompt should steer page reads to web_fetch:\n%s", p)
 	}
 }

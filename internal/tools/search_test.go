@@ -36,19 +36,19 @@ func TestAllOffersSearchToolsAndBackendDropsThem(t *testing.T) {
 	for _, tool := range All() {
 		names[tool.Def.Function.Name] = true
 	}
-	for _, want := range []string{"bash", "read", "write", "edit", "grep", "glob", "list"} {
+	for _, want := range []string{"bash", "read", "write", "edit", "grep", "glob", "list", "web_fetch"} {
 		if !names[want] {
 			t.Errorf("All() lacks %s", want)
 		}
 	}
-	for _, tool := range WithoutSearchTools(All()) {
+	for _, tool := range WithoutCLIOnlyTools(All()) {
 		switch tool.Def.Function.Name {
-		case "grep", "glob", "list":
-			t.Errorf("WithoutSearchTools kept %s", tool.Def.Function.Name)
+		case "grep", "glob", "list", "web_fetch":
+			t.Errorf("WithoutCLIOnlyTools kept %s", tool.Def.Function.Name)
 		}
 	}
-	if got := len(WithoutSearchTools(All())); got != 4 {
-		t.Errorf("WithoutSearchTools left %d tools, want the 4 core tools", got)
+	if got := len(WithoutCLIOnlyTools(All())); got != 4 {
+		t.Errorf("WithoutCLIOnlyTools left %d tools, want the 4 core tools", got)
 	}
 }
 

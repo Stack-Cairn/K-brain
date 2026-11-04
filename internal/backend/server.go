@@ -903,7 +903,7 @@ func (s *Server) rebuildAgentLocked(rt *runtimeSession, selected protocol.ModelR
 	ag.WorkingDir = cwd
 	terminalManager := rt.terminalManager
 	processManager := rt.processManager
-	ag.Tools = append(tools.WithoutSearchTools(ag.Tools), tools.LiveAgentCatalogWithManagers([]string{selected.Provider}, terminalManager, processManager)...)
+	ag.Tools = append(tools.WithoutCLIOnlyTools(ag.Tools), tools.LiveAgentCatalogWithManagers([]string{selected.Provider}, terminalManager, processManager)...)
 	if s.cron != nil {
 		s.cron.attachTool(ag, selected)
 	}
@@ -984,7 +984,7 @@ func (s *Server) loadRuntime(id string, model protocol.ModelRef, cwd string) (*r
 	ag.WorkingDir = cwd
 	terminalManager := tools.NewTerminalManager()
 	processManager := tools.NewManagedProcessManager()
-	ag.Tools = append(tools.WithoutSearchTools(ag.Tools), tools.LiveAgentCatalogWithManagers([]string{model.Provider}, terminalManager, processManager)...)
+	ag.Tools = append(tools.WithoutCLIOnlyTools(ag.Tools), tools.LiveAgentCatalogWithManagers([]string{model.Provider}, terminalManager, processManager)...)
 	if s.cron != nil {
 		s.cron.attachTool(ag, model)
 	}

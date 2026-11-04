@@ -2,6 +2,7 @@ package permissions
 
 import (
 	"fmt"
+	"net/url"
 	"regexp"
 	"runtime"
 	"strings"
@@ -43,6 +44,7 @@ const (
 //	Bash(npm test:*)   commands starting with `npm test`
 //	Bash(git status)   exactly `git status`
 //	Edit(src/**)       edits and writes under src/ of the project root
+//	WebFetch(domain:example.com)    fetches from that host; *.example.com for its subdomains
 //	mcp__srv__tool     every call of that tool
 type Rule struct {
 	Tool    string
@@ -59,13 +61,19 @@ const (
 	kindOther toolKind = iota
 	kindShell
 	kindPath
+	kindURL
 )
 
+// domainPrefix starts a URL rule pattern that names a host instead of a URL.
+const domainPrefix = "domain:"
+
 // family maps tool names that share rules onto one rule name: the TUI's lowercase
-// tools and LiveAgent's PascalCase tools (grep onto Grep), Write onto Edit, and lsp onto
-// Read (it reads the file it queries).
+// tools and LiveAgent's PascalCase tools (grep onto Grep, web_fetch onto WebFetch),
+// Write onto Edit, and lsp onto Read (it reads the file it queries).
 func family(tool string) string {
 	switch tool {
+	case "web_fetch", "WebFetch":
+		return "WebFetch"
 	case "bash", "Bash":
 		return "Bash"
 	case "write", "edit", "Write", "Edit":
@@ -88,6 +96,8 @@ func kindOfTool(tool string) toolKind {
 		return kindShell
 	case "Edit", "Read", "Image", "Delete", "List", "Glob", "Grep":
 		return kindPath
+	case "WebFetch":
+		return kindURL
 	}
 	return kindOther
 }
@@ -130,6 +140,19 @@ func ParseRule(text string) (Rule, error) {
 			return Rule{}, fmt.Errorf("permission rule %q: path patterns use globs, not :*", text)
 		}
 		r.Pattern = slashPath(trimExtendedPattern(inner))
+	case kindURL:
+		if r.Prefix && inner+":" == domainPrefix {
+			return Rule{}, fmt.Errorf("permission rule %q: invalid domain pattern", text)
+		}
+		if host, ok := strings.CutPrefix(inner, domainPrefix); ok {
+			host = strings.ToLower(strings.TrimSpace(host))
+			if base := strings.TrimPrefix(host, "*."); r.Prefix || base == "" || strings.ContainsAny(base, `*/\:@? `) {
+				return Rule{}, fmt.Errorf("permission rule %q: invalid domain pattern", text)
+			}
+			r.Pattern = domainPrefix + host
+			break
+		}
+		r.Pattern = inner
 	default:
 		r.Pattern = inner
 	}
@@ -212,6 +235,33 @@ func (r Rule) matchesOther(command string) bool {
 		return strings.HasPrefix(command, r.Pattern)
 	}
 	return command == r.Pattern
+}
+
+// matchesURL matches a URL rule: domain:host covers every URL on that host (any
+// scheme, port and path), domain:*.host its subdomains; other patterns match the
+// URL as text.
+func (r Rule) matchesURL(target string) bool {
+	host, ok := strings.CutPrefix(r.Pattern, domainPrefix)
+	if !ok {
+		return r.matchesOther(target)
+	}
+	got := URLHost(target)
+	if got == "" {
+		return false
+	}
+	if suffix, wild := strings.CutPrefix(host, "*"); wild {
+		return strings.HasSuffix(got, suffix)
+	}
+	return got == host
+}
+
+// URLHost is the lowercase host name of an absolute http or https URL, or "".
+func URLHost(raw string) string {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+		return ""
+	}
+	return strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
 }
 
 var drivePath = regexp.MustCompile(`^[A-Za-z]:/`)

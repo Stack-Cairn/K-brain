@@ -3,7 +3,8 @@ package backend
 import "testing"
 
 // The backend's LiveAgent catalog brings root-confined Grep, Glob and List, so the
-// CLI's unconfined grep, glob and list stay out of backend sessions.
+// CLI's unconfined grep, glob and list stay out of backend sessions, and so does
+// web_fetch, which the app's tool catalog does not list.
 func TestBackendSessionsUseTheCatalogSearchTools(t *testing.T) {
 	store, backend, _, sess := compactFixture(t, &scriptedClient{response: "unused"})
 	defer store.Close()
@@ -20,7 +21,7 @@ func TestBackendSessionsUseTheCatalogSearchTools(t *testing.T) {
 			t.Errorf("backend session lacks %s", want)
 		}
 	}
-	for _, dropped := range []string{"grep", "glob", "list"} {
+	for _, dropped := range []string{"grep", "glob", "list", "web_fetch"} {
 		if names[dropped] {
 			t.Errorf("backend session offers the CLI's %s next to the catalog's", dropped)
 		}

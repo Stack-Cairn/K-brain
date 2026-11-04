@@ -52,8 +52,8 @@ func TestServeInProcess(t *testing.T) {
 	for _, tool := range list.Tools {
 		names[tool.Name] = true
 	}
-	if len(list.Tools) != 7 || !names["read"] || !names["grep"] || names["task"] {
-		t.Fatalf("served tools = %v (want k-brain's 7, task excluded)", names)
+	if len(list.Tools) != 8 || !names["read"] || !names["grep"] || !names["web_fetch"] || names["task"] {
+		t.Fatalf("served tools = %v (want k-brain's 8, task excluded)", names)
 	}
 
 	res, err := cs.CallTool(ctx, &sdkmcp.CallToolParams{

@@ -302,10 +302,25 @@ func searchBridge(call ToolCall, blocks []HostedSearch) string {
 	}
 	return text + "\nDo not retry this search/fetch tool. Answer from the available sources and context, and disclose unavailable information."
 }
-func recoverNativeSearchCalls(msg *Message, onText func(string)) {
+
+// hostedSearchCall reports a call of the provider's native search or fetch, which the
+// client does not run. A name the request declares as a client tool (the CLI's
+// web_fetch) stays the client's.
+func (r Request) hostedSearchCall(name string) bool {
+	if !r.NativeWebSearch || !nativeSearchName(name) {
+		return false
+	}
+	for _, t := range r.Tools {
+		if t.Function.Name == name {
+			return false
+		}
+	}
+	return true
+}
+func recoverNativeSearchCalls(req Request, msg *Message, onText func(string)) {
 	var kept []ToolCall
 	for _, call := range msg.ToolCalls {
-		if !nativeSearchName(call.Function.Name) {
+		if !req.hostedSearchCall(call.Function.Name) {
 			kept = append(kept, call)
 			continue
 		}
@@ -317,10 +332,10 @@ func recoverNativeSearchCalls(msg *Message, onText func(string)) {
 	}
 	msg.ToolCalls = kept
 }
-func filterNativeSearchCalls(calls []ToolCall) []ToolCall {
+func filterNativeSearchCalls(req Request, calls []ToolCall) []ToolCall {
 	out := make([]ToolCall, 0, len(calls))
 	for _, call := range calls {
-		if !nativeSearchName(call.Function.Name) {
+		if !req.hostedSearchCall(call.Function.Name) {
 			out = append(out, call)
 		}
 	}

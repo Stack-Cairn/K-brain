@@ -139,7 +139,7 @@ func (c *Responses) Stream(ctx context.Context, req Request, onText, onThink fun
 	var usage Usage
 	calls := responsesCalls{items: map[string]*ToolCall{}, calls: map[string]*ToolCall{}}
 	notify := func(tc *ToolCall) {
-		if onToolCall != nil && (!req.NativeWebSearch || !nativeSearchName(tc.Function.Name)) {
+		if onToolCall != nil && !req.hostedSearchCall(tc.Function.Name) {
 			onToolCall(tc.ID, tc.Function.Name, tc.Function.Arguments)
 		}
 	}
@@ -270,7 +270,7 @@ func (c *Responses) Stream(ctx context.Context, req Request, onText, onThink fun
 				return finishTruncatedMessage(msg, ev.Response.stopReason(), hadTools, onText), usage, nil
 			}
 			for _, tc := range calls.order {
-				if req.NativeWebSearch && nativeSearchName(tc.Function.Name) {
+				if req.hostedSearchCall(tc.Function.Name) {
 					msg.ToolCalls = append(msg.ToolCalls, *tc)
 					continue
 				}
@@ -283,7 +283,7 @@ func (c *Responses) Stream(ctx context.Context, req Request, onText, onThink fun
 			search.finish(false)
 			msg.HostedSearch = append([]HostedSearch(nil), search.blocks...)
 			if req.NativeWebSearch {
-				recoverNativeSearchCalls(&msg, onText)
+				recoverNativeSearchCalls(req, &msg, onText)
 			}
 			return finishMessage(msg, msg.ToolCalls, ev.Response.stopReason(), onText), usage, nil
 		}

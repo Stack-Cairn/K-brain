@@ -149,7 +149,7 @@ func (c *Anthropic) Stream(ctx context.Context, req Request, onText, onThink fun
 				}
 				block.streamed = true
 				block.call.Function.Arguments += d.PartialJSON
-				if onToolCall != nil && (!req.NativeWebSearch || !nativeSearchName(block.call.Function.Name)) {
+				if onToolCall != nil && !req.hostedSearchCall(block.call.Function.Name) {
 					onToolCall(block.call.ID, block.call.Function.Name, block.call.Function.Arguments)
 				}
 			}
@@ -187,7 +187,7 @@ func (c *Anthropic) Stream(ctx context.Context, req Request, onText, onThink fun
 			}
 			for _, index := range order {
 				block := blocks[index]
-				if req.NativeWebSearch && nativeSearchName(block.call.Function.Name) {
+				if req.hostedSearchCall(block.call.Function.Name) {
 					msg.ToolCalls = append(msg.ToolCalls, block.call)
 					continue
 				}
@@ -218,7 +218,7 @@ func (c *Anthropic) Stream(ctx context.Context, req Request, onText, onThink fun
 			}
 			msg.HostedSearch = append([]HostedSearch(nil), search.blocks...)
 			if req.NativeWebSearch {
-				recoverNativeSearchCalls(&msg, onText)
+				recoverNativeSearchCalls(req, &msg, onText)
 			}
 			return finishMessage(msg, msg.ToolCalls, stopReason, onText), usage.normalized(), nil
 		}

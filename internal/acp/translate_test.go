@@ -13,7 +13,8 @@ import (
 func TestToolKindMap(t *testing.T) {
 	want := map[string]acp.ToolKind{
 		"read": acp.ToolKindRead, "write": acp.ToolKindEdit, "edit": acp.ToolKindEdit,
-		"bash": acp.ToolKindExecute, "task": acp.ToolKindThink,
+		"bash": acp.ToolKindExecute, "task": acp.ToolKindThink, "grep": acp.ToolKindSearch,
+		"web_fetch":    acp.ToolKindFetch,
 		"browser_exec": acp.ToolKindOther, "mcp__docs__greet": acp.ToolKindOther,
 	}
 	for name, k := range want {
