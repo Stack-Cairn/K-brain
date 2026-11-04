@@ -140,5 +140,12 @@ func FanIn(evs ...Events) Events {
 				}
 			}
 		},
+		OnOutputLimitContinue: func(attempt int) {
+			for _, e := range evs {
+				if e.OnOutputLimitContinue != nil {
+					e.OnOutputLimitContinue(attempt)
+				}
+			}
+		},
 	}
 }

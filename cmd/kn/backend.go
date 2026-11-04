@@ -141,7 +141,7 @@ func backendCLI(args []string) error {
 		if promptResolveErr != nil {
 			return nil, promptResolveErr
 		}
-		ag := agent.New(route.Client, route.APIModel, route.MaxOutput, resolvedPrompt, agent.WithExperimental(current.Experimental), agent.WithSystemPromptResolver(resolvePrompt), agent.WithTurnTimeContext(), withToolAvailability(current))
+		ag := agent.New(route.Client, route.APIModel, route.MaxOutput, resolvedPrompt, agent.WithExperimental(current.Experimental), agent.WithSystemPromptResolver(resolvePrompt), agent.WithTurnTimeContext(), agent.WithOutputLimitContinuation(), withToolAvailability(current))
 		ag.ModelName, ag.Provider = route.ModelName, route.ProviderName
 		ag.ContextLimit, ag.Vision, ag.WorkingDir = route.ContextLimit, route.Vision, cwd
 		ag.WorktreeSubagents = current.WorktreeSubagents != nil && *current.WorktreeSubagents

@@ -109,3 +109,41 @@ func TestOutputLimitPersistsAndResumesThroughACP(t *testing.T) {
 		})
 	}
 }
+
+func TestOutputLimitContinuationStopReasonsThroughACP(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		truncated int32
+		want      acp.StopReason
+	}{
+		{"resumed", 1, acp.StopReasonEndTurn},
+		{"cap exhausted", 1 + agent.MaxOutputLimitContinuations, acp.StopReasonMaxTokens},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var requests, runs atomic.Int32
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				n := requests.Add(1)
+				w.Header().Set("Content-Type", "text/event-stream")
+				if n <= tc.truncated {
+					fmt.Fprint(w, `data: {"choices":[{"delta":{"content":"partial","tool_calls":[{"index":0,"id":"call","function":{"name":"write_test","arguments":"{\"x\":"}}]},"finish_reason":"length"}]}`+"\n\n")
+				} else {
+					fmt.Fprint(w, `data: {"choices":[{"delta":{"content":"done"},"finish_reason":"stop"}]}`+"\n\n")
+				}
+				fmt.Fprint(w, "data: [DONE]\n\n")
+			}))
+			defer srv.Close()
+			f := newFixture(t, nil, testStore(t), func(ctx context.Context, cwd string, servers map[string]mcp.ServerConfig) (*agent.Agent, *mcp.Manager, error) {
+				ag, manager, err := factoryFor(srv, []tools.Tool{{Def: ai.NewTool("write_test", "test", `{"type":"object"}`), Run: func(context.Context, json.RawMessage) (string, error) { runs.Add(1); return "unexpected", nil }}})(ctx, cwd, servers)
+				ag.ContinueOnOutputLimit = true
+				return ag, manager, err
+			})
+			f.initialize(t)
+			id := f.newSession(t, t.TempDir())
+			response, err := f.prompt(t, id, "first")
+			wantRequests := min(tc.truncated+1, 1+agent.MaxOutputLimitContinuations)
+			if err != nil || response.StopReason != tc.want || runs.Load() != 0 || requests.Load() != wantRequests {
+				t.Fatalf("prompt: %+v, %v; requests=%d (want %d) tool runs=%d", response, err, requests.Load(), wantRequests, runs.Load())
+			}
+		})
+	}
+}

@@ -89,6 +89,7 @@ func (a *Agent) newSub(o SubModel) *Agent {
 	sub.ComputerDisabled = a.ComputerDisabled
 	sub.ComputerConfig = a.ComputerConfig
 	sub.SandboxPolicy = a.SandboxPolicy
+	sub.ContinueOnOutputLimit = a.ContinueOnOutputLimit
 	sub.Hooks = a.Hooks
 	sub.PluginHook = a.PluginHook
 	sub.Reminders = append([]Reminder(nil), a.Reminders...)

@@ -56,6 +56,10 @@ type Events struct {
 	OnRetry           func(ev ai.RetryEvent)
 
 	OnDecay func(n int)
+
+	// OnOutputLimitContinue fires before the agent resumes a reply that stopped at
+	// the output-token limit; attempt counts from 1 to MaxOutputLimitContinuations.
+	OnOutputLimitContinue func(attempt int)
 }
 
 type CompactInfo struct {
@@ -133,6 +137,10 @@ type Agent struct {
 	ResolveModel func(model, provider string) (SubModel, error)
 
 	MaxTurns int
+
+	// ContinueOnOutputLimit resumes a reply cut off by the output-token limit with
+	// a continuation reminder, at most MaxOutputLimitContinuations times per turn.
+	ContinueOnOutputLimit bool
 
 	WorkingDir string
 
@@ -647,6 +655,7 @@ func (a *Agent) turnPending(ctx context.Context, input string, parts []ai.Conten
 		return "", err
 	}
 	rounds := 0
+	continuations := 0
 	for {
 		lifecycle.startRound()
 		if a.MaxTurns > 0 && rounds >= a.MaxTurns {
@@ -721,6 +730,21 @@ func (a *Agent) turnPending(ctx context.Context, input string, parts []ai.Conten
 		}
 		lifecycle.endMessage()
 		a.appendResponse(msg, usage)
+		resume := a.continueAfterOutputLimit(ctx, msg, rounds, continuations)
+		if resume {
+			continuations++
+			if ev.OnText != nil {
+				// Keep the resumed text off the truncation note in streamed output.
+				ev.OnText("\n\n")
+			}
+			if ev.OnOutputLimitContinue != nil {
+				ev.OnOutputLimitContinue(continuations)
+			}
+			reminder := outputLimitReminder(msg)
+			a.msgsMu.Lock()
+			a.Messages = append(a.Messages, reminder)
+			a.msgsMu.Unlock()
+		}
 		if len(msg.ToolCalls) > 0 {
 			results := a.runTools(ctx, msg.ToolCalls, ev)
 			if a.contextRequested.Swap(false) {
@@ -775,7 +799,7 @@ func (a *Agent) turnPending(ctx context.Context, input string, parts []ai.Conten
 		if len(steered) > 0 {
 			a.msgsMu.Unlock()
 		}
-		if len(msg.ToolCalls) == 0 && len(steered) == 0 {
+		if len(msg.ToolCalls) == 0 && len(steered) == 0 && !resume {
 
 			if !a.compacted {
 				if cerr := a.maybeCompact(ctx, ev); cerr != nil {
