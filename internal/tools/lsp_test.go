@@ -3,7 +3,6 @@ package tools
 import (
 	"context"
 	"encoding/json"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -19,7 +18,9 @@ func (s *stubLSP) WaitDiagnostics(ctx context.Context, path string) string {
 	return s.block
 }
 
-func TestWriteEditAppendLSPDiagnostics(t *testing.T) {
+// File tools no longer append diagnostics themselves (the agent's reminder does); they
+// report the mutated path to the per-call recorder instead.
+func TestFileToolsRecordMutationsWithoutInlineDiagnostics(t *testing.T) {
 	stub := &stubLSP{block: "\n\n<diagnostics file=\"x.go\">\nERROR [1:1] boom\n</diagnostics>"}
 	saved := LSP
 	LSP = stub
@@ -27,51 +28,47 @@ func TestWriteEditAppendLSPDiagnostics(t *testing.T) {
 
 	dir := t.TempDir()
 	p := filepath.Join(dir, "x.go")
+	var recorded []string
+	ctx := WithFileMutationRecorder(context.Background(), func(path string) { recorded = append(recorded, path) })
 
 	args, _ := json.Marshal(map[string]any{"path": p, "content": "package main\n"})
-	out := Execute(context.Background(), All(), "write", args)
-	if !strings.Contains(out, "<diagnostics") || !strings.Contains(out, "ERROR [1:1] boom") {
-		t.Fatalf("write output missing diagnostics: %q", out)
+	if out := Execute(ctx, All(), "write", args); strings.Contains(out, "<diagnostics") {
+		t.Fatalf("write must not append diagnostics inline: %q", out)
 	}
-	if len(stub.calls) != 1 || stub.calls[0] != p {
-		t.Fatalf("hook calls: %v", stub.calls)
-	}
-
 	args, _ = json.Marshal(map[string]any{"path": p, "old_string": "main", "new_string": "main2"})
-	out = Execute(context.Background(), All(), "edit", args)
-	if !strings.Contains(out, "<diagnostics") {
-		t.Fatalf("edit output missing diagnostics: %q", out)
+	if out := Execute(ctx, All(), "edit", args); strings.Contains(out, "<diagnostics") {
+		t.Fatalf("edit must not append diagnostics inline: %q", out)
 	}
-	if len(stub.calls) != 2 {
-		t.Fatalf("hook calls: %v", stub.calls)
+	if len(stub.calls) != 0 {
+		t.Fatalf("file tools called the LSP directly: %v", stub.calls)
 	}
-}
-
-func TestLSPNilUnchangedOutput(t *testing.T) {
-	saved := LSP
-	LSP = nil
-	defer func() { LSP = saved }()
-	dir := t.TempDir()
-	p := filepath.Join(dir, "x.go")
-	args, _ := json.Marshal(map[string]any{"path": p, "content": "hi"})
-	out := Execute(context.Background(), All(), "write", args)
-	if strings.Contains(out, "<diagnostics") {
-		t.Fatalf("nil hook must not alter output: %q", out)
+	if len(recorded) != 2 || recorded[0] != p || recorded[1] != p {
+		t.Fatalf("recorded = %v", recorded)
 	}
 }
 
-func TestLSPFailureNeverFailsTool(t *testing.T) {
-	saved := LSP
-	LSP = &stubLSP{block: ""}
-	defer func() { LSP = saved }()
+func TestLiveAgentMutationsReachRecorderAndObserver(t *testing.T) {
 	dir := t.TempDir()
-	p := filepath.Join(dir, "x.go")
-	args, _ := json.Marshal(map[string]any{"path": p, "content": "hi"})
-	out := Execute(context.Background(), All(), "write", args)
-	if !strings.HasPrefix(out, "Wrote") {
-		t.Fatalf("tool result should be the success message, got %q", out)
+	ctx := WithWorkspaceRoots(WithWorkingDir(context.Background(), dir), []WorkspaceRoot{{Path: dir, Access: "write"}})
+	var observed, recorded []string
+	ctx = WithFileMutationObserver(ctx, func(path string) { observed = append(observed, path) })
+	ctx = WithFileMutationRecorder(ctx, func(path string) { recorded = append(recorded, path) })
+	write := findToolForTest(LiveAgentCatalog(), "Write")
+	if _, err := write.Run(ctx, json.RawMessage(`{"path":"a.go","content":"package a\n"}`)); err != nil {
+		t.Fatal(err)
 	}
-	if _, err := os.Stat(p); err != nil {
-		t.Fatal("write still happened")
+	want := filepath.Join(dir, "a.go")
+	if len(observed) != 1 || observed[0] != want || len(recorded) != 1 || recorded[0] != want {
+		t.Fatalf("observed=%v recorded=%v", observed, recorded)
+	}
+}
+
+func TestFileMutationRecorderInnermostScopeWins(t *testing.T) {
+	var outer, inner []string
+	ctx := WithFileMutationRecorder(context.Background(), func(p string) { outer = append(outer, p) })
+	ctx = WithFileMutationRecorder(ctx, func(p string) { inner = append(inner, p) })
+	BeforeFileMutation(ctx, "/x")
+	if len(outer) != 0 || len(inner) != 1 {
+		t.Fatalf("outer=%v inner=%v", outer, inner)
 	}
 }

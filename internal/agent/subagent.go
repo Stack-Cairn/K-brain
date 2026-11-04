@@ -91,6 +91,7 @@ func (a *Agent) newSub(o SubModel) *Agent {
 	sub.SandboxPolicy = a.SandboxPolicy
 	sub.Hooks = a.Hooks
 	sub.PluginHook = a.PluginHook
+	sub.Reminders = append([]Reminder(nil), a.Reminders...)
 	sub.memoryDisabled = true
 	sub.SetSessionID(a.SessionIDValue())
 	sub.sessionStarted, sub.startedSessionID = true, sub.SessionIDValue()

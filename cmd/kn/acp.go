@@ -16,12 +16,10 @@ import (
 	"github.com/Stack-Cairn/K-brain/internal/agent"
 	"github.com/Stack-Cairn/K-brain/internal/config"
 	"github.com/Stack-Cairn/K-brain/internal/hooks"
-	"github.com/Stack-Cairn/K-brain/internal/lsp"
 	"github.com/Stack-Cairn/K-brain/internal/mcp"
 	"github.com/Stack-Cairn/K-brain/internal/plugins"
 	"github.com/Stack-Cairn/K-brain/internal/session"
 	"github.com/Stack-Cairn/K-brain/internal/skills"
-	"github.com/Stack-Cairn/K-brain/internal/tools"
 	"github.com/Stack-Cairn/K-brain/internal/tools/bashrun"
 	acpsdk "github.com/coder/acp-go-sdk"
 )
@@ -66,12 +64,7 @@ func acpCLI(args []string) error {
 	}
 	defer func() { _ = store.Close() }()
 
-	lspMgr := lsp.NewManager(lsp.FromConfigMap(cfg.LSPServers))
-	tools.LSP = lspMgr
-	defer func() {
-		lspMgr.Close()
-		tools.LSP = nil
-	}()
+	defer startLSP(cfg)()
 
 	factory := func(ctx context.Context, wd string, servers map[string]mcp.ServerConfig) (*agent.Agent, *mcp.Manager, error) {
 		ag := agent.New(route.Client.Clone(), route.APIModel, route.MaxOutput, sysprompt.Build(wd, time.Now()), agent.WithExperimental(cfg.Experimental), withToolAvailability(cfg))

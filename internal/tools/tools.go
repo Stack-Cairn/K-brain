@@ -33,6 +33,8 @@ type InteractiveRunner interface {
 
 var InteractiveBash InteractiveRunner
 
+// LSP is the process-wide language-server manager. File tools do not call it: the
+// agent's post-tool reminders report diagnostics for the paths a call mutated.
 var LSP interface {
 	WaitDiagnostics(ctx context.Context, path string) string
 }
@@ -43,15 +45,26 @@ func All() []Tool {
 
 type updateKey struct{}
 type fileMutationObserverKey struct{}
+type fileMutationRecorderKey struct{}
 
 // WithFileMutationObserver records the pre-image immediately before a file tool mutates it.
 func WithFileMutationObserver(ctx context.Context, observe func(string)) context.Context {
 	return context.WithValue(ctx, fileMutationObserverKey{}, observe)
 }
 
+// WithFileMutationRecorder scopes a recorder of the resolved paths file tools mutate
+// under ctx. Unlike the observer it does not chain: the innermost scope (one tool call)
+// owns its paths, so a subagent's edits are not attributed to the parent's task call.
+func WithFileMutationRecorder(ctx context.Context, record func(string)) context.Context {
+	return context.WithValue(ctx, fileMutationRecorderKey{}, record)
+}
+
 func BeforeFileMutation(ctx context.Context, path string) {
 	if observe, ok := ctx.Value(fileMutationObserverKey{}).(func(string)); ok && observe != nil {
 		observe(path)
+	}
+	if record, ok := ctx.Value(fileMutationRecorderKey{}).(func(string)); ok && record != nil {
+		record(path)
 	}
 }
 
@@ -181,13 +194,6 @@ func middleElide(s string) string {
 	}
 	marker += "] ...\n"
 	return head + marker + tail
-}
-
-func lspDiagnostics(ctx context.Context, path string) string {
-	if LSP == nil {
-		return ""
-	}
-	return LSP.WaitDiagnostics(ctx, path)
 }
 
 func TruncateTail(s string) string {
@@ -363,7 +369,7 @@ func writeTool() Tool {
 					out += "\n```diff\n" + d + "\n```"
 				}
 			}
-			return out + lspDiagnostics(ctx, a.Path), nil
+			return out, nil
 		},
 	}
 }
@@ -417,7 +423,7 @@ func editTool() Tool {
 			if d := editDiff(a.OldString, a.NewString, startLine); d != "" {
 				out += "\n```diff\n" + d + "\n```"
 			}
-			return out + lspDiagnostics(ctx, a.Path), nil
+			return out, nil
 		},
 	}
 }
