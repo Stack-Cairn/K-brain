@@ -32,7 +32,7 @@ func (a *Agent) ManualCompactCommit(ctx context.Context, ev Events, commit func(
 	if ev.OnCompactStart != nil {
 		ev.OnCompactStart(len(before), EstimateTokens(before))
 	}
-	summary, cutoff, info, err := a.compact(ctx)
+	summary, cutoff, info, err := a.compactHooked(ctx, compactManual)
 	if err != nil {
 		return err
 	}

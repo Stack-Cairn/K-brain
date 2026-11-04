@@ -18,7 +18,13 @@ func (a *Agent) StartSession(ctx context.Context) error {
 	if a.sessionStarted && a.startedSessionID == id {
 		return nil
 	}
-	if err := a.runHook(ctx, hooks.Event{Name: "SessionStart"}); err != nil {
+	if a.sessionStarted && a.startedSessionID != "" {
+		// The agent moved to another session: the previous one ends first. A session
+		// that started before it had an ID is the same session, now identified.
+		_ = a.runHook(ctx, hooks.Event{Name: hooks.SessionEnd, SessionID: a.startedSessionID, Reason: "switch"})
+		a.sessionStarted = false
+	}
+	if err := a.runHook(ctx, hooks.Event{Name: hooks.SessionStart}); err != nil {
 		return err
 	}
 	if err := ctx.Err(); err != nil {
@@ -29,8 +35,25 @@ func (a *Agent) StartSession(ctx context.Context) error {
 	return nil
 }
 
+// EndSession runs the SessionEnd hook for a session StartSession started; it does
+// nothing otherwise. reason is reported to the hook ("exit", "close", ...). A later
+// StartSession starts the session again. Hook failures are returned for logging;
+// they cannot keep the session open.
+func (a *Agent) EndSession(ctx context.Context, reason string) error {
+	a.startMu.Lock()
+	defer a.startMu.Unlock()
+	if !a.sessionStarted {
+		return nil
+	}
+	a.sessionStarted = false
+	return a.runHook(ctx, hooks.Event{Name: hooks.SessionEnd, SessionID: a.startedSessionID, Reason: reason})
+}
+
 func (a *Agent) runHook(ctx context.Context, event hooks.Event) error {
-	event.SessionID, event.CWD = a.SessionIDValue(), a.WorkingDir
+	if event.SessionID == "" {
+		event.SessionID = a.SessionIDValue()
+	}
+	event.CWD = a.WorkingDir
 	if a.SandboxPolicy != nil && sandbox.FromContext(ctx) == nil {
 		ctx = sandbox.WithPolicy(ctx, a.SandboxPolicy)
 	}

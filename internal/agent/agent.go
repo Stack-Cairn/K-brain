@@ -591,7 +591,7 @@ func (a *Agent) turnPending(ctx context.Context, input string, parts []ai.Conten
 		}
 	}
 	prompt := ai.Message{Content: input, Parts: parts}
-	if err := a.runHook(ctx, hooks.Event{Name: "UserPromptSubmit", Prompt: prompt.TextContent()}); err != nil {
+	if err := a.runHook(ctx, hooks.Event{Name: hooks.UserPromptSubmit, Prompt: prompt.TextContent()}); err != nil {
 		return "", err
 	}
 
@@ -599,7 +599,7 @@ func (a *Agent) turnPending(ctx context.Context, input string, parts []ai.Conten
 		ev.OnDecay(n)
 	}
 	defer func() {
-		_ = a.runHook(context.WithoutCancel(ctx), hooks.Event{Name: "Stop"})
+		_ = a.runHook(context.WithoutCancel(ctx), hooks.Event{Name: hooks.Stop})
 	}()
 	messageID := newMessageID()
 	if requestedID, ok := ctx.Value(userMessageIDKey{}).(string); ok && requestedID != "" {
@@ -703,7 +703,7 @@ func (a *Agent) turnPending(ctx context.Context, input string, parts []ai.Conten
 				if ev.OnCompactStart != nil {
 					ev.OnCompactStart(took, EstimateTokens(a.Messages))
 				}
-				sum, cutoff, info, cerr := a.compact(ctx)
+				sum, cutoff, info, cerr := a.compactHooked(ctx, compactAuto)
 				if cerr != nil {
 
 					a.compacted = false
@@ -878,7 +878,7 @@ func (a *Agent) maybeCompact(ctx context.Context, ev Events) error {
 	if ev.OnCompactStart != nil {
 		ev.OnCompactStart(took, EstimateTokens(a.Messages))
 	}
-	sum, cutoff, info, err := a.compact(ctx)
+	sum, cutoff, info, err := a.compactHooked(ctx, compactAuto)
 	if err != nil {
 		if err.Error() == "not enough history to compact" {
 			return nil
@@ -913,7 +913,7 @@ func (a *Agent) maybeCompactForRequest(ctx context.Context, ev Events) error {
 	if ev.OnCompactStart != nil {
 		ev.OnCompactStart(len(messages), EstimateTokens(messages))
 	}
-	sum, cutoff, info, err := a.compact(ctx)
+	sum, cutoff, info, err := a.compactHooked(ctx, compactAuto)
 	if err != nil {
 		if err.Error() == "not enough history to compact" {
 			return nil
@@ -1301,7 +1301,7 @@ func (a *Agent) ManualCompact(ctx context.Context, ev Events) error {
 	if ev.OnCompactStart != nil {
 		ev.OnCompactStart(len(a.Messages), EstimateTokens(a.Messages))
 	}
-	sum, cutoff, info, err := a.compact(ctx)
+	sum, cutoff, info, err := a.compactHooked(ctx, compactManual)
 	if err != nil {
 		return err
 	}

@@ -296,6 +296,9 @@ func runCLI(args []string) (runErr error) {
 			note("session %s — resume with: kn run -resume %s \"…\" · or interactively: kn --resume %s", sessionID, sessionID, sessionID)
 		}
 	}
+	if herr := ag.EndSession(context.WithoutCancel(ctx), "exit"); herr != nil {
+		note("%v", herr)
+	}
 
 	return err
 }

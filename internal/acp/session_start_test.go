@@ -72,8 +72,17 @@ func TestSessionStartUsesFinalIdentityAndRestoredMemory(t *testing.T) {
 	if err := restored.StartSession(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if len(events) != 2 {
-		t.Fatalf("resume repeated startup: %d", len(events))
+	var starts int
+	for _, event := range events {
+		if event.Name == hooks.SessionStart {
+			starts++
+		}
+	}
+	if starts != 2 || len(events) != 3 {
+		t.Fatalf("resume repeated startup: %+v", events)
+	}
+	if end := events[1]; end.Name != hooks.SessionEnd || end.Reason != "close" || end.SessionID != string(first.SessionId) {
+		t.Fatalf("close did not end the session: %+v", end)
 	}
 	var request ai.Request
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
