@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -342,6 +343,43 @@ var contextLimitMarkers = []string{
 	"context_length_exceeded",
 	"maximum context length",
 	"prompt_too_long",
+	"prompt is too long",
+	"input_too_large",
+	"context window",
+}
+
+// contextLimitPattern matches the "<used> tokens > <max>" form providers and
+// relays use to report an oversized prompt, e.g. Anthropic's
+// "prompt is too long: 210000 tokens > 200000 maximum" or a relay's
+// "(664630 tokens > 500000 tokens)".
+var contextLimitPattern = regexp.MustCompile(`(\d+)\s*tokens?\s*>\s*(\d+)`)
+
+// maxContextPattern matches OpenAI's "maximum context length is 128000 tokens".
+var maxContextPattern = regexp.MustCompile(`(?i)maximum context length is\s*(\d+)`)
+
+// ContextLimitFromError returns the context window a provider reported when it
+// rejected a prompt as too large, or 0 when the error states none. The window a
+// model catalog advertises can exceed what a given endpoint accepts (relays
+// often cap it lower), so this is the authoritative figure once seen.
+func ContextLimitFromError(err error) int {
+	if !IsContextLimit(err) {
+		return 0
+	}
+	text := err.Error()
+	if he, ok := errors.AsType[*HTTPError](err); ok && he.Body != "" {
+		text = he.Body
+	}
+	if m := contextLimitPattern.FindStringSubmatch(text); m != nil {
+		if n, perr := strconv.Atoi(m[2]); perr == nil && n > 0 {
+			return n
+		}
+	}
+	if m := maxContextPattern.FindStringSubmatch(text); m != nil {
+		if n, perr := strconv.Atoi(m[1]); perr == nil && n > 0 {
+			return n
+		}
+	}
+	return 0
 }
 
 func IsContextLimit(err error) bool {
