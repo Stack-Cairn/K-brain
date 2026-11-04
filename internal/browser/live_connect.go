@@ -56,6 +56,12 @@ var connectLive = func(ctx context.Context, wsURL string) (*rod.Browser, error) 
 
 	select {
 	case r := <-done:
+		if ctx.Err() != nil {
+			if r.browser != nil {
+				detach(r.browser)
+			}
+			return nil, liveContextError(ctx)
+		}
 		if r.err == nil {
 			return r.browser, nil
 		}
@@ -68,13 +74,20 @@ var connectLive = func(ctx context.Context, wsURL string) (*rod.Browser, error) 
 				detach(r.browser)
 			}
 		}()
-		return nil, fmt.Errorf("%w: timed out waiting for the browser to accept the connection — click Allow on Chrome's 'Allow remote debugging?' prompt, then retry (approval lasts for the rest of the session)", ErrPermissionBlocked)
+		return nil, liveContextError(ctx)
 	}
+}
+
+func liveContextError(ctx context.Context) error {
+	if errors.Is(ctx.Err(), context.Canceled) {
+		return fmt.Errorf("%w: browser connection cancelled: %w", ErrPermissionBlocked, ctx.Err())
+	}
+	return fmt.Errorf("%w: timed out waiting for the browser to accept the connection — click Allow on Chrome's 'Allow remote debugging?' prompt, then retry (approval lasts for the rest of the session): %w", ErrPermissionBlocked, ctx.Err())
 }
 
 func classifyLiveConnectErr(ctx context.Context, err error) error {
 	if ctx.Err() != nil {
-		return fmt.Errorf("%w: timed out waiting for the browser to accept the connection — click Allow on Chrome's 'Allow remote debugging?' prompt, then retry: %v", ErrPermissionBlocked, err)
+		return liveContextError(ctx)
 	}
 	var bad *cdp.BadHandshakeError
 	if errors.As(err, &bad) && strings.HasPrefix(bad.Status, "403") {

@@ -3,6 +3,7 @@ package browser
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -27,6 +28,9 @@ var chromiumCandidates = []string{
 }
 
 func chromeForTestingPath() string {
+	if bin := os.Getenv("ROD_BROWSER_BIN"); bin != "" {
+		return bin
+	}
 	home, _ := os.UserHomeDir()
 	p := filepath.Join(home, "Library/Caches/ms-playwright/chromium-1234/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing")
 	if _, err := os.Stat(p); err == nil {
@@ -37,6 +41,12 @@ func chromeForTestingPath() string {
 
 func chromiumPath(t *testing.T) string {
 	t.Helper()
+	if bin := os.Getenv("ROD_BROWSER_BIN"); bin != "" {
+		if _, err := os.Stat(bin); err != nil {
+			t.Fatalf("ROD_BROWSER_BIN: %v", err)
+		}
+		return bin
+	}
 
 	libs := "/tmp/chromelibs/usr/lib/x86_64-linux-gnu"
 	if _, err := os.Stat(libs); err == nil {
@@ -174,7 +184,7 @@ func TestE2EDedicated(t *testing.T) {
 	}
 	// Close only detaches from a dedicated browser, which keeps running for later
 	// sessions; stop it before TempDir removes the profile it is still writing.
-	prof := dedicatedProfileDir(home, "default")
+	prof := managedProfileDir(home, ModeDedicated, "default")
 	t.Cleanup(func() {
 		cctx, ccancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer ccancel()
@@ -287,40 +297,14 @@ func TestEvalImmediatelyAfterAttach(t *testing.T) {
 	}
 }
 
-func TestE2ELiveFallsBackToLaunched(t *testing.T) {
-	if os.Getenv("K_BRAIN_CDP_WS") != "" || os.Getenv("K_BRAIN_CDP_URL") != "" {
-		t.Skip("explicit CDP endpoint set — fallback bypassed")
-	}
-
-	for _, p := range []int{9222, 9223} {
-		if portLive(p) {
-			t.Skipf("ambient browser on %d — fallback would not trigger", p)
-		}
-	}
-	_ = chromiumPath(t)
-	t.Setenv("HOME", t.TempDir())
-	t.Setenv("USERPROFILE", os.Getenv("HOME"))
-	url := testPage(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-
-	b, err := Open(ctx, ModeLive)
-	if err != nil {
-		t.Fatalf("live fallback must not error: %v", err)
-	}
-	defer b.Close()
-	if b.Obtained() != ObtainedLaunched {
-		t.Fatalf("fallback should have launched, got obtained=%v", b.Obtained())
-	}
-	if err := b.Navigate(ctx, url); err != nil {
-		t.Fatal(err)
-	}
-	info, err := b.Info(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.HasPrefix(info.URL, url) {
-		t.Fatalf("url: %q", info.URL)
+func TestLiveUnavailableDoesNotLaunchDedicated(t *testing.T) {
+	srv := httptest.NewServer(http.NotFoundHandler())
+	defer srv.Close()
+	t.Setenv("K_BRAIN_CDP_WS", "ws"+strings.TrimPrefix(srv.URL, "http")+"/devtools/browser/non-browser")
+	t.Setenv("ROD_BROWSER_BIN", filepath.Join(t.TempDir(), "must-not-launch"))
+	b, err := Open(t.Context(), ModeLive)
+	if b != nil || !errors.Is(err, ErrNoLiveBrowser) || strings.Contains(err.Error(), "dedicated fallback") {
+		t.Fatalf("live must report the unavailable endpoint without attempting another profile: backend=%v err=%v", b, err)
 	}
 }
 
@@ -338,7 +322,7 @@ func TestE2EDedicatedReattach(t *testing.T) {
 		t.Fatalf("launch dedicated: %v", err)
 	}
 
-	prof := dedicatedProfileDir(home, "default")
+	prof := managedProfileDir(home, ModeDedicated, "default")
 	t.Cleanup(func() {
 		cctx, ccancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer ccancel()

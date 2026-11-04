@@ -2,13 +2,21 @@ package tools
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"github.com/Stack-Cairn/K-brain/internal/ai"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
+	"github.com/Stack-Cairn/K-brain/internal/ai"
 	"github.com/Stack-Cairn/K-brain/internal/browser"
+	"github.com/gobwas/ws/wsutil"
 )
 
 type fakeBackend struct {
@@ -31,6 +39,8 @@ func (f *fakeBackend) log(call string) error {
 	return f.err
 }
 
+func (f *fakeBackend) Prepare(context.Context) error { return nil }
+func (f *fakeBackend) Invalidate(error)              {}
 func (f *fakeBackend) Info(context.Context) (browser.PageInfo, error) {
 	return f.info, f.log("Info()")
 }
@@ -437,6 +447,151 @@ func TestRunBrowserCodeNeutralizesOnError(t *testing.T) {
 	want := "Info() Navigate(about:blank)"
 	if got := strings.Join(b.calls, " "); got != want {
 		t.Errorf("calls = %q, want %q", got, want)
+	}
+}
+
+func TestBrowserExecResetSchema(t *testing.T) {
+	var schema struct {
+		Properties map[string]struct {
+			Type    string `json:"type"`
+			Default any    `json:"default"`
+		} `json:"properties"`
+		Required []string `json:"required"`
+	}
+	if err := json.Unmarshal(BrowserExec().Def.Function.Parameters, &schema); err != nil {
+		t.Fatal(err)
+	}
+	if reset, ok := schema.Properties["reset"]; !ok || reset.Type != "boolean" || reset.Default != false {
+		t.Fatalf("optional reset boolean default missing: %+v", schema.Properties)
+	}
+	for _, key := range schema.Required {
+		if key == "reset" {
+			t.Fatal("reset must remain optional")
+		}
+	}
+}
+
+// This local protocol fixture never launches or discovers a real browser.
+func TestBrowserExecResetFlow(t *testing.T) {
+	var mu sync.Mutex
+	target := "original"
+	connections, scripts, destructive := 0, 0, 0
+	var attached []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, buffered, err := w.(http.Hijacker).Hijack()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		accept := sha1.Sum([]byte(r.Header.Get("Sec-WebSocket-Key") + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
+		if _, err := fmt.Fprintf(buffered, "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: %s\r\n\r\n", base64.StdEncoding.EncodeToString(accept[:])); err != nil {
+			return
+		}
+		if err := buffered.Flush(); err != nil {
+			return
+		}
+		mu.Lock()
+		connections++
+		mu.Unlock()
+		for {
+			msg, _, err := wsutil.ReadClientData(conn)
+			if err != nil {
+				return
+			}
+			var frame struct {
+				ID     int    `json:"id"`
+				Method string `json:"method"`
+				Params struct {
+					TargetID   string `json:"targetId"`
+					Expression string `json:"expression"`
+				} `json:"params"`
+			}
+			if json.Unmarshal(msg, &frame) != nil {
+				return
+			}
+			result := `{}`
+			mu.Lock()
+			switch frame.Method {
+			case "Target.getTargets":
+				result = fmt.Sprintf(`{"targetInfos":[{"targetId":%q,"type":"page","url":"about:blank"}]}`, target)
+			case "Target.attachToTarget":
+				attached = append(attached, frame.Params.TargetID)
+				result = fmt.Sprintf(`{"sessionId":%q}`, frame.Params.TargetID)
+			case "Page.getFrameTree":
+				result = `{"frameTree":{"frame":{"id":"frame","url":"about:blank"}}}`
+			case "Runtime.evaluate":
+				if frame.Params.Expression == "reset-script" {
+					scripts++
+				}
+				result = `{"result":{"type":"string","value":"{}"}}`
+			case "Browser.close", "Target.closeTarget", "Target.createTarget":
+				destructive++
+			}
+			mu.Unlock()
+			response := fmt.Sprintf(`{"id":%d,"result":%s}`, frame.ID, result)
+			if wsutil.WriteServerText(conn, []byte(response)) != nil {
+				return
+			}
+		}
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv("K_BRAIN_CDP_WS", "ws"+strings.TrimPrefix(srv.URL, "http")+"/devtools/browser/reset-fixture")
+	oldBrowser, oldDriver := Browser, browser.Driver
+	browser.Driver = browser.DriverRod
+	Browser = browser.NewManager(browser.ModeLive)
+	t.Cleanup(func() { Browser.CloseAll(); Browser = oldBrowser; browser.Driver = oldDriver })
+	tool := BrowserExec()
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	call := func(args string) error { _, err := tool.Run(ctx, json.RawMessage(args)); return err }
+	if err := call(`{"code":"js(\"reset-script\")"}`); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	target = "repinned"
+	mu.Unlock()
+	for _, args := range []string{`{"code":"js(\"reset-script\")"}`, `{"code":"js(\"reset-script\")","reset":false}`} {
+		if err := call(args); !errors.Is(err, browser.ErrTargetClosed) {
+			t.Fatalf("default call changed target: %v", err)
+		}
+	}
+	mu.Lock()
+	if connections != 1 || scripts != 1 || len(attached) != 1 || attached[0] != "original" {
+		t.Errorf("default call changed binding: connections=%d scripts=%d attached=%v", connections, scripts, attached)
+	}
+	mu.Unlock()
+	if err := call(`{"code":"js(\"reset-script\")","reset":true}`); err != nil {
+		t.Fatalf("explicit reset: %v", err)
+	}
+	mu.Lock()
+	if connections != 2 || scripts != 2 || len(attached) != 2 || attached[1] != "repinned" || destructive != 0 {
+		t.Errorf("reset flow: connections=%d scripts=%d attached=%v destructive=%d", connections, scripts, attached, destructive)
+	}
+	mu.Unlock()
+
+	// The tool's timeout must also bound the wait for an active program.
+	sess, _ := Browser.Session("")
+	entered, release, finished := make(chan struct{}), make(chan struct{}), make(chan error, 1)
+	go func() {
+		_, err := sess.Do(ctx, func(browser.Backend) (string, error) { close(entered); <-release; return "", nil })
+		finished <- err
+	}()
+	<-entered
+	err := call(`{"code":"js(\"reset-script\")","reset":true,"timeout":0.03}`)
+	close(release)
+	if activeErr := <-finished; activeErr != nil {
+		t.Fatal(activeErr)
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("reset wait ignored tool timeout: %v", err)
+	}
+	if err := call(`{"code":"print(\"still bound\")"}`); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if connections != 2 || scripts != 2 || destructive != 0 {
+		t.Fatalf("timed out reset changed backend or ran script: connections=%d scripts=%d destructive=%d", connections, scripts, destructive)
 	}
 }
 

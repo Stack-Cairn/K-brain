@@ -23,61 +23,291 @@ type chromedpBackend struct {
 	mode      Mode
 	allocCtx  context.Context
 	allocStop context.CancelFunc
+	ownerStop context.CancelFunc
 	targetCtx context.Context
 	targetOff context.CancelFunc
+	endpoint  string
+	targetID  target.ID
+	browser   *chromedp.Browser
+	connOff   context.CancelFunc
+	invalid   error
 	closed    bool
 	obtained  Obtained
 }
 
 func openChromedp(ctx context.Context, mode Mode, sessionName string) (*chromedpBackend, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	b := &chromedpBackend{mode: mode}
-	var allocCtx context.Context
-	var cancel context.CancelFunc
-	switch mode {
-	case ModeLive:
+	if mode == ModeLive {
 		ws, err := DiscoverLiveWS(ctx)
 		if err != nil {
-			if !errors.Is(err, ErrNoLiveBrowser) {
-				return nil, err
+			return nil, err
+		}
+		b.endpoint, b.obtained = ws, ObtainedLive
+		if err = b.connect(ctx); err != nil {
+			return nil, err
+		}
+		if err := b.selectLiveTarget(ctx, sessionName); err != nil {
+			if b.targetID != "" {
+				b.invalid = err
+				return b, err
 			}
-			return openChromedp(ctx, ModeDedicated, sessionName)
+			_ = b.Close()
+			return nil, err
 		}
-		allocCtx, cancel = chromedp.NewRemoteAllocator(context.WithoutCancel(ctx), ws)
-		b.obtained = ObtainedLive
-	case ModeDedicated, ModeHeadless:
-
-		opts := append(chromedp.DefaultExecAllocatorOptions[:],
-			chromedp.Flag("headless", mode == ModeHeadless),
-			chromedp.Flag("remote-debugging-port", "0"),
-		)
-		if home, err := os.UserHomeDir(); err == nil {
-			opts = append(opts, chromedp.UserDataDir(dedicatedProfileDir(home, sessionName)))
-		}
-		if bin := os.Getenv("ROD_BROWSER_BIN"); bin != "" {
-			opts = append(opts, chromedp.ExecPath(bin))
-		}
-		allocCtx, cancel = chromedp.NewExecAllocator(context.WithoutCancel(ctx), opts...)
-		b.obtained = ObtainedLaunched
-	default:
+		err = b.Prepare(ctx)
+		return b, err
+	}
+	if mode != ModeDedicated && mode != ModeHeadless {
 		return nil, fmt.Errorf("unknown browser mode %q", mode)
 	}
-	b.allocCtx, b.allocStop = allocCtx, cancel
-
-	targetCtx, targetOff := chromedp.NewContext(allocCtx)
-	b.targetCtx, b.targetOff = targetCtx, targetOff
-
-	// Startup obeys this call's cancellation; the established browser outlives it.
-	stopStartup := context.AfterFunc(ctx, cancel)
-	err := chromedp.Run(targetCtx)
-	stopped := stopStartup()
-	if !stopped && ctx.Err() != nil {
+	opts := append(chromedp.DefaultExecAllocatorOptions[:],
+		chromedp.Flag("headless", mode == ModeHeadless),
+		chromedp.Flag("remote-debugging-port", "0"),
+	)
+	if home, err := os.UserHomeDir(); err == nil {
+		opts = append(opts, chromedp.UserDataDir(managedProfileDir(home, mode, sessionName)))
+	}
+	if bin := os.Getenv("ROD_BROWSER_BIN"); bin != "" {
+		opts = append(opts, chromedp.ExecPath(bin))
+	}
+	b.allocCtx, b.allocStop = chromedp.NewExecAllocator(context.WithoutCancel(ctx), opts...)
+	ownerCtx, ownerStop := chromedp.NewContext(b.allocCtx)
+	b.ownerStop, b.obtained = ownerStop, ObtainedLaunched
+	c := chromedp.FromContext(ownerCtx)
+	// Allocate with an independent lifetime. A transient Run context passed to
+	// ExecAllocator would also become the browser connection's lifetime.
+	stopStartup := context.AfterFunc(ctx, ownerStop)
+	browser, err := c.Allocator.Allocate(ownerCtx, chromedp.WithDialTimeout(chromedpDialBudget(ctx)))
+	stopStartup()
+	if err == nil && ctx.Err() != nil {
 		err = ctx.Err()
 	}
 	if err != nil {
 		_ = b.Close()
 		return nil, fmt.Errorf("chromedp connect: %w", err)
 	}
-	return b, nil
+	c.Browser, b.browser = browser, browser
+	b.targetID, err = target.CreateTarget("about:blank").Do(cdp.WithExecutor(ctx, browser))
+	if err != nil {
+		if b.targetID != "" {
+			b.invalid = err
+			return b, err
+		}
+		_ = b.Close()
+		return nil, err
+	}
+	return b, b.attach(ctx, b.targetID)
+}
+
+func (b *chromedpBackend) selectLiveTarget(ctx context.Context, sessionName string) error {
+	browserCtx := cdp.WithExecutor(ctx, b.browser)
+	if sessionName == "" || sessionName == "default" {
+		infos, err := target.GetTargets().Do(browserCtx)
+		if err != nil {
+			return err
+		}
+		var blanks []target.ID
+		for _, info := range infos {
+			if info.Type != "page" {
+				continue
+			}
+			if !internalURL(info.URL) {
+				if liveTargets.claim(b.endpoint, string(info.TargetID), b) == nil {
+					b.targetID = info.TargetID
+					return nil
+				}
+			}
+			if info.URL == "about:blank" || strings.HasPrefix(info.URL, "chrome://newtab") || strings.HasPrefix(info.URL, "edge://newtab") {
+				blanks = append(blanks, info.TargetID)
+			}
+		}
+		for _, id := range blanks {
+			if liveTargets.claim(b.endpoint, string(id), b) == nil {
+				b.targetID = id
+				return nil
+			}
+		}
+	}
+	id, err := target.CreateTarget("about:blank").Do(browserCtx)
+	if id != "" {
+		if claimErr := liveTargets.claim(b.endpoint, string(id), b); claimErr != nil {
+			return claimErr
+		}
+		b.targetID = id
+	}
+	return err
+}
+
+// connect owns only the websocket. NewBrowser's context survives a call, while
+// its dial timeout and startup cancellation obey that call's remaining budget.
+func chromedpDialBudget(ctx context.Context) time.Duration {
+	if deadline, ok := ctx.Deadline(); ok {
+		return max(time.Nanosecond, time.Until(deadline))
+	}
+	return 10 * time.Second
+}
+
+func (b *chromedpBackend) connect(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	life, off := context.WithCancel(context.WithoutCancel(ctx))
+	stop := context.AfterFunc(ctx, off)
+	browser, err := chromedp.NewBrowser(life, b.endpoint, chromedp.WithDialTimeout(chromedpDialBudget(ctx)))
+	stop()
+	if ctx.Err() != nil {
+		err = ctx.Err()
+	}
+	if err != nil {
+		off()
+		return fmt.Errorf("chromedp connect: %w", err)
+	}
+	b.browser, b.connOff = browser, off
+	return nil
+}
+
+func (b *chromedpBackend) Invalidate(err error) {
+	var switchErr *tabSwitchError
+	if errors.As(err, &switchErr) && !isConnErr(err) {
+		return
+	}
+	if errors.Is(b.invalid, ErrTargetClosed) {
+		return
+	}
+	if isTargetClosedErr(err) {
+		b.invalid = fmt.Errorf("%w: %s: %w", ErrTargetClosed, b.targetID, err)
+	} else if isConnErr(err) || isSessionErr(err) {
+		b.invalid = err
+	}
+}
+
+func (b *chromedpBackend) disconnected() bool {
+	if b.browser == nil {
+		return true
+	}
+	select {
+	case <-b.browser.LostConnection:
+		return true
+	default:
+		return false
+	}
+}
+
+func (b *chromedpBackend) Prepare(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if b.closed {
+		return errors.New("chromedp backend is closed")
+	}
+	if errors.Is(b.invalid, ErrTargetClosed) {
+		return b.invalid
+	}
+	lost := b.disconnected()
+	if b.invalid == nil && !lost && b.targetCtx != nil && b.targetCtx.Err() == nil {
+		err := b.verify(ctx)
+		if err == nil {
+			return nil
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if !isConnErr(err) && !isSessionErr(err) && !isTargetClosedErr(err) {
+			return err
+		}
+		b.Invalidate(err)
+		if errors.Is(b.invalid, ErrTargetClosed) {
+			return b.invalid
+		}
+		lost = b.disconnected()
+	}
+	if lost || isConnErr(b.invalid) {
+		if b.endpoint == "" {
+			// ExecAllocator kills its owned process on websocket loss. Reopening
+			// would create a different browser, so fail without relaunching it.
+			return fmt.Errorf("chromedp original browser disconnected: %w", b.invalid)
+		}
+		if b.targetOff != nil {
+			b.targetOff()
+			b.targetOff = nil
+		}
+		if b.connOff != nil {
+			b.connOff()
+		}
+		if err := b.connect(ctx); err != nil {
+			return err
+		}
+	}
+	if b.targetID == "" {
+		return errors.New("chromedp has no original target")
+	}
+	if _, err := target.GetTargetInfo().WithTargetID(b.targetID).Do(cdp.WithExecutor(ctx, b.browser)); err != nil {
+		b.Invalidate(err)
+		if errors.Is(b.invalid, ErrTargetClosed) {
+			return b.invalid
+		}
+		return err
+	}
+	b.detach(ctx)
+	return b.attach(ctx, b.targetID)
+}
+
+// A normal NewContext(..., WithTargetID(...)) cancellation closes that target.
+// Give this context an already connected Browser via the public ContextOption,
+// without inheriting a browser/RemoteAllocator parent. NewContext records it as
+// the first context, whose cancellation performs no target cleanup. Cancel the
+// outer lifetime directly; the returned cancel-and-wait assumes allocation and
+// must not be used for this borrowed browser. Detachment is explicit below.
+func (b *chromedpBackend) attach(ctx context.Context, id target.ID) error {
+	life, cancel := context.WithCancelCause(context.WithoutCancel(ctx))
+	off := func() { cancel(nil) }
+	targetCtx, _ := chromedp.NewContext(life, chromedp.WithTargetID(id), func(c *chromedp.Context) {
+		c.Browser = b.browser
+	})
+	watchChromedpTarget(targetCtx, id, cancel)
+	b.targetCtx, b.targetOff = targetCtx, off
+	// Keep the selected identity even when attachment or validation times out.
+	b.targetID = id
+	// The first Run starts Target.run using its context. Give it the target's
+	// lifetime; a per-call child would stop its event loop as soon as Run returns.
+	stopStartup := context.AfterFunc(ctx, off)
+	err := chromedp.Run(targetCtx)
+	stopStartup()
+	if ctx.Err() != nil {
+		err = ctx.Err()
+	}
+	if err == nil {
+		err = b.verify(ctx)
+	}
+	if err != nil {
+		b.invalid = err
+		b.Invalidate(err)
+		return b.invalid
+	}
+	b.invalid = nil
+	return nil
+}
+
+func (b *chromedpBackend) verify(ctx context.Context) error {
+	return b.run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
+		_, err := page.GetFrameTree().Do(ctx)
+		return err
+	}))
+}
+
+func (b *chromedpBackend) detach(ctx context.Context) {
+	if b.targetCtx != nil && !b.disconnected() {
+		if c := chromedp.FromContext(b.targetCtx); c != nil && c.Target != nil {
+			_ = target.DetachFromTarget().WithSessionID(c.Target.SessionID).Do(cdp.WithExecutor(ctx, b.browser))
+		}
+	}
+	if b.targetOff != nil {
+		b.targetOff()
+		b.targetOff = nil
+	}
 }
 
 func (b *chromedpBackend) run(ctx context.Context, actions ...chromedp.Action) error {
@@ -93,7 +323,7 @@ func (b *chromedpBackend) run(ctx context.Context, actions ...chromedp.Action) e
 		c, off = context.WithDeadline(c, d)
 		defer off()
 	}
-	return chromedp.Run(c, actions...)
+	return b.targetError(ctx, chromedp.Run(c, actions...))
 }
 
 func (b *chromedpBackend) Info(ctx context.Context) (PageInfo, error) {
@@ -409,10 +639,36 @@ func (b *chromedpBackend) Tabs(ctx context.Context) ([]Tab, error) {
 }
 
 func (b *chromedpBackend) UseTab(ctx context.Context, targetID string) error {
-	b.targetOff()
-	targetCtx, targetOff := chromedp.NewContext(b.allocCtx, chromedp.WithTargetID(target.ID(targetID)))
-	b.targetCtx, b.targetOff = targetCtx, targetOff
-	return chromedp.Run(targetCtx)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if b.closed || b.disconnected() {
+		return errors.New("chromedp browser is not connected")
+	}
+	id := target.ID(targetID)
+	if id == "" {
+		return errors.New("chromedp target ID is empty")
+	}
+	if id == b.targetID {
+		return b.Prepare(ctx)
+	}
+	if _, err := target.GetTargetInfo().WithTargetID(id).Do(cdp.WithExecutor(ctx, b.browser)); err != nil {
+		return &tabSwitchError{targetID: targetID, cause: err}
+	}
+	if err := liveTargets.claim(b.endpoint, targetID, b); err != nil {
+		return err
+	}
+	candidate := &chromedpBackend{browser: b.browser}
+	if err := candidate.attach(ctx, id); err != nil {
+		candidate.detach(ctx)
+		liveTargets.release(b.endpoint, targetID, b)
+		return &tabSwitchError{targetID: targetID, cause: err}
+	}
+	oldID := b.targetID
+	b.detach(ctx)
+	b.targetID, b.targetCtx, b.targetOff, b.invalid = id, candidate.targetCtx, candidate.targetOff, nil
+	liveTargets.release(b.endpoint, string(oldID), b)
+	return nil
 }
 
 func (b *chromedpBackend) UploadFiles(ctx context.Context, selector string, paths []string) error {
@@ -437,12 +693,19 @@ func (b *chromedpBackend) UploadFiles(ctx context.Context, selector string, path
 }
 
 func (b *chromedpBackend) Close() error {
+	defer liveTargets.releaseAll(b)
 	if b.closed {
 		return nil
 	}
 	b.closed = true
-	if b.targetOff != nil {
-		b.targetOff()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	b.detach(ctx)
+	if b.connOff != nil {
+		b.connOff()
+	}
+	if b.ownerStop != nil {
+		b.ownerStop()
 	}
 	if b.allocStop != nil {
 		b.allocStop()

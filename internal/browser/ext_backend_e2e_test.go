@@ -32,7 +32,7 @@ func TestBackendThroughRelay(t *testing.T) {
 		t.Fatalf("connect: %v", err)
 	}
 	b.browser = b.browser.Context(ctx)
-	if err := b.attachPage(); err != nil {
+	if err := b.attachPage(ctx, "default"); err != nil {
 		t.Fatalf("attachPage: %v", err)
 	}
 	defer b.Close()

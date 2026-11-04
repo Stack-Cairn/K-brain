@@ -65,6 +65,22 @@ func TestConnectLiveWaitsBeyondOldProbeWindow(t *testing.T) {
 	}
 }
 
+func TestConnectLiveCancellationRemainsCancellation(t *testing.T) {
+	ws, _ := pendingApprovalServer(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() { _, err := connectLive(ctx, ws); done <- err }()
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) || strings.Contains(err.Error(), "timed out") {
+			t.Fatalf("cancel was reported as timeout: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("pending approval ignored cancellation")
+	}
+}
+
 func TestConnectLiveRejectsForbiddenHandshake(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -95,22 +111,22 @@ func TestConnectLiveBrowserSkipsRefusedCandidates(t *testing.T) {
 		tried = append(tried, ws)
 		return want, nil
 	}
-	got, err := connectLiveBrowser(context.Background())
-	if err != nil || got != want {
+	got, endpoint, err := connectLiveBrowser(context.Background())
+	if err != nil || got != want || endpoint != "ws://first/devtools/browser/a" {
 		t.Fatalf("got %v %v", got, err)
 	}
 
 	connectLive = func(ctx context.Context, ws string) (*rod.Browser, error) {
 		return nil, fmt.Errorf("%w: 404", errLiveRefused)
 	}
-	if _, err := connectLiveBrowser(context.Background()); !errors.Is(err, ErrNoLiveBrowser) {
+	if _, _, err := connectLiveBrowser(context.Background()); !errors.Is(err, ErrNoLiveBrowser) {
 		t.Fatalf("all refused must fall back as no-live-browser, got %v", err)
 	}
 
 	connectLive = func(ctx context.Context, ws string) (*rod.Browser, error) {
 		return nil, fmt.Errorf("%w: waiting", ErrPermissionBlocked)
 	}
-	if _, err := connectLiveBrowser(context.Background()); !errors.Is(err, ErrPermissionBlocked) || errors.Is(err, ErrNoLiveBrowser) {
+	if _, _, err := connectLiveBrowser(context.Background()); !errors.Is(err, ErrPermissionBlocked) || errors.Is(err, ErrNoLiveBrowser) {
 		t.Fatalf("pending approval must not fall back to the dedicated browser, got %v", err)
 	}
 }

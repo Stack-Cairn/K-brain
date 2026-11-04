@@ -36,6 +36,10 @@ var ErrNoLiveBrowser = errors.New("no live browser with remote debugging found")
 var errDetachFailed = errors.New("detach failed: rod internal layout changed")
 
 type Backend interface {
+	Prepare(ctx context.Context) error
+
+	Invalidate(err error)
+
 	Info(ctx context.Context) (PageInfo, error)
 
 	Navigate(ctx context.Context, url string) error
@@ -100,9 +104,14 @@ type Browser struct {
 	browser       *rod.Browser
 	page          *rod.Page
 	launcher      *launcher.Launcher
-	closeLauncher bool
 	obtained      Obtained
 	profileDir    string
+	endpoint      string
+	targetID      proto.TargetTargetID
+	staleSession  proto.TargetSessionID
+	pageCancel    context.CancelFunc
+	browserCancel context.CancelFunc
+	reconnect     bool
 }
 
 type Obtained int
@@ -143,46 +152,53 @@ func Open(ctx context.Context, mode Mode) (Backend, error) {
 
 func OpenNamed(ctx context.Context, mode Mode, sessionName string) (Backend, error) {
 	if mode == ModeExtension {
-		return openExtension(ctx)
+		b, err := openExtension(ctx)
+		if b == nil {
+			return nil, err
+		}
+		return b, err
 	}
 	if Driver == "chromedp" {
-		return openChromedp(ctx, mode, sessionName)
+		b, err := openChromedp(ctx, mode, sessionName)
+		if b == nil {
+			return nil, err
+		}
+		return b, err
 	}
-	return openRod(ctx, mode, sessionName)
+	b, err := openRod(ctx, mode, sessionName)
+	if b == nil {
+		return nil, err
+	}
+	return b, err
 }
 
 func openRod(ctx context.Context, mode Mode, sessionName string) (*Browser, error) {
 	b := &Browser{mode: mode}
 	switch mode {
 	case ModeLive:
-		rb, err := connectLiveBrowser(ctx)
+		rb, endpoint, err := connectLiveBrowser(ctx)
 		if err != nil {
-			if !errors.Is(err, ErrNoLiveBrowser) {
-				return nil, err
-			}
-
-			fb, ferr := openRod(ctx, ModeDedicated, sessionName)
-			if ferr != nil {
-				return nil, fmt.Errorf("%w; dedicated fallback failed: %w", err, ferr)
-			}
-			fb.closeLauncher = true
-			return fb, nil
+			return nil, fmt.Errorf("connect to your live browser (no profile was changed; enable remote debugging or explicitly choose dedicated/headless): %w", err)
 		}
-		b.browser = rb
+		b.browser, b.endpoint = rb, endpoint
 		b.obtained = ObtainedLive
 	case ModeDedicated, ModeHeadless:
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return nil, err
 		}
-		profileDir := dedicatedProfileDir(home, sessionName)
+		profileDir := managedProfileDir(home, mode, sessionName)
 		b.profileDir = profileDir
 
 		if ws, ok := DiscoverWSForProfile(ctx, profileDir); ok {
-			b.browser = rod.New().ControlURL(ws)
-			if err := b.browser.Connect(); err == nil {
+			b.browser, err = connectLive(ctx, ws)
+			if err == nil {
+				b.endpoint = ws
 				b.obtained = ObtainedReattached
 				break
+			}
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
 			}
 			b.browser = nil
 		}
@@ -206,8 +222,9 @@ func openRod(ctx context.Context, mode Mode, sessionName string) (*Browser, erro
 		}
 		b.launcher = l
 		b.obtained = ObtainedLaunched
-		b.browser = rod.New().ControlURL(ws)
-		if err := b.browser.Connect(); err != nil {
+		b.endpoint = ws
+		b.browser, err = connectLive(ctx, ws)
+		if err != nil {
 			l.Kill()
 			l.Cleanup()
 			return nil, fmt.Errorf("connect to launched chrome: %w", err)
@@ -215,10 +232,14 @@ func openRod(ctx context.Context, mode Mode, sessionName string) (*Browser, erro
 	default:
 		return nil, fmt.Errorf("unknown browser mode %q", mode)
 	}
-	b.browser = b.browser.Context(ctx)
-	if err := b.attachPage(); err != nil {
-
+	b.keepBrowser(ctx, b.browser)
+	if err := b.attachPage(ctx, sessionName); err != nil {
+		if b.targetID != "" {
+			b.Invalidate(err)
+			return b, err
+		}
 		detach(b.browser)
+		b.browserCancel()
 		if b.launcher != nil {
 			b.launcher.Kill()
 			b.launcher.Cleanup()
@@ -228,27 +249,25 @@ func openRod(ctx context.Context, mode Mode, sessionName string) (*Browser, erro
 	return b, nil
 }
 
-// connectLiveBrowser tries each live candidate in order. A candidate that
-// answers but is not a browser is skipped; one that is waiting for the user's
-// approval stops the search, so the caller reports it instead of silently
-// falling back to the dedicated browser.
-func connectLiveBrowser(ctx context.Context) (*rod.Browser, error) {
+// connectLiveBrowser returns the accepted endpoint so recovery never selects a
+// different browser or profile after the session has started.
+func connectLiveBrowser(ctx context.Context) (*rod.Browser, string, error) {
 	candidates, err := discoverLiveCandidates(ctx)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	var refused []string
 	for _, ws := range candidates {
 		rb, err := connectLive(ctx, ws)
 		if err == nil {
-			return rb, nil
+			return rb, ws, nil
 		}
 		if !errors.Is(err, errLiveRefused) {
-			return nil, err
+			return nil, "", err
 		}
 		refused = append(refused, err.Error())
 	}
-	return nil, fmt.Errorf("%w: no candidate accepted a debugging connection (%s)", ErrNoLiveBrowser, strings.Join(refused, "; "))
+	return nil, "", fmt.Errorf("%w: no candidate accepted a debugging connection (%s)", ErrNoLiveBrowser, strings.Join(refused, "; "))
 }
 
 func launchDedicated(ctx context.Context, profileDir string, newLauncher func() *launcher.Launcher) (*launcher.Launcher, string, error) {
@@ -291,7 +310,7 @@ func killProfileChromeQuiet(ctx context.Context, profileDir string) bool {
 }
 
 func internalURL(u string) bool {
-	for _, p := range []string{"chrome://", "chrome-untrusted://", "devtools://", "chrome-extension://", "about:"} {
+	for _, p := range []string{"chrome://", "edge://", "chrome-untrusted://", "devtools://", "chrome-extension://", "about:"} {
 		if strings.HasPrefix(u, p) {
 			return true
 		}
@@ -299,39 +318,47 @@ func internalURL(u string) bool {
 	return false
 }
 
-func (b *Browser) attachPage() error {
-	pages, err := b.browser.Pages()
+func (b *Browser) attachPage(ctx context.Context, sessionName string) error {
+	list, err := proto.TargetGetTargets{}.Call(b.browser.Context(ctx))
 	if err != nil {
 		return fmt.Errorf("list pages: %w", err)
 	}
-	var blank *rod.Page
-	for _, p := range pages {
-		info, err := p.Info()
-		if err != nil {
-			continue
+	var blanks []proto.TargetTargetID
+	if b.mode != ModeLive || sessionName == "" || sessionName == "default" {
+		for _, info := range list.TargetInfos {
+			if info.Type != proto.TargetTargetInfoTypePage {
+				continue
+			}
+			if !internalURL(info.URL) {
+				if liveTargets.claim(b.endpoint, string(info.TargetID), b) == nil {
+					b.targetID = info.TargetID
+					break
+				}
+			}
+			if info.URL == "about:blank" || strings.HasPrefix(info.URL, "chrome://newtab") || strings.HasPrefix(info.URL, "edge://newtab") {
+				blanks = append(blanks, info.TargetID)
+			}
 		}
-		if info.Type != "page" {
-			continue
-		}
-		if !internalURL(info.URL) {
-			b.page = p
-			break
-		}
-		if blank == nil && (info.URL == "about:blank" || strings.HasPrefix(info.URL, "chrome://newtab") || strings.HasPrefix(info.URL, "edge://newtab")) {
-			blank = p
+		if b.targetID == "" {
+			for _, id := range blanks {
+				if liveTargets.claim(b.endpoint, string(id), b) == nil {
+					b.targetID = id
+					break
+				}
+			}
 		}
 	}
-	if b.page == nil {
-		b.page = blank
-	}
-	if b.page == nil {
-		b.page, err = b.browser.Page(proto.TargetCreateTarget{URL: "about:blank"})
+	if b.targetID == "" {
+		target, err := (proto.TargetCreateTarget{URL: "about:blank"}).Call(b.browser.Context(ctx))
 		if err != nil {
 			return fmt.Errorf("create tab: %w", err)
 		}
+		if err := liveTargets.claim(b.endpoint, string(target.TargetID), b); err != nil {
+			return err
+		}
+		b.targetID = target.TargetID
 	}
-
-	return nil
+	return b.attachTarget(ctx, b.targetID)
 }
 
 func (b *Browser) Mode() Mode { return b.mode }
@@ -339,18 +366,20 @@ func (b *Browser) Mode() Mode { return b.mode }
 func (b *Browser) Obtained() Obtained { return b.obtained }
 
 func (b *Browser) Close() error {
+	defer liveTargets.releaseAll(b)
 	if b.browser == nil {
 		return nil
 	}
+	defer func() {
+		if b.browserCancel != nil {
+			b.browserCancel()
+		}
+		b.page = nil
+		b.browser = nil
+	}()
 	var err error
 	switch {
-	case b.mode == ModeLive || b.obtained == ObtainedReattached:
-
-		if !detach(b.browser) {
-			err = errDetachFailed
-		}
-	case b.mode == ModeDedicated && !b.closeLauncher:
-
+	case b.mode == ModeLive || b.mode == ModeExtension || b.mode == ModeDedicated || b.obtained == ObtainedReattached:
 		if !detach(b.browser) {
 			err = errDetachFailed
 		}
@@ -390,17 +419,17 @@ func (b *Browser) pendingDialog(ctx context.Context) (*Dialog, error) {
 }
 
 func (b *Browser) HandleDialog(accept bool, promptText string) error {
-	wait, handle := b.page.Timeout(2 * time.Second).HandleDialog()
-	_ = wait()
-	return handle(&proto.PageHandleJavaScriptDialog{Accept: accept, PromptText: promptText})
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	return rodPageAction(ctx, b, func(p *rod.Page) error {
+		wait, handle := p.HandleDialog()
+		_ = wait()
+		return handle(&proto.PageHandleJavaScriptDialog{Accept: accept, PromptText: promptText})
+	})
 }
 
 func (b *Browser) Navigate(ctx context.Context, url string) error {
-	if b.page == nil {
-		return errors.New("no attached tab")
-	}
-	p := b.page.Context(ctx)
-	if err := p.Navigate(url); err != nil {
+	if err := rodPageAction(ctx, b, func(p *rod.Page) error { return p.Navigate(url) }); err != nil {
 		return err
 	}
 
@@ -408,8 +437,7 @@ func (b *Browser) Navigate(ctx context.Context, url string) error {
 }
 
 func (b *Browser) Back(ctx context.Context) error {
-	p := b.page.Context(ctx)
-	if err := p.NavigateBack(); err != nil {
+	if err := rodPageAction(ctx, b, func(p *rod.Page) error { return p.NavigateBack() }); err != nil {
 		return err
 	}
 	return b.WaitLoad(ctx)
@@ -441,24 +469,30 @@ func (b *Browser) Eval(ctx context.Context, expression string) (string, error) {
 }
 
 func (b *Browser) runtimeEval(ctx context.Context, expression string) (*proto.RuntimeEvaluateResult, error) {
-	return proto.RuntimeEvaluate{
-		Expression:    expression,
-		ReturnByValue: true,
-		AwaitPromise:  true,
-	}.Call(b.page.Context(ctx))
+	return rodPageCall(ctx, b, func(p *rod.Page) (*proto.RuntimeEvaluateResult, error) {
+		return proto.RuntimeEvaluate{
+			Expression:    expression,
+			ReturnByValue: true,
+			AwaitPromise:  true,
+		}.Call(p)
+	})
 }
 
 func (b *Browser) ClickAt(ctx context.Context, x, y float64) error {
-	m := proto.InputDispatchMouseEvent{Type: proto.InputDispatchMouseEventTypeMousePressed, X: x, Y: y, Button: proto.InputMouseButtonLeft, ClickCount: 1}
-	if err := m.Call(b.page.Context(ctx)); err != nil {
-		return err
-	}
-	m.Type = proto.InputDispatchMouseEventTypeMouseReleased
-	return m.Call(b.page.Context(ctx))
+	return rodPageAction(ctx, b, func(p *rod.Page) error {
+		m := proto.InputDispatchMouseEvent{Type: proto.InputDispatchMouseEventTypeMousePressed, X: x, Y: y, Button: proto.InputMouseButtonLeft, ClickCount: 1}
+		if err := m.Call(p); err != nil {
+			return err
+		}
+		m.Type = proto.InputDispatchMouseEventTypeMouseReleased
+		return m.Call(p)
+	})
 }
 
 func (b *Browser) TypeText(ctx context.Context, text string) error {
-	return proto.InputInsertText{Text: text}.Call(b.page.Context(ctx))
+	return rodPageAction(ctx, b, func(p *rod.Page) error {
+		return proto.InputInsertText{Text: text}.Call(p)
+	})
 }
 
 var keyDefs = map[string]struct {
@@ -483,7 +517,6 @@ var keyDefs = map[string]struct {
 }
 
 func (b *Browser) PressKey(ctx context.Context, key string) error {
-	p := b.page.Context(ctx)
 	def, ok := keyDefs[key]
 	if !ok && len(key) == 1 {
 		def = struct {
@@ -496,22 +529,24 @@ func (b *Browser) PressKey(ctx context.Context, key string) error {
 	if !ok {
 		return fmt.Errorf("unknown key %q", key)
 	}
-	down := proto.InputDispatchKeyEvent{
-		Type: proto.InputDispatchKeyEventTypeKeyDown,
-		Key:  key, Code: def.Code,
-		WindowsVirtualKeyCode: def.Key, NativeVirtualKeyCode: def.Key,
-	}
-	if err := down.Call(p); err != nil {
-		return err
-	}
-	if def.Text != "" {
-		if err := (proto.InputDispatchKeyEvent{Type: proto.InputDispatchKeyEventTypeChar, Text: def.Text, Key: key, Code: def.Code}).Call(p); err != nil {
+	return rodPageAction(ctx, b, func(p *rod.Page) error {
+		down := proto.InputDispatchKeyEvent{
+			Type: proto.InputDispatchKeyEventTypeKeyDown,
+			Key:  key, Code: def.Code,
+			WindowsVirtualKeyCode: def.Key, NativeVirtualKeyCode: def.Key,
+		}
+		if err := down.Call(p); err != nil {
 			return err
 		}
-	}
-	up := down
-	up.Type = proto.InputDispatchKeyEventTypeKeyUp
-	return up.Call(p)
+		if def.Text != "" {
+			if err := (proto.InputDispatchKeyEvent{Type: proto.InputDispatchKeyEventTypeChar, Text: def.Text, Key: key, Code: def.Code}).Call(p); err != nil {
+				return err
+			}
+		}
+		up := down
+		up.Type = proto.InputDispatchKeyEventTypeKeyUp
+		return up.Call(p)
+	})
 }
 
 func (b *Browser) Fill(ctx context.Context, selector, text string) error {
@@ -524,11 +559,13 @@ func (b *Browser) Scroll(ctx context.Context, dy float64) error {
 	if err != nil {
 		return err
 	}
-	return (proto.InputDispatchMouseEvent{
-		Type: proto.InputDispatchMouseEventTypeMouseWheel,
-		X:    float64(info.Width) / 2, Y: float64(info.Height) / 2,
-		DeltaX: 0, DeltaY: dy,
-	}).Call(b.page.Context(ctx))
+	return rodPageAction(ctx, b, func(p *rod.Page) error {
+		return (proto.InputDispatchMouseEvent{
+			Type: proto.InputDispatchMouseEventTypeMouseWheel,
+			X:    float64(info.Width) / 2, Y: float64(info.Height) / 2,
+			DeltaX: 0, DeltaY: dy,
+		}).Call(p)
+	})
 }
 
 func (b *Browser) WaitLoad(ctx context.Context) error {
@@ -543,6 +580,9 @@ func (b *Browser) WaitLoad(ctx context.Context) error {
 		res, err := b.Eval(ctx, "document.readyState")
 		if err == nil && res == `"complete"` {
 			return nil
+		}
+		if err != nil && (isConnErr(err) || isSessionErr(err) || isTargetClosedErr(err)) {
+			return err
 		}
 		select {
 		case <-ctx.Done():
@@ -577,30 +617,33 @@ func (b *Browser) WaitElement(ctx context.Context, selector string, visible bool
 }
 
 func (b *Browser) Screenshot(ctx context.Context, maxDim int) ([]byte, error) {
-	quality := 80
-	p := b.page.Context(ctx)
-	req := &proto.PageCaptureScreenshot{Format: proto.PageCaptureScreenshotFormatJpeg, Quality: &quality}
-	if maxDim > 0 {
-		metrics, err := proto.PageGetLayoutMetrics{}.Call(p)
-		if err == nil && metrics.CSSLayoutViewport != nil {
-			w := float64(metrics.CSSLayoutViewport.ClientWidth)
-			h := float64(metrics.CSSLayoutViewport.ClientHeight)
-			scale := 1.0
-			if max(w, h) > float64(maxDim) {
-				scale = float64(maxDim) / max(w, h)
+	return rodPageCall(ctx, b, func(p *rod.Page) ([]byte, error) {
+		quality := 80
+		req := &proto.PageCaptureScreenshot{Format: proto.PageCaptureScreenshotFormatJpeg, Quality: &quality}
+		if maxDim > 0 {
+			metrics, err := proto.PageGetLayoutMetrics{}.Call(p)
+			if err == nil && metrics.CSSLayoutViewport != nil {
+				w := float64(metrics.CSSLayoutViewport.ClientWidth)
+				h := float64(metrics.CSSLayoutViewport.ClientHeight)
+				scale := 1.0
+				if max(w, h) > float64(maxDim) {
+					scale = float64(maxDim) / max(w, h)
+				}
+				req.Clip = &proto.PageViewport{X: 0, Y: 0, Width: w, Height: h, Scale: scale}
 			}
-			req.Clip = &proto.PageViewport{X: 0, Y: 0, Width: w, Height: h, Scale: scale}
 		}
-	}
-	shot, err := req.Call(p)
-	if err != nil {
-		return nil, err
-	}
-	return shot.Data, nil
+		shot, err := req.Call(p)
+		if err != nil {
+			return nil, err
+		}
+		return shot.Data, nil
+	})
 }
 
 func (b *Browser) AXTree(ctx context.Context) (string, error) {
-	res, err := proto.AccessibilityGetFullAXTree{}.Call(b.page.Context(ctx))
+	res, err := rodPageCall(ctx, b, func(p *rod.Page) (*proto.AccessibilityGetFullAXTreeResult, error) {
+		return proto.AccessibilityGetFullAXTree{}.Call(p)
+	})
 	if err != nil {
 		return "", err
 	}
@@ -631,7 +674,9 @@ func (b *Browser) AXTree(ctx context.Context) (string, error) {
 }
 
 func (b *Browser) BoxModel(ctx context.Context, backendNodeID int) (float64, float64, error) {
-	res, err := proto.DOMGetBoxModel{BackendNodeID: proto.DOMBackendNodeID(backendNodeID)}.Call(b.page.Context(ctx))
+	res, err := rodPageCall(ctx, b, func(p *rod.Page) (*proto.DOMGetBoxModelResult, error) {
+		return proto.DOMGetBoxModel{BackendNodeID: proto.DOMBackendNodeID(backendNodeID)}.Call(p)
+	})
 	if err != nil {
 		return 0, 0, err
 	}
@@ -645,47 +690,70 @@ func (b *Browser) BoxModel(ctx context.Context, backendNodeID int) (float64, flo
 }
 
 func (b *Browser) Tabs(ctx context.Context) ([]Tab, error) {
-	pages, err := b.browser.Context(ctx).Pages()
+	list, err := (proto.TargetGetTargets{}).Call(b.browser.Context(ctx))
 	if err != nil {
 		return nil, err
 	}
 	var out []Tab
-	for _, p := range pages {
-		info, err := p.Info()
-		if err != nil || info.Type != "page" {
-			continue
+	for _, info := range list.TargetInfos {
+		if info.Type == proto.TargetTargetInfoTypePage {
+			out = append(out, Tab{TargetID: string(info.TargetID), Title: info.Title, URL: info.URL})
 		}
-		out = append(out, Tab{TargetID: string(p.TargetID), Title: info.Title, URL: info.URL})
 	}
 	return out, nil
 }
 
 func (b *Browser) UseTab(ctx context.Context, targetID string) error {
-	page, err := b.browser.Context(ctx).PageFromTarget(proto.TargetTargetID(targetID))
-	if err != nil {
+	if err := ctx.Err(); err != nil {
 		return err
 	}
-	b.page = page
+	if targetID == "" {
+		return errors.New("browser target ID is empty")
+	}
+	if targetID == string(b.targetID) {
+		return b.Prepare(ctx)
+	}
+	if err := liveTargets.claim(b.endpoint, targetID, b); err != nil {
+		return err
+	}
+	oldID, oldCancel, oldPage := b.targetID, b.pageCancel, b.page
+	if err := b.attachTarget(ctx, proto.TargetTargetID(targetID)); err != nil {
+		if string(oldID) != targetID {
+			liveTargets.release(b.endpoint, targetID, b)
+		}
+		return &tabSwitchError{targetID: targetID, cause: err}
+	}
+	if oldPage != nil && b.mode != ModeExtension {
+		_ = (proto.TargetDetachFromTarget{SessionID: oldPage.SessionID}).Call(b.browser.Context(ctx))
+	}
+	if oldCancel != nil {
+		oldCancel()
+	}
+	if string(oldID) != targetID {
+		liveTargets.release(b.endpoint, string(oldID), b)
+	}
 	return nil
 }
 
 func (b *Browser) UploadFiles(ctx context.Context, selector string, paths []string) error {
-	p := b.page.Context(ctx)
-	el, err := p.Element(selector)
-	if err != nil {
-		return fmt.Errorf("upload: element not found: %s", selector)
-	}
-	return el.SetFiles(paths)
+	return rodPageAction(ctx, b, func(p *rod.Page) error {
+		el, err := p.Element(selector)
+		if err != nil {
+			return fmt.Errorf("upload: element not found: %s: %w", selector, err)
+		}
+		return el.SetFiles(paths)
+	})
 }
 
-func dedicatedProfileDir(home, sessionName string) string {
+func managedProfileDir(home string, mode Mode, sessionName string) string {
 	dir, err := datapath.Resolve(home, os.Getenv("LIVEAGENT_HOME"), os.Getenv("K_BRAIN_HOME"))
 	if err != nil {
 		datapath.Report(err)
 		return ""
 	}
-	if sessionName == "" || sessionName == "default" {
-		return filepath.Join(dir, "browser", "dedicated-profile")
+	profile := string(mode) + "-profile"
+	if sessionName != "" && sessionName != "default" {
+		profile += "-" + sessionName
 	}
-	return filepath.Join(dir, "browser", "dedicated-profile-"+sessionName)
+	return filepath.Join(dir, "browser", profile)
 }

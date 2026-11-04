@@ -2,7 +2,6 @@ package browser
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -27,10 +26,7 @@ type Session struct {
 	sem     chan struct{}
 	mu      sync.Mutex
 	backend Backend
-	noticed bool
 }
-
-const fallbackNotice = "[Note: no debuggable live browser found — using k-brain's dedicated Chrome (logins live in its own profile). To drive your everyday browser instead: chrome://inspect/#remote-debugging, or set browser.mode/cdpUrl in config.]\n\n"
 
 func (m *Manager) Session(name string) (*Session, error) {
 	mode := m.mode
@@ -52,6 +48,13 @@ func (m *Manager) Session(name string) (*Session, error) {
 	key := string(mode) + ":" + name
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if mode == ModeExtension {
+		for other, s := range m.sessions {
+			if s.mode == ModeExtension && other != key {
+				return nil, fmt.Errorf("extension mode has one pinned tab; reuse session %q instead of sharing it with %q", s.name, name)
+			}
+		}
+	}
 	s, ok := m.sessions[key]
 	if !ok {
 		s = &Session{name: name, mode: mode, sem: make(chan struct{}, 1)}
@@ -61,40 +64,57 @@ func (m *Manager) Session(name string) (*Session, error) {
 }
 
 func (s *Session) Do(ctx context.Context, fn func(b Backend) (string, error)) (string, error) {
+	return s.do(ctx, false, fn)
+}
+
+// DoFresh explicitly releases the current binding before running a new program.
+func (s *Session) DoFresh(ctx context.Context, fn func(b Backend) (string, error)) (string, error) {
+	return s.do(ctx, true, fn)
+}
+
+func (s *Session) do(ctx context.Context, reset bool, fn func(b Backend) (string, error)) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	select {
 	case s.sem <- struct{}{}:
 	case <-ctx.Done():
 		return "", ctx.Err()
 	}
 	defer func() { <-s.sem }()
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	if reset {
+		s.mu.Lock()
+		if s.backend != nil {
+			if err := s.backend.Close(); err != nil {
+				s.mu.Unlock()
+				return "", fmt.Errorf("reset browser session: %w", err)
+			}
+			s.backend = nil
+		}
+		s.mu.Unlock()
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	b, err := s.get(ctx)
 	if err != nil {
 		return "", err
 	}
-	out, err := fn(b)
-	if err != nil && isConnErr(err) {
-		s.drop()
-		b, rerr := s.get(ctx)
-		if rerr != nil {
-			return "", err
-		}
-		out, err = fn(b)
+	if err := b.Prepare(ctx); err != nil {
+		return "", fmt.Errorf("prepare browser session: %w", err)
 	}
-
-	if err == nil && out != "" {
-		out = s.takeNotice(b) + out
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	out, err := fn(b)
+	if err != nil && (isConnErr(err) || isSessionErr(err) || isTargetClosedErr(err) || ctx.Err() != nil) {
+		b.Invalidate(err)
+		return out, fmt.Errorf("browser script interrupted; earlier actions may have completed and were not replayed: %w", err)
 	}
 	return out, err
-}
-
-func (s *Session) takeNotice(b Backend) string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.noticed || s.mode != ModeLive || b.Obtained() == ObtainedLive {
-		return ""
-	}
-	s.noticed = true
-	return fallbackNotice
 }
 
 func (s *Session) get(ctx context.Context) (Backend, error) {
@@ -104,11 +124,24 @@ func (s *Session) get(ctx context.Context) (Backend, error) {
 		return s.backend, nil
 	}
 	b, err := openNamed(ctx, s.mode, s.name)
-	if err != nil {
-		return nil, err
+	// Only reopen when startup has not bound a target yet.
+	if b == nil && err != nil && ctx.Err() == nil && (isConnErr(err) || isSessionErr(err)) {
+		b, err = openNamed(ctx, s.mode, s.name)
 	}
-	s.backend = b
-	s.noticed = false
+	if b != nil {
+		s.backend = b
+	}
+	if err != nil {
+		if b != nil {
+			b.Invalidate(err)
+			if ctx.Err() == nil && (isConnErr(err) || isSessionErr(err)) {
+				err = b.Prepare(ctx)
+			}
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
 	return b, nil
 }
 
@@ -117,6 +150,8 @@ var openNamed = func(ctx context.Context, mode Mode, name string) (Backend, erro
 }
 
 func (s *Session) drop() {
+	s.sem <- struct{}{}
+	defer func() { <-s.sem }()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.backend != nil {
@@ -132,21 +167,12 @@ func (m *Manager) SwitchDriver(d string) {
 
 func (m *Manager) CloseAll() {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	sessions := make([]*Session, 0, len(m.sessions))
 	for _, s := range m.sessions {
+		sessions = append(sessions, s)
+	}
+	m.mu.Unlock()
+	for _, s := range sessions {
 		s.drop()
 	}
-}
-
-func isConnErr(err error) bool {
-	for e := err; e != nil; e = errors.Unwrap(e) {
-		msg := e.Error()
-		if strings.Contains(msg, "websocket") && (strings.Contains(msg, "closed") || strings.Contains(msg, "close 100")) {
-			return true
-		}
-		if strings.Contains(msg, "connection reset") || strings.Contains(msg, "broken pipe") || strings.Contains(msg, "EOF") {
-			return true
-		}
-	}
-	return false
 }

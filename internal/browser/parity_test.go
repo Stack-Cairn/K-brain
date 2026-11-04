@@ -13,15 +13,7 @@ import (
 )
 
 func TestDriverParity(t *testing.T) {
-	home, _ := os.UserHomeDir()
-	bin := home + "/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell"
-	if _, err := os.Stat(bin); err != nil {
-		bin = home + "/.cache/ms-playwright/chromium-1234/chrome-linux64/chrome"
-	}
-	if _, err := os.Stat(bin); err != nil {
-		t.Skip("no chromium")
-	}
-	t.Setenv("ROD_BROWSER_BIN", bin)
+	t.Setenv("ROD_BROWSER_BIN", chromiumPath(t))
 	if _, err := os.Stat("/tmp/chromelibs/usr/lib/x86_64-linux-gnu"); err == nil {
 		t.Setenv("LD_LIBRARY_PATH", "/tmp/chromelibs/usr/lib/x86_64-linux-gnu:"+os.Getenv("LD_LIBRARY_PATH"))
 	}
@@ -33,6 +25,8 @@ func TestDriverParity(t *testing.T) {
 	url := srv.URL
 
 	drivers := []string{"rod", "chromedp"}
+	oldDriver, oldPrivate := Driver, AllowPrivateURLs
+	t.Cleanup(func() { Driver, AllowPrivateURLs = oldDriver, oldPrivate })
 	type result struct {
 		ok  bool
 		ms  int64
@@ -45,6 +39,8 @@ func TestDriverParity(t *testing.T) {
 		table[drv] = map[string]result{}
 		t.Setenv("HOME", t.TempDir())
 		t.Setenv("USERPROFILE", os.Getenv("HOME"))
+		t.Setenv("LIVEAGENT_HOME", os.Getenv("HOME"))
+		t.Setenv("K_BRAIN_HOME", os.Getenv("HOME"))
 		AllowPrivateURLs = true
 		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 
@@ -57,6 +53,9 @@ func TestDriverParity(t *testing.T) {
 			start := time.Now()
 			err := fn()
 			table[drv][name] = result{ok: err == nil, ms: time.Since(start).Milliseconds(), err: errStr(err)}
+			if err != nil {
+				t.Errorf("%s %s: %v", drv, name, err)
+			}
 		}
 
 		op("Navigate", func() error { return b.Navigate(ctx, url) })
@@ -131,11 +130,11 @@ func TestDriverParity(t *testing.T) {
 			}
 			return err
 		})
-		b.Close()
+		if err := b.Close(); err != nil {
+			t.Errorf("close %s test browser: %v", drv, err)
+		}
 		cancel()
 	}
-	AllowPrivateURLs = false
-	Driver = "rod"
 
 	ops := []string{"Navigate", "Eval", "Info", "AXTree", "ClickAt", "Screenshot", "Fill-focus", "Scroll", "WaitElement", "Tabs"}
 	fmt.Println("\n=== DRIVER PARITY (headless, warm) ===")

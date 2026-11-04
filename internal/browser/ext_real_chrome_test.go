@@ -82,7 +82,7 @@ func TestExtensionRealChrome(t *testing.T) {
 	deadline := time.Now().Add(25 * time.Second)
 	var ok bool
 	for time.Now().Before(deadline) {
-		if err := b.attachPage(); err == nil && b.page != nil {
+		if err := b.attachPage(ctx, "default"); err == nil && b.page != nil {
 			if info, ierr := b.Info(ctx); ierr == nil && strings.HasPrefix(info.URL, url) {
 				ok = true
 				break
@@ -118,5 +118,33 @@ func TestExtensionRealChrome(t *testing.T) {
 	ax, err := b.AXTree(ctx)
 	if err != nil || !strings.Contains(ax, "hello") {
 		t.Errorf("AXTree: %v (%.100s)", err, ax)
+	}
+
+	originalTarget := b.targetID
+	opens, scripts := 0, 0
+	stubOpen(t, func(ctx context.Context, mode Mode, name string) (Backend, error) {
+		if mode != ModeExtension || name != "default" {
+			t.Fatalf("reset changed extension identity: %s:%s", mode, name)
+		}
+		opens++
+		rb, err := connectLive(ctx, rel.CDPURL())
+		if err != nil {
+			return nil, err
+		}
+		next := &Browser{mode: ModeExtension, obtained: ObtainedLive}
+		next.keepBrowser(ctx, rb)
+		return next, next.attachPage(ctx, "default")
+	})
+	s := &Session{mode: ModeExtension, name: "default", sem: make(chan struct{}, 1), backend: b}
+	defer s.drop()
+	out, err := s.DoFresh(ctx, func(fresh Backend) (string, error) {
+		scripts++
+		if fresh.(*Browser).targetID != originalTarget {
+			t.Error("reset lost the pinned tab")
+		}
+		return fresh.Eval(ctx, `document.getElementById("cookie").textContent`)
+	})
+	if err != nil || out != `"real-session-42"` || opens != 1 || scripts != 1 {
+		t.Fatalf("extension reset: out=%q err=%v opens=%d scripts=%d", out, err, opens, scripts)
 	}
 }

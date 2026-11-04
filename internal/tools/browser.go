@@ -18,7 +18,9 @@ const browserDescription = `Drive a real web browser. The ` + "`code`" + ` argum
 
 STATE: the browser persists across calls (same tab, cookies, JS context); code variables do NOT. For multi-item tasks, write results incrementally with the write tool and read them back at the end; verify counts before answering.
 
-Batch each sub-procedure (navigate, wait, extract, act) into one call — do not spend a call per action. For an isolated concurrent session (parallel tasks that must not share tabs), pass session="<name>" and reuse it; prefix "<mode>:<name>" (live|dedicated|headless) to override the default mode for that session.
+The original target remains bound after errors. Set reset=true only when the user explicitly chooses a new binding, for example after pinning a different extension tab. Reset releases the old binding before this call runs; earlier scripts are never replayed.
+
+Batch each sub-procedure (navigate, wait, extract, act) into one call — do not spend a call per action. For an isolated concurrent session (parallel tasks that must not share tabs), pass session="<name>" and reuse it; prefix "<mode>:<name>" (live|dedicated|headless|extension) to override the default mode for that session.
 
 HELPERS (each line in code is one helper call, ` + "`;" + `"-separated): ` +
 	"`goto(url)`" + ` first navigation or navigate current tab; ` +
@@ -42,7 +44,7 @@ func BrowserExec() Tool {
 	return Tool{
 		Def: ai.NewTool("browser_exec",
 			browserDescription,
-			`{"type":"object","properties":{"code":{"type":"string","description":"Newline/semicolon-separated helper calls; print(...) output is returned."},"session":{"type":"string","description":"Named isolated session (default 'default'); prefix mode e.g. 'headless:scrape'."},"timeout":{"type":"number","description":"Seconds before the call is cancelled (default 60)."}},"required":["code"]}`),
+			`{"type":"object","properties":{"code":{"type":"string","description":"Newline/semicolon-separated helper calls; print(...) output is returned."},"session":{"type":"string","description":"Named isolated session (default 'default'); prefix mode e.g. 'headless:scrape'."},"timeout":{"type":"number","description":"Seconds before the call is cancelled (default 60)."},"reset":{"type":"boolean","default":false,"description":"Explicitly release this session's previous binding before running this call. Use only when the user chooses a new target, including after repinning an extension tab."}},"required":["code"]}`),
 		Run: func(ctx context.Context, args json.RawMessage) (string, error) {
 			if Browser == nil {
 				return "", errors.New("browser subsystem not initialized")
@@ -51,6 +53,7 @@ func BrowserExec() Tool {
 				Code    string  `json:"code"`
 				Session string  `json:"session"`
 				Timeout float64 `json:"timeout"`
+				Reset   bool    `json:"reset"`
 			}
 			if err := json.Unmarshal(args, &a); err != nil {
 				return "", err
@@ -68,7 +71,11 @@ func BrowserExec() Tool {
 			if err != nil {
 				return "", err
 			}
-			return sess.Do(ctx, func(b browser.Backend) (string, error) {
+			do := sess.Do
+			if a.Reset {
+				do = sess.DoFresh
+			}
+			return do(ctx, func(b browser.Backend) (string, error) {
 				return runBrowserCode(ctx, b, a.Code, a.Session)
 			})
 		},

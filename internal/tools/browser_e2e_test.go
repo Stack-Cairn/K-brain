@@ -15,13 +15,18 @@ import (
 )
 
 func TestBrowserExecE2E(t *testing.T) {
-	home, _ := os.UserHomeDir()
-	bin := home + "/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell"
-	if _, err := os.Stat(bin); err != nil {
-		bin = home + "/.cache/ms-playwright/chromium-1234/chrome-linux64/chrome"
-	}
-	if _, err := os.Stat(bin); err != nil {
-		t.Skip("no chromium on this box")
+	bin := os.Getenv("ROD_BROWSER_BIN")
+	if bin == "" {
+		home, _ := os.UserHomeDir()
+		bin = home + "/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell"
+		if _, err := os.Stat(bin); err != nil {
+			bin = home + "/.cache/ms-playwright/chromium-1234/chrome-linux64/chrome"
+		}
+		if _, err := os.Stat(bin); err != nil {
+			t.Skip("no chromium on this box")
+		}
+	} else if _, err := os.Stat(bin); err != nil {
+		t.Fatalf("ROD_BROWSER_BIN: %v", err)
 	}
 	if _, err := os.Stat("/tmp/chromelibs/usr/lib/x86_64-linux-gnu"); err == nil {
 		t.Setenv("LD_LIBRARY_PATH", "/tmp/chromelibs/usr/lib/x86_64-linux-gnu:"+os.Getenv("LD_LIBRARY_PATH"))
@@ -42,9 +47,11 @@ func TestBrowserExecE2E(t *testing.T) {
 	}
 	url := fmt.Sprintf("http://%s:%d", ip, ln.Addr().(*net.TCPAddr).Port)
 
-	t.Setenv("HOME", t.TempDir())
-
-	t.Setenv("USERPROFILE", os.Getenv("HOME"))
+	testHome := t.TempDir()
+	t.Setenv("HOME", testHome)
+	t.Setenv("USERPROFILE", testHome)
+	t.Setenv("LIVEAGENT_HOME", testHome)
+	t.Setenv("K_BRAIN_HOME", testHome)
 	browser.AllowPrivateURLs = true
 	defer func() { browser.AllowPrivateURLs = false }()
 	mgr := browser.NewManager(browser.ModeHeadless)

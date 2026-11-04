@@ -374,6 +374,8 @@ type fakeBackend struct {
 	closed   bool
 }
 
+func (f *fakeBackend) Prepare(context.Context) error                   { return nil }
+func (f *fakeBackend) Invalidate(error)                                {}
 func (f *fakeBackend) Info(context.Context) (PageInfo, error)          { return PageInfo{}, nil }
 func (f *fakeBackend) Navigate(context.Context, string) error          { return nil }
 func (f *fakeBackend) Back(context.Context) error                      { return nil }
@@ -409,71 +411,23 @@ func stubOpen(t *testing.T, fn func(context.Context, Mode, string) (Backend, err
 	t.Cleanup(func() { openNamed = old })
 }
 
-func TestSessionFallbackNotice(t *testing.T) {
-	ctx := context.Background()
-	lines := func(s *Session, n int) []string {
-		var out []string
-		for range n {
-			o, err := s.Do(ctx, func(Backend) (string, error) { return "result", nil })
-			if err != nil {
-				t.Fatal(err)
-			}
-			out = append(out, o)
-		}
-		return out
-	}
-
-	stubOpen(t, func(_ context.Context, m Mode, _ string) (Backend, error) {
-		return &fakeBackend{mode: m, obtained: ObtainedLaunched}, nil
-	})
+func TestSessionModeAndNameIsolation(t *testing.T) {
 	m := NewManager(ModeLive)
-	s, err := m.Session("")
-	if err != nil {
+	live, _ := m.Session("shared")
+	same, _ := m.Session("live:shared")
+	dedicated, _ := m.Session("dedicated:shared")
+	other, _ := m.Session("other")
+	if live != same || live == dedicated || live == other {
+		t.Fatal("session mode/name keys are not isolated")
+	}
+	b := &fakeBackend{mode: ModeLive, obtained: ObtainedLive}
+	stubOpen(t, func(context.Context, Mode, string) (Backend, error) { return b, nil })
+	if _, err := live.Do(t.Context(), func(Backend) (string, error) { return "first", nil }); err != nil {
 		t.Fatal(err)
 	}
-	got := lines(s, 2)
-	if !strings.HasPrefix(got[0], fallbackNotice) {
-		t.Fatalf("first output must carry the notice: %q", got[0])
-	}
-	if strings.Contains(got[1], "Note:") {
-		t.Fatalf("notice must fire once, second output: %q", got[1])
-	}
-
-	sd, err := m.Session("dedicated:quiet")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := lines(sd, 1)[0]; got != "result" {
-		t.Fatalf("dedicated session must be silent: %q", got)
-	}
-
-	stubOpen(t, func(_ context.Context, m Mode, _ string) (Backend, error) {
-		return &fakeBackend{mode: m, obtained: ObtainedLive}, nil
-	})
-	m2 := NewManager(ModeLive)
-	s2, _ := m2.Session("")
-	if got := lines(s2, 1)[0]; got != "result" {
-		t.Fatalf("real live attach must be silent: %q", got)
-	}
-}
-
-func TestSessionNoticeRearmedOnReopen(t *testing.T) {
-	ctx := context.Background()
-	stubOpen(t, func(_ context.Context, m Mode, _ string) (Backend, error) {
-		return &fakeBackend{mode: m, obtained: ObtainedLaunched}, nil
-	})
-	m := NewManager(ModeLive)
-	s, _ := m.Session("")
-	if _, err := s.Do(ctx, func(Backend) (string, error) { return "r1", nil }); err != nil {
-		t.Fatal(err)
-	}
-	s.drop()
-	out, err := s.Do(ctx, func(Backend) (string, error) { return "r2", nil })
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.HasPrefix(out, fallbackNotice) {
-		t.Fatalf("reopened fallback must re-notify: %q", out)
+	live.drop()
+	if !b.closed || dedicated.backend != nil || other.backend != nil {
+		t.Fatal("closing one session changed another")
 	}
 }
 
