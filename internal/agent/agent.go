@@ -1062,9 +1062,8 @@ func (a *Agent) compact(ctx context.Context) (summary string, cutoff int, info C
 		encodedTools, _ := json.Marshal(definitions)
 		if a.ContextLimit <= 0 || EstimateTokens(messages)+(len(encodedTools)+3)/4+4096 < a.ContextLimit {
 			var u ai.Usage
-			sum, u, cerr = cli.Complete(ctx, ai.Request{
+			sum, u, cerr = a.completeSummary(ctx, cli, ai.Request{
 				Model:                mdl,
-				MaxTokens:            4096,
 				Messages:             messages,
 				Tools:                definitions,
 				ReasoningEffort:      a.Effort,
@@ -1072,8 +1071,7 @@ func (a *Agent) compact(ctx context.Context) (summary string, cutoff int, info C
 				TopP:                 a.TopP,
 				NativeWebSearch:      a.NativeWebSearch,
 				NativeSearchProvider: a.Provider,
-			})
-			a.addModelUsage(usageLabel, u)
+			}, a.summaryOutputCeiling(false), usageLabel)
 			addUsage(&usage, u)
 			summarized = true
 			// EstimateTokens is a byte heuristic and undercounts CJK text, images
@@ -1084,6 +1082,11 @@ func (a *Agent) compact(ctx context.Context) (summary string, cutoff int, info C
 				a.learnContextLimit(cerr)
 				summarized = false
 			}
+			// Still cut off at the largest budget: the transcript prompt asks
+			// without tools or reasoning effort, which leaves more room to write.
+			if _, ok := errors.AsType[*ai.OutputLimitError](cerr); ok && ctx.Err() == nil {
+				summarized = false
+			}
 		}
 	}
 	if !summarized {
@@ -1092,7 +1095,7 @@ func (a *Agent) compact(ctx context.Context) (summary string, cutoff int, info C
 			window = a.ContextLimit
 		}
 		var u ai.Usage
-		sum, u, cerr = a.summarizeTranscript(ctx, cli, mdl, usageLabel, sysPrompt, history, prior, window)
+		sum, u, cerr = a.summarizeTranscript(ctx, cli, mdl, usageLabel, sysPrompt, history, prior, window, a.summaryOutputCeiling(dedicated))
 		addUsage(&usage, u)
 	}
 	if cerr != nil {
@@ -1133,7 +1136,8 @@ func (a *Agent) learnContextLimit(err error) {
 }
 
 const (
-	// summaryOutputTokens is the MaxTokens every summary request reserves.
+	// summaryOutputTokens is the MaxTokens a summary request starts with; see
+	// completeSummary for the retry after an output-limit cut-off.
 	summaryOutputTokens = 4096
 	// summaryPromptOverhead covers the summary instructions around the transcript.
 	summaryPromptOverhead = 512
@@ -1184,7 +1188,7 @@ func transcriptChunkEnd(history []ai.Message, pos, budget int) int {
 // Each further rejection halves the window and re-chunks the remaining history,
 // keeping the summary built so far. window is the caller's known context
 // window, or 0 when unknown.
-func (a *Agent) summarizeTranscript(ctx context.Context, cli ai.Client, mdl, usageLabel string, sysPrompt ai.Message, history []ai.Message, prior string, window int) (string, ai.Usage, error) {
+func (a *Agent) summarizeTranscript(ctx context.Context, cli ai.Client, mdl, usageLabel string, sysPrompt ai.Message, history []ai.Message, prior string, window, outputCeiling int) (string, ai.Usage, error) {
 	var total ai.Usage
 	current := prior
 	chunked := false
@@ -1198,8 +1202,7 @@ func (a *Agent) summarizeTranscript(ctx context.Context, cli ai.Client, mdl, usa
 		}
 		prompt := buildSummaryPrompt(history[pos:end], current)
 		messages := []ai.Message{sysPrompt, {Role: "user", Content: prompt}}
-		sum, u, err := cli.Complete(ctx, ai.Request{Model: mdl, MaxTokens: summaryOutputTokens, Messages: messages})
-		a.addModelUsage(usageLabel, u)
+		sum, u, err := a.completeSummary(ctx, cli, ai.Request{Model: mdl, Messages: messages}, outputCeiling, usageLabel)
 		addUsage(&total, u)
 		if err != nil {
 			if ai.IsContextLimit(err) && ctx.Err() == nil && shrinks < maxTranscriptShrinks {

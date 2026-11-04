@@ -37,12 +37,15 @@ func TestTruncatedCompactionPreservesHistory(t *testing.T) {
 			before := ag.MessagesSnapshot()
 			compacted := false
 			err := ag.ManualCompact(t.Context(), Events{OnCompacted: func(string, int, CompactInfo) { compacted = true }})
+			// The model's 100-token limit leaves no larger budget to grow into, so
+			// the cached prompt and then the transcript fallback each get one
+			// request; both are cut off and neither partial summary is used.
 			var limit *ai.OutputLimitError
-			if !errors.As(err, &limit) || compacted || calls.Load() != 1 || !reflect.DeepEqual(before, ag.MessagesSnapshot()) {
+			if !errors.As(err, &limit) || compacted || calls.Load() != 2 || !reflect.DeepEqual(before, ag.MessagesSnapshot()) {
 				t.Fatalf("compaction changed history or retried: calls=%d compacted=%v err=%v", calls.Load(), compacted, err)
 			}
 			u := ag.ModelUsage()["model @ provider"]
-			if u.PromptTokens != 17 || u.CompletionTokens != 3 || ag.LastStopReason() != ai.StopReasonLength {
+			if u.PromptTokens != 34 || u.CompletionTokens != 6 || ag.LastStopReason() != ai.StopReasonLength {
 				t.Fatalf("lost usage/stop reason: %+v", u)
 			}
 		})
