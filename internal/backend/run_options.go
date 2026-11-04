@@ -228,7 +228,7 @@ func exitPlanModeTool() tools.Tool {
 // deny rules refuse in every mode, Ask forces a prompt in every mode, and an allow
 // (a rule or the read-only allowance) counts after explicit per-tool policies.
 func runToolGate(options protocol.RunOptions, req tools.GateRequest, rules permissions.Decision, ask func(tools.GateRequest) (tools.GateDecision, string)) (tools.GateDecision, string) {
-	if (options.PlanModeEnabled || options.PermissionMode == permissions.Plan) && req.Tool != "Read" && req.Tool != "Image" && req.Tool != "List" && req.Tool != "Glob" && req.Tool != "Grep" && req.Tool != "ExitPlanMode" && req.Tool != "read" && req.Tool != "question" && req.Tool != "AskUserQuestion" && req.Tool != "todowrite" {
+	if (options.PlanModeEnabled || options.PermissionMode == permissions.Plan) && req.Tool != "Read" && req.Tool != "Image" && req.Tool != "List" && req.Tool != "Glob" && req.Tool != "Grep" && req.Tool != "ExitPlanMode" && req.Tool != "read" && req.Tool != "lsp" && req.Tool != "question" && req.Tool != "AskUserQuestion" && req.Tool != "todowrite" {
 		return tools.GateReject, "plan mode blocks this tool until ExitPlanMode is approved"
 	}
 	if options.ApprovalPolicy == "deny" {

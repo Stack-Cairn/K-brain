@@ -26,6 +26,24 @@ type fakeServer struct {
 	mu       sync.Mutex
 	opened   map[string]int
 	onChange chan string
+	// results answers requests by method; params records the last params per method.
+	results map[string]string
+	params  map[string]json.RawMessage
+}
+
+func (f *fakeServer) respond(method, result string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.results == nil {
+		f.results = map[string]string{}
+	}
+	f.results[method] = result
+}
+
+func (f *fakeServer) lastParams(method string) json.RawMessage {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.params[method]
 }
 
 type push struct {
@@ -107,7 +125,17 @@ func (f *fakeServer) serve(r io.Reader, w io.Writer, script func(string, int) []
 			}
 		default:
 			if len(msg.ID) > 0 {
-				c.send(rpcMessage{ID: msg.ID, Result: json.RawMessage("null")})
+				f.mu.Lock()
+				result, ok := f.results[msg.Method]
+				if f.params == nil {
+					f.params = map[string]json.RawMessage{}
+				}
+				f.params[msg.Method] = msg.Params
+				f.mu.Unlock()
+				if !ok {
+					result = "null"
+				}
+				c.send(rpcMessage{ID: msg.ID, Result: json.RawMessage(result)})
 			}
 		}
 	}

@@ -2,6 +2,7 @@ package lsp
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -90,7 +91,12 @@ type clientState struct {
 	cli  *client
 	cmd  *exec.Cmd
 	root string
-	docs map[string]int
+	// docs and sums (the content last sent per document) are guarded by Manager.mu;
+	// syncMu, taken before Manager.mu, keeps version bumps and their notifications in
+	// order so a didChange never overtakes its didOpen.
+	syncMu sync.Mutex
+	docs   map[string]int
+	sums   map[string][sha256.Size]byte
 }
 
 type spawnKeyer func(serverID, abs string, markers []string) string
@@ -123,14 +129,15 @@ func (m *Manager) WaitDiagnostics(ctx context.Context, path string) string {
 		return ""
 	}
 
+	cs.syncMu.Lock()
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
+		cs.syncMu.Unlock()
 		return ""
 	}
 	before, hadBefore := m.diags[abs]
-	cs.docs[abs]++
-	version := cs.docs[abs]
+	version := cs.nextVersion(abs, data)
 	wch := make(chan struct{})
 	pushed := false
 	m.waiters[abs] = append(m.waiters[abs], wch)
@@ -141,20 +148,8 @@ func (m *Manager) WaitDiagnostics(ctx context.Context, path string) string {
 		m.mu.Unlock()
 	}()
 
-	uri := fileURI(abs)
-	if version == 1 {
-		cs.cli.notify("textDocument/didOpen", map[string]any{
-			"textDocument": map[string]any{
-
-				"uri": uri, "languageId": strings.TrimPrefix(filepath.Ext(abs), "."), "version": version, "text": string(data),
-			},
-		})
-	} else {
-		cs.cli.notify("textDocument/didChange", map[string]any{
-			"textDocument":   map[string]any{"uri": uri, "version": version},
-			"contentChanges": []map[string]any{{"text": string(data)}},
-		})
-	}
+	cs.syncDocument(abs, version, data)
+	cs.syncMu.Unlock()
 
 	deadline := time.Now().Add(diagWait)
 	for {
@@ -345,7 +340,12 @@ func (m *Manager) spawn(ctx context.Context, key, name string, spec ServerSpec, 
 			"textDocument": map[string]any{
 				"synchronization":    map[string]any{"didOpen": true, "didChange": true},
 				"publishDiagnostics": map[string]any{"versionSupport": true},
+				"hover":              map[string]any{"contentFormat": []string{"markdown", "plaintext"}},
+				"definition":         map[string]any{"linkSupport": true},
+				"references":         map[string]any{},
+				"documentSymbol":     map[string]any{"hierarchicalDocumentSymbolSupport": true},
 			},
+			"workspace": map[string]any{"symbol": map[string]any{}},
 		},
 	}, nil)
 	if err != nil {

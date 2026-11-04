@@ -62,14 +62,15 @@ const (
 )
 
 // family maps tool names that share rules onto one rule name: the TUI's lowercase
-// tools and LiveAgent's PascalCase tools, and Write onto Edit.
+// tools and LiveAgent's PascalCase tools, Write onto Edit, and lsp onto Read (it reads
+// the file it queries).
 func family(tool string) string {
 	switch tool {
 	case "bash", "Bash":
 		return "Bash"
 	case "write", "edit", "Write", "Edit":
 		return "Edit"
-	case "read", "Read":
+	case "read", "Read", "lsp":
 		return "Read"
 	}
 	return tool

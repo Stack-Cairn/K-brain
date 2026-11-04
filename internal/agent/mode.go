@@ -16,7 +16,7 @@ func (a *Agent) PlanMode() bool           { return a.planMode != nil && a.planMo
 
 func planToolAllowed(name string) bool {
 	switch name {
-	case "read", "question", "todowrite", "Read", "Image", "List", "Glob", "Grep", "AskUserQuestion", "ExitPlanMode":
+	case "read", "lsp", "question", "todowrite", "Read", "Image", "List", "Glob", "Grep", "AskUserQuestion", "ExitPlanMode":
 		return true
 	default:
 		return false
