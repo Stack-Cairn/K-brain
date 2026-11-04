@@ -3,9 +3,11 @@ package tui
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -32,6 +34,8 @@ func toolHeaderName(name string) string {
 		return "Glob"
 	case "list":
 		return "List"
+	case "web_fetch":
+		return "Fetch"
 	case "bash":
 		return "Bash"
 	case "subagent":
@@ -71,6 +75,8 @@ func toolSubject(name, args string) string {
 		if p := get("path"); p != "" && s != "" {
 			s += " in " + p
 		}
+	case "web_fetch":
+		s = fetchSubject(get("url"))
 	case "subagent":
 		if s = get("description"); s == "" {
 			s = firstLine(get("prompt"))
@@ -84,6 +90,15 @@ func toolSubject(name, args string) string {
 		s = truncLine(oneLine(args), 60)
 	}
 	return s
+}
+
+// fetchSubject shows a fetched URL as host and path, without scheme or query.
+func fetchSubject(raw string) string {
+	s := strings.TrimSpace(raw)
+	if u, err := url.Parse(s); err == nil && u.Host != "" {
+		s = u.Host + strings.TrimSuffix(u.EscapedPath(), "/")
+	}
+	return ansi.Truncate(s, 60, "…")
 }
 
 func queuedSubject(name, args string) string {
@@ -199,7 +214,7 @@ func renderDiffLine(l string, width int) string {
 // the user; their results fold to a line count.
 func quietResultTool(name string) bool {
 	switch name {
-	case "read", "grep", "glob", "list":
+	case "read", "grep", "glob", "list", "web_fetch":
 		return true
 	}
 	return false
@@ -208,11 +223,15 @@ func quietResultTool(name string) bool {
 var (
 	searchMatchesRe = regexp.MustCompile(`(?m)^matches=(\d+)`)
 	searchTotalRe   = regexp.MustCompile(`(?m)total=(\d+)`)
+	fetchTotalRe    = regexp.MustCompile(`(?m)^total_chars=(\d+)$`)
 )
 
 // quietResultSummary is the folded line for a read or search result. Searches
 // report their own counts in a header; output lines would count the header too.
 func quietResultSummary(name, text string, lines int) string {
+	if name == "web_fetch" {
+		return fetchResultSummary(text)
+	}
 	n := lines
 	re := searchTotalRe
 	if name == "grep" {
@@ -224,6 +243,23 @@ func quietResultSummary(name, text string, lines int) string {
 		}
 	}
 	return fmt.Sprintf("%d %s", n, quietResultUnit(name, n))
+}
+
+// fetchResultSummary counts the characters a fetch returned, after its header and
+// blank line, and the page's total when that is more.
+func fetchResultSummary(text string) string {
+	_, body, _ := strings.Cut(text, "\n\n")
+	n := utf8.RuneCountInString(body)
+	unit := "chars"
+	if n == 1 {
+		unit = "char"
+	}
+	if m := fetchTotalRe.FindStringSubmatch(text); m != nil {
+		if total, _ := strconv.Atoi(m[1]); total > n {
+			return fmt.Sprintf("%d of %d chars", n, total)
+		}
+	}
+	return fmt.Sprintf("%d %s", n, unit)
 }
 
 func quietResultUnit(name string, n int) string {

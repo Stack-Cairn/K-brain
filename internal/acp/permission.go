@@ -22,15 +22,16 @@ func (b *Bridge) permissionContext(ctx context.Context, s *acpSession) context.C
 		s.turnMu.Lock()
 		mode := s.mode
 		s.turnMu.Unlock()
-		switch mode {
-		case ModeAuto:
+		planAsks := tools.AsksInPlanMode(req.Tool)
+		switch {
+		case mode == ModeAuto:
 			return tools.GateAllowOnce, ""
-		case ModePlan:
+		case mode == ModePlan && !planAsks:
 			return tools.GateReject, "Plan mode blocks this action; switch modes before implementation"
 		}
 		decision, reason := b.requestPermission(req.Context, s, req)
 		s.turnMu.Lock()
-		blocked := s.closed || s.mode == ModePlan
+		blocked := s.closed || (s.mode == ModePlan && !planAsks)
 		s.turnMu.Unlock()
 		if blocked {
 			return tools.GateReject, "session closed or switched to Plan mode while awaiting permission"

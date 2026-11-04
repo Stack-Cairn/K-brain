@@ -194,7 +194,7 @@ func (c *Gemini) Stream(ctx context.Context, req Request, onText, onThink func(s
 				return Message{}, usage, fmt.Errorf("persist Gemini tool signature: %w", err)
 			}
 			calls = append(calls, call)
-			if onToolCall != nil && (!req.NativeWebSearch || !nativeSearchName(call.Function.Name)) {
+			if onToolCall != nil && !req.hostedSearchCall(call.Function.Name) {
 				onToolCall(call.ID, call.Function.Name, call.Function.Arguments)
 			}
 		}
@@ -202,8 +202,8 @@ func (c *Gemini) Stream(ctx context.Context, req Request, onText, onThink func(s
 			search.finish(false)
 			msg.HostedSearch = append([]HostedSearch(nil), search.blocks...)
 			if req.NativeWebSearch {
-				recoverNativeSearchCalls(&msg, onText)
-				calls = filterNativeSearchCalls(calls)
+				recoverNativeSearchCalls(req, &msg, onText)
+				calls = filterNativeSearchCalls(req, calls)
 			}
 			return finishMessage(msg, calls, normalizeGeminiFinishReason(result.Candidates[0].FinishReason), onText), usage, nil
 		}

@@ -100,6 +100,14 @@ func Evaluate(req Request, opts Options, sets ...RuleSet) Decision {
 		if d, ok := first(rules, Allow, match); ok {
 			return d
 		}
+	case kindURL:
+		match := func(r Rule) bool { return r.matchesURL(req.Command) }
+		if d, ok := first(rules, Deny, match); ok {
+			return d
+		}
+		if d, ok := first(rules, Allow, match); ok {
+			return d
+		}
 	default:
 		match := func(r Rule) bool { return r.matchesOther(req.Command) }
 		if d, ok := first(rules, Deny, match); ok {

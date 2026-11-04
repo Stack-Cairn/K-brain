@@ -66,8 +66,8 @@ func TestToolRoundTrip(t *testing.T) {
 }
 
 func TestHelpersAndEdgeCases(t *testing.T) {
-	if len(Defs(All())) != 7 {
-		t.Fatal("expected 7 tool defs")
+	if len(Defs(All())) != 8 {
+		t.Fatal("expected 8 tool defs")
 	}
 	long := strings.Repeat("x", maxOutput+10)
 	out := truncate(long)

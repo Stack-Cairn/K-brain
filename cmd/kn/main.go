@@ -11,6 +11,7 @@ import (
 	"github.com/Stack-Cairn/K-brain/internal/ai"
 	"github.com/Stack-Cairn/K-brain/internal/config"
 	sysprompt "github.com/Stack-Cairn/K-brain/internal/prompts"
+	"github.com/Stack-Cairn/K-brain/internal/tools"
 	"github.com/Stack-Cairn/K-brain/internal/tui"
 	"github.com/Stack-Cairn/K-brain/internal/update"
 )
@@ -56,6 +57,7 @@ func main() {
 	cautiousFlag := flag.Bool("cautious", false, "ask before running commands / writing files")
 	normalizeBareResume(os.Args[1:])
 	flag.Parse()
+	tools.Version = version
 
 	if *versionFlag {
 		fmt.Println("k-brain", version)

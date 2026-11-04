@@ -9,14 +9,14 @@ import (
 	"github.com/Stack-Cairn/K-brain/internal/tools"
 )
 
-const planInstruction = "Plan mode is active. Inspect existing files with read, grep, glob and list, ask clarifying questions, and use todowrite to develop a concrete implementation plan. Do not execute commands, modify files, operate browsers or desktops, launch tasks, or call external tools. Present the plan for review using ExitPlanMode when available; submission ends the planning turn and implementation requires the user to leave Plan mode."
+const planInstruction = "Plan mode is active. Inspect existing files with read, grep, glob and list, read web pages with web_fetch (subject to the user's approval), ask clarifying questions, and use todowrite to develop a concrete implementation plan. Do not execute commands, modify files, operate browsers or desktops, launch tasks, or call external tools. Present the plan for review using ExitPlanMode when available; submission ends the planning turn and implementation requires the user to leave Plan mode."
 
 func (a *Agent) SetPlanMode(enabled bool) { a.planMode.Store(enabled) }
 func (a *Agent) PlanMode() bool           { return a.planMode != nil && a.planMode.Load() }
 
 func planToolAllowed(name string) bool {
 	switch name {
-	case "read", "grep", "glob", "list", "lsp", "question", "todowrite", "Read", "Image", "List", "Glob", "Grep", "AskUserQuestion", "ExitPlanMode":
+	case "read", "grep", "glob", "list", "web_fetch", "lsp", "question", "todowrite", "Read", "Image", "List", "Glob", "Grep", "AskUserQuestion", "ExitPlanMode":
 		return true
 	default:
 		return false

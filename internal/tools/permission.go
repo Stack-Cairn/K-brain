@@ -56,6 +56,13 @@ type GateRequest struct {
 
 var Gate func(GateRequest) (GateDecision, string)
 
+// AsksInPlanMode reports gated tools that Plan mode keeps: they change nothing
+// locally but reach the network, so the user is asked instead of the call being
+// refused. The other gated tools are refused in Plan mode.
+func AsksInPlanMode(tool string) bool {
+	return tool == "web_fetch"
+}
+
 type gateContextKey struct{}
 
 type contextGate struct {
@@ -124,6 +131,15 @@ func GateRequestFor(ctx context.Context, tool string, args json.RawMessage) Gate
 		case "write", "edit":
 			if a.Path != "" {
 				req.Command = winpath.Simplify(ResolvePath(ctx, a.Path))
+			}
+		case "web_fetch":
+			var f struct {
+				URL string `json:"url"`
+			}
+			if json.Unmarshal(args, &f) == nil {
+				if u, err := parseFetchURL(f.URL); err == nil {
+					return webFetchGateRequest(ctx, u)
+				}
 			}
 		case "grep", "glob", "list":
 			// Like the tools, an omitted path searches the working directory.

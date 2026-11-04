@@ -21,13 +21,14 @@ var cliSearchCaps = searchCaps{
 	listChars:   10_000,
 }
 
-// WithoutSearchTools returns ts without the CLI's grep, glob and list. The LiveAgent
-// catalog brings its own root-confined Grep, Glob and List, so the backend drops these.
-func WithoutSearchTools(ts []Tool) []Tool {
+// WithoutCLIOnlyTools returns ts without the CLI's grep, glob, list and web_fetch. The
+// LiveAgent catalog brings its own root-confined Grep, Glob and List, so the backend
+// drops these; web_fetch is not in that catalog, whose policies the app lets users set.
+func WithoutCLIOnlyTools(ts []Tool) []Tool {
 	out := make([]Tool, 0, len(ts))
 	for _, t := range ts {
 		switch t.Def.Function.Name {
-		case "grep", "glob", "list":
+		case "grep", "glob", "list", "web_fetch":
 			continue
 		}
 		out = append(out, t)
