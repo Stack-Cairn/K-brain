@@ -210,9 +210,14 @@ func quietResultUnit(name string, n int) string {
 }
 
 // toolFamily reports blocks that belong to a tool call: queued, running and
-// finished headers plus their results.
-func toolFamily(k blockKind) bool {
-	return k == blockTool || k == blockToolRun || k == blockToolQueued
+// finished headers plus their results. A resumed session seeds call headers as
+// plain text rows tagged with the tool name.
+func toolFamily(b block) bool {
+	return b.kind == blockTool || b.kind == blockToolRun || b.kind == blockToolQueued || toolHead(b)
+}
+
+func toolHead(b block) bool {
+	return b.kind == blockToolRun || (b.kind == blockText && b.toolName != "")
 }
 
 // gluedToPrev reports whether block i sits directly under the previous visible
@@ -226,9 +231,9 @@ func gluedToPrev(blocks []block, i int) bool {
 	if j < 0 {
 		return false
 	}
-	prev, cur := blocks[j].kind, blocks[i].kind
-	if cur == blockTool {
-		return prev == blockToolRun
+	prev, cur := blocks[j], blocks[i]
+	if cur.kind == blockTool {
+		return toolHead(prev)
 	}
 	return toolFamily(cur) && toolFamily(prev)
 }
