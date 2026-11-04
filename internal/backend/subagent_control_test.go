@@ -58,6 +58,9 @@ func TestCanonicalRunCanFollowupOwnedSubagent(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.releaseRuntime(rt)
+	// This test drives the follow-up turn itself; keep the completion notice from
+	// starting a wake run first (wake_test.go covers that path).
+	rt.agent.OnOrphanedSteer = nil
 	task := rt.agent.StartBackground("original task", "original instructions", agent.SubModel{})
 	select {
 	case <-task.Done:

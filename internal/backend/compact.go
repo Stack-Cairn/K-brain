@@ -337,6 +337,7 @@ func (s *Server) finishCompaction(rt *runtimeSession, runID, clientRequestID, st
 	old := rt.changed
 	rt.changed = make(chan struct{})
 	close(old)
+	s.dispatchWakesLocked(rt)
 }
 
 func hashCompact(in protocol.CompactRequest) string {

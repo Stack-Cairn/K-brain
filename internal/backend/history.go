@@ -322,6 +322,11 @@ func (s *Server) deleteSession(w http.ResponseWriter, r *http.Request, id string
 		return
 	}
 	rt.deleted = true
+	// Pending waits and notices must not wake a deleted session.
+	if rt.agent != nil {
+		rt.agent.Waits().Close()
+	}
+	rt.holdWakesLocked(false, true)
 	rt.recorder = nil
 	rt.agent = nil
 	rt.events = nil
