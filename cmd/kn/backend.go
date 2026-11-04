@@ -90,6 +90,8 @@ func backendCLI(args []string) error {
 		return err
 	}
 	defer closeTools()
+	// LiveAgent edits get language-server diagnostics through the agent's reminders.
+	defer startLSP(cfg)()
 	liveMCP, err := mcp.OpenLiveManager(context.Background(), configFilename+".live-mcp.json", mcp.FromConfigMap(cfg.MCPServers))
 	if err != nil {
 		return fmt.Errorf("MCP manager: %w", err)

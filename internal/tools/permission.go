@@ -130,11 +130,11 @@ func GateRequestFor(ctx context.Context, tool string, args json.RawMessage) Gate
 			if tool == "ManagedProcess" && !req.Poll {
 				req.OtherDir = cwdOutsideWorkingDir(ctx, a.Cwd, "ManagedProcess")
 			}
-		case "Write", "Edit", "Delete", "Read":
+		case "Write", "Edit", "Delete", "Read", "lsp":
 			if a.Path != "" {
 				req.Command = a.Path
 				access := "write"
-				if tool == "Read" {
+				if tool == "Read" || tool == "lsp" {
 					access = "read"
 				}
 				if resolved, err := liveagentPath(ctx, a.Path, access, tool, tool == "Delete"); err == nil {

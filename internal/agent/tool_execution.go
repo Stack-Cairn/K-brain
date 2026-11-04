@@ -103,12 +103,18 @@ func (a *Agent) runTools(ctx context.Context, calls []ai.ToolCall, ev Events) []
 				})
 			}
 			callCtx = context.WithValue(callCtx, requestToolKey{}, tc.ID)
+			var mutated mutationSet
+			callCtx = tools.WithFileMutationRecorder(callCtx, mutated.record)
 			result := tools.ExecuteResult(callCtx, a.AllTools(), name, json.RawMessage(args), a.Vision)
 			out := result.Text
 			if a.Hooks != nil || a.PluginHook != nil {
 				if err := a.runHook(ctx, hooks.Event{Name: "PostToolUse", ToolID: tc.ID, ToolName: name, ToolArgs: args, ToolResult: out}); err != nil {
 					out += "\nHook PostToolUse failed: " + err.Error()
 				}
+			}
+			if len(a.Reminders) > 0 && !result.Cancelled {
+				result.Text = out
+				out = appendReminders(callCtx, a.Reminders, out, ToolOutcome{ID: tc.ID, Name: name, Args: args, Result: result, MutatedPaths: mutated.snapshot()})
 			}
 			ms := time.Since(start).Milliseconds()
 			if ev.OnToolEnd != nil {

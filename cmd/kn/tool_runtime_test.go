@@ -11,6 +11,7 @@ import (
 	"github.com/Stack-Cairn/K-brain/internal/agent"
 	"github.com/Stack-Cairn/K-brain/internal/browser"
 	"github.com/Stack-Cairn/K-brain/internal/config"
+	"github.com/Stack-Cairn/K-brain/internal/lsp"
 	"github.com/Stack-Cairn/K-brain/internal/tools"
 )
 
@@ -42,6 +43,40 @@ func TestToolRuntimeInitializationAndDisabledTools(t *testing.T) {
 		if tool.Def.Function.Name == "browser_exec" || tool.Def.Function.Name == "computer_exec" {
 			t.Fatalf("disabled tool advertised: %s", tool.Def.Function.Name)
 		}
+	}
+}
+
+func TestStartLSPInstallsManagerAndRestores(t *testing.T) {
+	previous := tools.LSP
+	disabled := false
+	cfg := &config.Config{LSPServers: map[string]config.LSPServer{
+		"gopls":   {Enabled: &disabled},
+		"pyright": {Command: []string{"pyright-langserver", "--stdio"}, Extensions: []string{".py"}},
+	}}
+	stop := startLSP(cfg)
+	manager, ok := tools.LSP.(*lsp.Manager)
+	if !ok {
+		stop()
+		t.Fatalf("tools.LSP = %T", tools.LSP)
+	}
+	var names []string
+	for _, st := range manager.Statuses() {
+		names = append(names, st.Name)
+	}
+	if strings.Join(names, ",") != "pyright" {
+		t.Errorf("servers = %v; a disabled server must not be configured", names)
+	}
+	a := agent.New(nil, "fixture", 100, "test", withToolAvailability(cfg))
+	found := false
+	for _, tool := range a.AllTools() {
+		found = found || tool.Def.Function.Name == "lsp"
+	}
+	if !found {
+		t.Error("lsp tool not advertised while a manager is installed")
+	}
+	stop()
+	if tools.LSP != previous {
+		t.Fatal("startLSP cleanup did not restore the previous manager")
 	}
 }
 

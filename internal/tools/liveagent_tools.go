@@ -295,7 +295,7 @@ func (s *liveagentState) mutate(ctx context.Context, name string, a map[string]a
 	if _, err := liveagentPath(ctx, path, "write", name, false); err != nil {
 		return "", err
 	}
-	// Authorization was completed above; delegation retains mutation and LSP hooks.
+	// Authorization was completed above; delegation retains the mutation hooks.
 	delegated := WithGate(ctx, func(GateRequest) (GateDecision, string) { return GateAllowOnce, "" })
 	raw, _ := json.Marshal(translated)
 	out, err := run.Run(delegated, raw)

@@ -8,8 +8,23 @@ import (
 	"github.com/Stack-Cairn/K-brain/internal/browser"
 	"github.com/Stack-Cairn/K-brain/internal/computer"
 	"github.com/Stack-Cairn/K-brain/internal/config"
+	"github.com/Stack-Cairn/K-brain/internal/lsp"
 	"github.com/Stack-Cairn/K-brain/internal/tools"
 )
+
+// startLSP installs the process-wide language-server manager behind tools.LSP. Servers
+// spawn lazily per (server, project root) on the first edit inside that root, so one
+// manager serves every session and workspace of a long-lived process; servers disabled
+// in the "lsp" config block never start. The returned func shuts the servers down.
+func startLSP(cfg *config.Config) func() {
+	manager := lsp.NewManager(lsp.FromConfigMap(cfg.LSPServers))
+	previous := tools.LSP
+	tools.LSP = manager
+	return func() {
+		manager.Close()
+		tools.LSP = previous
+	}
+}
 
 // Non-TUI entrypoints must initialize the runtimes before advertising their tools.
 func initializeToolRuntime(cfg *config.Config) (func(), error) {

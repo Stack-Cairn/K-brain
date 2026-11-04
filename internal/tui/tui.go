@@ -424,6 +424,8 @@ func Run(cfg *config.Config, modelName, provName, sysPrompt, resumeID string, ca
 
 		m.lspMgr = lsp.NewManager(lsp.FromConfigMap(cfg.LSPServers))
 		tools.LSP = m.lspMgr
+		// The first agent predates the manager; agents built later pick the tool up in New.
+		ag.Tools = append(ag.Tools, tools.LSPTool())
 	}
 
 	tools.ComputerApprover = m.computerConsent

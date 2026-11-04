@@ -177,6 +177,10 @@ type Agent struct {
 
 	OnOrphanedSteer func(text string)
 
+	// Reminders run after each tool call and append <system-reminder> context to its
+	// result (LSP diagnostics by default). Subagents inherit them.
+	Reminders []Reminder
+
 	Hooks              *hooks.Runner
 	PluginHook         func(context.Context, hooks.Event) error
 	startMu            sync.Mutex
@@ -372,6 +376,9 @@ func New(client ai.Client, model string, maxTokens int, systemPrompt string, opt
 		o(a)
 	}
 	a.Tools = tools.All()
+	if tools.LSPToolAvailable() {
+		a.Tools = append(a.Tools, tools.LSPTool())
+	}
 	if !a.BrowserDisabled {
 		a.Tools = append(a.Tools, tools.BrowserExec())
 	}
@@ -396,6 +403,7 @@ func New(client ai.Client, model string, maxTokens int, systemPrompt string, opt
 		tool.NoInherit = true
 		a.Tools = append(a.Tools, tool)
 	}
+	a.Reminders = DefaultReminders()
 	a.files = newFileLocks()
 	a.bg = newTaskRegistry()
 	return a
