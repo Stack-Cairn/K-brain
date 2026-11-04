@@ -125,6 +125,14 @@ func GateRequestFor(ctx context.Context, tool string, args json.RawMessage) Gate
 			if a.Path != "" {
 				req.Command = winpath.Simplify(ResolvePath(ctx, a.Path))
 			}
+		case "grep", "glob", "list":
+			// Like the tools, an omitted path searches the working directory.
+			if target := a.Path; target != "" || WorkingDir(ctx) != "" {
+				if target == "" {
+					target = WorkingDir(ctx)
+				}
+				req.Command = winpath.Simplify(ResolvePath(ctx, target))
+			}
 		case "ProcessWait", "ReadTerminal", "ManagedProcess", "ProcessStop":
 			pollRequest(&req, args)
 			if tool == "ManagedProcess" && !req.Poll {

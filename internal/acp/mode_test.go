@@ -69,7 +69,7 @@ func TestPlanModeBlocksWritesAndRestoresAuto(t *testing.T) {
 		switch tool.Function.Name {
 		case "read":
 			seenRead = true
-		case "question", "todowrite":
+		case "question", "todowrite", "grep", "glob", "list":
 		default:
 			t.Fatalf("plan exposed %s", tool.Function.Name)
 		}

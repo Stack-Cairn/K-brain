@@ -512,6 +512,7 @@ func Run(cfg *config.Config, modelName, provName, sysPrompt, resumeID string, ca
 
 	tuiRunning = true
 	_, err = p.Run()
+	m.endSession("exit")
 	m.cancelGoalFromContext()
 	tuiRunning = false
 
@@ -679,10 +680,11 @@ func (m *model) resume(id string) error {
 	if effort == "" {
 		effort = m.agent.Effort
 	}
+	m.endSession("switch")
 	if ag, mn, pn, err := buildAgent(m.cfg, meta.Model, meta.Provider, m.sysPrompt); err == nil {
 		m.agent, m.modelName, m.provName = ag, mn, pn
 	} else {
-		m.agent = agent.New(m.agent.Client, m.agent.Model, m.agent.MaxTokens, m.sysPrompt, agent.WithExperimental(m.agent.Experimental()), agent.WithComputerConfig(m.cfg.Computer), agent.WithMemoryEnabled(m.cfg.Memory.IsEnabled()))
+		m.agent = agent.New(m.agent.Client, m.agent.Model, m.agent.MaxTokens, m.sysPrompt, agent.WithExperimental(m.agent.Experimental()), agent.WithComputerConfig(m.cfg.Computer), agent.WithMemoryEnabled(m.cfg.Memory.IsEnabled()), agent.WithOutputLimitContinuation())
 		m.agent.ModelName, m.agent.Provider = m.modelName, m.provName
 		m.agent.Vision = m.supportsVision()
 		m.agent.ContextLimit = m.contextLimitFor(m.provName, m.agent.Model)
@@ -779,6 +781,11 @@ func (m *model) seedTranscript(msgs []ai.Message, base int) {
 		bi := -1
 		switch msg.Role {
 		case "user":
+			if !msg.Authored && reminderOnly(msg.TextContent()) {
+				// Agent-written nudges (output-limit continuation, …) are not
+				// the user's words; the live transcript never showed them.
+				break
+			}
 			bi = len(m.blocks)
 			m.blocks = append(m.blocks, block{kind: blockUser, text: linkifyFilePaths(msg.TextContent(), realFileExists)})
 		case "assistant":
@@ -787,7 +794,7 @@ func (m *model) seedTranscript(msgs []ai.Message, base int) {
 				m.blocks = append(m.blocks, block{kind: blockAssistant, text: strings.TrimRight(msg.TextContent(), "\n")})
 			}
 			for _, tc := range msg.ToolCalls {
-				m.blocks = append(m.blocks, block{kind: blockText, text: toolHeaderRow(tc.Function.Name, tc.Function.Arguments, false)})
+				m.blocks = append(m.blocks, block{kind: blockText, text: toolHeaderRow(tc.Function.Name, tc.Function.Arguments, false), toolName: tc.Function.Name})
 			}
 		case "tool":
 
@@ -920,7 +927,7 @@ func buildAgent(cfg *config.Config, modelName, provName, sysPrompt string) (*age
 		return nil, "", "", err
 	}
 
-	ag := agent.New(route.Client, route.APIModel, route.MaxOutput, sysPrompt, agent.WithExperimental(cfg.Experimental), agent.WithComputerConfig(cfg.Computer), agent.WithMemoryEnabled(cfg.Memory.IsEnabled()))
+	ag := agent.New(route.Client, route.APIModel, route.MaxOutput, sysPrompt, agent.WithExperimental(cfg.Experimental), agent.WithComputerConfig(cfg.Computer), agent.WithMemoryEnabled(cfg.Memory.IsEnabled()), agent.WithOutputLimitContinuation())
 	if err := ag.SetModel(route.AgentModel()); err != nil {
 		return nil, "", "", err
 	}
@@ -3481,6 +3488,7 @@ func (m *model) command(text string) (tea.Model, tea.Cmd) {
 			m.append(dimStyle.Render("(busy — /clear after this turn)"))
 			return m, nil
 		}
+		m.endSession("clear")
 		m.agent.Messages = m.agent.Messages[:1]
 		m.agent.ResetUsage()
 		m.lastResp = ai.Usage{}

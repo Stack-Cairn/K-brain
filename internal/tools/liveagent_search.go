@@ -6,10 +6,13 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+	"time"
+	"unicode/utf8"
 )
 
 func liveagentGlob(pattern string) (*regexp.Regexp, error) {
@@ -173,6 +176,49 @@ func liveagentSearch(ctx context.Context, name string, a map[string]any) (string
 	if err != nil {
 		return "", err
 	}
+	return searchTree(ctx, name, root, a, searchOptions{allow: func(p string) error {
+		_, err := liveagentPath(ctx, p, "read", name, true)
+		return err
+	}})
+}
+
+// searchCaps bounds one List, Glob or Grep. Zero fields are unlimited: the LiveAgent
+// catalog pages its results and sets none; the CLI tools use cliSearchCaps.
+type searchCaps struct {
+	// timeout bounds the walk and the scan; what was found by then is returned.
+	timeout time.Duration
+	// lineChars clips each line Grep quotes in content mode.
+	lineChars int
+	// contentRows and fileRows are the default head_limit in content and files mode.
+	contentRows, fileRows int
+	// fileBytes makes Grep skip larger files instead of reading them whole.
+	fileBytes int64
+	// listChars is List's output budget; entries past it are summarized by extension.
+	listChars int
+}
+
+type searchOptions struct {
+	caps searchCaps
+	// allow vets each visited path; the LiveAgent catalog keeps the walk inside its
+	// authorized roots. Nil allows every path the walk reaches.
+	allow func(string) error
+}
+
+// searchTree runs List, Glob or Grep (kind) under root, which the caller has
+// already resolved and authorized.
+func searchTree(ctx context.Context, kind, root string, a map[string]any, opts searchOptions) (string, error) {
+	caps := opts.caps
+	parent := ctx
+	if caps.timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, caps.timeout)
+		defer cancel()
+	}
+	// timedOut reports the search's own deadline, not the caller cancelling the turn.
+	timedOut := func(err error) bool {
+		return caps.timeout > 0 && errors.Is(err, context.DeadlineExceeded) && parent.Err() == nil
+	}
+	partial := false
 	info, err := os.Stat(root)
 	if err != nil {
 		return "", err
@@ -180,23 +226,28 @@ func liveagentSearch(ctx context.Context, name string, a map[string]any) (string
 	var paths []string
 	dirs := map[string]bool{}
 	depth := 0
-	if name == "List" {
+	if kind == "List" {
 		depth = laInt(a, "depth", 2)
 	}
-	if !info.IsDir() && name != "Glob" {
+	if !info.IsDir() && kind != "Glob" {
 		paths = []string{root}
 	} else {
 		if !info.IsDir() {
 			root = filepath.Dir(root)
 		}
 		err = liveagentWalk(ctx, root, depth, func(p string, d fs.DirEntry) error {
-			if _, e := liveagentPath(ctx, p, "read", name, true); e != nil {
-				return e
+			if opts.allow != nil {
+				if e := opts.allow(p); e != nil {
+					return e
+				}
 			}
 			paths = append(paths, p)
 			dirs[p] = d.IsDir()
 			return nil
 		})
+		if timedOut(err) {
+			partial, err = true, nil
+		}
 		if err != nil {
 			return "", err
 		}
@@ -211,7 +262,17 @@ func liveagentSearch(ctx context.Context, name string, a map[string]any) (string
 		}
 		return p
 	}
-	if name == "List" {
+	var notes []string
+	finish := func(out string) string {
+		if partial {
+			notes = append(notes, fmt.Sprintf("(search stopped after %s; results are partial — narrow the path or pattern)", caps.timeout))
+		}
+		if len(notes) > 0 {
+			out += "\n" + strings.Join(notes, "\n")
+		}
+		return out
+	}
+	if kind == "List" {
 		var rows []string
 		for _, p := range paths {
 			kind := "FILE"
@@ -220,13 +281,16 @@ func liveagentSearch(ctx context.Context, name string, a map[string]any) (string
 			}
 			rows = append(rows, "["+kind+"] "+display(p))
 		}
-		return liveagentPage(name, root, rows, offset, limit), nil
+		if caps.listChars > 0 {
+			return finish(searchBudgetPage(kind, root, rows, offset, limit, caps.listChars)), nil
+		}
+		return finish(liveagentPage(kind, root, rows, offset, limit)), nil
 	}
 	pattern := laString(a, "pattern")
 	if strings.TrimSpace(pattern) == "" {
-		return "", fmt.Errorf("%s.pattern is required", name)
+		return "", fmt.Errorf("%s.pattern is required", kind)
 	}
-	if name == "Glob" {
+	if kind == "Glob" {
 		re, err := liveagentGlob(pattern)
 		if err != nil {
 			return "", err
@@ -238,7 +302,7 @@ func liveagentSearch(ctx context.Context, name string, a map[string]any) (string
 				rows = append(rows, display(p))
 			}
 		}
-		return liveagentPage(name, pattern, rows, offset, limit), nil
+		return finish(liveagentPage(kind, pattern, rows, offset, limit)), nil
 	}
 	var filters []*regexp.Regexp
 	for _, filter := range strings.Split(laString(a, "file_pattern"), "|") {
@@ -262,11 +326,15 @@ func liveagentSearch(ctx context.Context, name string, a map[string]any) (string
 		return "", err
 	}
 	var rows []string
-	matches, fileCount := 0, 0
+	matches, fileCount, skipped := 0, 0, 0
 	mode := laString(a, "output_mode")
 	contextLines := laInt(a, "context", 0)
 	for _, p := range paths {
 		if err := ctx.Err(); err != nil {
+			if timedOut(err) {
+				partial = true
+				break
+			}
 			return "", err
 		}
 		if dirs[p] {
@@ -282,6 +350,12 @@ func liveagentSearch(ctx context.Context, name string, a map[string]any) (string
 				ok = ok || f.MatchString(filepath.ToSlash(rel))
 			}
 			if !ok {
+				continue
+			}
+		}
+		if caps.fileBytes > 0 {
+			if fi, err := os.Stat(p); err == nil && fi.Size() > caps.fileBytes {
+				skipped++
 				continue
 			}
 		}
@@ -324,18 +398,97 @@ func liveagentSearch(ctx context.Context, name string, a map[string]any) (string
 			line := strings.Count(text[:index[0]], "\n")
 			last := line + strings.Count(text[index[0]:index[1]], "\n")
 			for i := max(0, line-contextLines); i <= min(last+contextLines, len(lines)-1); i++ {
-				rows = append(rows, fmt.Sprintf("%s:%d: %s", display(p), i+1, lines[i]))
+				rows = append(rows, fmt.Sprintf("%s:%d: %s", display(p), i+1, clipLine(lines[i], caps.lineChars)))
 			}
 		}
 	}
-	if mode == "count" {
-		return fmt.Sprintf("Grep: %s\nmatches=%d\nfiles=%d", pattern, matches, fileCount), nil
+	if skipped > 0 {
+		notes = append(notes, fmt.Sprintf("(skipped %d file(s) larger than %d bytes)", skipped, caps.fileBytes))
 	}
-	return fmt.Sprintf("matches=%d files=%d\n", matches, fileCount) + liveagentPage(name, pattern, rows, offset, laInt(a, "head_limit", 200)), nil
+	if mode == "count" {
+		return finish(fmt.Sprintf("Grep: %s\nmatches=%d\nfiles=%d", pattern, matches, fileCount)), nil
+	}
+	headLimit := 200
+	if mode == "files" && caps.fileRows > 0 {
+		headLimit = caps.fileRows
+	} else if mode != "files" && caps.contentRows > 0 {
+		headLimit = caps.contentRows
+	}
+	return finish(fmt.Sprintf("matches=%d files=%d\n", matches, fileCount) + liveagentPage(kind, pattern, rows, offset, laInt(a, "head_limit", headLimit))), nil
 }
+
+// clipLine shortens a quoted line to at most limit bytes, cut on a rune boundary;
+// zero keeps it whole.
+func clipLine(line string, limit int) string {
+	if limit <= 0 || len(line) <= limit {
+		return line
+	}
+	cut := limit
+	for cut > 0 && !utf8.RuneStart(line[cut]) {
+		cut--
+	}
+	return line[:cut] + fmt.Sprintf("… [%d more bytes]", len(line)-cut)
+}
+
 func liveagentPage(name, label string, rows []string, offset, limit int) string {
 	start := min(offset, len(rows))
 	end := min(start+limit, len(rows))
 	out := fmt.Sprintf("%s: %s\noffset=%d total=%d hasMore=%t\n", name, label, offset, len(rows), end < len(rows)) + strings.Join(rows[start:end], "\n")
 	return Truncate(out)
+}
+
+// searchBudgetPage is liveagentPage under a character budget: the rows that do not
+// fit are counted by extension, so the listing still says what it left out.
+func searchBudgetPage(name, label string, rows []string, offset, limit, budget int) string {
+	start := min(offset, len(rows))
+	end := min(start+limit, len(rows))
+	used, shown := 0, start
+	for shown < end && used+len(rows[shown])+1 <= budget {
+		used += len(rows[shown]) + 1
+		shown++
+	}
+	out := fmt.Sprintf("%s: %s\noffset=%d total=%d hasMore=%t\n", name, label, offset, len(rows), shown < len(rows)) + strings.Join(rows[start:shown], "\n")
+	if shown < len(rows) {
+		out += fmt.Sprintf("\n... %d more entries not shown (%s); pass offset=%d, a narrower path or a smaller depth", len(rows)-shown, extensionSummary(rows[shown:], 5), shown)
+	}
+	return out
+}
+
+// extensionSummary counts List rows as "3 dirs, 12 .go, 4 .md, 2 other".
+func extensionSummary(rows []string, top int) string {
+	counts := map[string]int{}
+	for _, row := range rows {
+		if strings.HasPrefix(row, "[DIR] ") {
+			counts["dirs"]++
+			continue
+		}
+		ext := path.Ext(strings.TrimPrefix(row, "[FILE] "))
+		if ext == "" {
+			ext = "no extension"
+		}
+		counts[ext]++
+	}
+	keys := make([]string, 0, len(counts))
+	for k := range counts {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if counts[keys[i]] != counts[keys[j]] {
+			return counts[keys[i]] > counts[keys[j]]
+		}
+		return keys[i] < keys[j]
+	})
+	var parts []string
+	other := 0
+	for i, k := range keys {
+		if i < top {
+			parts = append(parts, fmt.Sprintf("%d %s", counts[k], k))
+		} else {
+			other += counts[k]
+		}
+	}
+	if other > 0 {
+		parts = append(parts, fmt.Sprintf("%d other", other))
+	}
+	return strings.Join(parts, ", ")
 }

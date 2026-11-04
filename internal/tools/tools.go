@@ -43,7 +43,7 @@ var LSP interface {
 
 func All() []Tool {
 	reads := &readLedger{}
-	return []Tool{bashTool(), readTool(reads), writeTool(reads), editTool(reads)}
+	return []Tool{bashTool(), readTool(reads), writeTool(reads), editTool(reads), grepTool(), globTool(), listTool()}
 }
 
 // readLedger remembers the content read last returned for each file, so write can
