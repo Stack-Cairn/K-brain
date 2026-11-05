@@ -600,13 +600,18 @@ func diagnoseSandboxUser(t *testing.T) {
 		return
 	}
 	root := workspace(t)
-	for _, network := range []bool{false, true} {
+	for _, run := range []struct {
+		variant string
+		network bool
+	}{{"1", false}, {"1", true}, {"1,nowindow", true}, {"1,defaultdesk", true}, {"1,winstaall", true}, {"1,nowindow,defaultdesk", true}, {"1,nowindow,winstaall", false}, {"1,defaultdesk", false}} {
+		network := run.network
+		t.Logf("diagnosis: variant %s network=%v", run.variant, network)
 		p := workspacePolicy(root)
 		p.Network = network
 		cmd := exec.Command(cmdExe(), "/d", "/c", "whoami /all & cd & echo x>diag.txt & icacls .")
 		cmd.Dir = root
-		cmd.Env = append(os.Environ(), traceEnv+"=1")
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		cmd.Env = append(os.Environ(), traceEnv+"="+run.variant)
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		wrapped, err := p.wrapSandboxUserWith(ctx, cmd, root, st, false)
 		if err != nil {
 			cancel()
@@ -625,7 +630,7 @@ func diagnoseSandboxUser(t *testing.T) {
 		select {
 		case err := <-done:
 			t.Logf("diagnosis: network=%v finished: %v", network, err)
-		case <-time.After(8 * time.Second):
+		case <-time.After(6 * time.Second):
 			for _, user := range []string{st.Online.Name, st.Offline.Name} {
 				list, _ := exec.Command("tasklist", "/v", "/fo", "csv", "/fi", "USERNAME eq "+user).CombinedOutput()
 				t.Logf("diagnosis: network=%v processes of %s after 8s:\n%s", network, user, list)

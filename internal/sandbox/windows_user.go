@@ -700,9 +700,13 @@ func userLaunch(encoded string) (uint32, error) {
 	if spec.Offline {
 		grantees = append(grantees, st.OfflineGroup.SID)
 	}
-	desktop, closeDesktop, err := privateDesktop(grantees)
-	if err != nil {
-		return 0, err
+	variant := os.Getenv(traceEnv)
+	desktop, closeDesktop := "", func() {}
+	if !strings.Contains(variant, "defaultdesk") {
+		desktop, closeDesktop, err = privateDesktop(grantees, strings.Contains(variant, "winstaall"))
+		if err != nil {
+			return 0, err
+		}
 	}
 	defer closeDesktop()
 	job, err := confinementJob()
@@ -743,11 +747,11 @@ func userLaunch(encoded string) (uint32, error) {
 	if err != nil {
 		return 0, err
 	}
-	// Stage two needs no console: it talks through the handles given here.
-	// Without DETACHED_PROCESS the secondary logon service opens a console
-	// for it, and its console host does not come up on the sandbox desktop.
 	var pi windows.ProcessInformation
-	flags := uint32(windows.CREATE_SUSPENDED | windows.CREATE_UNICODE_ENVIRONMENT | windows.CREATE_DEFAULT_ERROR_MODE | windows.DETACHED_PROCESS)
+	flags := uint32(windows.CREATE_SUSPENDED | windows.CREATE_UNICODE_ENVIRONMENT | windows.CREATE_DEFAULT_ERROR_MODE)
+	if strings.Contains(variant, "nowindow") {
+		flags |= windows.CREATE_NO_WINDOW
+	}
 	r, _, callErr := procCreateProcessWithLogonW.Call(
 		uintptr(unsafe.Pointer(user)), uintptr(unsafe.Pointer(domain)), uintptr(unsafe.Pointer(pw)), logonWithNoProfile,
 		uintptr(unsafe.Pointer(app)), uintptr(unsafe.Pointer(&cmdLine[0])),
@@ -757,7 +761,7 @@ func userLaunch(encoded string) (uint32, error) {
 		stageTrace(spec.Temp, "1", "logon failed: %v", callErr)
 		return 0, fmt.Errorf("log on the sandbox account %s: %w", account.Name, callErr)
 	}
-	stageTrace(spec.Temp, "1", "started stage two pid %d desktop %q", pi.ProcessId, desktop)
+	stageTrace(spec.Temp, "1", "started stage two pid %d desktop %q flags %#x", pi.ProcessId, desktop, flags)
 	defer windows.CloseHandle(pi.Process)
 	defer windows.CloseHandle(pi.Thread)
 	if err := windows.AssignProcessToJobObject(job, pi.Process); err != nil {
@@ -834,7 +838,7 @@ func gitSafeDirectoryEnv(env []string, dirs []string) []string {
 // token) the desktop and the access to the window station that a process
 // needs to start. On other window stations (services, CI) the account inherits the
 // launcher's desktop, which the secondary logon service grants it.
-func privateDesktop(grantees []string) (string, func(), error) {
+func privateDesktop(grantees []string, all bool) (string, func(), error) {
 	noop := func() {}
 	winsta, _, callErr := procGetProcessWindowStation.Call()
 	if winsta == 0 {
@@ -848,7 +852,7 @@ func privateDesktop(grantees []string) (string, func(), error) {
 		return "", noop, nil
 	}
 	for _, sid := range grantees {
-		if err := grantWindowStation(station, sid); err != nil {
+		if err := grantWindowStation(station, sid, all); err != nil {
 			return "", noop, fmt.Errorf("let the sandbox account use the window station: %w", err)
 		}
 	}
@@ -877,7 +881,7 @@ func privateDesktop(grantees []string) (string, func(), error) {
 // grantWindowStation adds an entry for accountSID to the window station's
 // DACL unless it has one. The window station lives as long as the user's
 // logon session, so the entry goes with it.
-func grantWindowStation(station, accountSID string) error {
+func grantWindowStation(station, accountSID string, all bool) error {
 	name, _ := windows.UTF16PtrFromString(station)
 	h, _, callErr := procOpenWindowStationW.Call(uintptr(unsafe.Pointer(name)), 0, windows.READ_CONTROL|windows.WRITE_DAC)
 	if h == 0 {
@@ -892,7 +896,11 @@ func grantWindowStation(station, accountSID string) error {
 	if err != nil {
 		return err
 	}
-	want, err := newACE(accessAllowedACEType, 0, winstaSandboxAccess, accountSID)
+	access := uint32(winstaSandboxAccess)
+	if all {
+		access = 0x37f
+	}
+	want, err := newACE(accessAllowedACEType, 0, access, accountSID)
 	if err != nil {
 		return err
 	}
@@ -905,7 +913,7 @@ func grantWindowStation(station, accountSID string) error {
 		}
 	}
 	sid, _ := windows.StringToSid(accountSID)
-	acl, err := windows.ACLFromEntries([]windows.EXPLICIT_ACCESS{{AccessPermissions: winstaSandboxAccess, AccessMode: windows.GRANT_ACCESS,
+	acl, err := windows.ACLFromEntries([]windows.EXPLICIT_ACCESS{{AccessPermissions: windows.ACCESS_MASK(access), AccessMode: windows.GRANT_ACCESS,
 		Trustee: windows.TRUSTEE{TrusteeForm: windows.TRUSTEE_IS_SID, TrusteeValue: windows.TrusteeValueFromSID(sid)}}}, dacl)
 	if err != nil {
 		return err
