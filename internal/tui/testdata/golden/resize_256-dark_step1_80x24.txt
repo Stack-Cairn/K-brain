@@ -1,0 +1,24 @@
+● Stage 1 keeps a checkpoint per input, so a rerun skips work it has already
+  done:
+
+  • read the checkpoint
+  • skip inputs it lists
+
+                                                                           go
+    if done[in.ID] {
+        continue
+    }
+
+◆ Bash  go test ./pkg/stage1/...                                          ✓ 1.1s
+  └ ok      github.com/acme/kn/pkg/stage1    0.2s
+
+▌❯ Stage 2: make the pipeline step idempotent and rerun its tests.
+
+● Stage 2 keeps a checkpoint per input, so a rerun skips work it has already
+  done:
+
+  • read the checkpoint
+  • skip inputs it lists
+────────────────────────────────────────────────────────────────────────────────
+  ❯ Ask k-brain anything…  / commands · Shift+Tab mode · Ctrl+P menu
+   Normal                                           ↑ 23% · kimi-k3-fast · ✦ off

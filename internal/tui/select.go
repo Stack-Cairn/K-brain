@@ -66,19 +66,14 @@ func (m *model) inputPoint(x, y int, clamp bool) (selPos, bool) {
 	return selPos{row: row, col: max(min(x, w), 0), input: true}, true
 }
 
+// contentLine is transcript row r as plain text, trailing blanks trimmed.
 func (m *model) contentLine(r int) string {
-	for i := range m.blocks {
-		b := &m.blocks[i]
-		if r < b.y0 || r > b.y1 {
-			continue
-		}
-		rows := strings.Split(ansi.Strip(b.rendered), "\n")
-		if r-b.y0 < len(rows) {
-			return strings.TrimRight(rows[r-b.y0], " \t")
-		}
+	bi := m.blockAtRow(r)
+	if bi < 0 {
 		return ""
 	}
-	return ""
+	b := &m.blocks[bi]
+	return b.plainRow(r - b.y0)
 }
 
 func cellSlice(s string, off, n int) string {
@@ -381,15 +376,7 @@ func (m *model) clickAt(x, y int) {
 	if !ok {
 		return
 	}
-	row := p.row
-	for i := range m.blocks {
-		if row < m.blocks[i].y0 || row > m.blocks[i].y1 {
-			continue
-		}
-
-		if m.blocks[i].toggle() {
-			m.refreshVP()
-			return
-		}
+	if bi := m.blockAtRow(p.row); bi >= 0 && m.blocks[bi].toggle() {
+		m.refreshVP()
 	}
 }

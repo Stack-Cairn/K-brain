@@ -1,0 +1,24 @@
+[1m● [0mStage 1 keeps a [1mcheckpoint[0m per input, so a rerun skips work it has already[0m    [0m
+  done:                                                                         
+                                                                                
+  • read the checkpoint                                                         
+  • skip inputs it lists                                                        
+                                                                                
+  [2m```go[0m                                                                         [0m
+    if done[in.ID] {                                                            
+        continue                                                                
+    }                                                                           
+  [2m```[0m                                                                           [0m
+                                                                                
+[2m◆[0m [1mBash[0m  go test ./pkg/stage1/...                                          ✓[2m 1.1s[0m
+[2m  └ [0mok      github.com/acme/kn/pkg/stage1    0.2s                               [0m
+                                                                                
+[1m▌[0m[1m❯[0m Stage 2: make the pipeline step idempotent and rerun its tests.              [0m
+                                                                                
+[1m● [0mStage 2 keeps a [1mcheckpoint[0m per input, so a rerun skips work it has already[0m    [0m
+  done:                                                                         
+                                                                                
+  • read the checkpoint                                                         
+────────────────────────────────────────────────────────────────────────────────
+  [1m❯ [0m[7mA[0m[2msk k-brain anything…  / commands · Shift+Tab mode · Ctrl+P menu[0m            [0m
+  [Normal]                                          [2m↑ 23% · [0mkimi-k3-fast[2m · [0m[1m✦ off[0m
