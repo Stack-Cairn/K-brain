@@ -46,3 +46,64 @@ func BenchmarkAppendStream(b *testing.B) {
 		m.append(fmt.Sprintf("streamed line %d", i))
 	}
 }
+
+// benchReplyLines is a long assistant reply as it streams in: prose, a list
+// and a fenced code block, repeated until it reaches n lines.
+func benchReplyLines(n int) []string {
+	unit := []string{
+		"Here is **some** `answer` text that wraps across the screen when the terminal is narrow enough.",
+		"",
+		"- a bullet with a [link](https://example.com) and `code`",
+		"- another bullet",
+		"",
+		"```go",
+		"func f(x int) int { return x * 2 }",
+		"```",
+		"",
+	}
+	lines := make([]string, 0, n)
+	for len(lines) < n {
+		lines = append(lines, unit[len(lines)%len(unit)])
+	}
+	return lines
+}
+
+// BenchmarkStreamReply2000Lines streams one 2,000-line reply a line at a
+// time, the way the coalesced stream delivers it, rendering a frame after
+// every delta as bubbletea does.
+func BenchmarkStreamReply2000Lines(b *testing.B) {
+	lines := benchReplyLines(2000)
+	b.ReportAllocs()
+	for b.Loop() {
+		m := compactCmdModel()
+		m.Update(mkWinSize(120, 40))
+		m.busy = true
+		for _, l := range lines {
+			m.Update(textMsg(l + "\n"))
+			_ = m.View()
+		}
+		m.flushCurrent()
+	}
+}
+
+func BenchmarkSeedTranscript1000Turns(b *testing.B) {
+	msgs := benchTranscript(1000)
+	b.ResetTimer()
+	b.ReportAllocs()
+	for b.Loop() {
+		m := compactCmdModel()
+		m.Update(mkWinSize(120, 40))
+		m.seedTranscript(msgs, 1)
+	}
+}
+
+func BenchmarkAppendStream1000Turns(b *testing.B) {
+	m := compactCmdModel()
+	m.Update(mkWinSize(120, 40))
+	m.seedTranscript(benchTranscript(1000), 1)
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := range b.N {
+		m.append(fmt.Sprintf("streamed line %d", i))
+	}
+}
