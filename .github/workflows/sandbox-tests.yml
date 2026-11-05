@@ -6,6 +6,8 @@ on:
       - 'internal/sandbox/**'
       - 'internal/backend/run_sandbox*.go'
       - 'internal/tools/bashrun/**'
+      - 'internal/tools/result_meta.go'
+      - 'internal/tools/sandbox_denial_test.go'
       - 'go.mod'
       - 'go.sum'
       - '.github/workflows/sandbox-tests.yml'
@@ -15,6 +17,8 @@ on:
       - 'internal/sandbox/**'
       - 'internal/backend/run_sandbox*.go'
       - 'internal/tools/bashrun/**'
+      - 'internal/tools/result_meta.go'
+      - 'internal/tools/sandbox_denial_test.go'
       - 'go.mod'
       - 'go.sum'
       - '.github/workflows/sandbox-tests.yml'
@@ -76,6 +80,7 @@ jobs:
           set +e
           go test ./internal/sandbox/... -count=1 -v
           status=$?
+          go test ./internal/tools/ -run '^TestShellToolsExplainSandboxDenials$' -count=1 -v || status=1
           for b in $hidden; do sudo mv "$b.hidden" "$b"; done
           exit $status
       - name: Linux tests with bubblewrap
@@ -91,11 +96,13 @@ jobs:
             sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           fi
           go test ./internal/sandbox/... ./internal/tools/bashrun/... -count=1 -v
+          go test ./internal/tools/ -run '^TestShellToolsExplainSandboxDenials$' -count=1 -v
           go test ./internal/backend/ -run 'Sandbox|Health' -count=1
       - name: macOS tests
         if: runner.os == 'macOS'
         run: |
           go test ./internal/sandbox/... ./internal/tools/bashrun/... -count=1 -v
+          go test ./internal/tools/ -run '^TestShellToolsExplainSandboxDenials$' -count=1 -v
           go test ./internal/backend/ -run 'Sandbox|Health' -count=1
       - name: Windows tests
         if: runner.os == 'Windows'
