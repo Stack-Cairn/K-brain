@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"fmt"
 	"slices"
 	"strings"
 
@@ -9,54 +8,18 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+// layout sizes the transcript viewport to whatever the chrome sections and
+// the live area leave of the terminal.
 func (m *model) layout() {
 	m.growInput()
-
-	chrome := fixedFrameRows + m.composerRows()
-
-	if m.busy {
-		chrome += 2
-	}
-
-	if m.iactive != nil {
-		chrome += lipgloss.Height(m.interactiveView()) + 1
-	}
-	if m.askDialog != nil {
-		chrome += lipgloss.Height(m.askView()) + 1
-	}
-	if m.permDialog != nil {
-		chrome += lipgloss.Height(m.permView()) + 1
-	}
-	if m.menu != nil {
-
-		chrome += lipgloss.Height(m.menuView()) + 1
-	}
-	if len(m.queue) > 0 {
-		chrome += len(m.queue) + 1
-	}
-	if m.rew != nil {
-		chrome += lipgloss.Height(m.rewindView()) + 1
-	}
-	if m.quit1 {
-		chrome++
-	}
-	if m.escClr || (m.esc1 && m.rew == nil && m.namePrompt == nil) {
-		chrome++
-	}
 	if m.taskVP != nil {
 		m.refreshTaskVP()
 	}
-	m.dockRows = 0
-	if dock := m.tasksDock(); dock != "" {
-		m.dockRows = lipgloss.Height(dock)
+	m.measureDock()
 
-		m.dockSkip = 0
-		if m.tasksFocus {
-			m.dockSkip++
-		}
-		chrome += m.dockRows
-	}
-
+	chrome := m.fixedChrome()
+	// The live area (the reply or thinking still streaming) is not a chrome
+	// section: its cap is derived from the fixed chrome, so it comes last.
 	if liveRows := m.liveAreaRows(); liveRows > 0 {
 		chrome += liveRows + 1
 	}
@@ -66,6 +29,100 @@ func (m *model) layout() {
 		m.vp.Width, m.vp.Height = w, h
 		m.refreshVP()
 	}
+}
+
+// measureDock renders the subagent dock once to learn its height, which the
+// "dock" chrome section and dockTop read back.
+func (m *model) measureDock() {
+	m.dockRows = 0
+	if dock := m.tasksDock(); dock != "" {
+		m.dockRows = lipgloss.Height(dock)
+
+		m.dockSkip = 0
+		if m.tasksFocus {
+			m.dockSkip++
+		}
+	}
+}
+
+// chromeSection is one fixed region of the frame outside the transcript and
+// the live area. rows reports how many rows it takes right now, its separator
+// included, and 0 while it is not shown.
+type chromeSection struct {
+	name string
+	rows func(m *model) int
+}
+
+// chromeSectionList is every chrome section. layout and the live-area cap
+// both sum this one list, so a section added here is accounted for
+// everywhere. The rows below follow viewBody's drawing order, but the sum does
+// not depend on it: new sections are appended at the end so concurrent
+// additions merge cleanly.
+var chromeSectionList = []chromeSection{
+	{"interactive", func(m *model) int {
+		if m.iactive == nil {
+			return 0
+		}
+		return lipgloss.Height(m.interactiveView()) + 1
+	}},
+	{"permission", func(m *model) int {
+		if m.permDialog == nil {
+			return 0
+		}
+		return lipgloss.Height(m.permView()) + 1
+	}},
+	{"ask", func(m *model) int {
+		if m.askDialog == nil {
+			return 0
+		}
+		return lipgloss.Height(m.askView()) + 1
+	}},
+	{"busy", func(m *model) int {
+		if !m.busy {
+			return 0
+		}
+		return 2
+	}},
+	{"queue", (*model).queueRows},
+	{"rewind", func(m *model) int {
+		if m.rew == nil {
+			return 0
+		}
+		return lipgloss.Height(m.rewindView()) + 1
+	}},
+	// The composer frame and the footer row.
+	{"composer", func(m *model) int { return fixedFrameRows + m.composerRows() }},
+	{"menu", func(m *model) int {
+		if m.menu == nil {
+			return 0
+		}
+		return lipgloss.Height(m.menuView()) + 1
+	}},
+	// Set by measureDock during layout.
+	{"dock", func(m *model) int { return m.dockRows }},
+	{"quitArm", func(m *model) int {
+		if !m.quit1 {
+			return 0
+		}
+		return 1
+	}},
+	{"escArm", func(m *model) int {
+		if !m.escClr && (!m.esc1 || m.rew != nil || m.namePrompt != nil) {
+			return 0
+		}
+		return 1
+	}},
+}
+
+func (m *model) chromeSections() []chromeSection { return chromeSectionList }
+
+// fixedChrome is the rows every chrome section takes together.
+func (m *model) fixedChrome() int {
+	n := 0
+	for _, s := range chromeSectionList {
+		n += s.rows(m)
+	}
+	return n
 }
 
 func (m *model) streamCap(fixedChrome int) int {
@@ -98,37 +155,6 @@ func (m *model) dockTop() int {
 		bottom = m.viewTop + m.viewH
 	}
 	return bottom - fixedFrameRows - m.dockRows + m.dockSkip
-}
-
-func (m *model) fixedChrome() int {
-	chrome := fixedFrameRows + m.composerRows()
-
-	if m.busy {
-		chrome += 2
-	}
-
-	if m.iactive != nil {
-		chrome += lipgloss.Height(m.interactiveView()) + 1
-	}
-	if m.permDialog != nil {
-		chrome += lipgloss.Height(m.permView()) + 1
-	}
-	if m.menu != nil {
-		chrome += lipgloss.Height(m.menuView()) + 1
-	}
-	if len(m.queue) > 0 {
-		chrome += len(m.queue) + 1
-	}
-	if m.rew != nil {
-		chrome += lipgloss.Height(m.rewindView()) + 1
-	}
-	if m.quit1 {
-		chrome++
-	}
-	if m.escClr || (m.esc1 && m.rew == nil && m.namePrompt == nil) {
-		chrome++
-	}
-	return chrome + m.dockRows
 }
 
 // padAboveTranscript inserts n blank rows at the very top of the frame, moving
@@ -300,19 +326,7 @@ func (m *model) viewBody() string {
 		b.WriteString("\n" + m.busyRow() + "\n")
 	}
 	if len(m.queue) > 0 {
-		nav := ""
-		if m.busy && m.input.Value() == "" {
-			nav = " · ↑/↓ Select · Del Removes"
-		}
-		b.WriteString(dimStyle.Render(fmt.Sprintf(m.tr("queued (%d) · Enter on empty input steers%s"), len(m.queue), nav)) + "\n")
-		for i, q := range m.queue {
-
-			line := ansi.Truncate(youStyle.Render(" "+glyphUser)+q, m.width, "…")
-			if i == m.queueSel {
-				line = ansi.Truncate(botStyle.Render(" → ")+q+dimStyle.Render("  (Del to remove)"), m.width, "…")
-			}
-			b.WriteString(line + "\n")
-		}
+		b.WriteString(m.queueView())
 	}
 	if m.rew != nil {
 		b.WriteString("\n" + m.rewindView() + "\n")
