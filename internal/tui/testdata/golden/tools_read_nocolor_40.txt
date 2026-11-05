@@ -1,0 +1,8 @@
+== read ==
+◆ Read  internal/tui/view.go  lines
+  10-49                           ✓ 0.0s
+  └ 40 lines
+== failed ==
+✗ Read  missing.go         failed · 0.0s
+  └ Error: open missing.go: no such file
+    or directory

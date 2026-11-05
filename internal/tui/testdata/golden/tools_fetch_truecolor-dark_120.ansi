@@ -1,0 +1,12 @@
+== web-fetch ==
+[38;2;134;139;149m◆[0m [1mFetch[0m  [38;2;200;204;211mpkg.go.dev/github.com/charmbracelet/bubbletea[0m                                                            [38;2;116;184;121m✓[0m[38;2;134;139;149m 0.6s[0m
+[38;2;134;139;149m  └ [0m[38;2;134;139;149m1220 chars[0m
+== hosted-search ==
+[38;2;134;139;149m◆[0m [1mWeb search[0m  [38;2;200;204;211m"bubbletea viewport"[0m                                                                           [38;2;116;184;121m✓[0m[38;2;134;139;149m 5 sources[0m
+[38;2;134;139;149m  └ [0m[38;2;200;204;211mBubbles: TUI components[0m[38;2;134;139;149m — github.com[0m
+    [38;2;200;204;211mviewport package[0m[38;2;134;139;149m — pkg.go.dev[0m
+    [38;2;200;204;211mexample.com[0m
+[38;2;154;160;170m    ⋯ +2 sources · ctrl+e[0m
+== hosted-search-failed ==
+[1;38;2;224;105;105m✗[0m [1mWeb search[0m  [38;2;200;204;211m"kn release notes"[0m                                                                                  [38;2;224;105;105mfailed[0m
+[38;2;134;139;149m  └ [0m[38;2;200;204;211msearch quota exceeded[0m

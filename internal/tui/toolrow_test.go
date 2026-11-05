@@ -58,10 +58,17 @@ func TestEditResultRendersDiff(t *testing.T) {
 		t.Fatalf("run row: %q", got)
 	}
 	res := ansi.Strip(m.blocks[len(m.blocks)-1].render(m.width))
-	for _, want := range []string{glyphs.Result + " +1 " + glyphs.Minus + "1  Added 1 line, removed 1 line", "4  - x", "4  + y", "unused variable"} {
+	// The counts ride on the header; the result is the diff itself.
+	if got := ansi.Strip(m.blocks[len(m.blocks)-2].render(m.width)); !strings.Contains(got, "+1 "+glyphs.Minus+"1") {
+		t.Fatalf("run row should carry the counts: %q", got)
+	}
+	for _, want := range []string{"4  - x", "4  + y", "unused variable"} {
 		if !strings.Contains(res, want) {
 			t.Fatalf("result block missing %q:\n%s", want, res)
 		}
+	}
+	if strings.Contains(res, "Added 1 line") {
+		t.Fatalf("a result under its header should not repeat the counts:\n%s", res)
 	}
 }
 
@@ -72,11 +79,12 @@ func TestDiffPreviewCapAndExpand(t *testing.T) {
 	}
 	b := block{kind: blockTool, text: "Wrote 1 bytes to a.go\n```diff\n" + strings.Join(rows, "\n") + "\n```"}
 	out := ansi.Strip(b.render(80))
-	if !strings.Contains(out, glyphs.Fold+" +5 more lines · ctrl+e") {
+	// Drawn without a header, the result says the counts itself.
+	if !strings.Contains(out, glyphs.Fold+" +5 lines · ctrl+e") || !strings.Contains(out, "Added 35 lines") {
 		t.Fatalf("collapsed diff should cap:\n%s", out)
 	}
 	b.expanded, b.stale = true, true
-	if out := ansi.Strip(b.render(80)); strings.Contains(out, "more lines · ctrl+e") {
+	if out := ansi.Strip(b.render(80)); strings.Contains(out, "lines · ctrl+e") {
 		t.Fatal("expanded diff should show everything")
 	}
 }
@@ -96,7 +104,7 @@ func TestSeedTranscriptShowsDiffs(t *testing.T) {
 	for i := range m.blocks {
 		joined.WriteString(ansi.Strip(m.blocks[i].render(m.width)) + "\n")
 	}
-	for _, want := range []string{glyphs.ToolDone + " Edit  a.go", "Added 1 line, removed 1 line", "4  + y"} {
+	for _, want := range []string{glyphs.ToolDone + " Edit  a.go", "+1 " + glyphs.Minus + "1", "4  + y"} {
 		if !strings.Contains(joined.String(), want) {
 			t.Fatalf("resumed transcript missing %q:\n%s", want, joined.String())
 		}

@@ -276,6 +276,7 @@ type model struct {
 	tx  *transcriptState // transcript engine (transcript.go)
 	cmp *composerState   // composer: undo, kill ring, chips, stash, history search, queue editing
 	app *appSurfaceState // app surfaces: cheatsheet, settings, extensions, memory (picker_view.go)
+	tv  *toolViewState   // tool views and the plan pane (toolview.go, todo_pane.go)
 }
 
 type initialPromptMsg struct{}
@@ -1090,6 +1091,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case toolEndMsg:
 		return m.onToolEnd(msg)
+
+	case toolResultMsg, toolTickMsg, hostedSearchMsg, todosMsg:
+		return m.onToolView(msg)
 
 	case promptEditedMsg:
 		m.applyPromptEdit(msg)

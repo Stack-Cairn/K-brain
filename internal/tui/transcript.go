@@ -130,6 +130,9 @@ func (m *model) seedTranscript(msgs []ai.Message, base int) {
 				m.blocks = append(m.blocks, block{kind: blockAssistant, text: strings.TrimRight(msg.TextContent(), "\n")})
 			}
 			for _, tc := range msg.ToolCalls {
+				if hiddenToolCall(tc.Function.Name) {
+					continue
+				}
 				if tc.ID != "" {
 					headers[tc.ID] = len(m.blocks)
 				}
@@ -143,6 +146,9 @@ func (m *model) seedTranscript(msgs []ai.Message, base int) {
 			var head *block
 			if ok {
 				head = &m.blocks[hdr]
+			}
+			if !ok && hiddenToolCall(msg.Name) {
+				break
 			}
 			result, show := seededToolResult(msg, head)
 			if !show {
@@ -159,6 +165,7 @@ func (m *model) seedTranscript(msgs []ai.Message, base int) {
 		}
 		m.msgBlock[base+i] = bi
 	}
+	m.settleSeededTools()
 	m.follow = true
 	m.refreshVP()
 }
@@ -222,6 +229,8 @@ type toolRunMeta struct {
 	duration    time.Duration
 	cancelled   bool
 	interrupted bool
+	// view is what the tool views learn about the call (toolview.go).
+	view *toolViewMeta
 }
 
 type blockKind int

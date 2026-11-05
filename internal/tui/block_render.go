@@ -83,7 +83,7 @@ var asciiChrome = strings.NewReplacer(
 	"⚒", "*", "⎿", "`", "◎", "o", "⚠", "!", "✦", "*", "⚙", "*", "●", "*",
 	"❯", ">", "◌", "~", "◇", "o", "◆", "*", "⋯", "...", "✓", "v", "✗", "x",
 	"…", "...", "·", "-", "—", "-", "→", "->", "←", "<-", "↑", "Up", "↓", "Down",
-	"│", "|", "└", "`", "▌", "|", "▰", "#", "▱", "-", "⇣", "v", "◐", "o", "−", "-",
+	"│", "|", "└", "`", "▌", "|", "▰", "#", "▱", "-", "⇣", "v", "◐", "o", "−", "-", "×", "x", "○", "o",
 )
 
 // chromeGlyphs is s with chrome glyphs swapped for ASCII when that mode is on.
@@ -171,9 +171,13 @@ func batchTag(text string) string {
 	return ""
 }
 
-// renderToolRun draws a tool call header: running (with its live output on a
-// muted rail) or finished (with how long it took, right-aligned).
+// renderToolRun draws a tool call header. Tool families draw through
+// renderToolHeader (toolview.go); subagent rows, whose text the task
+// tracker keeps current, and rows without a tool name draw their text.
 func renderToolRun(b block, width int) string {
+	if b.toolName != "" && toolKindOf(b.toolName) != tkSubagent {
+		return renderToolHeader(&b, width)
+	}
 	if b.toolRunning {
 		if b.toolName != "" {
 			toolTimer.start(b.toolID)
@@ -239,43 +243,10 @@ func fmtToolDuration(d time.Duration) string {
 	return fmt.Sprintf("%dm%02ds", int(d.Minutes()), int(d.Seconds())%60)
 }
 
-// renderToolResult draws a tool's output under its header on an elbow: a
-// diff with its gutter, a folded count for reads and searches, or a short
-// preview that expands with ctrl+e.
+// renderToolResult draws a tool's output under its header, by tool family
+// (renderToolBody in toolview.go).
 func renderToolResult(b block, width int) string {
-	if diff, rest := extractDiff(strings.TrimRight(b.text, "\n")); diff != "" {
-		return renderDiffResult(diff, rest, b.expanded, width)
-	}
-	lines := strings.Split(strings.TrimRight(b.text, "\n"), "\n")
-	elbow := textMutedStyle.Render("  " + glyphs.Result + " ")
-	failed := strings.HasPrefix(b.text, "Error")
-	style := textSecondaryStyle
-	if failed {
-		// The header's glyph and meta already say it failed; the output itself
-		// stays readable rather than all red.
-		style = lipgloss.NewStyle()
-	}
-	// Reads and searches are context for the model, not for the reader: fold
-	// them to a one-line count that still expands on demand.
-	if !b.expanded && !failed && quietResultTool(b.toolName) && len(lines) > 1 {
-		return wrap(elbow+textMutedStyle.Render(quietResultSummary(b.toolName, b.text, len(lines))), width)
-	}
-	shown := lines
-	if !b.expanded && len(lines) > toolPreviewLines {
-		shown = lines[:toolPreviewLines]
-	}
-	var out []string
-	for i, l := range shown {
-		lead := elbow
-		if i > 0 {
-			lead = "    " // continuation rows sit under the text, not the elbow
-		}
-		out = append(out, wrapHanging(lead, style.Render(l), width))
-	}
-	if n := len(lines) - len(shown); n > 0 {
-		out = append(out, textHintStyle.Render(fmt.Sprintf("    %s +%d lines · ctrl+e", glyphs.Fold, n)))
-	}
-	return strings.Join(out, "\n")
+	return renderToolBody(&b, width)
 }
 
 // wrapHanging wraps text after a lead so wrapped rows indent under the text.

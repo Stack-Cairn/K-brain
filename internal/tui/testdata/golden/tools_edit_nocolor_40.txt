@@ -1,0 +1,22 @@
+== edit ==
+◆ Edit  cmd/kn/status.go   +1 −1  ✓ 0.1s
+  41        flags :=
+        pflag.NewFlagSet("status")
+  42  -     verbose := flags.Bool("v",
+        false, "verbose output for
+        every subcommand")
+  42  +     asJSON :=
+        flags.Bool("json", false,
+        "print the status as one JSON
+        object per line")
+  43        flags.Parse(args)
+== write-new ==
+◆ Write  docs/notes.md        +4  ✓ 0.0s
+  1  + # Notes
+  2  +
+  3  + First line.
+  4  + Second line.
+== failed ==
+✗ Edit  main.go            failed · 0.0s
+  └ Error: old_string not found in
+    main.go

@@ -1,6 +1,6 @@
+  Then run the package tests.
 
-* Edit  cmd/kn/status.go                                                  v 0.1s
-  ` +1 -1  Added 1 line, removed 1 line
+* Edit  cmd/kn/status.go                                           +1 -1  v 0.1s
   41        flags := pflag.NewFlagSet("status")
   42  -     verbose := flags.Bool("v", false, "verbose")
   42  +     asJSON := flags.Bool("json", false, "print JSON")

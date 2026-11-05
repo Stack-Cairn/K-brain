@@ -9,7 +9,6 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 )
@@ -46,6 +45,21 @@ func toolHeaderName(name string) string {
 		return "Browser"
 	case "computer_exec":
 		return "Computer"
+	case "Bash", "Read", "Write", "Edit", "Grep", "Glob", "List", "Image", "Delete":
+		return name
+	case "ManagedProcess":
+		return "Process"
+	case "ProcessWait":
+		return "Wait"
+	case "ProcessStop":
+		return "Stop"
+	case "TerminalSession", "ReadTerminal":
+		return "Terminal"
+	case "WebFetch":
+		return "Fetch"
+	}
+	if s, ok := mcpHeaderName(name); ok {
+		return s
 	}
 	return name
 }
@@ -56,15 +70,27 @@ func toolSubject(name, args string) string {
 	get := func(k string) string { s, _ := m[k].(string); return s }
 	s := ""
 	switch name {
-	case "bash":
-
+	case "bash", "Bash", "TerminalSession":
 		s = strings.Join(strings.Fields(get("command")), " ")
-	case "read", "write", "edit", "list":
-		s = get("path")
-		if s == "" && name == "list" {
+	case "ManagedProcess":
+		if s = strings.Join(strings.Fields(get("command")), " "); s == "" {
+			s = get("process_id")
+		}
+		if l := get("label"); l != "" && s == "" {
+			s = l
+		}
+	case "ProcessWait", "ProcessStop", "ReadTerminal":
+		s = get("session_id")
+	case "read", "write", "edit", "list", "Read", "Write", "Edit", "List", "Image", "Delete":
+		if s = get("path"); s == "" {
+			s = get("file_path")
+		}
+		if s == "" && (name == "list" || name == "List") {
 			s = "."
 		}
-	case "grep", "glob":
+	case "WebFetch":
+		s = fetchSubject(get("url"))
+	case "grep", "glob", "Grep", "Glob":
 		s = get("pattern")
 		if p := get("path"); p != "" && s != "" {
 			s += " in " + p
@@ -79,6 +105,15 @@ func toolSubject(name, args string) string {
 		s = get("id")
 	case "browser_exec", "computer_exec":
 		s = browserStepLabel(args)
+	default:
+		if toolKindOf(name) == tkMCP {
+			if s = mcpSubject(args); s == "" {
+				return ""
+			}
+		}
+	}
+	if s == "" {
+		s = mcpSubject(args)
 	}
 	if s == "" {
 		s = truncLine(oneLine(args), 60)
@@ -273,118 +308,11 @@ func diffCountsCell(added, removed int) string {
 	return strings.Join(parts, " ")
 }
 
-// renderDiffResult draws an edit's diff with a line-number gutter. Added and
-// removed rows keep their +/- sign and, where the terminal has background
-// colour, a tint under syntax-coloured code; elsewhere the sign and a line
-// colour carry the meaning. Long rows wrap under the code, not the gutter.
-func renderDiffResult(diff, rest string, expanded bool, width int) string {
-	added, removed := diffCounts(diff)
-	var b strings.Builder
-	b.WriteString(textMutedStyle.Render("  "+glyphs.Result+" ") + diffCountsCell(added, removed) + textMutedStyle.Render("  "+diffSummary(added, removed)))
-	rows := strings.Split(diff, "\n")
-	shown := rows
-	if !expanded && len(rows) > diffPreviewRows {
-		shown = rows[:diffPreviewRows]
-	}
-	numW := 1
-	parsed := make([]diffRow, len(shown))
-	for i, l := range shown {
-		parsed[i] = parseDiffRow(l)
-		numW = max(numW, len(parsed[i].num))
-	}
-	filename := ""
-	if first, _, _ := strings.Cut(rest, "\n"); first != "" {
-		filename = diffPathRE.FindString(first)
-	}
-	lexer := codeLexer("", filename)
-	for _, r := range parsed {
-		b.WriteString("\n" + renderDiffRow(r, numW, lexer, width))
-	}
-	if n := len(rows) - len(shown); n > 0 {
-		b.WriteString("\n" + textHintStyle.Render(fmt.Sprintf("    %s +%d more lines · ctrl+e", glyphs.Fold, n)))
-	}
-
-	if trail := strings.TrimSpace(strings.Join(strings.Split(rest, "\n")[1:], "\n")); trail != "" {
-		b.WriteString("\n" + wrap(dimStyle.Render("  "+strings.ReplaceAll(trail, "\n", "\n  ")), width))
-	}
-	return b.String()
-}
-
-// renderDiffLine renders a single raw diff row on its own (gutter sized to it).
-func renderDiffLine(l string, width int) string {
-	r := parseDiffRow(l)
-	return renderDiffRow(r, max(len(r.num), 1), nil, width)
-}
-
-func renderDiffRow(r diffRow, numW int, lexer chroma.Lexer, width int) string {
-	if r.kind == 0 {
-		note := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(r.code), "…"))
-		return textHintStyle.Render(ansi.Truncate("    "+glyphs.Fold+" "+note, max(width, 8), "…"))
-	}
-	const lead = "  "
-	gutter := lead + strings.Repeat(" ", numW-len(r.num)) + r.num + "  "
-	prefixW := len(gutter) + 2
-	codeW := max(width-prefixW, 4)
-
-	base := lipgloss.NewStyle()
-	tinted := backgroundsActive()
-	sign := " "
-	lineStyle := lipgloss.NewStyle()
-	switch r.kind {
-	case '+':
-		sign = growStyle.Render("+")
-		lineStyle = growStyle
-		if tinted {
-			base = diffAddStyle
-		}
-	case '-':
-		sign = errStyle.Render("-")
-		lineStyle = errStyle
-		if tinted {
-			base = diffDelStyle
-		}
-	}
-	var code string
-	switch {
-	case r.kind == ' ' || tinted:
-		code = strings.Join(highlightLines(r.code, lexer, base), " ")
-	default:
-		code = lineStyle.Render(strings.ReplaceAll(r.code, "\t", "    "))
-	}
-	pieces := strings.Split(ansi.Hardwrap(code, codeW, true), "\n")
-	var out []string
-	for i, p := range pieces {
-		g := withBG(gutterStyle, base).Render(gutter)
-		s := withBG(lipgloss.NewStyle(), base).Render(" ")
-		if i == 0 {
-			out = append(out, g+withBG(signStyleFor(r.kind), base).Render(ansi.Strip(sign))+s+p)
-		} else {
-			out = append(out, base.Render(strings.Repeat(" ", prefixW))+p)
-		}
-	}
-	for i, l := range out {
-		if r.kind != ' ' && tinted {
-			out[i] = l + base.Render(strings.Repeat(" ", max(width-lipgloss.Width(l), 0)))
-		}
-	}
-	return strings.Join(out, "\n")
-}
-
-func signStyleFor(kind byte) lipgloss.Style {
-	switch kind {
-	case '+':
-		return growStyle
-	case '-':
-		return errStyle
-	}
-	return lipgloss.NewStyle()
-}
-
 // quietResultTool reports tools whose output is read by the model rather than
 // the user; their results fold to a line count.
 func quietResultTool(name string) bool {
 	switch name {
-	case "read", "grep", "glob", "list", "web_fetch":
+	case "read", "grep", "glob", "list", "web_fetch", "Read", "Grep", "Glob", "List", "WebFetch":
 		return true
 	}
 	return false
@@ -399,15 +327,16 @@ var (
 // quietResultSummary is the folded line for a read or search result. Searches
 // report their own counts in a header; output lines would count the header too.
 func quietResultSummary(name, text string, lines int) string {
-	if name == "web_fetch" {
+	if name == "web_fetch" || name == "WebFetch" {
 		return fetchResultSummary(text)
 	}
+	name = strings.ToLower(name)
 	n := lines
 	re := searchTotalRe
 	if name == "grep" {
 		re = searchMatchesRe
 	}
-	if name != "read" {
+	if name != "read" && name != "image" {
 		if m := re.FindStringSubmatch(text); m != nil {
 			n, _ = strconv.Atoi(m[1])
 		}
@@ -418,7 +347,10 @@ func quietResultSummary(name, text string, lines int) string {
 // fetchResultSummary counts the characters a fetch returned, after its header and
 // blank line, and the page's total when that is more.
 func fetchResultSummary(text string) string {
-	_, body, _ := strings.Cut(text, "\n\n")
+	_, body, ok := strings.Cut(text, "\n\n")
+	if !ok {
+		body = text
+	}
 	n := utf8.RuneCountInString(body)
 	unit := "chars"
 	if n == 1 {
@@ -477,7 +409,7 @@ func gluedToPrev(blocks []block, i int) bool {
 		return false
 	}
 	prev, cur := blocks[j], blocks[i]
-	if cur.kind == blockTool {
+	if cur.kind == blockTool && !toolGroupBlock(&cur) {
 		return toolHead(prev)
 	}
 	return toolFamily(cur) && toolFamily(prev)

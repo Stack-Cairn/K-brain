@@ -1,6 +1,6 @@
+  Then run the package tests.                                                   
                                                                                 
-[2m◆[0m [1mEdit[0m  cmd/kn/status.go                                                  ✓[2m 0.1s[0m
-[2m  └ [0m+1 [1m−1[0m[2m  Added 1 line, removed 1 line[0m                                         [0m
+[2m◆[0m [1mEdit[0m  cmd/kn/status.go                                           +1 [1m−1[0m  ✓[2m 0.1s[0m
 [2m  41  [0m      flags := pflag.NewFlagSet("status")                                 [0m
 [2m  42  [0m[1m-[0m [1m    verbose := flags.Bool("v", false, "verbose")[0m                        [0m
 [2m  42  [0m+     asJSON := flags.Bool("json", false, "print JSON")                   [0m

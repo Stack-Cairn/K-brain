@@ -11,8 +11,7 @@
 
   Then run the package tests.
 
-* Edit  cmd/kn/status.go                                                                                          v 0.1s
-  ` +1 -1  Added 1 line, removed 1 line
+* Edit  cmd/kn/status.go                                                                                   +1 -1  v 0.1s
   41        flags := pflag.NewFlagSet("status")
   42  -     verbose := flags.Bool("v", false, "verbose")
   42  +     asJSON := flags.Bool("json", false, "print JSON")
@@ -31,6 +30,7 @@ x Bash  go vet ./...                                                            
 o Grep  asJSON                                                                                                    queued
 
   | Reading cmd/kn/status.go  3.0s                                                               0:12 - Esc to interrupt
+
 
 
 

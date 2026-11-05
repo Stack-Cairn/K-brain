@@ -1,0 +1,11 @@
+== ok ==
+* Browser  document.title                                                                                         v 1.2s
+  ` Example Domain
+    [image 1 - png - 1280x720]
+== hook-denied ==
+x Bash  rm -rf build                                                                                       failed - 0.0s
+  ` ! PreToolUse hook denied the call: destructive commands need review
+== hook-failed ==
+* custom_tool  x                                                                                                  v 0.1s
+  ` done
+    ! PostToolUse hook failed: exit status 1

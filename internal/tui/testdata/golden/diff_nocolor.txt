@@ -1,0 +1,22 @@
+== highlighted ==
+  10    func main() {
+  11  -     fmt.Println("hello")
+  11  +     fmt.Println("hello, world", strings.Repeat("=", 40), os.Args[1:])
+  12    }
+    ⋯ +3 more lines
+== wrapped ==
+  10    func main() {
+  11  -     fmt.Println("hello")
+  11  +     fmt.Println("hello, world",
+        strings.Repeat("=", 40),
+        os.Args[1:])
+  12    }
+    ⋯ +3 more lines
+== folded ==
+  10    func main() {
+  11  -     fmt.Println("hello")
+    ⋯ +3 lines · ctrl+e
+== unnumbered ==
+     + added
+     - removed
+       same
