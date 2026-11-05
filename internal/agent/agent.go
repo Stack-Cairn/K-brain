@@ -726,6 +726,7 @@ func (a *Agent) turnPending(ctx context.Context, input string, parts []ai.Conten
 				}
 				continue
 			}
+			a.appendCancelledReply(ctx, msg, usage)
 			return "", err
 		}
 		lifecycle.endMessage()
@@ -1379,6 +1380,7 @@ func (a *Agent) finalAnswer(ctx context.Context, ev Events) (string, error) {
 		ev.OnUsage(usage)
 	}
 	if err != nil {
+		a.appendCancelledReply(ctx, msg, usage)
 		return "", err
 	}
 	a.appendResponse(msg, usage)

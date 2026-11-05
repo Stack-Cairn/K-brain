@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/Stack-Cairn/K-brain/internal/ai"
@@ -66,11 +67,56 @@ func (a *Agent) streamObserved(ctx context.Context, request ai.Request, ev Event
 	if ev.OnPhase != nil {
 		ev.OnPhase("waiting_model")
 	}
-	message, usage, err := a.Client.Stream(ctx, request, ev.OnText, ev.OnThink, ev.OnToolCall)
+	var partial partialReply
+	message, usage, err := a.Client.Stream(ctx, request, partial.text(ev.OnText), partial.think(ev.OnThink), ev.OnToolCall)
 	if observer != nil {
 		observer.End(ctx, message, usage, err)
 	}
+	if err != nil && ctx.Err() != nil {
+		// Clients return no message on error; a user stop keeps what was already
+		// streamed so the turn loop can record it.
+		message = partial.message()
+	}
 	return message, usage, err
+}
+
+// partialReply collects the text and thinking a stream has already delivered.
+// Tool calls are left out: a call cut off mid-stream was never complete or run.
+type partialReply struct {
+	content, reasoning strings.Builder
+}
+
+func (p *partialReply) text(next func(string)) func(string) {
+	return func(delta string) {
+		p.content.WriteString(delta)
+		if next != nil {
+			next(delta)
+		}
+	}
+}
+
+func (p *partialReply) think(next func(string)) func(string) {
+	return func(delta string) {
+		p.reasoning.WriteString(delta)
+		if next != nil {
+			next(delta)
+		}
+	}
+}
+
+// message is the cancelled reply, or a zero Message when nothing was streamed.
+func (p *partialReply) message() ai.Message {
+	content, reasoning := p.content.String(), p.reasoning.String()
+	if strings.TrimSpace(content) == "" {
+		content = ""
+	}
+	if strings.TrimSpace(reasoning) == "" {
+		reasoning = ""
+	}
+	if content == "" && reasoning == "" {
+		return ai.Message{}
+	}
+	return ai.Message{Role: "assistant", Content: content, Reasoning: reasoning, StopReason: ai.StopReasonCancelled}
 }
 
 func withPromptContext(messages []ai.Message) []ai.Message {

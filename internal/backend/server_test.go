@@ -28,6 +28,11 @@ type scriptedClient struct {
 	response  string
 	streamErr error
 	wait      bool
+	// partial streams before a waiting response blocks, as if the model had
+	// started its reply when the user stopped it.
+	partial string
+	// streamed, when set, receives one value per request once partial is out.
+	streamed chan struct{}
 }
 
 func (c *scriptedClient) Models(context.Context) ([]ai.ModelInfo, error) { return nil, nil }
@@ -49,8 +54,16 @@ func (c *scriptedClient) Stream(ctx context.Context, request ai.Request, onText,
 	wait := c.wait
 	response := c.response
 	streamErr := c.streamErr
+	partial := c.partial
+	streamed := c.streamed
 	c.mu.Unlock()
 	if wait {
+		if partial != "" && onText != nil {
+			onText(partial)
+		}
+		if streamed != nil {
+			streamed <- struct{}{}
+		}
 		<-ctx.Done()
 		return ai.Message{}, ai.Usage{}, ctx.Err()
 	}
