@@ -203,7 +203,7 @@ func TestForegroundSubagentStreamsIntoRowDockAndView(t *testing.T) {
 
 func TestForegroundObserverIgnoresUnknownCalls(t *testing.T) {
 	fg := newFgRegistry()
-	fg.ChildStart(context.Background(), "foreground-1", "nested")
+	fg.ChildStart(context.Background(), agent.ChildInfo{ID: "foreground-1", Prompt: "nested"}, nil)
 	if _, ok := fg.get("foreground-1"); ok {
 		t.Fatal("a child without a registered parent call must be ignored")
 	}
