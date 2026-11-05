@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 func gitWorktreeRoot(ctx context.Context, dir string) (string, error) {
@@ -25,6 +26,8 @@ func gitWorktreeRoot(ctx context.Context, dir string) (string, error) {
 func provisionSubagentWorktree(ctx context.Context, taskID string) (path string, err error) {
 	return provisionSubagentWorktreeAt(ctx, "", taskID)
 }
+
+var worktreeAddMu sync.Mutex
 
 func provisionSubagentWorktreeAt(ctx context.Context, wd, taskID string) (path string, err error) {
 	if err := ctx.Err(); err != nil {
@@ -55,6 +58,9 @@ func provisionSubagentWorktreeAt(ctx context.Context, wd, taskID string) (path s
 	branch := "subagent/" + name
 	dirName := filepath.Base(root) + "-wt-" + name
 	path = filepath.Join(filepath.Dir(root), dirName)
+	// Concurrent adds read each other's half-written admin directories: "failed to read .../commondir".
+	worktreeAddMu.Lock()
+	defer worktreeAddMu.Unlock()
 	cmd := exec.CommandContext(ctx, "git", "-C", root, "worktree", "add", "-b", branch, path)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		if ctx.Err() != nil {

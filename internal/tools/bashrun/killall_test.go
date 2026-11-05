@@ -60,7 +60,9 @@ func TestBackgroundGrandchildDoesNotHang(t *testing.T) {
 		if res.TimedOut {
 			t.Fatalf("background grandchild caused a timeout: %+v", res)
 		}
-	case <-time.After(8 * time.Second):
+	// Below the grandchild's 30 seconds, which is what a hang would wait for; PowerShell can take
+	// several seconds to start on a busy machine.
+	case <-time.After(25 * time.Second):
 		t.Fatal("run hung on a backgrounded grandchild")
 	}
 }

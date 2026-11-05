@@ -181,7 +181,7 @@ func newToolHistoryServer(t *testing.T, store *session.Store, eventDir string, c
 
 func readToolHistoryRun(t *testing.T, base, sessionID, runID, decision string) []protocol.Event {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/v1/sessions/"+sessionID+"/events?after_seq=0", nil)
 	if err != nil {

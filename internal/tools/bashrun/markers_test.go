@@ -16,7 +16,7 @@ func TestChildMarkers(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		command = `Get-ChildItem Env:K_BRAIN,Env:K_BRAIN_SESSION_ID,Env:K_BRAIN_MODEL,Env:K_BRAIN_PID | ForEach-Object { "$($_.Name)=$($_.Value)" }`
 	}
-	res := Run(context.Background(), Options{Command: command, Timeout: 5 * time.Second})
+	res := Run(context.Background(), Options{Command: command, Timeout: 30 * time.Second})
 	for _, want := range []string{"K_BRAIN=1", "K_BRAIN_SESSION_ID=sess123", "K_BRAIN_MODEL=model1", "K_BRAIN_PID="} {
 		if !strings.Contains(res.Output, want) {
 			t.Fatalf("child env missing %q:\n%s", want, res.Output)

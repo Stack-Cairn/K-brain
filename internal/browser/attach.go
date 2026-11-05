@@ -16,6 +16,9 @@ import (
 	"time"
 )
 
+// debugPorts are the conventional remote debugging ports, probed when no profile names one.
+var debugPorts = []int{9222, 9223}
+
 func profileDirs() []string {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -294,7 +297,7 @@ func discoverLiveCandidates(ctx context.Context) ([]string, error) {
 		}
 	}
 
-	for _, port := range []int{9222, 9223} {
+	for _, port := range debugPorts {
 		if !portLive(port) {
 			continue
 		}
