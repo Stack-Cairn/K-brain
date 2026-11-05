@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -378,7 +379,7 @@ func TestCopyVerifiesAndBacksUp(t *testing.T) {
 	if err != nil || string(b) != "hello\r\nworld" {
 		t.Fatalf("backup content %q %v", b, err)
 	}
-	if fi, _ := os.Stat(path); fi.Mode().Perm() != 0o600 {
+	if fi, _ := os.Stat(path); runtime.GOOS != "windows" && fi.Mode().Perm() != 0o600 {
 		t.Fatalf("backup mode %v", fi.Mode().Perm())
 	}
 	if got := copyReportNotice(r); got != "Reply copied to clipboard (verified)" {
