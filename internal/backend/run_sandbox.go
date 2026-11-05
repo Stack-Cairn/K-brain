@@ -50,5 +50,7 @@ func runSandboxCapability() healthRunSandboxV1 {
 		PathProtection: c.PathProtection,
 		Modes:          []string{"workspace"},
 		Reason:         c.Reason,
+		SetupAvailable: c.SetupAvailable,
+		SetupHint:      c.SetupHint,
 	}
 }

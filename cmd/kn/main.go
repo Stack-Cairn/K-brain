@@ -128,6 +128,14 @@ func main() {
 		return
 	}
 
+	if flag.NArg() > 0 && flag.Arg(0) == "sandbox" {
+		if err := sandboxCLI(flag.Args()[1:]); err != nil {
+			fmt.Fprintln(os.Stderr, "kn sandbox:", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	if flag.NArg() > 0 && flag.Arg(0) == "update" {
 		if err := updateCLI(); err != nil {
 			fmt.Fprintln(os.Stderr, "kn:", err)

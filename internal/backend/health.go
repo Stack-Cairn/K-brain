@@ -25,6 +25,7 @@ type healthCapabilities struct {
 	Image                   healthImageV1      `json:"image"`
 	RunSandbox              healthRunSandboxV1 `json:"run_sandbox"`
 	SubagentTranscripts     int                `json:"subagent_transcripts"`
+	SandboxSetup            int                `json:"sandbox_setup"`
 }
 
 // healthRunSandboxV1 describes per-run sandboxing (options.sandbox). Clients
@@ -40,6 +41,10 @@ type healthRunSandboxV1 struct {
 	PathProtection bool     `json:"path_protection"`
 	Modes          []string `json:"modes"`
 	Reason         string   `json:"reason,omitempty"`
+	// SetupAvailable is true where POST /v1/sandbox/setup can install the
+	// elevated sandbox level (Windows), SetupHint what to tell the user.
+	SetupAvailable bool   `json:"setup_available"`
+	SetupHint      string `json:"setup_hint"`
 }
 
 type healthImageV1 struct {
@@ -59,9 +64,9 @@ type healthResponse struct {
 }
 
 // capabilityRevision changes only when runtime availability changes. Image
-// support is fixed when the server is constructed, so one revision per process
-// is accurate today; bump it when a capability can flip while running.
-const capabilityRevision = 1
+// support is fixed when the server is constructed; the sandbox setup
+// (POST /v1/sandbox/setup) can change run_sandbox while running and bumps it.
+func capabilityRevision() uint64 { return 1 + sandboxSetupChanges.Load() }
 
 var permissionModes = []string{"normal", "plan", "auto_edit", "full_access", "always", "auto_review"}
 
@@ -102,7 +107,7 @@ func (s *Server) health() healthResponse {
 		Build:              build,
 		StartupContract:    protocol.StartupContract,
 		InstanceID:         s.instance.get(),
-		CapabilityRevision: capabilityRevision,
+		CapabilityRevision: capabilityRevision(),
 		Capabilities: healthCapabilities{
 			SessionChanges:          2,
 			SessionQueue:            1,
@@ -117,6 +122,7 @@ func (s *Server) health() healthResponse {
 			Image:                   healthImageV1{Supported: s.image != nil, Version: imageWireVersion()},
 			RunSandbox:              runSandboxCapability(),
 			SubagentTranscripts:     1,
+			SandboxSetup:            1,
 		},
 	}
 }
