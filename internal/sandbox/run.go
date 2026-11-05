@@ -114,6 +114,7 @@ func ForRun(base *Policy, req RunRequest) (*Policy, error) {
 	if err := checkRoot(root, p.Masked); err != nil {
 		return nil, err
 	}
+	grants := []string{root}
 	for _, dir := range p.Writable {
 		resolved, err := resolvePath(root, dir)
 		if err != nil {
@@ -125,6 +126,15 @@ func ForRun(base *Policy, req RunRequest) (*Policy, error) {
 		if err := checkRoot(resolved, p.Masked); err != nil {
 			return nil, err
 		}
+		// Every writable root holds its own instructions and repository.
+		p.Protected = appendNew(p.Protected, ProtectedPaths(resolved)...)
+		grants = append(grants, resolved)
+	}
+	// Refuse up front what every command would be refused: a protected path
+	// that covers a workspace, has a second hard link or, where bubblewrap
+	// binds it, is reached through a symlink.
+	if _, err := p.protect(root, grants, runtime.GOOS == "linux"); err != nil {
+		return nil, err
 	}
 	return p, nil
 }
@@ -140,14 +150,4 @@ func MaskedDirs() []string {
 		out = append(out, filepath.Join(home, sub))
 	}
 	return out
-}
-
-// ProtectedPaths are the files under a workspace that a later session trusts
-// without asking: project instructions and prompts, and git hooks.
-func ProtectedPaths(root string) []string {
-	return []string{
-		filepath.Join(root, ".liveagent"),
-		filepath.Join(root, ".k-brain"),
-		filepath.Join(root, ".git", "hooks"),
-	}
 }

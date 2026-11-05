@@ -29,6 +29,7 @@ Landlock 只能"允许"不能"屏蔽"，因此有几处弱于 bubblewrap，并�
 - 不屏蔽读取：`~/.ssh` 等凭据目录仍可读（但不可写），`read_masking` 为 false；
 - 临时目录不隔离：bubblewrap 给每条命令一个私有的 `/tmp`，Landlock 下命令直接读写主机的 `/tmp`；
 - 不保护可写根内的路径：`.git/hooks/` 等保护路径仍可写，`path_protection` 为 false；配置的 `readOnly` 路径若位于可写范围内，命令会被拒绝执行而不是静默放宽。
+- 不隐藏运行时套接字：容器引擎、D-Bus 等路径上的 unix 套接字仍可连接（断网时也只禁止抽象套接字）。
 
 启动器自身无法完成隔离时，命令不会运行，退出码为 125，stderr 以 `k-brain sandbox:` 开头。
 
@@ -48,7 +49,14 @@ Landlock 只能"允许"不能"屏蔽"，因此有几处弱于 bubblewrap，并�
 - `mode` 目前只有 `workspace`（省略即 `workspace`）；`network: false` 断网。
 - 可写范围是运行的 `write` 工作区根（`workspace_roots` 中 access 为 `write` 的目录）加临时目录。
 - 以下目录对命令不可读写：`~/.ssh`、`~/.aws`、`~/.gnupg`、`~/.config/gh`，以及 K-brain 自己的数据目录（配置/API key、会话、记忆、权限规则）。工作区本身位于这些目录内时，工作区仍可用，但其外的部分保持隐藏；工作区**包含**这些目录（例如把家目录当工作区）时运行会被拒绝。
-- 即使在可写根里，`.liveagent/`、`.k-brain/` 和 `.git/hooks/` 也只读：这些文件下次会话会被自动信任。
+- 即使在可写根里（每个 `write` 工作区根都适用），以下路径也只读：这些文件下次会话或用户自己运行 git 时会被自动信任。
+  - `.liveagent/`、`.k-brain/`；
+  - `.git/hooks/`、`.git/config`、`.git/config.worktree`；`.git` 是文件（链接工作树、子模块）时还包括该文件本身，以及它指向的 git 目录中的 hooks 与配置；
+  - `core.hooksPath` 指向的目录（读取仓库配置、其 `include`/`includeIf` 文件和全局 `~/.gitconfig`），以及这些被 include 的配置文件。
+
+  因此在沙箱里 `git remote add`、`git config` 等修改仓库配置的命令会失败；提交、分支、拉取等正常操作不受影响。
+- 防绕过：不能通过重命名上级目录（如 `mv .git .git2` 后新建 `.git`）或硬链接改写保护路径；保护路径若经由符号链接到达（Linux），或保护文件已有其他硬链接，运行会被拒绝。`core.hooksPath` 指向工作区本身或其上级时同样拒绝。macOS 上尚不存在的保护路径也不能被创建；Linux（bubblewrap）只能保护已存在的路径。
+- 可启动沙箱外进程的 unix 套接字对命令不可用：容器引擎（docker/podman/containerd）、D-Bus 系统与会话总线、systemd 管理器；WSL 下还会隐藏 `/run/WSL`（Windows 互操作）。macOS 上联网模式下拒绝连接容器引擎套接字（断网时本来就禁止）。`SSH_AUTH_SOCK` 等凭据代理套接字不受影响。
 - 全局配置已开启沙箱时，按次请求只能收紧：网络只要任一方关闭就关闭，配置的可写/只读路径不变，并额外加上上面的屏蔽与只读规则。
 - 平台无法隔离时（Linux 上 bubblewrap 与 Landlock 都不可用、Windows 上无法以低完整性级别启动命令），请求 `400` 拒绝并给出原因，**不会**退回到不隔离运行。只要求断网而平台不能隔离网络时同样拒绝（Windows 原生始终如此）。
 - `/v1/health` 的 `capabilities.run_sandbox` 报告 `supported`、`mechanism`、`platform`、`network_control`、`read_masking`、`path_protection`、`modes` 和 `reason`（不可用的原因，或可用但有局限时的说明）。`mechanism` 为 `bubblewrap`、`landlock`、`seatbelt` 或 `low-integrity`。客户端应仅在 `supported` 为 true 时提供沙箱选项，仅在 `network_control` 也为 true 时提供断网选项；`read_masking` 或 `path_protection` 为 false 时应提示用户凭据目录可读、保护路径可写。
@@ -58,7 +66,7 @@ Landlock 只能"允许"不能"屏蔽"，因此有几处弱于 bubblewrap，并�
 Windows 上每条命令以**低完整性级别**（Low integrity）运行：令牌由当前用户令牌复制而来，移除除 SeChangeNotify 以外的全部特权，再把完整性级别降为 Low。Windows 的强制完整性控制不允许低完整性进程写入、删除或改名任何中等完整性的对象（没有标签的文件和目录都按中等处理），也不能写 `HKCU` 注册表（`AppDataLow` 除外）或打开用户的其他进程。K-brain 把可写的根标为 Low、把根内的受保护路径标为 Medium、把屏蔽目录标为带"禁止向上读"的 Medium，因此：
 
 - 命令只能写（含删除、改名）工作区根、本次运行的其他 `write` 根和一个专用临时目录（`%TEMP%\k-brain-sandbox\<id>`，`TEMP`/`TMP`/`TMPDIR` 指向它）；用户目录、系统临时目录和其他未标记的目录都不可写，也不能把外面的文件挪进工作区。
-- `.liveagent/`、`.k-brain/`、`.git/hooks/` 被标为 Medium，命令不能在其中写、删或改名文件。低完整性进程仍可通过 Low 的父目录删除或改名一个 Medium 子目录，所以运行期间启动器还以不允许删除共享的方式打开这些路径及其在根内的上级目录（如 `.git`），任何删除、改名都会因共享冲突失败；命令所在的 job 在启动器退出时被整体结束，不会比这些句柄活得更久。运行开始时还不存在的受保护路径不受保护（与 bubblewrap 相同）。
+- 上文列出的受保护路径（`.liveagent/`、`.k-brain/`、`.git/hooks/`、`.git/config`、`core.hooksPath` 目录等）被标为 Medium，命令不能在其中写、删或改名文件。低完整性进程仍可通过 Low 的父目录删除或改名一个 Medium 子目录，所以运行期间启动器还以不允许删除共享的方式打开这些路径及其在根内的上级目录（如 `.git`），任何删除、改名都会因共享冲突失败；命令所在的 job 在启动器退出时被整体结束，不会比这些句柄活得更久。运行开始时还不存在的受保护路径不受保护（与 bubblewrap 相同）。
 - 上面列出的屏蔽目录（`~/.ssh`、`~/.aws`、`~/.gnupg`、`~/.config/gh` 与 K-brain 数据目录）被标为 Medium 并带"禁止向上读、写、执行"（`NO_READ_UP | NO_WRITE_UP | NO_EXECUTE_UP`，可继承），命令不能读取其中的文件或列出目录；K-brain 自身、启动器和用户的普通程序都是中等完整性，不受影响。打标签同样不进入 junction 和符号链接，任何一个文件打不上标签都会拒绝运行。之后在这些目录里新建的文件自动继承标签；从别处**挪进来**的文件保留原标签，K-brain 每分钟最多重新检查一遍这些目录。工作区位于屏蔽目录内时（例如客户端放在自己数据目录里的默认项目），工作区先被标为 Low，屏蔽目录的标签会跳过它，所以工作区照常可用，屏蔽目录的其余部分仍然隐藏。
 - 令牌没有"限制 SID"，保留原登录会话，所以使用系统 TLS（Schannel）的程序，如 PowerShell 的 `Invoke-WebRequest`、系统自带的 `curl.exe`，都能正常访问 HTTPS。
 - 命令在 job object 里启动（创建时即加入，关闭时结束整棵进程树），job 禁止读写剪贴板、全局 atom 和使用外部窗口句柄；用户界面特权隔离（UIPI）阻止它向用户的高完整性窗口发送消息或注入钩子。只继承三个标准输入输出句柄。取消或超时会结束沙箱内的全部进程。
