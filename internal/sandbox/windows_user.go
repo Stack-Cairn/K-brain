@@ -41,7 +41,7 @@ import (
 // runs cannot use a restricted token: the system's TLS provider refuses
 // credentials to any restricted token, so TLS clients that use it (curl.exe,
 // PowerShell, .NET, Git with Schannel) would lose HTTPS. Their command runs
-// under the online account's own token, which can write every workspace a
+// under the online account's token (privileges removed), which can write every workspace a
 // sandboxed run has used, but nothing of the user's beyond them, and no
 // process outside the sandbox can either: the grants name only the sandbox
 // accounts.
@@ -53,7 +53,13 @@ import (
 // logs the account on with this binary as stage two, suspended, puts it into
 // a kill-on-close job and lets it run; stage two, now the sandbox account,
 // hardens its own process, derives the command's token and starts the
-// command as the low-integrity launcher does (runConfined).
+// command as the low-integrity launcher does (runConfined), inside the same
+// job. Stage two runs on the launcher's desktop, the only one the secondary
+// logon service lets it start on; the command runs on a private desktop
+// that stage one creates. The account's token carries the launching user's
+// logon SID (the service adds it); the command's token keeps it deny-only,
+// so that the command reaches neither the user's desktop nor the objects of
+// the user's processes.
 
 const (
 	userLaunchMarker = "__k-brain-sandbox-user-launch__"
@@ -78,8 +84,6 @@ var (
 	procCreateRestrictedToken   = modadvapi32.NewProc("CreateRestrictedToken")
 	procCreateDesktopW          = moduser32.NewProc("CreateDesktopW")
 	procCloseDesktop            = moduser32.NewProc("CloseDesktop")
-	procOpenDesktopW            = moduser32.NewProc("OpenDesktopW")
-	procGetThreadDesktop        = moduser32.NewProc("GetThreadDesktop")
 	procOpenWindowStationW      = moduser32.NewProc("OpenWindowStationW")
 	procCloseWindowStation      = moduser32.NewProc("CloseWindowStation")
 )
@@ -911,49 +915,6 @@ func grantWindowStation(station, accountSID string) error {
 	return windows.SetSecurityInfo(windows.Handle(h), windows.SE_WINDOW_OBJECT, windows.DACL_SECURITY_INFORMATION, nil, nil, acl, nil)
 }
 
-// withdrawDesktopGrant removes the entries for the account and its logon
-// session that the secondary logon service added to stage two's desktop (the
-// user's), so that the command, which shares the logon session, cannot open
-// it and send input to the user's windows.
-func withdrawDesktopGrant(temp, logon, userSID string) error {
-	h, _, callErr := procGetThreadDesktop.Call(uintptr(windows.GetCurrentThreadId()))
-	if h == 0 {
-		return fmt.Errorf("stage two's desktop: %w", callErr)
-	}
-	name, err := userObjectName(h)
-	if err != nil {
-		return err
-	}
-	n, _ := windows.UTF16PtrFromString(name)
-	desk, _, callErr := procOpenDesktopW.Call(uintptr(unsafe.Pointer(n)), 0, 0, windows.READ_CONTROL|windows.WRITE_DAC)
-	if desk == 0 {
-		return fmt.Errorf("open stage two's desktop: %w", callErr)
-	}
-	defer procCloseDesktop.Call(desk)
-	d, err := readObjectDACL(windows.Handle(desk), windows.SE_WINDOW_OBJECT)
-	if err != nil {
-		return err
-	}
-	if sd, err := windows.GetSecurityInfo(windows.Handle(desk), windows.SE_WINDOW_OBJECT, windows.DACL_SECURITY_INFORMATION); err == nil {
-		stageTrace(temp, "2", "desktop %s logon %s user %s: %s", name, logon, userSID, sd.String())
-	}
-	if ws, _, _ := procGetProcessWindowStation.Call(); ws != 0 {
-		if sd, err := windows.GetSecurityInfo(windows.Handle(ws), windows.SE_WINDOW_OBJECT, windows.DACL_SECURITY_INFORMATION); err == nil {
-			stageTrace(temp, "2", "window station: %s", sd.String())
-		}
-	}
-	if os.Getenv("K_BRAIN_SANDBOX_WITHDRAW") == "" {
-		return nil
-	}
-	if d.null || !d.remove(func(a rawACE) bool { sid := a.sid(); return sid == logon || sid == userSID }) {
-		return nil
-	}
-	if err := writeDACL(windows.Handle(desk), d); err != nil {
-		return fmt.Errorf("withdraw the sandbox account's access to the desktop: %w", err)
-	}
-	return nil
-}
-
 // runUserStage is stage two, run as the sandbox account.
 func runUserStage() int {
 	code, err := userStage()
@@ -979,7 +940,7 @@ func userStage() (uint32, error) {
 	temp := os.Getenv("TEMP")
 	stageTrace(temp, "2", "stage two running")
 	var self windows.Token
-	if err := windows.OpenProcessToken(windows.CurrentProcess(), windows.TOKEN_DUPLICATE|windows.TOKEN_QUERY|windows.TOKEN_ASSIGN_PRIMARY|windows.TOKEN_ADJUST_DEFAULT, &self); err != nil {
+	if err := windows.OpenProcessToken(windows.CurrentProcess(), windows.TOKEN_DUPLICATE|windows.TOKEN_QUERY|windows.TOKEN_ASSIGN_PRIMARY|windows.TOKEN_ADJUST_DEFAULT|windows.TOKEN_ADJUST_PRIVILEGES, &self); err != nil {
 		return 0, fmt.Errorf("open the sandbox account's token: %w", err)
 	}
 	defer self.Close()
@@ -995,16 +956,11 @@ func userStage() (uint32, error) {
 	if err := hardenStage(self, userSID); err != nil {
 		return 0, err
 	}
-	if spec.Desktop != "" {
-		if err := withdrawDesktopGrant(temp, logon, userSID); err != nil {
-			return 0, err
-		}
-	}
 	var token windows.Token
 	if spec.Offline {
 		token, err = restrictedToken(self, logon, userSID, spec.Restrict)
 	} else {
-		token, err = strippedToken(self)
+		token, err = strippedToken(self, logon)
 	}
 	if err != nil {
 		return 0, err
@@ -1089,15 +1045,15 @@ func setDefaultDACL(token windows.Token, dacl *windows.ACL) error {
 
 // restrictedToken is the offline command's token: the account's token with
 // every privilege but bypass-traverse removed and a second access check
-// against Everyone, Users, RESTRICTED, the logon SID and extra (the reader
-// SID, one SID per writable root, the offline group). The account's own SID
-// is left out, so that objects it owns or that name it (anything it created
-// in other workspaces) are not opened through it; Authenticated Users is left
-// out, so that the directories every signed-in user may create files in stay
-// closed. Its new objects are open to SYSTEM, the logon session and the
-// account.
+// against Everyone, Users, RESTRICTED and extra (the reader SID, one SID per
+// writable root, the offline group). The account's own SID is left out, so
+// that objects it owns or that name it (anything it created in other
+// workspaces) are not opened through it; Authenticated Users is left out, so
+// that the directories every signed-in user may create files in stay closed.
+// The logon SID is deny-only, as in strippedToken. Its new objects are open
+// to SYSTEM and the account (RESTRICTED passing the second check).
 func restrictedToken(base windows.Token, logon, userSID string, extra []string) (windows.Token, error) {
-	sids := []string{"S-1-1-0", "S-1-5-32-545", "S-1-5-12", logon}
+	sids := []string{"S-1-1-0", "S-1-5-32-545", "S-1-5-12"}
 	for _, s := range extra {
 		sids = appendNew(sids, s)
 	}
@@ -1109,12 +1065,16 @@ func restrictedToken(base windows.Token, logon, userSID string, extra []string) 
 		}
 		list[i] = windows.SIDAndAttributes{Sid: sid}
 	}
+	disable, err := logonDenyOnly(logon)
+	if err != nil {
+		return 0, err
+	}
 	var token windows.Token
-	r, _, callErr := procCreateRestrictedToken.Call(uintptr(base), disableMaxPrivilege, 0, 0, 0, 0, uintptr(len(list)), uintptr(unsafe.Pointer(&list[0])), uintptr(unsafe.Pointer(&token)))
+	r, _, callErr := procCreateRestrictedToken.Call(uintptr(base), disableMaxPrivilege, 1, uintptr(unsafe.Pointer(&disable[0])), 0, 0, uintptr(len(list)), uintptr(unsafe.Pointer(&list[0])), uintptr(unsafe.Pointer(&token)))
 	if r == 0 {
 		return 0, fmt.Errorf("create the offline sandbox token: %w", callErr)
 	}
-	sd, err := windows.SecurityDescriptorFromString(fmt.Sprintf("D:(A;;GA;;;SY)(A;;GA;;;%s)(A;;GA;;;%s)", logon, userSID))
+	sd, err := windows.SecurityDescriptorFromString(fmt.Sprintf("D:(A;;GA;;;SY)(A;;GA;;;%s)(A;;GA;;;RC)", userSID))
 	if err == nil {
 		var dacl *windows.ACL
 		if dacl, _, err = sd.DACL(); err == nil {
@@ -1128,12 +1088,31 @@ func restrictedToken(base windows.Token, logon, userSID string, extra []string) 
 	return token, nil
 }
 
-// strippedToken is the online command's token: a copy of the account's token
-// without privileges, which TLS clients accept.
-func strippedToken(base windows.Token) (windows.Token, error) {
+// logonDenyOnly is the SID list that makes the logon SID deny-only. The
+// secondary logon service puts the launching user's logon SID into the
+// account's token (that is how it reaches the user's desktop); enabled, it
+// would open the user's desktop, window station and every object of the
+// user's processes that their default DACL grants the logon session.
+func logonDenyOnly(logon string) ([]windows.SIDAndAttributes, error) {
+	sid, err := windows.StringToSid(logon)
+	if err != nil {
+		return nil, fmt.Errorf("logon SID %s: %w", logon, err)
+	}
+	return []windows.SIDAndAttributes{{Sid: sid}}, nil
+}
+
+// strippedToken is the online command's token: the account's token without
+// privileges and with the logon SID deny-only. It has no restricting SIDs,
+// which TLS clients refuse.
+func strippedToken(base windows.Token, logon string) (windows.Token, error) {
+	disable, err := logonDenyOnly(logon)
+	if err != nil {
+		return 0, err
+	}
 	var token windows.Token
-	if err := windows.DuplicateTokenEx(base, windows.MAXIMUM_ALLOWED, nil, windows.SecurityImpersonation, windows.TokenPrimary, &token); err != nil {
-		return 0, fmt.Errorf("copy the sandbox account's token: %w", err)
+	r, _, callErr := procCreateRestrictedToken.Call(uintptr(base), disableMaxPrivilege, 1, uintptr(unsafe.Pointer(&disable[0])), 0, 0, 0, 0, uintptr(unsafe.Pointer(&token)))
+	if r == 0 {
+		return 0, fmt.Errorf("copy the sandbox account's token: %w", callErr)
 	}
 	if err := removePrivileges(token); err != nil {
 		token.Close()

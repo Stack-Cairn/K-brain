@@ -46,6 +46,11 @@ func TestWindowsSandboxHelper(t *testing.T) {
 	os.Exit(0)
 }
 
+var (
+	procOpenDesktopW     = moduser32.NewProc("OpenDesktopW")
+	procGetThreadDesktop = moduser32.NewProc("GetThreadDesktop")
+)
+
 func runHelper(args []string) error {
 	if len(args) == 0 {
 		return errors.New("no helper action")
