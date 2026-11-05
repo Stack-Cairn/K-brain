@@ -29,6 +29,7 @@ Landlock 只能"允许"不能"屏蔽"，因此有几处弱于 bubblewrap，并�
 - 不屏蔽读取：`~/.ssh` 等凭据目录仍可读（但不可写），`read_masking` 为 false；
 - 临时目录不隔离：bubblewrap 给每条命令一个私有的 `/tmp`，Landlock 下命令直接读写主机的 `/tmp`；
 - 不保护可写根内的路径：`.git/hooks/` 等保护路径仍可写，`path_protection` 为 false；配置的 `readOnly` 路径若位于可写范围内，命令会被拒绝执行而不是静默放宽。
+- 不隐藏运行时套接字：容器引擎、D-Bus 等路径上的 unix 套接字仍可连接（断网时也只禁止抽象套接字）。
 
 启动器自身无法完成隔离时，命令不会运行，退出码为 125，stderr 以 `k-brain sandbox:` 开头。
 
