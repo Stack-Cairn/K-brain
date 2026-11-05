@@ -10,6 +10,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -111,6 +112,24 @@ func runHelper(args []string) error {
 			return err
 		}
 		return windows.SetNamedSecurityInfo(args[1], windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION, nil, nil, acl, nil)
+	case "dial":
+		conn, err := net.DialTimeout("tcp", args[1], 5*time.Second)
+		if err == nil {
+			conn.Close()
+		}
+		return err
+	case "env":
+		for _, key := range args[1:] {
+			fmt.Printf("%s=%s\n", key, os.Getenv(key))
+		}
+		return nil
+	case "user":
+		u, err := windows.GetCurrentProcessToken().GetTokenUser()
+		if err != nil {
+			return err
+		}
+		fmt.Println("SID=" + u.User.Sid.String())
+		return nil
 	case "regwrite":
 		key, _, err := registry.CreateKey(registry.CURRENT_USER, args[1], registry.SET_VALUE)
 		if err != nil {
@@ -190,6 +209,7 @@ func exists(path string) bool {
 }
 
 func TestWindowsCapability(t *testing.T) {
+	isolateState(t) // no sandbox-user setup: the low-integrity fallback
 	c := probeWindows()
 	if !c.Supported {
 		t.Fatalf("native sandbox unsupported: %s", c.Reason)
@@ -205,11 +225,14 @@ func TestWindowsCapability(t *testing.T) {
 	if err := json.Unmarshal(data, &fields); err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]any{"supported": true, "mechanism": "low-integrity", "platform": "windows", "network_control": false, "read_masking": true, "path_protection": true}
+	want := map[string]any{"supported": true, "mechanism": "low-integrity", "platform": "windows", "network_control": false, "read_masking": true, "path_protection": true, "setup_available": true}
 	for key, value := range want {
 		if fields[key] != value {
 			t.Fatalf("capability JSON %s = %v, want %v (%s)", key, fields[key], value, data)
 		}
+	}
+	if hint, _ := fields["setup_hint"].(string); !strings.Contains(hint, "kn sandbox setup") {
+		t.Fatalf("capability JSON setup_hint = %q", hint)
 	}
 	t.Logf("capability: %s", data)
 }

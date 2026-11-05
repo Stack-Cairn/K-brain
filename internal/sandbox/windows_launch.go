@@ -99,6 +99,10 @@ type confinedProcess struct {
 	// pins are held open without delete sharing while the command runs.
 	pins                  []string
 	stdin, stdout, stderr windows.Handle
+	// token is the command's token; zero means the low-integrity token.
+	token windows.Token
+	// inheritDesktop starts the command on the launcher's desktop.
+	inheritDesktop bool
 }
 
 const (
@@ -128,14 +132,18 @@ func runConfined(p confinedProcess) (uint32, error) {
 			_ = windows.CloseHandle(h)
 		}
 	}()
-	token, err := lowIntegrityToken()
-	if err != nil {
-		return 0, err
+	token := p.token
+	if token == 0 {
+		if token, err = lowIntegrityToken(); err != nil {
+			return 0, err
+		}
+		defer token.Close()
 	}
-	defer token.Close()
-	desktop, err := sandboxDesktop()
-	if err != nil {
-		return 0, err
+	desktop := ""
+	if !p.inheritDesktop {
+		if desktop, err = sandboxDesktop(); err != nil {
+			return 0, err
+		}
 	}
 	job, err := confinementJob()
 	if err != nil {
@@ -201,7 +209,7 @@ func runConfined(p confinedProcess) (uint32, error) {
 	var pi windows.ProcessInformation
 	flags := uint32(windows.CREATE_UNICODE_ENVIRONMENT | windows.EXTENDED_STARTUPINFO_PRESENT | windows.CREATE_NO_WINDOW)
 	if err := windows.CreateProcessAsUser(token, app, &cmdLine[0], nil, nil, true, flags, &env[0], dir, &si.StartupInfo, &pi); err != nil {
-		return 0, fmt.Errorf("start %s at low integrity: %w", p.program, err)
+		return 0, fmt.Errorf("start %s in the sandbox: %w", p.program, err)
 	}
 	defer windows.CloseHandle(pi.Process)
 	_ = windows.CloseHandle(pi.Thread)
