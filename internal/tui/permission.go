@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/Stack-Cairn/K-brain/internal/approval"
 	"github.com/charmbracelet/x/ansi"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -255,11 +256,11 @@ func (m *model) permKey(msg tea.KeyMsg) bool {
 		}
 	case tea.KeyRunes:
 		switch string(msg.Runes) {
-		case "a":
+		case "a", "1":
 			answer(permAnswer{decision: tools.GateAllowOnce})
-		case "A":
+		case "A", "2":
 			answer(m.allowAlways(d.req))
-		case "r":
+		case "r", "3":
 			d.rejecting = true
 		}
 	case tea.KeyEsc:
@@ -282,42 +283,41 @@ func (m *model) permView() string {
 	if d == nil {
 		return ""
 	}
-	var b strings.Builder
-	title := "Allow " + d.req.Tool + "?"
+	w := cardWidth(m.width)
+	title := m.tr("Allow") + " " + d.req.Tool + "?"
 	switch d.req.Tool {
 	case "bash":
-		title = "Run this command?"
+		title = m.tr("Run this command?")
 	case "web_fetch":
-		title = "Fetch this URL?"
+		title = m.tr("Fetch this URL?")
 	}
-	b.WriteString(youStyle.Render("⚠ " + title))
-	b.WriteString("\n  " + ansi_Truncate(d.req.Command, m.width-4))
+	rows := []string{cardBand(d.req.Command, w)}
 	if d.req.Description != "" {
-		b.WriteString("\n" + wrap(d.req.Description, max(20, m.width-4)))
+		rows = append(rows, textSecondaryStyle.Render(wrap(d.req.Description, cardInner(w))))
 	}
 	if m.perms.saveErr != "" {
-		b.WriteString(youStyle.Render("\n  ⚠ a remembered rule was not saved: " + m.perms.saveErr))
+		rows = append(rows, warnStyle.Render(wrap(glyphs.Warn+" "+m.tr("a remembered rule was not saved: ")+m.perms.saveErr, cardInner(w))))
 	}
+	always := m.tr("Yes, always allow")
 	if rules := m.perms.suggestions(d.req); len(rules) > 0 {
-		b.WriteString(dimStyle.Render("\n  always allows: " + strings.Join(rules, ", ")))
+		rows = append(rows, textMutedStyle.Render(wrap(m.tr("always allows: ")+strings.Join(rules, ", "), cardInner(w))))
 	} else {
-		b.WriteString(dimStyle.Render("\n  always allow is not available for this action; it allows once"))
+		rows = append(rows, textMutedStyle.Render(wrap(m.tr("always allow is not available for this action; it allows once"), cardInner(w))))
 	}
+	head := cardTitleStyle.Inherit(fgTok(tokStateWarn)).Render(glyphs.Warn) + " " + cardTitleStyle.Render(title)
 	if d.rejecting {
-		b.WriteString("\n" + youStyle.Render("  reject with message: ") + d.rejectIn + "█")
-		b.WriteString(dimStyle.Render("\n  Enter sends · Esc Back"))
-		return b.String()
+		rows = append(rows, "", accentFgStyle.Render(m.tr("reject with message: "))+d.rejectIn+"█",
+			textHintStyle.Render(m.tr("Enter sends · Esc Back")))
+		return renderCard(tokStateWarn, head, rows, w)
 	}
-	opts := []string{"allow once (a)", "allow always (A)", "reject (r)"}
-	b.WriteString("\n  ")
+	opts := []string{m.tr("Yes, once"), always, m.tr("No, and tell the agent why")}
+	keys := []string{"a", "A", "r"}
+	rows = append(rows, "")
 	for i, o := range opts {
-		if i == d.sel {
-			b.WriteString(youStyle.Render(glyphUser + o + "  "))
-		} else {
-			b.WriteString(dimStyle.Render("  " + o + "  "))
-		}
+		rows = append(rows, cardOption(i == d.sel, strconv.Itoa(i+1), o+textHintStyle.Render(" ("+keys[i]+")"), w))
 	}
-	return b.String()
+	rows = append(rows, "", textHintStyle.Render(chromeGlyphs(m.tr("↑↓ select · 1-3 or a/A/r · Esc reject"))))
+	return renderCard(tokStateWarn, head, rows, w)
 }
 
 func ansi_Truncate(s string, width int) string {

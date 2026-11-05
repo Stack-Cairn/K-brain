@@ -1,0 +1,24 @@
+[1m● [0mI'll add the flag next to the existing ones.                                  [0m
+                                                                                
+  [2m```go[0m                                                                         [0m
+    func statusJSON(w io.Writer, s Status) error {                              
+        [3m// one object per call[0m                                                  [0m
+        return json.NewEncoder(w).Encode(s)                                     
+    }                                                                           
+  [2m```[0m                                                                           [0m
+                                                                                
+  Then run the package tests.                                                   
+
+[1m╭[0m[1m─[0m [1m![0m [1mRun this command?[0m [1m────────────────────────────────────────────────────────[0m[1m╮[0m
+[1m│[0m   go build -o bin/kn ./cmd/kn                                                [1m│[0m
+[1m│[0m [2malways allows: Bash(go build:*)[0m                                              [1m│[0m
+[1m│[0m                                                                              [1m│[0m
+[1m│[0m [1;7m❯ 1  Yes, once[2m (a)[0m [0m                                                          [1m│[0m
+[1m│[0m   2  Yes, always allow[2m (A)[0m                                                   [1m│[0m
+[1m│[0m   3  No, and tell the agent why[2m (r)[0m                                          [1m│[0m
+[1m│[0m                                                                              [1m│[0m
+[1m│[0m [2m↑↓ select · 1-3 or a/A/r · Esc reject[0m                                        [1m│[0m
+[1m╰[0m[1m──────────────────────────────────────────────────────────────────────────────[0m[1m╯[0m
+────────────────────────────────────────────────────────────────────────────────
+  [1m❯ [0m[7mA[0m[2msk k-brain anything…  / commands · Shift+Tab mode · Ctrl+P menu[0m            [0m
+  [Normal]                                                  kimi-k3-fast[2m · [0m[1m✦ off[0m

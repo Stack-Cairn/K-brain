@@ -306,7 +306,7 @@ func (m *model) paletteItems() []paletteItem {
 			dynDesc: func(m *model) string { return m.tr("current: ") + CurrentTheme() },
 			dynHint: func(m *model) string { return "/theme " + slashHint(m, "/theme") },
 			panel: func(m *model) *ppanel {
-				list := []string{"auto", "light", "dark"}
+				list := []string{"auto", "light", "dark", "mono"}
 				cur := m.cfg.Theme
 				if cur == "" {
 					cur = "auto"
@@ -681,7 +681,7 @@ func (m *model) panelKey(msg tea.KeyMsg, pp *ppanel) (tea.Model, tea.Cmd) {
 		case tea.KeyDown, tea.KeyCtrlN, tea.KeyTab:
 			pp.midx = (pp.midx + 1) % len(pp.list)
 		case tea.KeyLeft, tea.KeyRight, tea.KeyEnter:
-			m.setTheme(pp.list[pp.midx])
+			m.pickTheme(pp.list[pp.midx])
 			if msg.Type == tea.KeyEnter {
 				pop()
 			}

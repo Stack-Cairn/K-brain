@@ -1,0 +1,40 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                            ╭─ K-brain dev ──────────────────────────────── …/src/acme/kn ─╮
+                            │                                                              │
+                            │ ███    ███    kimi-k3-fast · inference    /model             │
+                            │ ███  ███      Directory …/src/acme/kn     /mcp               │
+                            │ ██████                                                       │
+                            │ ██████        @ attach a file   ! run shell   / commands     │
+                            │ ███  ███      Ctrl+P menu   Shift+Tab mode   Esc Esc rewind  │
+                            │ ███    ███                                                   │
+                            ╰──────────────────────────────────────────────────────────────╯
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ❯ Ask k-brain anything…  / commands · Shift+Tab mode · Ctrl+P menu
+  [Always allow]                                                                                    kimi-k3-fast · ✦ off

@@ -31,7 +31,7 @@ func reportText(m *model) string {
 }
 
 func cardText(m *model) string {
-	return ansi.Strip(strings.Join(m.bannerRows(), "\n"))
+	return ansi.Strip(m.bannerBody())
 }
 
 func TestStartupReportSkillsAndWarnings(t *testing.T) {
@@ -61,7 +61,7 @@ func TestStartupReportSkillsAndWarnings(t *testing.T) {
 	if m.stats.skillWarn != 2 {
 		t.Errorf("warning count = %d, want 2 (one truncation, one parse problem)", m.stats.skillWarn)
 	}
-	if card := cardText(m); !strings.Contains(card, "2 skills") || !strings.Contains(card, "(2 ⚠)") {
+	if card := cardText(m); !strings.Contains(card, "2 skills") || !strings.Contains(card, "("+glyphs.Warn+" 2)") {
 		t.Errorf("card should summarise skills and flag the warnings:\n%s", card)
 	}
 
@@ -86,7 +86,7 @@ func TestStartupReportMCP(t *testing.T) {
 	if m.stats.mcpFailed != 1 {
 		t.Errorf("failed count = %d, want 1", m.stats.mcpFailed)
 	}
-	if card := cardText(m); !strings.Contains(card, "MCP ✗") {
+	if card := cardText(m); !strings.Contains(card, glyphs.Fail+" 1/1 MCP") {
 		t.Errorf("a failed server should be flagged on the card:\n%s", card)
 	}
 	if out := reportText(m); !strings.Contains(out, "mcp invalid") {
@@ -136,7 +136,7 @@ func TestStartupReportMCPReadyAndPending(t *testing.T) {
 	if m.stats.mcpReady != 1 || m.stats.mcpFailed != 1 || m.stats.mcpTools != 1 {
 		t.Errorf("stats = %+v, want 1 ready / 1 failed / 1 tool", m.stats)
 	}
-	if card := cardText(m); !strings.Contains(card, "1/2 MCP ✗") {
+	if card := cardText(m); !strings.Contains(card, glyphs.Fail+" 1/2 MCP") {
 		t.Errorf("a partly broken fleet should read as a failure on the card:\n%s", card)
 	}
 

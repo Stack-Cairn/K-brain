@@ -9,7 +9,9 @@ import (
 	"github.com/charmbracelet/glamour"
 	glamouransi "github.com/charmbracelet/glamour/ansi"
 	"github.com/charmbracelet/glamour/styles"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/muesli/termenv"
 )
 
 func renderMarkdown(s string, width int) string {
@@ -17,14 +19,160 @@ func renderMarkdown(s string, width int) string {
 		return s
 	}
 	width = max(width, 8)
-	out, err := mdRenderer(width).Render(s)
-	if err != nil {
-		return s
+	var parts []string
+	for _, seg := range splitFences(s) {
+		if seg.code {
+			parts = append(parts, renderCodeBlock(seg.text, seg.lang, width))
+			continue
+		}
+		if strings.TrimSpace(seg.text) == "" {
+			continue
+		}
+		r := mdRenderer(width)
+		if r == nil {
+			return s
+		}
+		text, held := holdCodeHyphens(seg.text)
+		out, err := r.Render(text)
+		if err != nil {
+			return s
+		}
+		if held {
+			out = strings.ReplaceAll(out, heldHyphen, "-")
+		}
+		parts = append(parts, stripLinePadding(strings.Trim(out, "\n")))
 	}
-	rendered := stripLinePadding(strings.Trim(out, "\n"))
+	rendered := strings.Join(parts, "\n\n")
 	linked := hyperlinkGlamourLinks(rendered, realFileExists)
 	linked = linkifyRenderedFilePaths(linked, realFileExists)
 	return wrapWideLines(linked, width)
+}
+
+// mdSegment is a run of markdown: prose for glamour, or one top-level fenced
+// code block that renderCodeBlock draws itself.
+type mdSegment struct {
+	text, lang string
+	code       bool
+}
+
+var fenceOpenRE = regexp.MustCompile("^(`{3,}|~{3,})[ \\t]*([^`\\s]*)[^`]*$")
+
+// splitFences pulls the top-level fenced code blocks (fence at column 0) out of
+// a markdown document. Fences inside lists or quotes stay with glamour. An
+// unclosed fence runs to the end, as it does in CommonMark — which is also what
+// a reply still streaming its code looks like.
+func splitFences(s string) []mdSegment {
+	var segs []mdSegment
+	lines := strings.Split(s, "\n")
+	var prose []string
+	flush := func() {
+		if len(prose) > 0 {
+			segs = append(segs, mdSegment{text: strings.Join(prose, "\n")})
+			prose = nil
+		}
+	}
+	for i := 0; i < len(lines); i++ {
+		m := fenceOpenRE.FindStringSubmatch(lines[i])
+		if m == nil {
+			prose = append(prose, lines[i])
+			continue
+		}
+		fence := m[1]
+		var code []string
+		j := i + 1
+		for ; j < len(lines); j++ {
+			t := strings.TrimRight(lines[j], " \t")
+			if trimmed := strings.TrimLeft(t, " "); len(t)-len(trimmed) <= 3 && strings.HasPrefix(trimmed, fence) && strings.Trim(trimmed, fence[:1]) == "" {
+				break
+			}
+			code = append(code, lines[j])
+		}
+		flush()
+		segs = append(segs, mdSegment{text: strings.Join(code, "\n"), lang: m[2], code: true})
+		i = j
+	}
+	flush()
+	return segs
+}
+
+// renderCodeBlock draws a fenced block as a full-width band with the language
+// label right-aligned on its top row and syn.* colours. Without background
+// colour (16 colours, mono) the band would vanish, so the fences stay instead.
+// Long lines wrap inside the band rather than spilling past it.
+func renderCodeBlock(code, lang string, width int) string {
+	const margin, pad = 2, 2
+	inner := max(width-margin-pad, 4)
+	band := backgroundsActive()
+	base := lipgloss.NewStyle()
+	if band {
+		base = codeBandStyle
+	}
+	lines := highlightLines(code, codeLexer(lang, ""), base)
+	lead := strings.Repeat(" ", margin)
+	var out []string
+	fill := func(s string) string {
+		gap := max(width-margin-lipgloss.Width(s), 0)
+		return lead + s + base.Render(strings.Repeat(" ", gap))
+	}
+	if band {
+		label := ""
+		if lang != "" {
+			label = ansi.Truncate(lang, max(inner-1, 1), "")
+		}
+		gap := max(width-margin-lipgloss.Width(label)-1, 0)
+		out = append(out, lead+base.Render(strings.Repeat(" ", gap))+withBG(textMutedStyle, base).Render(label+" "))
+	} else {
+		out = append(out, lead+textMutedStyle.Render("```"+lang))
+	}
+	for _, l := range lines {
+		for _, piece := range strings.Split(ansi.Hardwrap(l, inner, true), "\n") {
+			row := base.Render(strings.Repeat(" ", pad)) + piece
+			if band {
+				out = append(out, fill(row))
+			} else {
+				out = append(out, strings.TrimRight(lead+row, " "))
+			}
+		}
+	}
+	// The band ends with the code: a blank band row would be dropped as an
+	// empty line by the transcript's indenting anyway.
+	if !band {
+		out = append(out, lead+textMutedStyle.Render("```"))
+	}
+	return strings.Join(out, "\n")
+}
+
+// withBG lays a foreground style over a base's background.
+func withBG(fg, base lipgloss.Style) lipgloss.Style {
+	if bg := base.GetBackground(); bg != nil {
+		if _, none := bg.(lipgloss.NoColor); !none {
+			return fg.Background(bg)
+		}
+	}
+	return fg
+}
+
+// heldHyphen stands in for a hyphen inside an inline code span while glamour
+// wraps the prose: its word wrap breaks after any hyphen, which split spans
+// such as `--json` across two lines. It has the same width and is put back
+// once the paragraph is laid out.
+const heldHyphen = "\u2011"
+
+var inlineCodeRE = regexp.MustCompile("`[^`\n]+`")
+
+func holdCodeHyphens(s string) (string, bool) {
+	if strings.Contains(s, heldHyphen) || !strings.Contains(s, "`") {
+		return s, false
+	}
+	held := false
+	out := inlineCodeRE.ReplaceAllStringFunc(s, func(span string) string {
+		if !strings.Contains(span, "-") {
+			return span
+		}
+		held = true
+		return strings.ReplaceAll(span, "-", heldHyphen)
+	})
+	return out, held
 }
 
 func wrapWideLines(s string, width int) string {
@@ -43,6 +191,8 @@ func stripLinePadding(s string) string {
 	lines := strings.Split(s, "\n")
 	for i, l := range lines {
 		l = padStripRE.ReplaceAllString(l, "$1")
+		// Under a profile with no colour glamour pads with bare spaces.
+		l = strings.TrimRight(l, " ")
 		if ansi.StringWidth(l) == 0 || strings.TrimSpace(ansi.Strip(l)) == "" {
 			l = ""
 		} else {
@@ -70,7 +220,44 @@ var (
 	mdLight       bool
 	mdKnown       bool
 	mdScheme      string
+	mdAtProfile   termenv.Profile
+	mdAtMono      bool
+	mdAtASCII     bool
+	mdAtDark      bool
+
+	// mdLinkTextSGR and mdLinkHrefSGR open a link label and an href in the
+	// current renderer's output.
+	mdLinkTextSGR, mdLinkHrefSGR string
 )
+
+func mdLinkSGRs() (text, href string) {
+	mdMu.Lock()
+	defer mdMu.Unlock()
+	return mdLinkTextSGR, mdLinkHrefSGR
+}
+
+// glamourSGR is the escape sequence glamour opens a span of style p with,
+// built the way glamour builds it (colour, background, then attributes).
+func glamourSGR(profile termenv.Profile, p glamouransi.StylePrimitive) string {
+	out := termenv.String("x")
+	if p.Color != nil {
+		out = out.Foreground(profile.Color(*p.Color))
+	}
+	if p.BackgroundColor != nil {
+		out = out.Background(profile.Color(*p.BackgroundColor))
+	}
+	if p.Underline != nil && *p.Underline {
+		out = out.Underline()
+	}
+	if p.Bold != nil && *p.Bold {
+		out = out.Bold()
+	}
+	if p.Italic != nil && *p.Italic {
+		out = out.Italic()
+	}
+	sgr, _, _ := strings.Cut(out.String(), "x")
+	return sgr
+}
 
 func SetLightTheme(light bool) {
 	mdMu.Lock()
@@ -119,27 +306,75 @@ func invalidateMDRenderer() {
 
 func mdStyle() glamouransi.StyleConfig {
 	var st glamouransi.StyleConfig
-	switch {
-	case !mdKnown:
+	if !mdKnown && !monoMode {
 		st = neutralStyle()
-	case mdLight:
-		st = styles.LightStyleConfig
-		st.Code.Color = new("124")
-		st.Code.BackgroundColor = new("255")
-	default:
-		st = styles.DarkStyleConfig
-		st.Document.Color = new("252")
-		st.Heading.Color = new("75")
-		st.H1.Color = new("78")
-		st.H2.Color = new("75")
-		st.HorizontalRule.Color = new("240")
-		st.CodeBlock.BackgroundColor = new("235")
+	} else {
+		st = kryptonMarkdownStyle()
 	}
-	st.Table.ColumnSeparator = new("│")
-	st.Table.CenterSeparator = new("┼")
-	st.Table.RowSeparator = new("─")
+	st.Table.ColumnSeparator = new(glyphs.Border.Left)
+	st.Table.CenterSeparator = new(glyphs.Border.Middle)
+	st.Table.RowSeparator = new(glyphs.Border.Top)
 	zero := uint(0)
 	st.Table.Margin = &zero
+	// Link labels and hrefs are found again in glamour's output by their
+	// escape sequences, so the two must differ from each other and from bold
+	// text under every profile, mono included: labels are bold and underlined,
+	// hrefs only underlined.
+	yes := true
+	st.LinkText.Bold, st.LinkText.Underline = &yes, &yes
+	st.Link.Underline, st.Link.Bold = &yes, nil
+	if asciiMode {
+		st.Item.BlockPrefix = "* "
+		st.Task.Ticked, st.Task.Unticked = "[x] ", "[ ] "
+		st.BlockQuote.IndentToken = new(glyphs.Rail + " ")
+		st.HorizontalRule.Format = "\n--------\n"
+		st.DefinitionDescription.BlockPrefix = "\n-> "
+	}
+	return st
+}
+
+// kryptonMarkdownStyle paints markdown from the theme tokens: headings by
+// weight and the accent, inline code on the band, links in state.running and
+// underlined, quotes on a muted rail. Body text keeps the terminal default.
+// Without colour, heading markers and backticks stay so structure survives.
+func kryptonMarkdownStyle() glamouransi.StyleConfig {
+	st := styles.DarkStyleConfig
+	col := func(id tokenID) *string {
+		if v := tokString(id); v != "" {
+			return &v
+		}
+		return nil
+	}
+	yes := true
+	st.Document.Color = nil
+	st.Heading.Color = nil
+	st.Heading.Bold = &yes
+	st.H1 = glamouransi.StyleBlock{StylePrimitive: glamouransi.StylePrimitive{Color: col(tokAccent), Bold: &yes}}
+	st.H2 = glamouransi.StyleBlock{StylePrimitive: glamouransi.StylePrimitive{Bold: &yes}}
+	st.H3 = glamouransi.StyleBlock{StylePrimitive: glamouransi.StylePrimitive{Color: col(tokTextSecondary), Bold: &yes}}
+	for _, h := range []*glamouransi.StyleBlock{&st.H4, &st.H5, &st.H6} {
+		*h = glamouransi.StyleBlock{StylePrimitive: glamouransi.StylePrimitive{Color: col(tokTextSecondary)}}
+	}
+	if monoMode {
+		st.H1.Prefix, st.H2.Prefix, st.H3.Prefix = "# ", "## ", "### "
+		st.H4.Prefix, st.H5.Prefix, st.H6.Prefix = "#### ", "##### ", "###### "
+	}
+	st.HorizontalRule.Color = col(tokLineRule)
+	st.BlockQuote.Color = col(tokTextMuted)
+	st.BlockQuote.IndentToken = new(glyphs.Rail + " ")
+	st.Link = glamouransi.StylePrimitive{Color: col(tokStateRunning), Underline: &yes}
+	st.LinkText = glamouransi.StylePrimitive{Color: col(tokStateRunning), Underline: &yes}
+	st.Image = glamouransi.StylePrimitive{Color: col(tokStateRunning), Underline: &yes}
+	st.ImageText = glamouransi.StylePrimitive{Color: col(tokTextMuted), Format: "Image: {{.text}} →"}
+	if backgroundsActive() {
+		st.Code = glamouransi.StyleBlock{StylePrimitive: glamouransi.StylePrimitive{Prefix: " ", Suffix: " ", BackgroundColor: col(tokSurfaceBand)}}
+	} else {
+		st.Code = glamouransi.StyleBlock{StylePrimitive: glamouransi.StylePrimitive{Prefix: "`", Suffix: "`"}}
+	}
+	st.CodeBlock.Color = nil
+	st.CodeBlock.Chroma = glamourChroma()
+	st.Enumeration.Color = col(tokTextMuted)
+	st.Item.Color = nil
 	return st
 }
 
@@ -169,7 +404,10 @@ func mdRenderer(width int) *glamour.TermRenderer {
 		return nil
 	}
 
-	if mdRendererC != nil && mdAtWidth == width && mdAtLight == mdLight && mdAtKnown == mdKnown {
+	profile := lipgloss.ColorProfile()
+	dark := lipgloss.HasDarkBackground()
+	if mdRendererC != nil && mdAtWidth == width && mdAtLight == mdLight && mdAtKnown == mdKnown &&
+		mdAtProfile == profile && mdAtMono == monoMode && mdAtASCII == asciiMode && mdAtDark == dark {
 		return mdRendererC
 	}
 	unregisterChromaStyle()
@@ -180,12 +418,16 @@ func mdRenderer(width int) *glamour.TermRenderer {
 		glamour.WithStyles(st),
 		glamour.WithWordWrap(width),
 		glamour.WithPreservedNewLines(),
+		glamour.WithColorProfile(profile),
+		glamour.WithChromaFormatter(chromaFormatter()),
 	)
 	if err != nil {
 		mdRendererErr = true
 		return nil
 	}
 	mdRendererC, mdAtWidth, mdAtLight, mdAtKnown = r, width, mdLight, mdKnown
+	mdLinkTextSGR, mdLinkHrefSGR = glamourSGR(profile, st.LinkText), glamourSGR(profile, st.Link)
+	mdAtProfile, mdAtMono, mdAtASCII, mdAtDark = profile, monoMode, asciiMode, dark
 	return r
 }
 

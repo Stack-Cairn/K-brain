@@ -25,7 +25,7 @@ func TestToolOutputMsgUpdatesRunningRow(t *testing.T) {
 		t.Fatal("toolOutputMsg should set the live tail on the running row")
 	}
 	got := ansi.Strip(row.render(m.width))
-	if !strings.Contains(got, "linking") || !strings.Contains(got, "Running") && !strings.Contains(got, "⚒") {
+	if !strings.Contains(got, "linking") || !strings.HasPrefix(got, glyphs.ToolRun+" Bash") {
 		t.Fatalf("running row should show verb + live tail, got %q", got)
 	}
 

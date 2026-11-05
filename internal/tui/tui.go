@@ -45,41 +45,6 @@ import (
 	"github.com/muesli/termenv"
 )
 
-var (
-	youStyle  = lipgloss.NewStyle().Foreground(infoColor).Bold(true)
-	botStyle  = lipgloss.NewStyle().Foreground(secondaryColor).Bold(true)
-	toolStyle = lipgloss.NewStyle().Foreground(warnColor)
-	dimStyle  = lipgloss.NewStyle().Foreground(faintColor)
-	errStyle  = lipgloss.NewStyle().Foreground(errColor)
-	warnStyle = lipgloss.NewStyle().Foreground(warnColor)
-	growStyle = lipgloss.NewStyle().Foreground(successColor)
-
-	thinkingStyle = lipgloss.NewStyle().Foreground(faintColor).Italic(true)
-	chromeStyle   = lipgloss.NewStyle().Foreground(mutedColor)
-	accentStyle   = lipgloss.NewStyle().Foreground(accentColor).Bold(true)
-	userPanel     = lipgloss.NewStyle().Background(panelBGColor).Padding(0, 1)
-	shortcutStyle = lipgloss.NewStyle().Foreground(subtleColor)
-	// The brand name is structure, not a signal: bold carries it, colour is
-	// saved for the one actionable span in the card.
-	brandStyle       = lipgloss.NewStyle().Foreground(mutedColor).Bold(true)
-	metaStyle        = lipgloss.NewStyle().Foreground(subtleColor)
-	chromeRuleStyle  = lipgloss.NewStyle().Foreground(borderColor)
-	statusTitleStyle = lipgloss.NewStyle().Foreground(accentColor).Bold(true)
-	selectedRowStyle = lipgloss.NewStyle().Foreground(accentColor).Background(selectionBGColor).Bold(true)
-
-	// Mode chips carry risk, so their colour is semantic: allow-everything is a
-	// warning, plan is the safe accent, normal is unremarkable.
-	modeChipBase   = lipgloss.NewStyle().Bold(true).Padding(0, 1)
-	modeChipAlways = modeChipBase.Foreground(lipgloss.CompleteAdaptiveColor{Light: lipgloss.CompleteColor{TrueColor: "#ffffff", ANSI256: "231", ANSI: "15"}, Dark: lipgloss.CompleteColor{TrueColor: "#1b1d22", ANSI256: "235", ANSI: "0"}}).Background(errColor)
-	modeChipPlan   = modeChipBase.Foreground(lipgloss.CompleteAdaptiveColor{Light: lipgloss.CompleteColor{TrueColor: "#ffffff", ANSI256: "231", ANSI: "15"}, Dark: lipgloss.CompleteColor{TrueColor: "#0f1714", ANSI256: "235", ANSI: "0"}}).Background(accentColor)
-	modeChipNormal = modeChipBase.Foreground(mutedColor).Background(borderColor)
-)
-
-var (
-	glyphUser      = "❯ "
-	glyphAssistant = "● "
-)
-
 type (
 	textMsg      string
 	toolStartMsg struct{ id, name, args string }
@@ -313,6 +278,8 @@ type model struct {
 	escClr bool
 	future []ai.Message
 
+	escGrace escGrace // Esc presses just after an interrupt are ignored
+
 	namePrompt *namePrompt
 
 	initialPrompt string
@@ -407,6 +374,7 @@ func Run(cfg *config.Config, modelName, provName, sysPrompt, resumeID string, ca
 	// Styles bake their adaptive colours at Render time, so the theme has to be
 	// settled before anything is appended to the transcript.
 	m.themeHow = m.applyTheme(cfg.Theme)
+	m.applyColorEnv()
 	m.appendBanner()
 
 	m.applyCompactModel()
@@ -1046,60 +1014,7 @@ func (b *block) renderAtMode(width int, ancient bool) string {
 	return b.rendered
 }
 
-func (b block) render(width int) string {
-	switch b.kind {
-	case blockBanner:
-		return renderBannerBox(b.text, width)
-	case blockUser:
-		return userPanel.Width(max(width-2, 1)).Render(wrap(youStyle.Render(glyphUser)+b.text, max(width-4, 1)))
-	case blockAssistant:
-
-		w := width - 2
-		if w <= 0 {
-			w = 80
-		}
-		body := indentLines(renderMarkdown(b.text, w), 2)
-		return accentStyle.Render(glyphAssistant) + dropLeadSpaces(body, 2)
-	case blockTool:
-
-		if diff, rest := extractDiff(strings.TrimRight(b.text, "\n")); diff != "" {
-			return renderDiffResult(diff, rest, b.expanded, width)
-		}
-		lines := strings.Split(strings.TrimRight(b.text, "\n"), "\n")
-		for i := 1; i < len(lines); i++ {
-			lines[i] = "  " + lines[i] // continuation rows sit under the text, not the ⎿
-		}
-		style := dimStyle
-		failed := strings.HasPrefix(b.text, "Error")
-		if failed {
-			style = errStyle
-		}
-		// Reads and searches are context for the model, not for the reader:
-		// fold them to a one-line count that still expands on demand.
-		if !b.expanded && !failed && quietResultTool(b.toolName) && len(lines) > 1 {
-			return wrap(dimStyle.Render("  ⎿ "+quietResultSummary(b.toolName, b.text, len(lines))), width)
-		}
-		lines[0] = "⎿ " + lines[0]
-		if b.expanded || len(lines) <= toolPreviewLines {
-			return wrap(style.Render("  "+strings.Join(lines, "\n  ")), width)
-		}
-		preview := lines[:toolPreviewLines]
-		out := style.Render("  " + strings.Join(preview, "\n  "))
-		hint := fmt.Sprintf("\n    … +%d lines (ctrl+e)", len(lines)-toolPreviewLines)
-		return wrap(out+dimStyle.Render(hint), width)
-	case blockToolRun:
-
-		if b.toolRunning || b.expanded {
-			if b.live != "" && b.toolRunning {
-				return wrap(b.text, width) + "\n" + wrap(dimStyle.Render("  "+b.live), width)
-			}
-			return wrap(b.text, width)
-		}
-		return ansi.Truncate(b.text, width, "…")
-	default:
-		return wrap(b.text, width)
-	}
-}
+func (b block) render(width int) string { return renderBlock(b, width) }
 
 func (b *block) toggle() bool {
 	if b.kind != blockTool && b.kind != blockToolRun {
@@ -1811,9 +1726,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		suffix := m.batchSuffix(msg.name, msg.id)
 
+		// The running row takes its queued row's place, so a batch keeps its order.
+		at := -1
 		for i := range slices.Backward(m.blocks) {
 			if m.blocks[i].kind == blockToolQueued && m.blocks[i].toolID == msg.id {
 				m.blocks = slices.Delete(m.blocks, i, i+1)
+				at = i
 				break
 			}
 		}
@@ -1831,7 +1749,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		row := toolStyle.Render("⚒ "+toolVerb(msg.name)+suffix+" ") + dimStyle.Render(args)
 
-		m.blocks = append(m.blocks, block{kind: blockToolRun, text: row, toolID: msg.id, toolRunning: true, toolName: msg.name, toolArgs: msg.args})
+		run := block{kind: blockToolRun, text: row, toolID: msg.id, toolRunning: true, toolName: msg.name, toolArgs: msg.args}
+		if at >= 0 {
+			m.blocks = slices.Insert(m.blocks, at, run)
+		} else {
+			m.blocks = append(m.blocks, run)
+		}
 		m.refreshVP()
 		return m, nil
 
@@ -1857,7 +1780,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			b := &m.blocks[i]
 			if b.kind == blockToolRun && b.toolRunning && b.toolID == msg.id {
 				b.toolRunning = false
-				b.toolFailed = strings.HasPrefix(msg.result, "Error:")
+				b.toolFailed = toolResultFailed(msg.result)
 				b.live = ""
 
 				b.text = toolHeaderRow(msg.name, b.toolArgs, b.toolFailed)
@@ -2410,6 +2333,7 @@ func (m *model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		if m.busy && m.cancel != nil && strings.TrimSpace(m.input.Value()) == "" {
 			m.cancel()
+			m.escGrace.mark()
 			return m, nil
 		}
 
@@ -2448,6 +2372,9 @@ func (m *model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, tea.Tick(time.Second, func(time.Time) tea.Msg { return escArmMsg{} })
 			}
 
+			if m.escGrace.swallow() {
+				return m, nil
+			}
 			if m.esc1 {
 				m.esc1 = false
 				m.openRewind()
@@ -4283,13 +4210,7 @@ func (m *model) viewBody() string {
 		b.WriteString("\n" + m.askView() + "\n")
 	}
 	if m.busy {
-		hint := m.tr(" · Esc to interrupt")
-		if m.iactive != nil {
-			hint = " bash (interactive) — type to respond · Ctrl+C Ctrl+C to cancel"
-		} else if m.interrupt1 {
-			hint = m.tr(" · Esc again to interrupt")
-		}
-		b.WriteString("\n" + m.spin.View() + dimStyle.Render(m.tr(" thinking…")+m.busyStats()+hint) + "\n")
+		b.WriteString("\n" + m.busyRow() + "\n")
 	}
 	if len(m.queue) > 0 {
 		nav := ""
@@ -4382,6 +4303,7 @@ func (m *model) syncInputPlaceholder() {
 	default:
 		m.input.Placeholder = m.tr("busy — type to queue (sent when the turn ends)")
 	}
+	m.input.Placeholder = chromeGlyphs(m.input.Placeholder)
 }
 
 // statusLeft is the left half of the info row after the mode chip: the git

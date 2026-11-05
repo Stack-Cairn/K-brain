@@ -1,0 +1,24 @@
+        alse, "verbose")
+  42  +     asJSON := flags.Bool("json",
+         false, "print JSON")
+◆ Bash  go test ./cmd/kn/         ✓ 2.4s
+  └ ok      github.com/acme/kn/cmd/kn
+    2.1s
+✗ Bash  go vet ./...       failed · 1.1s
+  └ Error: exit status 1
+    cmd/kn/status.go:42:2: declared and
+    not used: asJSON
+
+▌ Error
+▌ provider returned 529: overloaded,
+▌ retrying in 4s
+
+! context is 82% full — /compact soon
+
+◌ Read  cmd/kn/status.go
+◇ Grep  asJSON                    queued
+
+  ⠋ Reading cmd… 0:12 · Esc to interrupt
+────────────────────────────────────────
+  ❯ busy — type to queue (sent when the
+   Always allow     kimi-k3-fast · ✦ off

@@ -156,46 +156,41 @@ func (m *model) askView() string {
 	if d == nil {
 		return ""
 	}
-	var b strings.Builder
+	w := cardWidth(m.width)
+	inner := cardInner(w)
 	title := d.req.Question
 	if d.req.Multiple {
-		title += " (select all that apply)"
+		title += m.tr(" (select all that apply)")
 	}
-	w := max(m.width, 8)
-	b.WriteString(youStyle.Render(wrap("? "+title, w)))
+	head := cardTitleStyle.Inherit(accentFgStyle).Render("?") + " " + cardTitleStyle.Render(m.tr("Question"))
+	rows := []string{cardTitleStyle.Render(wrap(title, inner)), ""}
 	for i, o := range d.req.Options {
 		mark := ""
 		if d.req.Multiple {
 			mark = "[ ] "
 			if d.picked[i] {
-				mark = "[✓] "
+				mark = "[" + glyphs.OK + "] "
 			}
 		}
-		row := strconv.Itoa(i+1) + ". " + mark + o.Label
-		if i == d.sel && !d.editing {
-			b.WriteString("\n" + youStyle.Render(glyphUser+row))
-		} else {
-			b.WriteString("\n  " + row)
-		}
+		rows = append(rows, cardOption(i == d.sel && !d.editing, strconv.Itoa(i+1), mark+o.Label, w))
 		if o.Description != "" {
-			b.WriteString("\n" + dimStyle.Render("     "+strings.ReplaceAll(wrap(o.Description, w-5), "\n", "\n     ")))
+			rows = append(rows, textSecondaryStyle.Render("     "+strings.ReplaceAll(wrap(o.Description, max(inner-5, 1)), "\n", "\n     ")))
 		}
 	}
-	custom := strconv.Itoa(len(d.req.Options)+1) + ". type your own answer"
+	n := strconv.Itoa(len(d.req.Options) + 1)
+	custom := m.tr("type your own answer")
 	switch {
 	case d.editing:
-		b.WriteString("\n" + youStyle.Render(glyphUser+custom+": ") + d.custom + "█")
-		b.WriteString(dimStyle.Render("\n  Enter confirms · Esc Back"))
-		return b.String()
-	case d.sel == len(d.req.Options):
-		b.WriteString("\n" + youStyle.Render(glyphUser+custom))
+		rows = append(rows, accentFgStyle.Render(glyphs.User+" "+n+"  "+custom+": ")+d.custom+"█",
+			"", textHintStyle.Render(m.tr("Enter confirms · Esc Back")))
+		return renderCard(tokAccent, head, rows, w)
 	default:
-		b.WriteString("\n  " + custom)
+		rows = append(rows, cardOption(d.sel == len(d.req.Options), n, textMutedStyle.Render(custom), w))
 	}
-	hint := "  ↑/↓ or 1-9 Select · Enter Picks · Esc Dismisses"
+	hint := m.tr("↑↓ or 1-9 select · Enter picks · Esc dismisses")
 	if d.req.Multiple {
-		hint = "  ↑/↓ or 1-9 toggle · enter submits · esc dismisses"
+		hint = m.tr("↑↓ or 1-9 toggle · Enter submits · Esc dismisses")
 	}
-	b.WriteString("\n" + dimStyle.Render(hint))
-	return b.String()
+	rows = append(rows, "", textHintStyle.Render(chromeGlyphs(hint)))
+	return renderCard(tokAccent, head, rows, w)
 }

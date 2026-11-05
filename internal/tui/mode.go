@@ -39,16 +39,25 @@ func (m *model) permissionModeLabel() string {
 }
 
 // modeChip renders the permission mode as a filled badge. It keeps
-// permissionModeLabel's exact text so the chip stays translated.
+// permissionModeLabel's exact text so the chip stays translated. The colour is
+// the risk: allow-everything modes sit on the error red so the default
+// "always" mode is never mistaken for a cautious one. Without colour the chip
+// keeps its shape as a bracketed label, and the risky ones stay reversed.
 func (m *model) modeChip() string {
 	style := modeChipNormal
 	switch m.permissionMode {
 	case "plan":
 		style = modeChipPlan
-	case "always":
+	case "always", "full_access":
 		style = modeChipAlways
+	case "auto_review", "auto_edit":
+		style = modeChipReview
 	}
-	return style.Render(m.permissionModeLabel())
+	label := m.permissionModeLabel()
+	if monoMode {
+		return style.Render("[" + label + "]")
+	}
+	return style.Render(label)
 }
 
 func (m *model) permissionCommand(args []string) {

@@ -33,7 +33,7 @@ func TestBannerVersionPreservesBuildValue(t *testing.T) {
 			m := compactCmdModel()
 			m.cfg.Language = "zh_cn"
 			banner := ansi.Strip(m.bannerBody())
-			if !strings.Contains(banner, "氪脑   "+tc.want) {
+			if !strings.Contains(banner, "氪脑 "+tc.want) {
 				t.Fatalf("banner missing original build version: %q", banner)
 			}
 		})
@@ -55,16 +55,28 @@ func TestBannerBoxFitsEveryWidth(t *testing.T) {
 		}
 		want := len(m.bannerRows())
 		if width < 24 {
-			if len(lines) != want {
-				t.Fatalf("width %d: borderless fallback should keep %d rows, got %d", width, want, len(lines))
+			// The title moves out of the border onto its own line.
+			if len(lines) != want+1 {
+				t.Fatalf("width %d: borderless fallback should keep %d rows plus the title, got %d", width, want, len(lines))
 			}
 			continue
 		}
-		if len(lines) != want+2 {
-			t.Fatalf("width %d: bordered banner should be %d rows plus 2 border rows, got %d:\n%s", width, want, len(lines), out)
+		// Two border rows plus the breathing row under the titled top border.
+		// A card too narrow for its rows drops the mark and breaks rows between
+		// their cells instead, so nothing is cut short.
+		if width >= 80 && len(lines) != want+3 {
+			t.Fatalf("width %d: bordered banner should be %d rows plus 3, got %d:\n%s", width, want, len(lines), out)
+		}
+		if width < 80 {
+			plain := ansi.Strip(out)
+			for _, cell := range []string{"/model", "/mcp", "Esc Esc", "Shift+Tab"} {
+				if !strings.Contains(plain, cell) {
+					t.Fatalf("width %d: narrow banner lost %q:\n%s", width, cell, out)
+				}
+			}
 		}
 		// The card is centred, so the border rows carry a leading indent.
-		if !strings.HasPrefix(strings.TrimSpace(lines[0]), "╭") || !strings.HasPrefix(strings.TrimSpace(lines[len(lines)-1]), "╰") {
+		if !strings.HasPrefix(strings.TrimSpace(lines[0]), glyphs.Border.TopLeft) || !strings.HasPrefix(strings.TrimSpace(lines[len(lines)-1]), glyphs.Border.BottomLeft) {
 			t.Fatalf("width %d: banner lost its rounded border:\n%s", width, out)
 		}
 	}
@@ -91,7 +103,7 @@ func TestBannerBoxGrowsWithLongRoute(t *testing.T) {
 	if got := lipgloss.Width(strings.TrimSpace(strings.Split(plain, "\n")[0])); got <= bannerMinWidth {
 		t.Fatalf("a long route should widen the card past the floor, got %d", got)
 	}
-	if !strings.Contains(plain, "claude-opus-5-1m-preview@anthropic-vertex") {
+	if !strings.Contains(plain, "claude-opus-5-1m-preview · anthropic-vertex") {
 		t.Fatalf("long route should not be truncated on a wide terminal:\n%s", plain)
 	}
 }
@@ -99,12 +111,9 @@ func TestBannerBoxGrowsWithLongRoute(t *testing.T) {
 func TestBannerShowsModelHint(t *testing.T) {
 	m := compactCmdModel()
 	body := ansi.Strip(m.bannerBody())
-	if !strings.Contains(body, "/model to change") {
-		t.Errorf("banner should point at /model:\n%s", body)
-	}
-	for _, want := range []string{"Model:", "Directory:"} {
+	for _, want := range []string{"/model", "/mcp", "@ attach a file", "! run shell", "/ commands", "Shift+Tab mode", "Esc Esc rewind"} {
 		if !strings.Contains(body, want) {
-			t.Errorf("banner labels should carry a colon, missing %q:\n%s", want, body)
+			t.Errorf("banner missing %q:\n%s", want, body)
 		}
 	}
 }
@@ -113,7 +122,7 @@ func TestBannerShowsRouteAndDirectory(t *testing.T) {
 	m := compactCmdModel()
 	m.modelName, m.provName = "kimi-k3-fast", "inference"
 	body := ansi.Strip(m.bannerBody())
-	for _, want := range []string{m.bannerName(), versionLabel(), "kimi-k3-fast@inference", shortCWD()} {
+	for _, want := range []string{m.bannerName(), versionLabel(), "kimi-k3-fast · inference", shortCWD()} {
 		if !strings.Contains(body, want) {
 			t.Errorf("banner missing %q:\n%s", want, body)
 		}
@@ -193,10 +202,10 @@ func TestBannerReadyRowReflectsStats(t *testing.T) {
 	// A failed server is the abnormal value, so it is what earns colour.
 	m.stats = bannerStats{skills: 1, mcpReady: 1, mcpFailed: 2, mcpTools: 4}
 	row := bannerRowContaining(t, m, "MCP")
-	if !strings.Contains(ansi.Strip(row), "2/3 MCP \u2717") {
+	if !strings.Contains(ansi.Strip(row), glyphs.Fail+" 2/3 MCP") {
 		t.Errorf("failed servers should dominate the readout: %q", ansi.Strip(row))
 	}
-	if !strings.Contains(row, errStyle.Render("2/3 MCP \u2717")) {
+	if !strings.Contains(row, errStyle.Render(glyphs.Fail+" 2/3 MCP")) {
 		t.Errorf("the failure should be painted with the error colour: %q", row)
 	}
 }
@@ -230,22 +239,23 @@ func TestBannerColoursOnlyWhatMatters(t *testing.T) {
 	if !strings.Contains(row, chromeStyle.Render(m.modelName)) {
 		t.Errorf("the model name should keep the value colour: %q", row)
 	}
-	if !strings.Contains(row, dimStyle.Render("@"+m.provName)) {
+	if !strings.Contains(row, dimStyle.Render(" · "+m.provName)) {
 		t.Errorf("the provider should drop to faint: %q", row)
 	}
 	if strings.Contains(row, accentStyle.Render(m.provName)) {
 		t.Errorf("the provider must not take the accent — that is /model's: %q", row)
 	}
 
-	// The effort lives in the footer, accented. Repeating it here would crowd
-	// the row and duplicate what already has a better home.
+	// The effort qualifies the route like the provider does: muted, not a
+	// second accent.
 	m.agent.Effort = "high"
-	if card := ansi.Strip(strings.Join(m.bannerRows(), "\n")); strings.Contains(card, "high") {
-		t.Errorf("the card should not carry the reasoning effort:\n%s", card)
+	row = bannerRowContaining(t, m, m.modelName)
+	if !strings.Contains(ansi.Strip(row), "effort high") || strings.Contains(row, accentStyle.Render("high")) {
+		t.Errorf("the effort should ride the route row, muted: %q", row)
 	}
 
 	// The brand name is bold structure, not a signal: the logo carries the colour.
-	brand := bannerRowContaining(t, m, m.bannerName())
+	brand, _ := m.bannerTitle()
 	if strings.Contains(brand, accentStyle.Render(m.bannerName())) {
 		t.Errorf("the brand name should not take the accent: %q", brand)
 	}
@@ -264,7 +274,7 @@ func TestBannerLogoUsesBrandGradient(t *testing.T) {
 		t.Fatalf("the mark should be several rows tall, got %d", len(rows))
 	}
 	joined := strings.Join(rows, "\n")
-	for name, c := range map[string]lipgloss.CompleteAdaptiveColor{
+	for name, c := range map[string]lipgloss.TerminalColor{
 		"stem": logoStemColor, "upper": logoUpperColor, "lower": logoLowerColor,
 	} {
 		// Compare the escape prefix, not a whole rendered span: the arm segments
@@ -313,7 +323,8 @@ func TestBannerBodyIsWholeInOneFrame(t *testing.T) {
 
 	body := m.bannerBody()
 	rows := m.bannerRows()
-	if got, want := len(strings.Split(body, "\n")), len(rows); got != want {
+	// One extra line carries the border title.
+	if got, want := len(strings.Split(body, "\n")), len(rows)+1; got != want {
 		t.Fatalf("bannerBody rendered %d rows, want all %d", got, want)
 	}
 	for i, r := range rows {
@@ -334,7 +345,7 @@ func TestBannerNameIsTranslated(t *testing.T) {
 		if got := m.bannerName(); got != want {
 			t.Errorf("%s wordmark = %q, want %q", language, got, want)
 		}
-		card := ansi.Strip(strings.Join(m.bannerRows(), "\n"))
+		card := ansi.Strip(m.bannerBody())
 		if !strings.Contains(card, want) {
 			t.Errorf("%s card missing the wordmark %q:\n%s", language, want, card)
 		}
@@ -344,30 +355,26 @@ func TestBannerNameIsTranslated(t *testing.T) {
 	}
 }
 
-// The labels are capitalised in English and the two data rows are separated.
-func TestBannerLabelsAndSpacing(t *testing.T) {
+// The route and readiness rows are set apart from the key hints by a blank row.
+func TestBannerHintsSitBelowABlankRow(t *testing.T) {
 	m := compactCmdModel()
-	card := ansi.Strip(strings.Join(m.bannerRows(), "\n"))
-	for _, want := range []string{"Model:", "Directory:"} {
-		if !strings.Contains(card, want) {
-			t.Errorf("card missing capitalised label %q:\n%s", want, card)
-		}
-	}
-
 	rows := m.bannerRows()
-	modelRow, dirRow := -1, -1
+	modelRow, hintRow := -1, -1
 	for i, r := range rows {
-		switch {
-		case strings.Contains(ansi.Strip(r), "Model:"):
+		switch plain := ansi.Strip(r); {
+		case strings.Contains(plain, "/model"):
 			modelRow = i
-		case strings.Contains(ansi.Strip(r), "Directory:"):
-			dirRow = i
+		case strings.Contains(plain, "attach a file"):
+			hintRow = i
 		}
 	}
-	if modelRow < 0 || dirRow < 0 {
-		t.Fatalf("rows not found (model=%d dir=%d)", modelRow, dirRow)
+	if modelRow < 0 || hintRow < 0 {
+		t.Fatalf("rows not found (model=%d hints=%d)", modelRow, hintRow)
 	}
-	if dirRow-modelRow < 2 {
-		t.Errorf("want a blank row between Model and Directory, got rows %d and %d", modelRow, dirRow)
+	if hintRow-modelRow < 3 {
+		t.Errorf("want the readiness row and a blank row between the route and the hints, got rows %d and %d", modelRow, hintRow)
+	}
+	if blank := strings.TrimSpace(strings.Trim(ansi.Strip(rows[hintRow-1]), "█# ")); blank != "" {
+		t.Errorf("the row above the hints should be blank: %q", rows[hintRow-1])
 	}
 }

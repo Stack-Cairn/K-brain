@@ -1,10 +1,12 @@
 package tui
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/muesli/termenv"
 
 	"github.com/Stack-Cairn/K-brain/internal/agent"
 	"github.com/Stack-Cairn/K-brain/internal/ai"
@@ -22,8 +24,8 @@ func TestToolRowCollapsesOnCompletion(t *testing.T) {
 	if !row.toolRunning {
 		t.Fatal("row should be running")
 	}
-	if got := ansi.Strip(row.render(m.width)); !strings.Contains(got, "Reading") {
-		t.Fatalf("running row should show the verb, got %q", got)
+	if got := ansi.Strip(row.render(m.width)); !strings.HasPrefix(got, glyphs.ToolRun+" Read  foo.go") {
+		t.Fatalf("running row should show the running glyph and the call, got %q", got)
 	}
 
 	m.Update(toolEndMsg{id: "c1", name: "read", result: "file body\nline2\nline3\nline4\nline5\nline6"})
@@ -36,7 +38,7 @@ func TestToolRowCollapsesOnCompletion(t *testing.T) {
 		t.Fatalf("completed row should collapse to one line, got %q", got)
 	}
 
-	if !strings.Contains(got, "Read(foo.go)") {
+	if !strings.Contains(got, glyphs.ToolDone+" Read  foo.go") {
 		t.Fatalf("completed row should keep the call header, got %q", got)
 	}
 
@@ -45,11 +47,11 @@ func TestToolRowCollapsesOnCompletion(t *testing.T) {
 		t.Fatal("the result block should follow the run row")
 	}
 	got = ansi.Strip(res.render(m.width))
-	if !strings.Contains(got, "⎿ 6 lines") || strings.Contains(got, "file body") {
-		t.Fatalf("a read result should fold to its line count under ⎿, got %q", got)
+	if !strings.Contains(got, glyphs.Result+" 6 lines") || strings.Contains(got, "file body") {
+		t.Fatalf("a read result should fold to its line count under the elbow, got %q", got)
 	}
 	res.toggle()
-	if got := ansi.Strip(res.render(m.width)); !strings.Contains(got, "⎿ file body") || !strings.Contains(got, "line6") {
+	if got := ansi.Strip(res.render(m.width)); !strings.Contains(got, glyphs.Result+" file body") || !strings.Contains(got, "line6") {
 		t.Fatalf("an expanded read result should show the file, got %q", got)
 	}
 	if !row.toggle() {
@@ -58,6 +60,9 @@ func TestToolRowCollapsesOnCompletion(t *testing.T) {
 }
 
 func TestToolRowFailureIsRed(t *testing.T) {
+	// Rows are styled when their event lands, so the profile is set first.
+	restore := useProfile(t, termenv.ANSI256, true)
+	defer restore()
 	m := compactCmdModel()
 	m.Update(mkWinSize(80, 24))
 	m.Update(toolStartMsg{id: "c1", name: "bash", args: `{"command":"false"}`})
@@ -71,8 +76,14 @@ func TestToolRowFailureIsRed(t *testing.T) {
 	if run == nil || !run.toolFailed {
 		t.Fatal("a failed tool should mark the collapsed row")
 	}
-	if got := ansi.Strip(run.render(m.width)); !strings.Contains(got, "Bash(false)") {
-		t.Fatalf("failed row should keep the call header, got %q", got)
+	got := ansi.Strip(run.render(m.width))
+	if !strings.HasPrefix(got, glyphs.Fail+" Bash  false") || !strings.Contains(got, "failed") {
+		t.Fatalf("failed row should keep the call header and say it failed, got %q", got)
+	}
+	// Only the glyph and the meta carry the error colour, not the whole row.
+	raw := run.render(m.width)
+	if !strings.Contains(raw, errorTitleStyle.Render(glyphs.Fail)) || strings.Contains(raw, errStyle.Render("Bash")) || strings.Contains(raw, errStyle.Render("false")) {
+		t.Fatalf("only the glyph and meta should carry the error colour: %q", raw)
 	}
 
 	res := m.blocks[len(m.blocks)-1]
@@ -94,12 +105,13 @@ func TestToolBlocksGlueWithoutBlankRows(t *testing.T) {
 	for i := range rows {
 		rows[i] = strings.TrimRight(rows[i], " ")
 	}
-	got := strings.Join(rows, "\n")
-	want := "● Read(a.go)\n  ⎿ 2 lines\n● Bash(ls)\n  ⎿ ok\n\n● after"
+	got := stripToolMeta(strings.Join(rows, "\n"))
+	d, r, a := glyphs.ToolDone, glyphs.Result, glyphs.Assistant
+	want := d + " Read  a.go\n  " + r + " 2 lines\n" + d + " Bash  ls\n  " + r + " ok\n\n" + a + " after"
 	if !strings.Contains(got, want) {
 		t.Fatalf("tool group should render without blank rows:\n%s", got)
 	}
-	if !strings.Contains(got, "● before\n\n● Read") {
+	if !strings.Contains(got, a+" before\n\n"+d+" Read") {
 		t.Fatalf("prose stays separated from the tool group:\n%s", got)
 	}
 }
@@ -125,9 +137,9 @@ func TestSeedTranscriptHidesReminderOnlyUserMessages(t *testing.T) {
 
 func TestSearchResultsFoldToTheirOwnCounts(t *testing.T) {
 	cases := []struct{ name, args, result, head, fold string }{
-		{"grep", `{"pattern":"TODO","path":"internal"}`, "matches=3 files=2\nGrep: TODO\noffset=0 total=3 hasMore=false\na.go:1: TODO\na.go:9: TODO\nb.go:2: TODO", "Grep(TODO in internal)", "⎿ 3 matches"},
-		{"glob", `{"pattern":"**/*.go"}`, "Glob: **/*.go\noffset=0 total=1 hasMore=false\na.go", "Glob(**/*.go)", "⎿ 1 file"},
-		{"list", `{}`, "List: /w\noffset=0 total=2 hasMore=false\n[DIR] a\n[FILE] a/b.go", "List(.)", "⎿ 2 entries"},
+		{"grep", `{"pattern":"TODO","path":"internal"}`, "matches=3 files=2\nGrep: TODO\noffset=0 total=3 hasMore=false\na.go:1: TODO\na.go:9: TODO\nb.go:2: TODO", "Grep  TODO in internal", glyphs.Result + " 3 matches"},
+		{"glob", `{"pattern":"**/*.go"}`, "Glob: **/*.go\noffset=0 total=1 hasMore=false\na.go", "Glob  **/*.go", glyphs.Result + " 1 file"},
+		{"list", `{}`, "List: /w\noffset=0 total=2 hasMore=false\n[DIR] a\n[FILE] a/b.go", "List  .", glyphs.Result + " 2 entries"},
 	}
 	for _, c := range cases {
 		m := compactCmdModel()
@@ -139,5 +151,33 @@ func TestSearchResultsFoldToTheirOwnCounts(t *testing.T) {
 		if !strings.Contains(head, c.head) || !strings.Contains(fold, c.fold) {
 			t.Errorf("%s: header %q fold %q, want %q / %q", c.name, head, fold, c.head, c.fold)
 		}
+	}
+}
+
+// stripToolMeta drops the right-aligned duration cell from finished tool rows
+// so layout assertions do not depend on wall-clock time.
+func stripToolMeta(s string) string {
+	return toolMetaRE.ReplaceAllString(s, "")
+}
+
+var toolMetaRE = regexp.MustCompile(`(?m)[ ]+(` + regexp.QuoteMeta(unicodeGlyphs.OK) + `|failed)( · | )?[0-9.ms]*s?[ ]*$`)
+
+func TestRunningRowKeepsItsBatchPlace(t *testing.T) {
+	m := compactCmdModel()
+	m.Update(mkWinSize(80, 24))
+	m.Update(toolCallMsg{id: "c1", name: "bash", args: `{"command":"./scripts/test.sh"}`})
+	m.Update(toolCallMsg{id: "c2", name: "bash", args: `{"command":"./scripts/vet.sh"}`})
+	m.Update(toolStartMsg{id: "c1", name: "bash", args: `{"command":"./scripts/test.sh"}`})
+	var order []string
+	for _, b := range m.blocks {
+		if b.toolID != "" {
+			order = append(order, b.toolID)
+		}
+	}
+	if strings.Join(order, ",") != "c1,c2" {
+		t.Fatalf("the running call should stay above the one queued behind it, got %v", order)
+	}
+	if m.blocks[len(m.blocks)-1].kind != blockToolQueued {
+		t.Fatal("the queued call stays last")
 	}
 }

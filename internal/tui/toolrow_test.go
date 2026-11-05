@@ -10,19 +10,20 @@ import (
 
 func TestToolHeaderRowSubjects(t *testing.T) {
 	cases := []struct{ name, args, want string }{
-		{"edit", `{"path":"internal/tui/tui.go"}`, "Update(internal/tui/tui.go)"},
-		{"write", `{"path":"a.go","content":"x"}`, "Write(a.go)"},
-		{"read", `{"path":"a.go"}`, "Read(a.go)"},
-		{"bash", `{"command":"git  status"}`, "Bash(git status)"},
-		{"subagent", `{"description":"probe the repo","prompt":"p"}`, "Subagent(probe the repo)"},
-		{"subagent_steer", `{"id":"sub-3","message":"m"}`, "Steer(sub-3)"},
+		{"edit", `{"path":"internal/tui/tui.go"}`, "Edit  internal/tui/tui.go"},
+		{"write", `{"path":"a.go","content":"x"}`, "Write  a.go"},
+		{"read", `{"path":"a.go"}`, "Read  a.go"},
+		{"bash", `{"command":"git  status"}`, "Bash  git status"},
+		{"subagent", `{"description":"probe the repo","prompt":"p"}`, "Subagent  probe the repo"},
+		{"subagent_steer", `{"id":"sub-3","message":"m"}`, "Steer  sub-3"},
 	}
 	for _, c := range cases {
-		if got := ansi.Strip(toolHeaderRow(c.name, c.args, false)); got != "● "+c.want {
-			t.Errorf("%s: got %q, want %q", c.name, got, "● "+c.want)
+		if got := ansi.Strip(toolHeaderRow(c.name, c.args, false)); got != glyphs.ToolDone+" "+c.want {
+			t.Errorf("%s: got %q, want %q", c.name, got, glyphs.ToolDone+" "+c.want)
 		}
 	}
-	if got := ansi.Strip(toolHeaderRow("bash", `{"command":"false"}`, true)); got != "● Bash(false)" {
+	// A failure changes the glyph only; the row keeps its grammar.
+	if got := ansi.Strip(toolHeaderRow("bash", `{"command":"false"}`, true)); got != glyphs.Fail+" Bash  false" {
 		t.Errorf("failed header: %q", got)
 	}
 }
@@ -53,11 +54,11 @@ func TestEditResultRendersDiff(t *testing.T) {
 	})
 
 	run := m.blocks[len(m.blocks)-2]
-	if got := ansi.Strip(run.render(m.width)); got != "● Update(a.go)" {
+	if got := ansi.Strip(run.render(m.width)); !strings.HasPrefix(got, glyphs.ToolDone+" Edit  a.go") {
 		t.Fatalf("run row: %q", got)
 	}
 	res := ansi.Strip(m.blocks[len(m.blocks)-1].render(m.width))
-	for _, want := range []string{"⎿ Added 1 line, removed 1 line", "4 - x", "4 + y", "unused variable"} {
+	for _, want := range []string{glyphs.Result + " +1 " + glyphs.Minus + "1  Added 1 line, removed 1 line", "4  - x", "4  + y", "unused variable"} {
 		if !strings.Contains(res, want) {
 			t.Fatalf("result block missing %q:\n%s", want, res)
 		}
@@ -71,11 +72,11 @@ func TestDiffPreviewCapAndExpand(t *testing.T) {
 	}
 	b := block{kind: blockTool, text: "Wrote 1 bytes to a.go\n```diff\n" + strings.Join(rows, "\n") + "\n```"}
 	out := ansi.Strip(b.render(80))
-	if !strings.Contains(out, "… +5 more") {
+	if !strings.Contains(out, glyphs.Fold+" +5 more lines · ctrl+e") {
 		t.Fatalf("collapsed diff should cap:\n%s", out)
 	}
 	b.expanded, b.stale = true, true
-	if out := ansi.Strip(b.render(80)); strings.Contains(out, "more (ctrl+e") {
+	if out := ansi.Strip(b.render(80)); strings.Contains(out, "more lines · ctrl+e") {
 		t.Fatal("expanded diff should show everything")
 	}
 }
@@ -95,9 +96,23 @@ func TestSeedTranscriptShowsDiffs(t *testing.T) {
 	for i := range m.blocks {
 		joined.WriteString(ansi.Strip(m.blocks[i].render(m.width)) + "\n")
 	}
-	for _, want := range []string{"● Update(a.go)", "Added 1 line, removed 1 line", "4 + y"} {
+	for _, want := range []string{glyphs.ToolDone + " Edit  a.go", "Added 1 line, removed 1 line", "4  + y"} {
 		if !strings.Contains(joined.String(), want) {
 			t.Fatalf("resumed transcript missing %q:\n%s", want, joined.String())
+		}
+	}
+}
+
+func TestToolResultFailed(t *testing.T) {
+	for result, want := range map[string]bool{
+		"Error: exit status 1":                     true,
+		"vet: unused x\n\n((exit: exit status 1))": true,
+		"out\n(exit: exit status 2)\n":             true,
+		"ok  pkg 2.1s":                             false,
+		"mentions (exit: soon) mid-line\nmore":     false,
+	} {
+		if got := toolResultFailed(result); got != want {
+			t.Errorf("toolResultFailed(%q) = %v, want %v", result, got, want)
 		}
 	}
 }

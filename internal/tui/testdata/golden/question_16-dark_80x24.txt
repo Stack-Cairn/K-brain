@@ -1,0 +1,24 @@
+
+  ```go
+    func statusJSON(w io.Writer, s Status) error {
+        // one object per call
+        return json.NewEncoder(w).Encode(s)
+    }
+  ```
+
+  Then run the package tests.
+
+╭─ ? Question ─────────────────────────────────────────────────────────────────╮
+│ Which output format should --json use?                                       │
+│                                                                              │
+│ ❯ 1  One object per line                                                     │
+│      streams well                                                            │
+│   2  A single array                                                          │
+│   3  Pretty-printed object                                                   │
+│   4  type your own answer                                                    │
+│                                                                              │
+│ ↑↓ or 1-9 select · Enter picks · Esc dismisses                               │
+╰──────────────────────────────────────────────────────────────────────────────╯
+────────────────────────────────────────────────────────────────────────────────
+  ❯ Ask k-brain anything…  / commands · Shift+Tab mode · Ctrl+P menu
+   Always allow                                             kimi-k3-fast · ✦ off

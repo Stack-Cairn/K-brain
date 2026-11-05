@@ -43,9 +43,15 @@ func TestSubagentBatchNumbered(t *testing.T) {
 	}
 
 	m.Update(toolStartMsg{id: "subagent_1", name: "subagent", args: `{"description":"` + descs["subagent_1"] + `","prompt":"p"}`})
-	last := m.blocks[len(m.blocks)-1]
-	if last.kind != blockToolRun {
-		t.Fatal("toolStart should append a running row")
+	// The running row takes the queued row's place in the batch.
+	var last block
+	for _, b := range m.blocks {
+		if b.toolID == "subagent_1" {
+			last = b
+		}
+	}
+	if last.kind != blockToolRun || m.blocks[len(m.blocks)-1].toolID == "subagent_1" {
+		t.Fatal("toolStart should turn the first queued row into a running row in place")
 	}
 	got := ansi.Strip(last.render(m.width))
 	if !strings.Contains(got, "1/3") {

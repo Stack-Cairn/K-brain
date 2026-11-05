@@ -35,7 +35,8 @@ func TestToolCallFullyVisibleInViewportAcrossResize(t *testing.T) {
 			}
 			return r
 		}, joined)
-		want := strings.ReplaceAll(cmd, " ", "")
+		// The row shows the command itself, not the JSON that carries it.
+		want := strings.ReplaceAll("cd /home/user/project && git log --oneline --graph --decorate=full --all | head -50", " ", "")
 		if !strings.Contains(compact, want) {
 			t.Errorf("viewport at %d cols lost command bytes:\nwant fragment of %q\ngot %q", width, want, compact)
 		}
@@ -70,7 +71,7 @@ func TestToolResultFullyVisibleWhenExpanded(t *testing.T) {
 	m = tm.(*model)
 
 	joined := strings.Join(m.viewportPlain(), "\n")
-	if !strings.Contains(joined, "… +9 lines") {
+	if !strings.Contains(joined, glyphs.Fold+" +9 lines") {
 		t.Fatalf("collapsed view should announce hidden lines, got:\n%s", joined)
 	}
 	if strings.Contains(joined, "output row "+strings.Repeat("x", 12)) {
@@ -86,7 +87,7 @@ func TestToolResultFullyVisibleWhenExpanded(t *testing.T) {
 			t.Errorf("expanded viewport missing %q", row)
 		}
 	}
-	if strings.Contains(joined, "… +") {
+	if strings.Contains(joined, glyphs.Fold+" +") {
 		t.Errorf("expanded view still hides lines:\n%s", joined)
 	}
 

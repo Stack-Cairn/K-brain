@@ -51,7 +51,7 @@ func TestGitStatusRender(t *testing.T) {
 	if !strings.HasPrefix(plain, "K-brain@main") {
 		t.Fatalf("render should start with repo@branch, got %q", plain)
 	}
-	for _, want := range []string{"+3", "-1", "?2"} {
+	for _, want := range []string{"+3", glyphs.Minus + "1", "?2"} {
 		if !strings.Contains(plain, want) {
 			t.Fatalf("render missing %s: %q", want, plain)
 		}
