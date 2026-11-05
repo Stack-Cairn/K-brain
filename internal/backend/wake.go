@@ -18,8 +18,9 @@ import (
 // turn as ordinary run events (run.accepted, user message, assistant output).
 //
 // Wake runs never preempt user work: they start only when the session has no
-// active run or child task and nothing queued, and are retried when the blocking
-// run ends. Notices are held in memory only; they describe in-process work that
+// running turn and nothing queued, and are retried when the blocking run ends.
+// A running background subagent does not block them: its own report arrives the
+// same way, so a user run may start and finish while it works. Notices are held in memory only; they describe in-process work that
 // does not survive a backend restart either.
 
 const (
@@ -168,6 +169,9 @@ func (s *Server) startWakeRun(rt *runtimeSession, texts []string, template wakeT
 	// for that run to end. Anything else (closing, deleted, quarantined) drops them.
 	if status == http.StatusConflict {
 		rt.wake.texts = append(texts, rt.wake.texts...)
+		// The blocking run may have ended before the requeue, while dispatching
+		// was still set, and found nothing to deliver; try again once.
+		go s.kickWakes(rt)
 	}
 }
 

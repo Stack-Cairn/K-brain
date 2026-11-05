@@ -69,7 +69,7 @@ VITE_KBRAIN_TOKEN=<backend-token>
 | GET | `/v1/sessions/workdirs` | 从同一摘要缓存汇总默认可见会话的工作目录、数量和最新时间 |
 | GET | `/v1/sessions/{id}` | 消息、子代理任务与最近事件序号 |
 | PATCH | `/v1/sessions/{id}` | 持久化 title、pinned、archived 或 model |
-| DELETE | `/v1/sessions/{id}` | 删除会话与运行日志，活动运行/子任务返回 409 |
+| DELETE | `/v1/sessions/{id}` | 删除会话与运行日志并取消仍在运行的后台子代理；正在进行的一轮返回 409 |
 | GET | `/v1/sessions/{id}/history` | 按 raw offset 分页读取历史，可校验 revision |
 | POST | `/v1/sessions/{id}/branch` | 从指定用户消息分支，保留其回复 |
 | POST | `/v1/sessions/{id}/edit` | 替换用户消息并删除后续历史，校验 revision |
@@ -83,7 +83,7 @@ VITE_KBRAIN_TOKEN=<backend-token>
 | GET | `/v1/sessions/{id}/subagents/{task}/events?after_seq=N` | 只含该子代理事件的 SSE，子代理结束后关闭 |
 | POST | `/v1/sessions/{id}/subagents/{task}/cancel` | 只停止该子代理，父运行继续；未运行返回 409，未知返回 404 |
 | POST | `/v1/sessions/{id}/permissions/{permission}` | 提交审批结果 |
-| POST | `/v1/sessions/{id}/close` | 结束当前会话运行并保存 |
+| POST | `/v1/sessions/{id}/close` | 结束当前会话运行与后台子代理并保存 |
 
 列表支持 `page`、`page_size`、`cwd`、`cwd_empty`、`shared`、`pinned`，返回 `sessions`、`total_count`、`epoch` 和字符串 `revision`。`/v1/health` 的 `capabilities.session_changes: 2` 表示同时支持不可变快照、增量、pinned、workdirs、字符串游标和过期 reset；客户端必须探测完整契约后才能放宽旧轮询。
 
@@ -128,7 +128,7 @@ CLI 可用 `-config FILE -session-dir DIR` 指定配置与存储目录；省略�
 
 用户停止运行时，模型已经流出的回复写入会话历史：一条 `stop_reason:"cancelled"` 的 assistant 消息，内容是已推送的文本与思考，不含尚未流完的工具调用。事件流不变，仍以 `run.cancelled` 结束、不另发 `assistant.message.created`（已发布的桌面端会把这类事件并进本地流式副本），客户端从历史读取这条回复。之前几轮已执行的工具调用和结果照常保留，停止时正在执行的工具得到 `stop_reason:"cancelled"` 的结果，历史里不会留下没有结果的调用。还没有任何输出就停止时不写 assistant 消息，历史只多出本轮用户消息。下一轮请求中，这条回复的文本后面附一行 `[response interrupted by the user]`（只在请求里，不写入历史）；只有思考、没有文本的停止回复不发给模型。`stop_reason` 原本就有 `cancelled`（工具结果使用），旧客户端按已有取值处理；旧版后端读到这条消息时当普通 assistant 文本发送。
 
-模型交给后台的工作（`wait` 轮询、未设 `isolated` 的 `ManagedProcess` 进程）在本轮正常结束后继续运行，结果作为下一轮送回；用户停止运行或关闭会话时它们照常一起结束。后端自己送来的通知——`wait` 结果、进程退出、后台子代理与工作流报告，无论是插进正在进行的一轮，还是作为唤醒运行（`client_request_id` 以 `wake-` 开头）的用户消息——在 `user.message.appended` 和会话历史里带 `origin:"background"`，客户端把它显示为系统通知，而不是用户发的消息；用户自己写的消息不带该字段。这类消息不计为用户输入，不进输入历史，也不附加本轮时间前缀。旧客户端忽略该字段，显示与以前相同；旧版后端读到该字段直接忽略。
+模型交给后台的工作（`wait` 轮询、未设 `isolated` 的 `ManagedProcess` 进程、`background=true` 的子代理）在本轮正常结束后继续运行，结果作为下一轮送回；用户停止运行、关闭或删除会话时它们照常一起结束。后台子代理运行期间会话不算忙：用户可以照常发起并完成新的运行，编辑、分支、压缩与目标续跑也不等它；报告在某一轮进行中送达时插进这一轮，会话空闲时则启动唤醒运行，唤醒运行与用户运行冲突时通知留在队列里，等那一轮结束再送。只有会孤立或干扰子代理的操作要等它结束：切换模型或工作目录（会重建持有子代理的 Agent）和检查点回滚（子代理可能仍在写这些文件）返回 409 `session has a running background subagent`，运行时也不会被闲置回收。后端启动会话运行时，把存储里仍标为 running、却已没有进程在跑的子代理记为 error（`interrupted — k-brain exited before this subagent finished`），与 TUI 一致。后端自己送来的通知——`wait` 结果、进程退出、后台子代理与工作流报告，无论是插进正在进行的一轮，还是作为唤醒运行（`client_request_id` 以 `wake-` 开头）的用户消息——在 `user.message.appended` 和会话历史里带 `origin:"background"`，客户端把它显示为系统通知，而不是用户发的消息；用户自己写的消息不带该字段。这类消息不计为用户输入，不进输入历史，也不附加本轮时间前缀。旧客户端忽略该字段，显示与以前相同；旧版后端读到该字段直接忽略。
 
 ### 子代理转录（`capabilities.subagent_transcripts: 1`）
 

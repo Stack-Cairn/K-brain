@@ -353,7 +353,8 @@ func (s *Server) checkpointPreview(w http.ResponseWriter, r *http.Request, id st
 	active := rt.activeLocked()
 	rt.mu.Unlock()
 	if active {
-		writeJSONError(w, http.StatusConflict, "session has an active turn or child task")
+		// Preview only reads; rewind re-hashes every file and refuses on a change.
+		writeJSONError(w, http.StatusConflict, "session has an active turn")
 		return
 	}
 	var in checkpointRootsRequest
@@ -382,6 +383,11 @@ func (s *Server) checkpointRewind(w http.ResponseWriter, r *http.Request, id str
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 	if !s.mutationAllowed(w, rt) {
+		return
+	}
+	// A background subagent may still be writing the files the rewind restores.
+	if !rt.backgroundSettledLocked() {
+		writeJSONError(w, http.StatusConflict, errBackgroundRunning.Error())
 		return
 	}
 	record, err := s.loadCheckpoint(id, seq)
