@@ -1575,7 +1575,11 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, end func(),
 	if in.ResumeMessageID != "" {
 		_, err = rt.agent.ContinueUser(ctx, in.ResumeMessageID, ev)
 	} else {
-		_, err = rt.agent.TurnParts(ctx, converted.Content, converted.Parts, ev)
+		turnCtx := ctx
+		if isWakeRun(ctx) {
+			turnCtx = agent.WithBackgroundNotice(ctx)
+		}
+		_, err = rt.agent.TurnParts(turnCtx, converted.Content, converted.Parts, ev)
 	}
 	toolOutput.close()
 	progress.phase("persisting")

@@ -236,7 +236,7 @@ func (r *waitRegistry) settle(w *waitTask, status WaitStatus, msg string, notify
 
 	if notify {
 		if r.agent.TurnRunning() {
-			r.agent.Steer(msg)
+			r.agent.Notify(msg)
 		} else if r.OnWake != nil {
 			r.OnWake(msg)
 		}

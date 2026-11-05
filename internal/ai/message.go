@@ -21,6 +21,8 @@ type Message struct {
 	Name string `json:"name,omitempty"`
 
 	Authored bool `json:"authored,omitempty"`
+	// Origin marks a user-role message the user did not write; see OriginBackground.
+	Origin string `json:"origin,omitempty"`
 
 	SentAt *time.Time `json:"sent_at,omitempty"`
 
@@ -37,6 +39,11 @@ type Message struct {
 
 	RewoundFrom string `json:"rewound_from,omitempty"`
 }
+
+// OriginBackground marks a notice the runtime delivered on its own as a user-role
+// message: a wait result, a managed process exit, a background subagent or workflow
+// report. Clients show it as a notice rather than as something the user typed.
+const OriginBackground = "background"
 
 // PromptSnapshot records the source and rendered value of backend-owned context.
 type PromptSnapshot struct {
@@ -97,6 +104,7 @@ type messageWire struct {
 	HostedSearch    []HostedSearch   `json:"hosted_search,omitempty"`
 	Name            string           `json:"name,omitempty"`
 	Authored        bool             `json:"authored,omitempty"`
+	Origin          string           `json:"origin,omitempty"`
 	SentAt          *time.Time       `json:"sent_at,omitempty"`
 	PromptContext   string           `json:"prompt_context,omitempty"`
 	PromptSnapshots []PromptSnapshot `json:"prompt_snapshots,omitempty"`
@@ -112,7 +120,7 @@ func (m Message) MarshalJSON() ([]byte, error) {
 		ID: m.ID, Role: m.Role, Content: m.Content, ToolCalls: m.ToolCalls, ToolCallID: m.ToolCallID,
 		Reasoning: m.Reasoning,
 		Replay:    m.Replay,
-		Name:      m.Name, Authored: m.Authored, SentAt: m.SentAt, Usage: m.Usage,
+		Name:      m.Name, Authored: m.Authored, Origin: m.Origin, SentAt: m.SentAt, Usage: m.Usage,
 		PromptContext:   m.PromptContext,
 		PromptSnapshots: m.PromptSnapshots,
 		HostedSearch:    m.HostedSearch,
@@ -135,7 +143,7 @@ func (m *Message) UnmarshalJSON(data []byte) error {
 	}
 	*m = Message{ID: raw.ID, Reasoning: raw.Reasoning, Replay: raw.Replay}
 	m.Role, m.ToolCalls, m.ToolCallID, m.Name = raw.Role, raw.ToolCalls, raw.ToolCallID, raw.Name
-	m.Authored, m.SentAt, m.Usage, m.Model, m.RewoundFrom = raw.Authored, raw.SentAt, raw.Usage, raw.Model, raw.RewoundFrom
+	m.Authored, m.Origin, m.SentAt, m.Usage, m.Model, m.RewoundFrom = raw.Authored, raw.Origin, raw.SentAt, raw.Usage, raw.Model, raw.RewoundFrom
 	m.PromptContext = raw.PromptContext
 	m.PromptSnapshots = raw.PromptSnapshots
 	m.StopReason, m.RawStopReason = raw.StopReason, raw.RawStopReason

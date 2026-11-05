@@ -154,10 +154,62 @@ func TestWaitStartedByRunWakesSessionAfterRunEnds(t *testing.T) {
 	if !strings.Contains(text, "condition met") || !strings.Contains(text, "BUILD-READY done") {
 		t.Fatalf("wake user message = %q", text)
 	}
+	assertBackgroundNotice(t, base, rt, readEventsAfter(t, base, rt.id, runs[0].AcceptedSeq-1), runs[0].RunID)
 	client.mu.Lock()
 	defer client.mu.Unlock()
 	if client.calls != 3 {
 		t.Fatalf("model calls = %d, want the wake run to reach the model", client.calls)
+	}
+}
+
+// assertBackgroundNotice checks that the wake run's user message is marked as a
+// background notice, live and in history, while the user's own prompt is not.
+func assertBackgroundNotice(t *testing.T, base string, rt *runtimeSession, events []protocol.Event, wakeRunID string) {
+	t.Helper()
+	for _, e := range events {
+		if e.Type != protocol.EventUserMessage || e.RunID != wakeRunID {
+			continue
+		}
+		var msg protocol.Message
+		if err := json.Unmarshal(e.Payload, &msg); err != nil {
+			t.Fatal(err)
+		}
+		if msg.Origin != ai.OriginBackground {
+			t.Fatalf("wake user_message origin = %q", msg.Origin)
+		}
+	}
+	var page historyResponse
+	if code := doJSON(t, http.MethodGet, base+"/v1/sessions/"+rt.id+"/history", nil, &page); code != http.StatusOK {
+		t.Fatalf("history status=%d", code)
+	}
+	var notices, prompts int
+	for _, m := range page.Session.Messages {
+		if m.Role != protocol.RoleUser {
+			continue
+		}
+		var text strings.Builder
+		for _, block := range m.Content {
+			text.WriteString(block.Text)
+		}
+		switch {
+		case strings.Contains(text.String(), "build, then continue"):
+			prompts++
+			if m.Origin != "" {
+				t.Fatalf("user prompt origin = %q", m.Origin)
+			}
+		case m.Origin == ai.OriginBackground:
+			notices++
+		default:
+			t.Fatalf("unmarked user message in history: %q", text.String())
+		}
+	}
+	if prompts != 1 || notices != 1 {
+		t.Fatalf("history user messages: prompts=%d notices=%d", prompts, notices)
+	}
+	for _, m := range rt.agent.MessagesSnapshot() {
+		if m.Origin == ai.OriginBackground && m.Authored {
+			t.Fatal("a background notice must not count as authored by the user")
+		}
 	}
 }
 
@@ -202,6 +254,7 @@ func TestManagedProcessOutlivesRunAndReportsExit(t *testing.T) {
 	if !strings.Contains(text, "completed exit_code=0") || !strings.Contains(text, "BUILD-READY") {
 		t.Fatalf("wake user message = %q", text)
 	}
+	assertBackgroundNotice(t, base, rt, readEventsAfter(t, base, rt.id, runs[0].AcceptedSeq-1), runs[0].RunID)
 }
 
 // Stopping the run still stops the managed processes it started.

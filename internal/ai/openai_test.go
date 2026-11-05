@@ -579,3 +579,20 @@ func TestStreamDoesNotRetryAfterToolCallRow(t *testing.T) {
 		t.Fatalf("a shown tool-call row must block the retry, got %d attempts", calls.Load())
 	}
 }
+
+func TestMessageOriginRoundTripsAndStaysOffTheWire(t *testing.T) {
+	data, err := json.Marshal(Message{Role: "user", Content: "notice", Origin: OriginBackground})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var back Message
+	if err := json.Unmarshal(data, &back); err != nil {
+		t.Fatal(err)
+	}
+	if back.Origin != OriginBackground {
+		t.Fatalf("origin after round trip = %q (%s)", back.Origin, data)
+	}
+	if out := stripAuthored([]Message{back}); out[0].Origin != "" {
+		t.Fatalf("origin must not reach the provider: %+v", out[0])
+	}
+}

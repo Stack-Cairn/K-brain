@@ -35,7 +35,7 @@ func stripAuthored(msgs []Message) []Message {
 	out := make([]Message, len(msgs))
 	copy(out, msgs)
 	for i := range out {
-		out[i].Authored = false
+		out[i].Authored, out[i].Origin = false, ""
 		out[i].SentAt = nil
 		out[i].PromptContext = ""
 		out[i].PromptSnapshots = nil

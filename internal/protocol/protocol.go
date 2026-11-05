@@ -160,6 +160,10 @@ type Message struct {
 	HostedSearch []HostedSearch `json:"hosted_search,omitempty"`
 	StopReason   string         `json:"stop_reason,omitempty"`
 	CreatedAt    *time.Time     `json:"created_at,omitempty"`
+	// Origin is "background" on a user-role notice the runtime delivered on its
+	// own (a wait result, a process exit, a background task report); it is absent
+	// on messages the user wrote.
+	Origin string `json:"origin,omitempty"`
 }
 
 type ContentBlock struct {
@@ -722,7 +726,7 @@ func FromAIMessage(m ai.Message) Message {
 	if left, right, ok := strings.Cut(m.Model, " @ "); ok {
 		model, provider = left, right
 	}
-	out := Message{ID: m.ID, Role: m.Role, ToolCallID: m.ToolCallID, Name: m.Name, Model: model, Provider: provider, Usage: FromAIUsage(m.Usage), HostedSearch: fromAIHostedSearch(m.HostedSearch), StopReason: string(m.StopReason), CreatedAt: m.SentAt}
+	out := Message{ID: m.ID, Role: m.Role, ToolCallID: m.ToolCallID, Name: m.Name, Model: model, Provider: provider, Usage: FromAIUsage(m.Usage), HostedSearch: fromAIHostedSearch(m.HostedSearch), StopReason: string(m.StopReason), CreatedAt: m.SentAt, Origin: m.Origin}
 	if m.Reasoning != "" {
 		out.Content = append(out.Content, ContentBlock{Type: ContentThinking, Text: m.Reasoning})
 	}
@@ -860,6 +864,9 @@ func (m Message) ToAIMessage() (ai.Message, error) {
 		model += " @ " + m.Provider
 	}
 	out := ai.Message{ID: m.ID, Role: m.Role, ToolCallID: m.ToolCallID, Name: m.Name, Model: model, SentAt: m.CreatedAt}
+	if m.Role == RoleUser && m.Origin == ai.OriginBackground {
+		out.Origin = m.Origin
+	}
 	var parts []ai.ContentPart
 	seenImage := false
 	for _, b := range m.Content {

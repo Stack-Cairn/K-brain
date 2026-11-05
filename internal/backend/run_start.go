@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/Stack-Cairn/K-brain/internal/ai"
 	"github.com/Stack-Cairn/K-brain/internal/protocol"
 	"github.com/Stack-Cairn/K-brain/internal/tools"
 )
@@ -158,6 +159,9 @@ func (s *Server) startCanonicalRunWith(ctx context.Context, rt *runtimeSession, 
 	}
 	if in.TurnID != "" {
 		user.ID = in.TurnID
+	}
+	if isWakeRun(ctx) && in.ResumeMessageID == "" {
+		user.Origin = ai.OriginBackground
 	}
 	rollback := func() {}
 	if admit != nil {
