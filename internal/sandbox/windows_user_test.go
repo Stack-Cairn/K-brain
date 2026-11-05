@@ -282,6 +282,7 @@ func TestWindowsSandboxUserAdminCycle(t *testing.T) {
 	c := Probe()
 	t.Logf("capability after setup: %+v", c)
 	if !status.Installed || !status.Active || c.Mechanism != MechanismSandboxUser || !c.NetworkControl || !c.ReadMasking || !c.PathProtection || c.SetupHint != "" {
+		diagnoseSandboxUser(t)
 		t.Fatalf("setup is not active: status %+v, capability %+v", status, c)
 	}
 	st, err := loadSetupState()
@@ -585,5 +586,30 @@ func TestWindowsSandboxUserAdminCycle(t *testing.T) {
 	// Without the setup, offline runs fail closed again.
 	if _, err := offline.Wrap(ctx, exec.Command(cmdExe(), "/c", "exit", "0")); err == nil || !strings.Contains(err.Error(), "kn sandbox setup") {
 		t.Fatalf("offline run after uninstall: %v", err)
+	}
+}
+
+// diagnoseSandboxUser logs the token and the workspace's access as seen by
+// both accounts, bypassing the probe.
+func diagnoseSandboxUser(t *testing.T) {
+	t.Helper()
+	forgetSandboxState()
+	st, err := cachedSandboxState()
+	if err != nil {
+		t.Logf("diagnosis: no state: %v", err)
+		return
+	}
+	root := workspace(t)
+	if out, err := exec.Command("icacls", root).CombinedOutput(); err == nil {
+		t.Logf("diagnosis: workspace before: %s", out)
+	}
+	for _, network := range []bool{false, true} {
+		p := workspacePolicy(root)
+		p.Network = network
+		cmd := exec.Command(cmdExe(), "/d", "/c", "whoami /all & cd & icacls . & echo x>diag.txt & dir")
+		cmd.Dir = root
+		cmd.Env = os.Environ()
+		code, out, err := runProbeCommand(p, st, cmd, root)
+		t.Logf("diagnosis: network=%v exit %d err %v:\n%s", network, code, err, out)
 	}
 }

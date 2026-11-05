@@ -205,6 +205,7 @@ func probeSandboxUser() error {
 	if err != nil {
 		return err
 	}
+	var problems []error
 	for _, offline := range []bool{true, false} {
 		p := &Policy{Mode: "workspace", Root: inside, Network: !offline, Masked: []string{masked}}
 		mode := "online"
@@ -216,13 +217,12 @@ func probeSandboxUser() error {
 		cmd.Env = os.Environ()
 		code, out, err := runProbeCommand(p, st, cmd, inside)
 		if err != nil {
-			return fmt.Errorf("the %s sandbox account cannot run commands: %w", mode, err)
-		}
-		if code != 0 {
-			return fmt.Errorf("the %s sandbox account failed its self test (%s)", mode, selfTestProblem(code, out))
+			problems = append(problems, fmt.Errorf("the %s sandbox account cannot run commands: %w", mode, err))
+		} else if code != 0 {
+			problems = append(problems, fmt.Errorf("the %s sandbox account failed its self test (%s)", mode, selfTestProblem(code, out)))
 		}
 	}
-	return nil
+	return errors.Join(problems...)
 }
 
 func runProbeCommand(p *Policy, st *setupState, cmd *exec.Cmd, root string) (int, string, error) {
@@ -268,7 +268,10 @@ func selfTestProblem(code int, out string) string {
 		problems = append(problems, "its network access is not as configured")
 	}
 	if len(problems) == 0 {
-		problems = append(problems, fmt.Sprintf("exit code %d: %s", code, strings.TrimSpace(out)))
+		problems = append(problems, fmt.Sprintf("exit code %d", code))
+	}
+	if detail := strings.Join(strings.Fields(out), " "); detail != "" {
+		problems = append(problems, detail)
 	}
 	return strings.Join(problems, "; ")
 }
@@ -277,7 +280,8 @@ func selfTestProblem(code int, out string) string {
 func runSelfTest(args []string) int {
 	mode, outside, secret, addr := args[0], args[1], args[2], args[3]
 	code := 0
-	if os.WriteFile("probe.txt", []byte("ok"), 0o600) != nil {
+	if err := os.WriteFile("probe.txt", []byte("ok"), 0o600); err != nil {
+		fmt.Printf("write: %v.", err)
 		code |= selfTestWriteFailed
 	}
 	if os.WriteFile(outside, []byte("escaped"), 0o600) == nil {
@@ -291,6 +295,7 @@ func runSelfTest(args []string) int {
 		c.Close()
 	}
 	if (mode == "offline") == (err == nil) {
+		fmt.Printf("dial: %v.", err)
 		code |= selfTestNetwork
 	}
 	return code
