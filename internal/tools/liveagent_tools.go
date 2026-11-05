@@ -419,8 +419,9 @@ func liveagentBash(ctx context.Context, manager *liveagentProcessManager, a map[
 			return "", startErr
 		}
 		reportProcessStarted(ctx, p.id)
+		// The session counts as watched from its start; this wait takes that over.
 		waitArgs := map[string]any{"process_id": p.id, "cursor": float64(0), "yield_time_ms": float64(yield), "max_bytes": float64(liveagentProcessMaxLog)}
-		out, waitErr := liveagentProcessWait(ctx, manager, waitArgs)
+		out, waitErr := liveagentProcessWaitOn(ctx, manager, p, waitArgs)
 		if waitErr != nil {
 			return "", waitErr
 		}

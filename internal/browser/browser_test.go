@@ -230,22 +230,48 @@ func TestDiscoverExplicitEndpoints(t *testing.T) {
 	}
 }
 
+// fakeResolver answers from a fixed table, so the checks need no network; a
+// name it lacks fails to resolve.
+type fakeResolver map[string][]string
+
+func (r fakeResolver) LookupIP(_ context.Context, _, host string) ([]net.IP, error) {
+	addrs, ok := r[host]
+	if !ok {
+		return nil, &net.DNSError{Err: "no such host", Name: host, IsNotFound: true}
+	}
+	ips := make([]net.IP, 0, len(addrs))
+	for _, a := range addrs {
+		ips = append(ips, net.ParseIP(a))
+	}
+	return ips, nil
+}
+
+var testResolver = fakeResolver{
+	"example.com":          {"93.184.215.14", "2606:2800:21f:cb07:6820:80da:af6b:8b2c"},
+	"metadata.example":     {"93.184.215.14", "169.254.169.254"},
+	"mapped-metadata.test": {"::ffff:169.254.169.254"},
+	"intranet.example":     {"10.1.2.3"},
+	"loopback.example":     {"::1"},
+}
+
 func TestCheckURLFloor(t *testing.T) {
 	ctx := context.Background()
 	for _, u := range []string{
 		"http://169.254.169.254/latest/meta-data",
 		"http://metadata.google.internal/",
 		"http://169.254.170.2/v2/metadata",
+		"http://metadata.example/",     // a name that resolves to the metadata address
+		"http://mapped-metadata.test/", // also as an IPv4-mapped IPv6 address
+		"http://unresolvable.example/", // fail-closed
 	} {
-		if err := CheckURL(ctx, u); err == nil {
+		if err := checkURL(ctx, testResolver, u); err == nil {
 			t.Errorf("%s must be blocked", u)
 		}
 	}
-	if err := CheckURL(ctx, "https://example.com/"); err != nil {
-		t.Errorf("example.com must pass: %v", err)
-	}
-	if err := CheckURL(ctx, "chrome://newtab"); err != nil {
-		t.Errorf("non-http schemes pass: %v", err)
+	for _, u := range []string{"https://example.com/", "http://intranet.example/", "chrome://newtab"} {
+		if err := checkURL(ctx, testResolver, u); err != nil {
+			t.Errorf("%s must pass: %v", u, err)
+		}
 	}
 }
 
@@ -257,12 +283,15 @@ func TestCheckPrivateURL(t *testing.T) {
 		"http://192.168.1.1/",
 		"http://100.64.1.2/",
 		"http://[::1]/",
+		"http://intranet.example/",
+		"http://loopback.example/",
+		"http://unresolvable.example/",
 	} {
-		if err := CheckPrivateURL(ctx, u); err == nil {
+		if err := checkPrivateURL(ctx, testResolver, u); err == nil {
 			t.Errorf("%s must be blocked", u)
 		}
 	}
-	if err := CheckPrivateURL(ctx, "https://example.com/"); err != nil {
+	if err := checkPrivateURL(ctx, testResolver, "https://example.com/"); err != nil {
 		t.Errorf("example.com must pass: %v", err)
 	}
 }

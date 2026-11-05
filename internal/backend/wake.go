@@ -93,7 +93,7 @@ func (s *Server) queueWake(rt *runtimeSession, text string) {
 	rt.wake.mu.Unlock()
 	// Notices also arrive from the agent's own turn teardown, which still holds the
 	// turn; dispatch therefore never runs on the caller's goroutine.
-	go s.kickWakes(rt)
+	s.background.Go(func() { s.kickWakes(rt) })
 }
 
 func (s *Server) kickWakes(rt *runtimeSession) {
@@ -126,7 +126,7 @@ func (s *Server) dispatchWakesLocked(rt *runtimeSession) {
 	w.texts, w.dispatching = nil, true
 	w.streak++
 	rt.leases.Add(1)
-	go s.startWakeRun(rt, texts, template)
+	s.background.Go(func() { s.startWakeRun(rt, texts, template) })
 }
 
 func (s *Server) startWakeRun(rt *runtimeSession, texts []string, template wakeTemplate) {
@@ -171,7 +171,7 @@ func (s *Server) startWakeRun(rt *runtimeSession, texts []string, template wakeT
 		rt.wake.texts = append(texts, rt.wake.texts...)
 		// The blocking run may have ended before the requeue, while dispatching
 		// was still set, and found nothing to deliver; try again once.
-		go s.kickWakes(rt)
+		s.background.Go(func() { s.kickWakes(rt) })
 	}
 }
 

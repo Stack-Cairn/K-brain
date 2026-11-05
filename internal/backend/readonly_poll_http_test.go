@@ -36,10 +36,18 @@ func (c *pollClient) Stream(_ context.Context, req ai.Request, text, _ func(stri
 	case 1:
 		return call("Bash", map[string]any{"command": "echo poll-read-only", "yield_time_ms": 50}), ai.Usage{}, nil
 	case 2:
-		last := req.Messages[len(req.Messages)-1]
-		match := bashSessionID.FindStringSubmatch(last.Content)
+		// The Bash result may already be followed by the session's exit notice,
+		// steered in when the command ended after its result was taken.
+		var result ai.Message
+		for i := len(req.Messages) - 1; i >= 0; i-- {
+			if m := req.Messages[i]; m.Role == "tool" && m.ToolCallID == "poll-call-Bash" {
+				result = m
+				break
+			}
+		}
+		match := bashSessionID.FindStringSubmatch(result.Content)
 		if match == nil {
-			return ai.Message{Role: "assistant", Content: "no session id in " + last.Content, StopReason: ai.StopReasonStop}, ai.Usage{}, nil
+			return ai.Message{Role: "assistant", Content: "no session id in " + result.Content, StopReason: ai.StopReasonStop}, ai.Usage{}, nil
 		}
 		return call("ProcessWait", map[string]any{"session_id": match[1], "yield_time_ms": 2000}), ai.Usage{}, nil
 	}

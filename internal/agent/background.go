@@ -71,6 +71,11 @@ type taskRegistry struct {
 	OnRecord  func(sessionID string, t *BackgroundTask)
 	OnEvents  func(taskID string) Events
 	sessionID atomic.Pointer[string]
+
+	// workers counts the goroutines that run background tasks, up to and including
+	// the report notice each delivers; idle is closed whenever it drops to zero.
+	workers int
+	idle    chan struct{}
 }
 
 type taskSubscription struct {
@@ -208,6 +213,44 @@ func (r *taskRegistry) CancelRunning() int {
 	return len(cancels)
 }
 
+// goWorker runs fn on a goroutine that Wait waits for.
+func (r *taskRegistry) goWorker(fn func()) {
+	r.mu.Lock()
+	if r.workers == 0 {
+		r.idle = make(chan struct{})
+	}
+	r.workers++
+	r.mu.Unlock()
+	go func() {
+		defer func() {
+			r.mu.Lock()
+			r.workers--
+			if r.workers == 0 {
+				close(r.idle)
+			}
+			r.mu.Unlock()
+		}()
+		fn()
+	}()
+}
+
+// Wait blocks until every background task goroutine has returned: the task has
+// settled, OnRecord has run and its report notice has been delivered. Tasks keep
+// running until they end on their own, so callers that shut down cancel them
+// first (CancelRunning). Tasks started while Wait blocks are waited for too.
+func (r *taskRegistry) Wait() {
+	for {
+		r.mu.Lock()
+		if r.workers == 0 {
+			r.mu.Unlock()
+			return
+		}
+		idle := r.idle
+		r.mu.Unlock()
+		<-idle
+	}
+}
+
 func (r *taskRegistry) settle(id string, status TaskStatus, report string) {
 	r.mu.Lock()
 	t, ok := r.tasks[id]
@@ -238,11 +281,11 @@ var taskIDCounter atomic.Int64
 func (a *Agent) StartBackground(description, prompt string, o SubModel) *BackgroundTask {
 	t := a.RegisterBackground(description, prompt, o)
 	if a.WorktreeSubagents {
-		go func() {
+		a.Tasks().goWorker(func() {
 			if _, err := a.prepareBackground(t, true); err != nil {
 				a.Notify(fmt.Sprintf("[subagent %s] %s", t.ID, err))
 			}
-		}()
+		})
 	} else {
 		a.launchBackground(t)
 	}
@@ -344,7 +387,7 @@ func (a *Agent) launchBackground(t *BackgroundTask) {
 	if t.sub.SandboxPolicy != nil {
 		taskCtx = sandbox.WithPolicy(taskCtx, t.sub.SandboxPolicy)
 	}
-	go func() {
+	a.Tasks().goWorker(func() {
 		defer t.cancel()
 
 		report, err := t.sub.Turn(taskCtx, prompt, a.bg.emitter(id))
@@ -368,7 +411,7 @@ func (a *Agent) launchBackground(t *BackgroundTask) {
 		a.bg.settle(id, status, text)
 
 		a.Notify(fmt.Sprintf("[subagent %s %s] %s\n\n%s", id, status, description, capReport(text)))
-	}()
+	})
 }
 
 func (r *taskRegistry) refreshTranscript(id string, sub *Agent) {

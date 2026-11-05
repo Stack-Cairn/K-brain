@@ -20,11 +20,12 @@ const bgSubagentPrompt = "count the files, then report"
 // bgSubagentClient plays a parent turn that starts one background subagent and
 // ends, a subagent that answers only once release is closed, and wake turns that
 // answer with text. With block set, the parent's second request waits until the
-// run is stopped.
+// run is stopped, and closes blocked, when set, once it waits.
 type bgSubagentClient struct {
 	mu      sync.Mutex
 	parent  int
 	block   bool
+	blocked chan struct{}
 	release chan struct{}
 	// script, when set, answers parent calls after the first.
 	script func(ctx context.Context, call int, request ai.Request) (ai.Message, error)
@@ -63,6 +64,9 @@ func (c *bgSubagentClient) Stream(ctx context.Context, request ai.Request, onTex
 		tc.Function.Arguments = `{"description":"count files","prompt":"` + bgSubagentPrompt + `","background":true,"worktree":false}`
 		return ai.Message{Role: "assistant", ToolCalls: []ai.ToolCall{tc}}, ai.Usage{}, nil
 	case call == 2 && block:
+		if c.blocked != nil {
+			close(c.blocked)
+		}
 		<-ctx.Done()
 		return ai.Message{}, ai.Usage{}, ctx.Err()
 	}
@@ -138,11 +142,20 @@ func TestBackgroundSubagentOutlivesRunAndWakesSession(t *testing.T) {
 
 // Stopping the run still cancels the background subagents it started.
 func TestStoppingRunCancelsItsBackgroundSubagent(t *testing.T) {
-	client := &bgSubagentClient{release: make(chan struct{}), block: true}
+	client := &bgSubagentClient{release: make(chan struct{}), block: true, blocked: make(chan struct{})}
 	defer close(client.release)
 	base, rt := newHandoffServer(t, client)
 	accepted := startHandoffRun(t, base, rt)
 	task := backgroundTask(t, rt)
+	// Stop the run while it works on its second request. A stop that lands earlier
+	// ends the turn before that request; the cancelled subagent's notice then wakes
+	// the session, the wake run makes the blocking request, and the session never
+	// goes idle.
+	select {
+	case <-client.blocked:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the run did not reach its second request")
+	}
 	resp := postJSON(t, http.DefaultClient, base+"/v1/sessions/"+rt.id+"/runs/"+accepted.RunID+"/cancel", map[string]any{}, nil)
 	_ = resp.Body.Close()
 	waitRunTerminal(t, rt, "user-run")
@@ -249,8 +262,9 @@ func TestBackgroundReportSteersIntoRunningUserRun(t *testing.T) {
 	if snap := waitTaskSettled(t, rt, task.ID); snap.Status != agent.TaskDone {
 		t.Fatalf("background subagent = %s: %s", snap.Status, snap.Report)
 	}
-	// The notice follows the settle on the subagent's goroutine.
-	time.Sleep(100 * time.Millisecond)
+	// The notice follows the settle on the subagent's goroutine; once that
+	// goroutine returns the report is queued for the running turn.
+	rt.agent.Tasks().Wait()
 	close(gate)
 	waitRunTerminal(t, rt, "user-run-2")
 

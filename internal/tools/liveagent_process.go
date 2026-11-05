@@ -57,6 +57,9 @@ type liveagentProcess struct {
 	stopOnce sync.Once
 	// waiters counts wait calls in progress; a waiter reports the exit itself.
 	waiters int
+	// reserved is a waiter counted from the start, before the starting call's
+	// own wait runs; that wait adopts it instead of adding one.
+	reserved bool
 }
 
 type liveagentProcessManager struct {
@@ -100,18 +103,21 @@ func (m *liveagentProcessManager) CloseAll() {
 }
 
 func (m *liveagentProcessManager) start(ctx context.Context, command, cwd, label string, timeout time.Duration, isolated bool) (*liveagentProcess, error) {
-	return m.startWithID(ctx, "mp", command, cwd, label, timeout, isolated, true)
+	return m.startWithID(ctx, "mp", command, cwd, label, timeout, isolated, true, false)
 }
 
+// startBashSession starts a process whose caller waits on it next and reports
+// its exit itself: it counts as watched from the start, so one that ends before
+// that wait begins sends no exit notice as well.
 func (m *liveagentProcessManager) startBashSession(ctx context.Context, command, cwd string, timeout time.Duration) (*liveagentProcess, error) {
-	return m.startWithID(ctx, "bash", command, cwd, "", timeout, false, false)
+	return m.startWithID(ctx, "bash", command, cwd, "", timeout, false, false, true)
 }
 
 // startWithID starts a process bound to ctx. An isolated process is bound to
 // nothing and survives CloseAll; outliveTurn keeps a process running when its
 // turn ends on its own (the run is over), so it can still report its exit, while
 // stopping the turn still stops it.
-func (m *liveagentProcessManager) startWithID(ctx context.Context, prefix, command, cwd, label string, timeout time.Duration, isolated, outliveTurn bool) (_ *liveagentProcess, err error) {
+func (m *liveagentProcessManager) startWithID(ctx context.Context, prefix, command, cwd, label string, timeout time.Duration, isolated, outliveTurn, watched bool) (_ *liveagentProcess, err error) {
 	if strings.TrimSpace(command) == "" {
 		return nil, errors.New("command is required")
 	}
@@ -156,6 +162,9 @@ func (m *liveagentProcessManager) startWithID(ctx context.Context, prefix, comma
 		id: newLiveAgentProcessID(prefix), command: command, conversationID: identity.ConversationID, runID: identity.RunID, cwd: cwd, label: label,
 		startedAt: time.Now(), cmd: cmd, log: log, isolated: isolated,
 		status: liveagentProcessRunning, done: make(chan struct{}),
+	}
+	if watched {
+		p.waiters, p.reserved = 1, true
 	}
 	writer := &liveagentProcessWriter{p: p, file: log}
 	cmd.Stdout, cmd.Stderr = writer, writer
@@ -387,6 +396,10 @@ func (m *liveagentProcessManager) stop(id string) (*liveagentProcess, bool, erro
 func (p *liveagentProcess) snapshot() liveagentProcessSnapshot {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	return p.snapshotLocked()
+}
+
+func (p *liveagentProcess) snapshotLocked() liveagentProcessSnapshot {
 	var exit *int
 	if p.exitCode != nil {
 		v := *p.exitCode
@@ -441,18 +454,28 @@ func (m *liveagentProcessManager) read(p *liveagentProcess, cursor, maxBytes int
 	return string(data[:n]), next, next < info.Size(), int64(n), nil
 }
 
-func (m *liveagentProcessManager) wait(ctx context.Context, p *liveagentProcess, cursor, yield, maxBytes int64) (string, int64, bool, int64, bool, error) {
+// wait returns new output once there is some, the process has ended or yield ms
+// have passed, with the process's state as of the moment it stopped watching.
+// A process the snapshot shows ended reported its exit to this wait; one it
+// shows running sends an exit notice later.
+func (m *liveagentProcessManager) wait(ctx context.Context, p *liveagentProcess, cursor, yield, maxBytes int64) (out string, next int64, truncated bool, n int64, timedOut bool, snap liveagentProcessSnapshot, err error) {
 	if yield < 1 {
 		yield = 1
 	}
 	p.mu.Lock()
-	p.waiters++
+	if p.reserved {
+		p.reserved = false
+	} else {
+		p.waiters++
+	}
 	p.mu.Unlock()
 	defer func() {
 		p.mu.Lock()
 		p.waiters--
+		snap = p.snapshotLocked()
 		p.mu.Unlock()
 	}()
+	next = cursor
 	deadline := time.NewTimer(time.Duration(yield) * time.Millisecond)
 	defer deadline.Stop()
 	for {
@@ -461,15 +484,17 @@ func (m *liveagentProcessManager) wait(ctx context.Context, p *liveagentProcess,
 		running := p.status == liveagentProcessRunning
 		p.mu.Unlock()
 		if current > cursor || !running {
-			out, next, trunc, n, err := m.read(p, cursor, maxBytes)
-			return out, next, trunc, n, false, err
+			out, next, truncated, n, err = m.read(p, cursor, maxBytes)
+			return
 		}
 		select {
 		case <-ctx.Done():
-			return "", cursor, false, 0, false, ctx.Err()
+			err = ctx.Err()
+			return
 		case <-p.done:
 		case <-deadline.C:
-			return "", cursor, false, 0, true, nil
+			timedOut = true
+			return
 		case <-time.After(25 * time.Millisecond):
 		}
 	}

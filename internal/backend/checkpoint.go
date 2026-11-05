@@ -488,8 +488,9 @@ func (s *Server) checkpointRewind(w http.ResponseWriter, r *http.Request, id str
 	if snap, snapErr := s.store.HistorySnapshot(id); snapErr == nil {
 		result.Revision = snap.Revision
 	}
-	go func(revision string) {
+	revision := result.Revision
+	s.background.Go(func() {
 		_, _ = s.publish(rt, protocol.EventHistoryUpdated, map[string]any{"revision": revision, "turn_seq": seq}, "")
-	}(result.Revision)
+	})
 	writeJSON(w, 200, result)
 }

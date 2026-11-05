@@ -167,7 +167,7 @@ func TestTrajectorySubagentDetailedActualRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	t.Cleanup(func() { _ = store.Close() })
 	fixture := newSubagentWorkflowFixture(t, "success")
 	_, server := newSubagentWorkflowServer(t, store, t.TempDir(), fixture.client)
 	sess := createTestSession(t, server.URL)
