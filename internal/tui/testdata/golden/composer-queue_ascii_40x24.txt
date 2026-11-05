@@ -1,0 +1,24 @@
+|> add a --json flag to `kn status` and
+|  run the tests
+
+* I'll add the flag next to the
+  existing ones.
+
+  ```go
+    func statusJSON(w io.Writer, s Sta
+    tus) error {
+        // one object per call
+        return json.NewEncoder(w).Enco
+    de(s)
+    }
+  ```
+
+  Then run the package tests.
+
+  | thinking...  0:07 - Esc to interrupt
+queued (2) - Enter send now
+ > 1 then run the linter
+ -> 2 and update the changelog with a...
+----------------------------------------
+  > busy - type to queue (sent when the
+   Always allow     kimi-k3-fast - * off

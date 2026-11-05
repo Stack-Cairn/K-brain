@@ -62,11 +62,11 @@ func (m *model) menuView() string {
 	var b strings.Builder
 	for i := start; i < end; i++ {
 		candidate := m.menu.cands[i]
-		name := ansi.Truncate(candidate.Text, nameWidth, "…")
+		name := ansi.Truncate(candidate.Text, nameWidth, ellipsisGlyph())
 		line := name
 		if descriptionWidth := width - 2 - nameWidth - 2; descriptionWidth > 0 {
 			line += strings.Repeat(" ", nameWidth-lipgloss.Width(name)+2)
-			description := ansi.Truncate(strings.Join(strings.Fields(candidate.Desc), " "), descriptionWidth, "…")
+			description := ansi.Truncate(strings.Join(strings.Fields(m.chromeText(candidate.Desc)), " "), descriptionWidth, ellipsisGlyph())
 			if i == m.menu.idx {
 				line += description
 			} else {
@@ -74,15 +74,15 @@ func (m *model) menuView() string {
 			}
 		}
 		if i == m.menu.idx {
-			line = selectedRowStyle.Width(width).Render("› " + line)
+			line = selectedRowStyle.Width(width).Render(menuMark() + line)
 		} else {
 			line = "  " + line
 		}
-		b.WriteString(ansi.Truncate(line, width, "…"))
+		b.WriteString(ansi.Truncate(line, width, ellipsisGlyph()))
 		b.WriteByte('\n')
 	}
 	footer := fmt.Sprintf("  %d/%d", m.menu.idx+1, len(m.menu.cands))
-	b.WriteString(dimStyle.Render(ansi.Truncate(footer, width, "…")))
+	b.WriteString(dimStyle.Render(ansi.Truncate(footer, width, ellipsisGlyph())))
 	return b.String()
 }
 
@@ -206,3 +206,18 @@ func (m *model) skillCands() []cand {
 }
 
 const menuRows = 8
+
+// menuMark is the pointer before the selected row of a menu or panel.
+func menuMark() string {
+	if asciiMode {
+		return "> "
+	}
+	return "› "
+}
+
+// ellipsisGlyph is the truncation mark, ASCII in ASCII mode.
+func ellipsisGlyph() string { return chromeGlyphs("…") }
+
+// chromeText is a description as the menu shows it: glyphs swapped for ASCII
+// in that mode.
+func (m *model) chromeText(s string) string { return chromeGlyphs(s) }

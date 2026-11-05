@@ -112,6 +112,7 @@ var chromeSectionList = []chromeSection{
 		}
 		return 1
 	}},
+	{"composerPanel", (*model).composerPanelRows},
 }
 
 func (m *model) chromeSections() []chromeSection { return chromeSectionList }
@@ -325,7 +326,7 @@ func (m *model) viewBody() string {
 	if m.busy {
 		b.WriteString("\n" + m.busyRow() + "\n")
 	}
-	if len(m.queue) > 0 {
+	if m.queueRows() > 0 {
 		b.WriteString(m.queueView())
 	}
 	if m.rew != nil {
@@ -343,10 +344,10 @@ func (m *model) viewBody() string {
 			if m.namePrompt.mask {
 				inputView = m.highlightInput(sanitizeInputView("┃ " + m.namePrompt.maskedValue(m.input.Value())))
 			} else {
-				inputView = m.highlightInput(sanitizeInputView(m.input.View()))
+				inputView = m.highlightInput(sanitizeInputView(m.composerInputView()))
 			}
 		} else {
-			inputView = m.inputArgumentView(m.highlightInput(sanitizeInputView(m.input.View())))
+			inputView = m.inputArgumentView(m.highlightInput(sanitizeInputView(m.composerInputView())))
 		}
 		frameWidth := max(m.width, 1)
 		m.inputLeft = 0
@@ -364,6 +365,7 @@ func (m *model) viewBody() string {
 
 		b.WriteString("\n" + m.menuView())
 	}
+	b.WriteString(m.composerPanel())
 
 	if dock := m.tasksDock(); dock != "" {
 		b.WriteString("\n" + dock)

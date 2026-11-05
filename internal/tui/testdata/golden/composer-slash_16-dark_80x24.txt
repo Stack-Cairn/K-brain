@@ -1,0 +1,24 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+  ❯ /mo
+› /model              switch model (refresh pulls the catalog)
+  /model-for-session  switch model for this session only
+  /mouse              toggle mouse capture
+  /memory             list saved memories; mark entry n done
+  1/4
+   Always allow                                             kimi-k3-fast · ✦ off

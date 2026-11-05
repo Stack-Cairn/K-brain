@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"fmt"
 	"regexp"
 	"strings"
 	"time"
@@ -117,19 +116,14 @@ func (m *model) wordLeftFromBlank() bool {
 	return true
 }
 
+// insertNewline breaks the line at the cursor. The cursor stays where the
+// break is, at the start of the new line.
 func (m *model) insertNewline() (tea.Model, tea.Cmd) {
-	maxHeight := m.input.MaxHeight
-	m.input.MaxHeight = 0
-	var cmd tea.Cmd
-	m.input, cmd = m.input.Update(tea.KeyMsg{Type: tea.KeyCtrlJ})
-	m.input.MaxHeight = maxHeight
-	m.input.SetHeight(maxHeight)
-
-	v := m.input.Value()
-	m.input.SetValue(v)
-	m.input.CursorEnd()
+	s := m.composerSnap()
+	runes := []rune(s.val)
+	m.setComposer(string(runes[:s.off])+"\n"+string(runes[s.off:]), s.off+1)
 	m.refreshMenu()
-	return m, cmd
+	return m, nil
 }
 
 func (m *model) histPrev() {
@@ -173,10 +167,23 @@ func (m *model) cursorOnLastLine() bool {
 const inputPlaceholder = "Ask k-brain anything…  / commands · Shift+Tab mode · Ctrl+P menu"
 
 func (m *model) syncInputPlaceholder() {
+	// Multiline mode swaps the caret for a rail so the mode is visible
+	// while typing; applyAppearance may have reset it.
+	if m.namePrompt == nil {
+		prompt := glyphUser
+		if m.multiline() {
+			prompt = glyphs.Rail + " "
+		}
+		if m.input.Prompt != prompt && lipgloss.Width(m.input.Prompt) == lipgloss.Width(prompt) {
+			m.input.Prompt = prompt
+		}
+	}
 	if m.input.Value() != "" {
 		return
 	}
 	switch {
+	case m.cmp != nil && m.cmp.hs != nil:
+		m.input.Placeholder = m.tr("search history…")
 	case !m.busy:
 		m.input.Placeholder = m.tr(inputPlaceholder)
 	case m.agent != nil && m.agent.WaitingOnSubagents():
@@ -184,21 +191,136 @@ func (m *model) syncInputPlaceholder() {
 	default:
 		m.input.Placeholder = m.tr("busy — type to queue (sent when the turn ends)")
 	}
+	if m.cmp != nil && m.cmp.hs == nil && len(m.cmp.stash) > 0 {
+		m.input.Placeholder = m.tr("draft stashed — Ctrl+S restores it")
+	}
 	m.input.Placeholder = chromeGlyphs(m.input.Placeholder)
 }
 
 // composerPreKey handles the editing keys that act on the draft before any
-// other routing: the newline chords and word-left from a blank prefix.
+// other routing: the newline chords, undo and redo, kill and yank, atomic
+// chips, multiline mode, the draft stash, history search and the queue pane.
 func (m *model) composerPreKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
-	if msg.Type == tea.KeyCtrlJ ||
+	newline := msg.Type == tea.KeyCtrlJ ||
 		(msg.Type == tea.KeyEnter && msg.Alt) ||
 		(msg.Type == tea.KeyRunes && msg.Alt && string(msg.Runes) == "\r") ||
-		isShiftEnterSeq(msg) {
+		isShiftEnterSeq(msg)
+	if m.taskVP != nil {
+		if newline {
+			r, cmd := m.insertNewline()
+			return r, cmd, true
+		}
+		return m, nil, false
+	}
+
+	c := m.composer()
+	if c.hs != nil {
+		r, cmd := m.historySearchKey(msg)
+		return r, cmd, true
+	}
+	c.observe(m, msg)
+
+	if newline {
+		if m.multiline() && m.namePrompt == nil && m.menu == nil {
+			r, cmd := m.composerKey(tea.KeyMsg{Type: tea.KeyEnter})
+			return r, cmd, true
+		}
 		r, cmd := m.insertNewline()
 		return r, cmd, true
 	}
 
-	if k := msg.String(); k == "alt+b" || k == "alt+left" {
+	k := msg.String()
+	if m.queueFocused() {
+		switch {
+		case msg.Type == tea.KeyEnter:
+			r, cmd := m.queueSendNow()
+			return r, cmd, true
+		case msg.Type == tea.KeyCtrlE:
+			m.queueEditSelected()
+			return m, nil, true
+		case k == "alt+up" || k == "shift+up":
+			m.queueMove(-1)
+			return m, nil, true
+		case k == "alt+down" || k == "shift+down":
+			m.queueMove(1)
+			return m, nil, true
+		case msg.Type == tea.KeyEsc:
+			// Esc leaves the queue first; the next Esc interrupts the turn.
+			m.queueSel = -1
+			return m, nil, true
+		}
+	}
+	if msg.Type == tea.KeyEsc && m.editingQueued() != nil && m.menu == nil {
+		m.queueEditCancel()
+		return m, nil, true
+	}
+
+	if m.namePrompt == nil {
+		switch {
+		case msg.Type == tea.KeyCtrlR:
+			return m, m.openHistorySearch(), true
+		case msg.Type == tea.KeyCtrlS:
+			return m, m.stashDraft(), true
+		case k == "alt+m":
+			return m, m.toggleMultiline(), true
+		case msg.Type == tea.KeyEnter && m.multiline() && m.menu == nil && !m.tasksFocus &&
+			strings.TrimSpace(m.input.Value()) != "":
+			r, cmd := m.insertNewline()
+			return r, cmd, true
+		case msg.Type == tea.KeyCtrlV:
+			if capped, cmd := m.imageCapReached(); capped {
+				return m, cmd, true
+			}
+		}
+	}
+
+	switch {
+	case msg.Type == tea.KeyCtrlZ || k == "ctrl+_":
+		m.composerUndo()
+		return m, nil, true
+	case k == "alt+z":
+		m.composerRedo()
+		return m, nil, true
+	case msg.Type == tea.KeyCtrlW:
+		m.composerKill(killWordBack)
+		return m, nil, true
+	case k == "alt+backspace":
+		m.composerKill(killAlnumWordBack)
+		return m, nil, true
+	case msg.Type == tea.KeyCtrlU:
+		m.composerKill(killToLineStart)
+		return m, nil, true
+	case k == "alt+k":
+		m.composerKill(killToLineEnd)
+		return m, nil, true
+	case k == "alt+d":
+		m.composerKill(killAlnumWordFwd)
+		return m, nil, true
+	case msg.Type == tea.KeyCtrlY:
+		m.composerYank()
+		return m, nil, true
+	case k == "alt+y":
+		m.composerYankPop()
+		return m, nil, true
+	case msg.Type == tea.KeyBackspace && !msg.Alt && !(m.busy && m.queueSel >= 0):
+		if m.composerDeleteChip(false) {
+			return m, nil, true
+		}
+	case msg.Type == tea.KeyDelete && !msg.Alt && !(m.busy && m.queueSel >= 0):
+		if m.composerDeleteChip(true) {
+			return m, nil, true
+		}
+	case msg.Type == tea.KeyLeft && !msg.Alt:
+		if m.composerSkipChip(false) {
+			return m, nil, true
+		}
+	case msg.Type == tea.KeyRight && !msg.Alt:
+		if m.composerSkipChip(true) {
+			return m, nil, true
+		}
+	}
+
+	if k == "alt+b" || k == "alt+left" {
 		if m.wordLeftFromBlank() {
 			return m, nil, true
 		}
@@ -206,29 +328,24 @@ func (m *model) composerPreKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 	return m, nil, false
 }
 
-// composerPasteKey turns a pasted image path into an attachment and, when
-// configured, collapses a long paste into a placeholder.
+// composerPasteKey turns a pasted image path into an attachment and a large
+// paste into an atomic chip.
 func (m *model) composerPasteKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
-	if msg.Paste {
+	imagePath := ""
+	if msg.Paste || (msg.Type == tea.KeyRunes && len(msg.Runes) > 1) {
 		if path, ok := pastedImagePath(string(msg.Runes)); ok {
-
-			return m, func() tea.Msg { return pasteImageFileCmd(path) }, true
+			imagePath = path
 		}
 	}
-
-	if !msg.Paste && msg.Type == tea.KeyRunes && len(msg.Runes) > 1 {
-		if path, ok := pastedImagePath(string(msg.Runes)); ok {
-			return m, func() tea.Msg { return pasteImageFileCmd(path) }, true
+	if imagePath != "" {
+		if capped, cmd := m.imageCapReached(); capped {
+			return m, cmd, true
 		}
+		return m, func() tea.Msg { return pasteImageFileCmd(imagePath) }, true
 	}
-	if msg.Paste && m.cfg != nil && m.cfg.CollapsePaste != nil && *m.cfg.CollapsePaste {
-		if n := strings.Count(string(msg.Runes), "\n"); n >= 2 {
-			m.pasteBuf = string(msg.Runes)
-			m.input.SetValue(m.input.Value() + fmt.Sprintf("[Pasted ~%d lines]", n+1))
-			m.input.CursorEnd()
-			m.growInput()
-			return m, nil, true
-		}
+	if msg.Paste && m.namePrompt == nil && m.pasteChipsOn() && wantsPasteChip(string(msg.Runes)) {
+		m.insertPasteChip(string(msg.Runes))
+		return m, nil, true
 	}
 	return m, nil, false
 }
@@ -368,6 +485,7 @@ func (m *model) composerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			c := m.menu.cands[m.menu.idx]
 
 			if m.menu.cyc && m.menu.head == "" && execNow[c.Text] {
+				m.noteSlashUse(c.Text)
 				m.menu = nil
 				m.input.Reset()
 				return m.command(c.Text)
@@ -379,6 +497,7 @@ func (m *model) composerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 
 			if m.menu.head == "" && execNow[c.Text] {
+				m.noteSlashUse(c.Text)
 				m.menu = nil
 				m.input.Reset()
 				return m.command(c.Text)
@@ -396,11 +515,9 @@ func (m *model) composerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
-		text := strings.TrimSpace(m.input.Value())
-
-		if m.pasteBuf != "" {
-			text = strings.Replace(text, strings.TrimSpace(fmt.Sprintf("[Pasted ~%d lines]", strings.Count(m.pasteBuf, "\n")+1)), strings.TrimSpace(m.pasteBuf), 1)
-			m.pasteBuf = ""
+		text := strings.TrimSpace(m.expandPasteChips(m.input.Value()))
+		if strings.HasPrefix(text, "/") {
+			m.noteSlashUse(text)
 		}
 		if m.busy {
 			switch {
@@ -438,7 +555,7 @@ func (m *model) composerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 				m.append(youStyle.Render("❯ ") + linkifyFilePaths(text, realFileExists) + dimStyle.Render("  (steered)"))
 			case text != "":
-				m.queue = append(m.queue, text)
+				m.enqueue(text)
 				m.hist = append(m.hist, text)
 				m.histIdx = len(m.hist)
 				m.input.Reset()
@@ -451,6 +568,7 @@ func (m *model) composerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+		m.composer().queueEdit = nil
 		if text == "" && len(m.queue) > 0 {
 
 			return m.drainQueueHead()

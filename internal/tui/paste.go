@@ -366,3 +366,147 @@ func (m *model) expandImageChips(text string) string {
 }
 
 var imageChipRe = regexp.MustCompile(`\[Image\s+(\d+)(?::[^\]\x{200b}]*)?\x{200b}\]`)
+
+// A paste of pasteChipLines lines or more, or over pasteChipBytes, lands as
+// one atomic chip such as "[Pasted 120 lines]" and is expanded back to the
+// pasted text when the message is sent. The collapsePaste setting turns this
+// off; it is on when unset.
+const (
+	pasteChipLines = 4
+	pasteChipBytes = 10 * 1024
+	// maxImageChips is how many image chips one message may carry.
+	maxImageChips = 10
+)
+
+var pasteChipRe = regexp.MustCompile(`\[Pasted (?:\d+ lines|[\d.]+ [KM]B)(?: #(\d+))?\x{200b}\]`)
+
+// pasteChipsOn reports whether large pastes become chips.
+func (m *model) pasteChipsOn() bool {
+	return m.cfg == nil || m.cfg.CollapsePaste == nil || *m.cfg.CollapsePaste
+}
+
+// wantsPasteChip reports whether a paste is large enough to become a chip.
+func wantsPasteChip(text string) bool {
+	return strings.Count(strings.TrimRight(text, "\n"), "\n")+1 >= pasteChipLines || len(text) > pasteChipBytes
+}
+
+// pasteChipText is the chip for paste number n. Only the second and later
+// pastes of a draft carry their number, so the common case reads as just
+// "[Pasted 120 lines]".
+func pasteChipText(n int, text string) string {
+	label := ""
+	if lines := strings.Count(strings.TrimRight(text, "\n"), "\n") + 1; lines >= pasteChipLines {
+		label = fmt.Sprintf("%d lines", lines)
+	} else {
+		label = byteSizeLabel(len(text))
+	}
+	if n > 1 {
+		label += fmt.Sprintf(" #%d", n)
+	}
+	return "[Pasted " + label + chipSentinel + "]"
+}
+
+func byteSizeLabel(n int) string {
+	if n < 1024*1024 {
+		return strings.TrimSuffix(fmt.Sprintf("%.1f", float64(n)/1024), ".0") + " KB"
+	}
+	return strings.TrimSuffix(fmt.Sprintf("%.1f", float64(n)/(1024*1024)), ".0") + " MB"
+}
+
+// insertPasteChip stores a large paste and puts its chip at the cursor.
+func (m *model) insertPasteChip(text string) {
+	c := m.composer()
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	if c.pastes == nil {
+		c.pastes = map[int]string{}
+	}
+	c.pasteSeq++
+	c.pastes[c.pasteSeq] = text
+	chip := pasteChipText(c.pasteSeq, text)
+	s := m.composerSnap()
+	runes := []rune(s.val)
+	m.setComposer(string(runes[:s.off])+chip+string(runes[s.off:]), s.off+len([]rune(chip)))
+	m.refreshMenu()
+}
+
+// expandPasteChips swaps every paste chip in text for the text it stands for.
+// A chip whose paste is unknown (typed by hand, or from another draft) stays.
+func (m *model) expandPasteChips(text string) string {
+	if m.cmp == nil || len(m.cmp.pastes) == 0 {
+		return text
+	}
+	return pasteChipRe.ReplaceAllStringFunc(text, func(tok string) string {
+		n := 1
+		if sm := pasteChipRe.FindStringSubmatch(tok); len(sm) > 1 && sm[1] != "" {
+			n, _ = strconv.Atoi(sm[1])
+		}
+		if body, ok := m.cmp.pastes[n]; ok {
+			return body
+		}
+		return tok
+	})
+}
+
+// dropUnusedPastes forgets pastes no draft refers to any more: not the
+// composer's value and not a stashed draft. With none left the numbering
+// starts over.
+func (c *composerState) dropUnusedPastes(val string) {
+	if len(c.pastes) == 0 {
+		return
+	}
+	used := map[int]bool{}
+	for _, s := range append([]string{val}, c.stash...) {
+		for _, sm := range pasteChipRe.FindAllStringSubmatch(s, -1) {
+			n := 1
+			if sm[1] != "" {
+				n, _ = strconv.Atoi(sm[1])
+			}
+			used[n] = true
+		}
+	}
+	for n := range c.pastes {
+		if !used[n] {
+			delete(c.pastes, n)
+		}
+	}
+	if len(c.pastes) == 0 {
+		c.pasteSeq = 0
+	}
+}
+
+// chipSpans lists the [start, end) rune ranges of every image and paste chip
+// in runes.
+func chipSpans(runes []rune) [][2]int {
+	s := string(runes)
+	var spans [][2]int
+	for _, re := range []*regexp.Regexp{imageChipRe, pasteChipRe} {
+		for _, loc := range re.FindAllStringIndex(s, -1) {
+			a := len([]rune(s[:loc[0]]))
+			spans = append(spans, [2]int{a, a + len([]rune(s[loc[0]:loc[1]]))})
+		}
+	}
+	return spans
+}
+
+// widenToChips grows [a, b) to cover every chip it overlaps.
+func widenToChips(runes []rune, a, b int) (int, int) {
+	for _, sp := range chipSpans(runes) {
+		if sp[0] < b && sp[1] > a {
+			a, b = min(a, sp[0]), max(b, sp[1])
+		}
+	}
+	return a, b
+}
+
+// imageChipCount is how many image chips the draft carries.
+func (m *model) imageChipCount() int {
+	return len(imageChipRe.FindAllStringIndex(m.input.Value(), -1))
+}
+
+// imageCapReached refuses another image once the draft has maxImageChips.
+func (m *model) imageCapReached() (bool, tea.Cmd) {
+	if m.imageChipCount() < maxImageChips {
+		return false, nil
+	}
+	return true, m.showNotice(fmt.Sprintf(m.tr("at most %d images per message"), maxImageChips))
+}
