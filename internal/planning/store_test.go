@@ -243,12 +243,14 @@ func TestReminderLeaseAndStaleAcknowledgment(t *testing.T) {
 	}
 }
 func TestSubscriptionRefreshWithoutDesktop(t *testing.T) {
+	// Imports keep events from 30 days back; a fixed date ages out of that window.
+	start := time.Now().UTC().Add(24 * time.Hour).Truncate(time.Hour)
 	feed := `BEGIN:VCALENDAR
 VERSION:2.0
 BEGIN:VEVENT
 UID:test-feed
-DTSTART:20261006T100000Z
-DTEND:20261006T110000Z
+DTSTART:` + start.Format("20060102T150405Z") + `
+DTEND:` + start.Add(time.Hour).Format("20060102T150405Z") + `
 SUMMARY:Subscription event
 END:VEVENT
 END:VCALENDAR
