@@ -3,6 +3,8 @@ package tui
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -74,6 +76,9 @@ type taskView struct {
 
 const tasksDockHeight = 6
 
+// dockTasks lists the subagents the dock shows: running ones first, then
+// finished ones, newest first within each group. Foreground children of the
+// current turn sit alongside background tasks.
 func (m *model) dockTasks() []agent.BackgroundTask {
 	if m.agent == nil {
 		return nil
@@ -85,10 +90,45 @@ func (m *model) dockTasks() []agent.BackgroundTask {
 		}
 		out = append(out, t)
 	}
-	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
-		out[i], out[j] = out[j], out[i]
-	}
+	out = append(out, m.fgReg().list()...)
+	sort.SliceStable(out, func(i, j int) bool {
+		if ri, rj := m.subRunning(out[i]), m.subRunning(out[j]); ri != rj {
+			return ri
+		}
+		if !out[i].StartedAt.Equal(out[j].StartedAt) {
+			return out[i].StartedAt.After(out[j].StartedAt)
+		}
+		return subIDNum(out[i].ID) > subIDNum(out[j].ID)
+	})
 	return out
+}
+
+func subIDNum(id string) int {
+	n := 0
+	if i := strings.LastIndexByte(id, '-'); i >= 0 {
+		n, _ = strconv.Atoi(id[i+1:])
+	}
+	return n
+}
+
+// dockList is dockTasks with the selection kept on the task it pointed at in
+// the previously rendered order.
+func (m *model) dockList() []agent.BackgroundTask {
+	tasks := m.dockTasks()
+	if m.taskSel >= 0 && m.taskSel < len(m.dockOrder) {
+		want := m.dockOrder[m.taskSel]
+		for i, t := range tasks {
+			if t.ID == want {
+				m.taskSel = i
+				break
+			}
+		}
+	}
+	m.dockOrder = m.dockOrder[:0]
+	for _, t := range tasks {
+		m.dockOrder = append(m.dockOrder, t.ID)
+	}
+	return tasks
 }
 
 func (m *model) clampTaskSel() {
@@ -103,11 +143,11 @@ func (m *model) dockTaskExpand(id string) []string {
 	if m.agent == nil {
 		return nil
 	}
-	t, ok := m.agent.Tasks().Get(id)
+	t, ok := m.subTask(id)
 	if !ok {
 		return nil
 	}
-	events, truncated, _ := m.agent.Tasks().SubscribeWithJournal(id, agent.Events{})
+	events, truncated, _, _ := m.watchSub(id, agent.Events{})
 	var buf strings.Builder
 	switch {
 	case len(events) > 0:
@@ -136,7 +176,7 @@ func (m *model) dockTaskExpand(id string) []string {
 }
 
 func (m *model) tasksDock() string {
-	tasks := m.dockTasks()
+	tasks := m.dockList()
 	if len(tasks) == 0 {
 		m.dockOffsets = nil
 		return ""
@@ -191,7 +231,7 @@ func (m *model) tasksDock() string {
 }
 
 func (m *model) openTask(id string) {
-	t, ok := m.agent.Tasks().Get(id)
+	t, ok := m.subTask(id)
 	if !ok {
 		return
 	}
@@ -207,7 +247,7 @@ func (m *model) openTask(id string) {
 		toolStyle.Render("⚙"), t.ID, t.Description,
 		youStyle.Render("prompt:"), t.Prompt)
 	p := m.prog
-	events, truncated, live, unsubscribe := m.agent.Tasks().WatchTask(id, agent.Events{
+	events, truncated, live, unsubscribe := m.watchSub(id, agent.Events{
 		OnText: func(s string) {
 			sendTaskMsg(p, taskEventMsg{view: tv, id: id, kind: 0, s: s})
 		},
@@ -239,6 +279,9 @@ func (m *model) openTask(id string) {
 	case len(events) > 0:
 
 		fmt.Fprintf(&tv.buf, "\n%s %s\n", toolStyle.Render(string(t.Status)+":"), t.Report)
+		if a := m.subAct[id]; a != nil && a.tools > 0 && t.Report == "" {
+			tv.buf.WriteString(dimStyle.Render("  "+strings.Join(m.subActivityParts(t, false), " · ")) + "\n")
+		}
 	case t.Restored && m.store != nil:
 
 		if msgs, err := m.store.SubagentTranscript(m.sessionID, t.ID); err == nil && len(msgs) > 0 {
@@ -278,6 +321,9 @@ func renderTranscript(buf *strings.Builder, msgs []ai.Message) {
 }
 
 func (m *model) taskChatable(tv *taskView) bool {
+	if m.isForeground(tv.id) {
+		return false
+	}
 	t, ok := m.agent.Tasks().Get(tv.id)
 	return ok && !t.Restored
 }
@@ -373,10 +419,15 @@ func (m *model) taskViewKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		tv.vp.GotoBottom()
 		return m, nil
 	case tea.KeyCtrlX:
-		if tv.busy && tv.followCancel != nil {
+		switch {
+		case tv.busy && tv.followCancel != nil:
 			tv.followCancel()
-		} else {
-			m.agent.Tasks().Cancel(tv.id)
+		case m.isForeground(tv.id):
+		case m.agent.Tasks().Cancel(tv.id):
+			if m.subStop == nil {
+				m.subStop = map[string]bool{}
+			}
+			m.subStop[tv.id] = true
 		}
 		return m, nil
 	case tea.KeyEnter:

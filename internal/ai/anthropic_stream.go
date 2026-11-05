@@ -11,6 +11,7 @@ type anthropicToolBlock struct {
 	initial  json.RawMessage
 	streamed bool
 	closed   bool
+	args     streamText
 }
 
 func (c *Anthropic) Stream(ctx context.Context, req Request, onText, onThink func(string), onToolCall func(id, name, args string)) (Message, Usage, error) {
@@ -27,6 +28,8 @@ func (c *Anthropic) Stream(ctx context.Context, req Request, onText, onThink fun
 	var usage anthropicUsage
 	blocks := map[int]*anthropicToolBlock{}
 	thinking := map[int]map[string]any{}
+	thinkingText := map[int]*streamText{}
+	var content streamText
 	var thinkingOrder []int
 	serverBlocks := map[int]bool{}
 	ids := map[string]bool{}
@@ -94,7 +97,7 @@ func (c *Anthropic) Stream(ctx context.Context, req Request, onText, onThink fun
 				serverBlocks[v.Index] = true
 			}
 			if b.Text != "" {
-				msg.Content += b.Text
+				msg.Content = content.append(msg.Content, b.Text)
 				if onText != nil {
 					onText(b.Text)
 				}
@@ -121,7 +124,7 @@ func (c *Anthropic) Stream(ctx context.Context, req Request, onText, onThink fun
 				return Message{}, usage.normalized(), err
 			}
 			if d.Text != "" {
-				msg.Content += d.Text
+				msg.Content = content.append(msg.Content, d.Text)
 				if onText != nil {
 					onText(d.Text)
 				}
@@ -132,7 +135,7 @@ func (c *Anthropic) Stream(ctx context.Context, req Request, onText, onThink fun
 			if block := thinking[v.Index]; block != nil {
 				if d.Type == "thinking_delta" {
 					text, _ := block["thinking"].(string)
-					block["thinking"] = text + d.Thinking
+					block["thinking"] = streamTextFor(thinkingText, v.Index).append(text, d.Thinking)
 				}
 				if d.Type == "signature_delta" {
 					signature, _ := block["signature"].(string)
@@ -148,7 +151,7 @@ func (c *Anthropic) Stream(ctx context.Context, req Request, onText, onThink fun
 					return Message{}, usage.normalized(), providerStreamError(nil, "tool delta has no open content block")
 				}
 				block.streamed = true
-				block.call.Function.Arguments += d.PartialJSON
+				block.call.Function.Arguments = block.args.append(block.call.Function.Arguments, d.PartialJSON)
 				if onToolCall != nil && !req.hostedSearchCall(block.call.Function.Name) {
 					onToolCall(block.call.ID, block.call.Function.Name, block.call.Function.Arguments)
 				}

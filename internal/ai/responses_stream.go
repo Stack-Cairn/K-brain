@@ -138,6 +138,8 @@ func (c *Responses) Stream(ctx context.Context, req Request, onText, onThink fun
 	search := newSearchStream(ctx, firstNonEmpty(req.NativeSearchProvider, "openai"))
 	var usage Usage
 	calls := responsesCalls{items: map[string]*ToolCall{}, calls: map[string]*ToolCall{}}
+	var content streamText
+	arguments := map[*ToolCall]*streamText{}
 	notify := func(tc *ToolCall) {
 		if onToolCall != nil && !req.hostedSearchCall(tc.Function.Name) {
 			onToolCall(tc.ID, tc.Function.Name, tc.Function.Arguments)
@@ -188,7 +190,7 @@ func (c *Responses) Stream(ctx context.Context, req Request, onText, onThink fun
 			}
 			return Message{}, usage, providerStreamError(nil, ev.Type)
 		case "response.output_text.delta":
-			msg.Content += ev.Delta
+			msg.Content = content.append(msg.Content, ev.Delta)
 			if onText != nil {
 				onText(ev.Delta)
 			}
@@ -226,7 +228,7 @@ func (c *Responses) Stream(ctx context.Context, req Request, onText, onThink fun
 			if ev.Type == "response.function_call_arguments.done" {
 				tc.Function.Arguments = ev.Arguments
 			} else {
-				tc.Function.Arguments += ev.Delta
+				tc.Function.Arguments = streamTextFor(arguments, tc).append(tc.Function.Arguments, ev.Delta)
 			}
 			notify(tc)
 		case "response.completed", "response.incomplete":
