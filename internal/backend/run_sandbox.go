@@ -33,6 +33,7 @@ func (s *Server) runSandboxPolicy(configured *sandbox.Policy, cwd string, option
 		Writable: writable,
 		Network:  options.Sandbox.Network,
 		Masked:   s.sandboxMasked,
+		EnvKeep:  s.sandboxEnvKeep,
 	})
 }
 

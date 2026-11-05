@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Stack-Cairn/K-brain/internal/sandbox"
 )
 
 func TestScrubEnvDropsSecrets(t *testing.T) {
@@ -38,5 +40,30 @@ func TestUnsetSecretEnv(t *testing.T) {
 		if _, ok := os.LookupEnv(name); ok {
 			t.Fatalf("%s still set", name)
 		}
+	}
+}
+
+// TestSandboxedChildDoesNotInheritCredentials runs through the platform
+// sandbox: credential-looking variables are dropped, the markers and ordinary
+// variables stay, and an unsandboxed run is unchanged.
+func TestSandboxedChildDoesNotInheritCredentials(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX shell script")
+	}
+	root := t.TempDir()
+	policy, err := sandbox.ForRun(nil, sandbox.RunRequest{Root: root, Network: true})
+	if err != nil {
+		t.Skipf("platform sandbox unavailable: %v", err)
+	}
+	t.Setenv("KBRAIN_TEST_PLAIN", "plain")
+	t.Setenv("KBRAIN_TEST_API_KEY", "key-value")
+	command := `printf 'plain=%s key=%s marker=%s' "${KBRAIN_TEST_PLAIN-unset}" "${KBRAIN_TEST_API_KEY-unset}" "${K_BRAIN-unset}"`
+	res := Run(context.Background(), Options{Command: command, Dir: root, Timeout: 10 * time.Second, Sandbox: policy})
+	if res.Output != "plain=plain key=unset marker=1" {
+		t.Fatalf("sandboxed child output = %q (%s)", res.Output, res.Exit)
+	}
+	res = Run(context.Background(), Options{Command: command, Dir: root, Timeout: 10 * time.Second})
+	if res.Output != "plain=plain key=key-value marker=1" {
+		t.Fatalf("unsandboxed child output = %q (%s)", res.Output, res.Exit)
 	}
 }

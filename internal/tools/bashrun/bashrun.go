@@ -112,7 +112,12 @@ func Run(ctx context.Context, opts Options) Result {
 			return Result{Exit: err.Error()}
 		}
 	}
-	cmd.Env = append(ScrubEnv(os.Environ()), ChildMarkers...)
+	env := cmd.Env
+	if env == nil {
+		// A wrapped command carries the environment the sandbox filtered.
+		env = os.Environ()
+	}
+	cmd.Env = append(ScrubEnv(env), ChildMarkers...)
 	if len(opts.Env) > 0 {
 		cmd.Env = append(cmd.Env, opts.Env...)
 	}
