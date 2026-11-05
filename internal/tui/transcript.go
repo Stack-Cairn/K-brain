@@ -309,16 +309,17 @@ type block struct {
 	// it on first sight.
 	uid uint64
 
-	// The render cache: rendered and its rows, valid for width and ancient
+	// The render cache: the block's rows, valid for width and ancient
 	// unless stale.
-	rendered string
-	rows     []string
-	lines    int
-	width    int
-	stale    bool
-	ancient  bool
+	rows    []string
+	lines   int
+	width   int
+	stale   bool
+	ancient bool
 	// plain is rows without escapes, built on demand for selection.
 	plain []string
+	// md keeps a reply's frozen markdown units across appends (mdstream.go).
+	md *mdCache
 }
 
 // invalidate drops the block's render cache; call it after changing
@@ -332,26 +333,33 @@ func (b *block) renderAt(width int) string {
 	return b.renderAtMode(width, false)
 }
 
-// linesAt is the block's rows at width, from the cache when it is valid.
-func (b *block) linesAt(width int, ancient bool) []string {
-	b.renderAtMode(width, ancient)
-	return b.rows
+// renderAtMode is the block drawn at width, as one string.
+func (b *block) renderAtMode(width int, ancient bool) string {
+	return strings.Join(b.linesAt(width, ancient), "\n")
 }
 
-func (b *block) renderAtMode(width int, ancient bool) string {
+// linesAt is the block's rows at width, from the cache when it is valid. A
+// reply streaming in redraws only its last markdown unit.
+func (b *block) linesAt(width int, ancient bool) []string {
 	if !b.stale && b.width == width && b.ancient == ancient && b.rows != nil {
-		return b.rendered
+		return b.rows
 	}
-	if ancient && (b.kind == blockAssistant || b.kind == blockUser) {
-		b.rendered = accentStyle.Render(renderAncientText(ansi.Strip(b.render(width)), width))
-	} else {
-		b.rendered = b.render(width)
+	_, custom := blockKinds[b.kind]
+	switch {
+	case ancient && (b.kind == blockAssistant || b.kind == blockUser):
+		b.rows = splitRows(accentStyle.Render(renderAncientText(ansi.Strip(b.render(width)), width)))
+	case b.kind == blockAssistant && !custom:
+		if b.md == nil {
+			b.md = &mdCache{}
+		}
+		b.rows = assistantRows(b.md, b.text, width)
+	default:
+		b.rows = splitRows(b.render(width))
 	}
-	b.rows = splitRows(b.rendered)
 	b.lines = len(b.rows)
 	b.plain = nil
 	b.width, b.ancient, b.stale = width, ancient, false
-	return b.rendered
+	return b.rows
 }
 
 // plainRow is row r of the block without escapes or trailing blanks.

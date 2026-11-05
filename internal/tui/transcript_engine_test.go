@@ -28,7 +28,7 @@ func referenceRows(m *model) []string {
 			}
 		}
 		blk := m.blocks[i]
-		blk.stale = true
+		blk.stale, blk.md = true, nil
 		b.WriteString(blk.renderAtMode(width, m.ancientMode))
 		wrote = true
 	}
@@ -57,7 +57,7 @@ func checkIndex(t *testing.T, m *model, step string) {
 		if b.y0 < 0 {
 			continue
 		}
-		if first := strings.Split(b.rendered, "\n")[0]; want[b.y0] != first {
+		if first := b.rows[0]; want[b.y0] != first {
 			t.Fatalf("%s: block %d y0=%d holds %q, want its first row %q", step, i, b.y0, ansi.Strip(want[b.y0]), ansi.Strip(first))
 		}
 		if b.y1-b.y0+1 != b.height() {
@@ -279,7 +279,7 @@ func TestContentLineAndClickUseIndex(t *testing.T) {
 	for i := range m.blocks {
 		b := &m.blocks[i]
 		for r := b.y0; r <= b.y1; r++ {
-			want := strings.TrimRight(ansi.Strip(strings.Split(b.rendered, "\n")[r-b.y0]), " \t")
+			want := strings.TrimRight(ansi.Strip(b.rows[r-b.y0]), " \t")
 			if got := m.contentLine(r); got != want {
 				t.Fatalf("contentLine(%d) = %q, want %q", r, got, want)
 			}
