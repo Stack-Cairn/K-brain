@@ -694,6 +694,8 @@ func (c *OpenAI) streamOnce(ctx context.Context, body []byte, onText, onThink fu
 	var usage Usage
 	var calls []ToolCall
 	callPositions := make(map[int]int)
+	var content streamText
+	arguments := map[int]*streamText{}
 	finish := ""
 	completed := false
 	sse := newSSEReader(idleGuard.wrap(resp.Body))
@@ -739,7 +741,7 @@ func (c *OpenAI) streamOnce(ctx context.Context, body []byte, onText, onThink fu
 			}
 		}
 		if d.Content != "" {
-			msg.Content += d.Content
+			msg.Content = content.append(msg.Content, d.Content)
 			if onText != nil {
 				onText(d.Content)
 			}
@@ -758,7 +760,7 @@ func (c *OpenAI) streamOnce(ctx context.Context, body []byte, onText, onThink fu
 			if tc.Function.Name != "" && tc.Function.Name != cur.Function.Name {
 				cur.Function.Name += tc.Function.Name
 			}
-			cur.Function.Arguments += tc.Function.Arguments
+			cur.Function.Arguments = streamTextFor(arguments, pos).append(cur.Function.Arguments, tc.Function.Arguments)
 
 			if onToolCall != nil {
 				onToolCall(cur.ID, cur.Function.Name, cur.Function.Arguments)
