@@ -10,7 +10,7 @@
 
   Then run the package tests.
 
-  ⠋ thinking…                                            0:07 · Esc to interrupt
+  ⠋ Writing…                                       0:07 · ⇣48 · Esc to interrupt
 queued (2) · Enter send now · Ctrl+E edit · Del remove · ↑↓ select · Alt+↑↓ move
  ❯ 1 then run the linter
  → 2 and update the changelog with a line about the new flag
