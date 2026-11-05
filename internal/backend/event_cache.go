@@ -1,14 +1,6 @@
 package backend
 
-import (
-	"encoding/json"
-	"errors"
-	"io"
-	"os"
-	"path/filepath"
-
-	"github.com/Stack-Cairn/K-brain/internal/protocol"
-)
+import "github.com/Stack-Cairn/K-brain/internal/protocol"
 
 const maxCachedEvents = 512
 const maxCachedEventBytes = 4 << 20
@@ -30,42 +22,6 @@ func (rt *runtimeSession) allEventsLocked() ([]protocol.Event, error) {
 		return append([]protocol.Event(nil), rt.events...), nil
 	}
 	return rt.journalEventsAfter(0, 0)
-}
-
-func (rt *runtimeSession) journalEventsAfter(after int64, limit int) ([]protocol.Event, error) {
-	f, err := os.Open(filepath.Join(rt.eventDir, rt.id+".jsonl"))
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	var events []protocol.Event
-	decoder := json.NewDecoder(f)
-	bytes := 0
-	for {
-		var e protocol.Event
-		err := decoder.Decode(&e)
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
-		if err := e.Validate(); err != nil {
-			return nil, err
-		}
-		if e.Seq <= after {
-			continue
-		}
-		events = append(events, e)
-		bytes += len(e.Payload) + 256
-		if limit > 0 && (len(events) >= limit || bytes >= maxCachedEventBytes) {
-			break
-		}
-	}
-	return events, nil
 }
 
 func (rt *runtimeSession) eventsAfterLocked(after int64) ([]protocol.Event, error) {

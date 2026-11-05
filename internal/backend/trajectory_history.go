@@ -108,6 +108,8 @@ func atomicTrajectoryWrite(path string, data []byte) error {
 func (s *Server) applyTrajectoryHistory(rt *runtimeSession, destination string, events []protocol.Event, edit bool) error {
 	copied := append([]protocol.Event(nil), events...)
 	if edit {
+		// The journal file is about to be replaced: close it and drop its offsets.
+		rt.resetJournalLocked()
 		runID := newRunID()
 		if len(copied) > 0 {
 			runID = copied[len(copied)-1].RunID
