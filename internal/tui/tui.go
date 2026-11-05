@@ -267,6 +267,14 @@ type model struct {
 	namePrompt *namePrompt
 
 	initialPrompt string
+
+	// ── Area state ──────────────────────────────────────────────────────────
+	// Each larger area of the TUI (transcript engine, tool views, composer,
+	// interactive cards, status and app surfaces) keeps its new state behind
+	// a single pointer field in this block, e.g. `tx *transcriptState`, with
+	// the type and its methods in that area's own files. Add one line per
+	// area at the end of the block rather than loose fields elsewhere in
+	// model, so branches for different areas merge without conflicts.
 }
 
 type initialPromptMsg struct{}

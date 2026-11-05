@@ -1,0 +1,112 @@
+package tui
+
+import "strings"
+
+// keyContext says where a binding applies.
+type keyContext string
+
+const (
+	// keyGlobal is the main screen with no dialog or overlay open.
+	keyGlobal keyContext = "global"
+	// keyComposer is the composer with the main screen showing.
+	keyComposer keyContext = "composer"
+	// keyBusy is while a turn runs.
+	keyBusy keyContext = "busy"
+	// keyIdle is while no turn runs and the composer is empty.
+	keyIdle keyContext = "idle"
+	// keyQueue is while a turn runs, messages are queued and the composer is empty.
+	keyQueue keyContext = "queue"
+	// keyMenu is while the completion menu is open.
+	keyMenu keyContext = "menu"
+	// keyDock is while the subagent dock has focus (Ctrl+T).
+	keyDock keyContext = "dock"
+	// keyTaskView is while a subagent's own view is open.
+	keyTaskView keyContext = "taskview"
+)
+
+// keyBinding is one row of the keymap.
+type keyBinding struct {
+	// key is the key as bubbletea names it (tea.KeyMsg.String()), except
+	// that the space bar is "space".
+	key     string
+	context keyContext
+	// action names what the key does there; rows sharing an action are one
+	// behaviour reachable by several keys.
+	action string
+	// hint is the key's /help entry. Several rows are often described by one
+	// entry, which then sits on the first of them and the rest leave hint empty.
+	hint string
+}
+
+// keymap lists every key the TUI handles, by context. It is data only:
+// dispatch is still written out in keys.go, composer_keys.go and tasks.go,
+// and keymap_test.go checks that the two agree in both directions. /help
+// prints the hints in this order. New rows go at the end of their group.
+var keymap = []keyBinding{
+	{"tab", keyComposer, "complete", "Tab — complete"},
+	{"shift+tab", keyGlobal, "cycleMode", "Shift+Tab — cycle Normal / Plan / Auto review / Always allow"},
+	{"ctrl+k", keyGlobal, "clear", "Ctrl+K — clear the conversation"},
+	{"ctrl+t", keyGlobal, "dockToggle", "Ctrl+T — subagents dock: ↑/↓ select, Space preview, Enter open, Ctrl+X stop"},
+	{"up", keyDock, "dockPrev", ""},
+	{"down", keyDock, "dockNext", ""},
+	{"space", keyDock, "dockPreview", ""},
+	{"enter", keyDock, "dockOpen", ""},
+	{"ctrl+x", keyDock, "dockStop", ""},
+	{"enter", keyTaskView, "taskSend", "in a subagent view: Enter steers or follows up, Ctrl+X stops, PgUp/PgDn scroll, Esc returns"},
+	{"ctrl+x", keyTaskView, "taskStop", ""},
+	{"pgup", keyTaskView, "taskScroll", ""},
+	{"pgdown", keyTaskView, "taskScroll", ""},
+	{"up", keyTaskView, "taskScroll", ""},
+	{"down", keyTaskView, "taskScroll", ""},
+	{"ctrl+home", keyTaskView, "taskTop", ""},
+	{"ctrl+end", keyTaskView, "taskBottom", ""},
+	{"esc", keyTaskView, "taskClose", ""},
+	{"ctrl+t", keyTaskView, "taskClose", ""},
+	{"ctrl+o", keyGlobal, "toggleThinking", palHintThinking + " — toggle thinking tokens"},
+	{"ctrl+e", keyGlobal, "expandTool", "Ctrl+E — expand the last tool result"},
+	{"ctrl+j", keyComposer, "newline", "Ctrl+J / Shift+Enter — newline"},
+	{"shift+enter", keyComposer, "newline", ""},
+	{"alt+enter", keyComposer, "newline", ""},
+	{"ctrl+g", keyGlobal, "editor", "Ctrl+G — edit the current draft in an external editor"},
+	{"ctrl+v", keyGlobal, "pasteImage", "Ctrl+V — paste image"},
+	{"esc", keyBusy, "interrupt", "Esc — interrupt the agent"},
+	{"esc", keyIdle, "rewind", "Esc Esc (idle) — " + palDescRewind + " (↑/↓ browse, Enter rewinds, f forks)"},
+	{"esc", keyComposer, "clearDraft", ""},
+	{"up", keyQueue, "queuePrev", "while busy with queued messages: ↑/↓ select, Del removes"},
+	{"down", keyQueue, "queueNext", ""},
+	{"delete", keyQueue, "queueRemove", ""},
+	{"backspace", keyQueue, "queueRemove", ""},
+	{"pgup", keyGlobal, "scroll", "PgUp/PgDn — scroll · wheel — scroll · drag — select/copy text"},
+	{"pgdown", keyGlobal, "scroll", ""},
+	{"ctrl+c", keyGlobal, "quit", palHintQuit + " — quit"},
+	{"ctrl+c", keyBusy, "interrupt", ""},
+
+	// Not described in /help.
+	{"enter", keyComposer, "submit", ""},
+	{"up", keyComposer, "historyPrev", ""},
+	{"down", keyComposer, "historyNext", ""},
+	{"ctrl+n", keyComposer, "historyNext", ""},
+	{"ctrl+p", keyGlobal, "palette", ""},
+	{"alt+b", keyComposer, "wordLeft", ""},
+	{"alt+left", keyComposer, "wordLeft", ""},
+	{"tab", keyMenu, "menuNext", ""},
+	{"shift+tab", keyMenu, "menuPrev", ""},
+	{"down", keyMenu, "menuNext", ""},
+	{"ctrl+n", keyMenu, "menuNext", ""},
+	{"up", keyMenu, "menuPrev", ""},
+	{"ctrl+p", keyMenu, "menuPrev", ""},
+	{"enter", keyMenu, "menuAccept", ""},
+	{"esc", keyMenu, "menuClose", ""},
+}
+
+// keymapHelp is /help's key section: every hint in keymap order, translated
+// with tr and joined on one line.
+func keymapHelp(tr func(string) string) string {
+	var parts []string
+	for _, b := range keymap {
+		if b.hint != "" {
+			parts = append(parts, tr(b.hint))
+		}
+	}
+	return strings.Join(parts, " · ")
+}

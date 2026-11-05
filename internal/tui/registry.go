@@ -122,25 +122,7 @@ func helpTextFor(language string) string {
 	b.WriteString(tr(palHintRewind+" — "+palDescRewind) + "\n")
 	b.WriteString("!cmd " + registryFind("!cmd").helpHint(language) + "\n")
 	b.WriteString("!!cmd " + registryFind("!!cmd").helpHint(language) + "\n")
-	b.WriteString(tr("Tab — complete"))
-	for _, hint := range []string{
-		"Shift+Tab — cycle Normal / Plan / Auto review / Always allow",
-		"Ctrl+K — clear the conversation",
-		"Ctrl+T — subagents dock: ↑/↓ select, Space preview, Enter open, Ctrl+X stop",
-		"in a subagent view: Enter steers or follows up, Ctrl+X stops, PgUp/PgDn scroll, Esc returns",
-		palHintThinking + " — toggle thinking tokens",
-		"Ctrl+E — expand the last tool result",
-		"Ctrl+J / Shift+Enter — newline",
-		"Ctrl+G — edit the current draft in an external editor",
-		"Ctrl+V — paste image",
-		"Esc — interrupt the agent",
-		"Esc Esc (idle) — " + palDescRewind + " (↑/↓ browse, Enter rewinds, f forks)",
-		"while busy with queued messages: ↑/↓ select, Del removes",
-		"PgUp/PgDn — scroll · wheel — scroll · drag — select/copy text",
-		palHintQuit + " — quit",
-	} {
-		b.WriteString(" · " + tr(hint))
-	}
+	b.WriteString(keymapHelp(tr))
 	return b.String()
 }
 
