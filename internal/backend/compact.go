@@ -326,6 +326,7 @@ func (s *Server) finishCompaction(rt *runtimeSession, runID, clientRequestID, st
 	}
 	rt.runDone = true
 	rt.cancel = nil
+	rt.closeJournalLocked()
 	if record, ok := rt.runs[clientRequestID]; ok {
 		record.Terminal = true
 		record.State = state

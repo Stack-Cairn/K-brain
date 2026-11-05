@@ -46,6 +46,7 @@ func (s *Server) reapRuntimes(now time.Time) {
 				rt.processManager.CloseAll()
 				rt.processManager = nil
 			}
+			rt.closeJournalLocked()
 			rt.agent = nil
 			rt.recorder = nil
 			rt.events = nil
