@@ -102,6 +102,17 @@ func runHelper(args []string) error {
 		}
 		windows.CloseHandle(h)
 		return nil
+	case "readprocess":
+		pid, err := strconv.Atoi(args[1])
+		if err != nil {
+			return err
+		}
+		h, err := windows.OpenProcess(windows.PROCESS_VM_READ|windows.PROCESS_QUERY_INFORMATION, false, uint32(pid))
+		if err != nil {
+			return err
+		}
+		windows.CloseHandle(h)
+		return nil
 	case "setdacl":
 		sd, err := windows.GetNamedSecurityInfo(args[1], windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION)
 		if err != nil {

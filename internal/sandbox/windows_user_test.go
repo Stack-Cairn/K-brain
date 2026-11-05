@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -338,6 +339,9 @@ func TestWindowsSandboxUserAdminCycle(t *testing.T) {
 		var session uint32
 		_ = windows.ProcessIdToSessionId(windows.GetCurrentProcessId(), &session)
 		t.Logf("session namespace %d: %s", session, sessionNamespaceSDDL(session))
+		if dacl, err := tokenDefaultDACL(windows.GetCurrentProcessToken()); err == nil {
+			t.Logf("default DACL of the test process: %s", dacl)
+		}
 		for _, p := range []*Policy{online, offline} {
 			if out, ok := helper(t, p, "mutex", fmt.Sprintf(`Local\kbrain-sandbox-test-%v`, p.Network)); !ok {
 				t.Errorf("network=%v command cannot create a named object in its session: %s", p.Network, out)
@@ -387,9 +391,23 @@ func TestWindowsSandboxUserAdminCycle(t *testing.T) {
 		powershell := filepath.Join(systemRoot(), "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
 		out, code := sandboxed(t, online, exec.Command(powershell, "-NoProfile", "-NonInteractive", "-Command",
 			"(Invoke-WebRequest -UseBasicParsing -Uri https://github.com).StatusCode"))
-		t.Logf("Invoke-WebRequest as the online account: exit %d: %s", code, out)
-		if code != 0 || !strings.Contains(out, "200") {
-			t.Errorf("Invoke-WebRequest failed as the online account: %d %s", code, out)
+		t.Logf("Windows PowerShell Invoke-WebRequest as the online account: exit %d: %s", code, out)
+		out, code = sandboxed(t, online, exec.Command(powershell, "-NoProfile", "-NonInteractive", "-Command",
+			"[System.Net.WebRequest]::DefaultWebProxy = $null; (Invoke-WebRequest -UseBasicParsing -Uri https://github.com).StatusCode"))
+		t.Logf("Windows PowerShell Invoke-WebRequest without proxy as the online account: exit %d: %s", code, out)
+		out, code = sandboxed(t, online, exec.Command(powershell, "-NoProfile", "-NonInteractive", "-Command",
+			"(New-Object System.Net.Http.HttpClient).GetAsync('https://github.com').Result.StatusCode"))
+		t.Logf("Windows PowerShell HttpClient as the online account: exit %d: %s", code, out)
+		if pwsh, err := exec.LookPath("pwsh"); err == nil {
+			out, code := sandboxed(t, online, exec.Command(pwsh, "-NoProfile", "-NonInteractive", "-Command",
+				"(Invoke-WebRequest -Uri https://github.com).StatusCode"))
+			t.Logf("PowerShell 7 Invoke-WebRequest as the online account: exit %d: %s", code, out)
+			if code != 0 || !strings.Contains(out, "200") {
+				t.Errorf("PowerShell 7 Invoke-WebRequest failed as the online account: %d %s", code, out)
+			}
+		}
+		if out, ok := helper(t, online, "readprocess", strconv.Itoa(os.Getpid())); ok {
+			t.Logf("the online command opened the test process for reading (it runs elevated here): %s", out)
 		}
 	})
 
@@ -729,4 +747,25 @@ func sessionNamespaceSDDL(session uint32) string {
 		return err.Error()
 	}
 	return path + " " + sd.String()
+}
+
+func tokenDefaultDACL(token windows.Token) (string, error) {
+	var n uint32
+	_ = windows.GetTokenInformation(token, windows.TokenDefaultDacl, nil, 0, &n)
+	if n == 0 {
+		return "", errors.New("no default DACL")
+	}
+	buf := make([]byte, n)
+	if err := windows.GetTokenInformation(token, windows.TokenDefaultDacl, &buf[0], n, &n); err != nil {
+		return "", err
+	}
+	acl := *(**windows.ACL)(unsafe.Pointer(&buf[0]))
+	sd, err := windows.NewSecurityDescriptor()
+	if err != nil {
+		return "", err
+	}
+	if err := sd.SetDACL(acl, true, false); err != nil {
+		return "", err
+	}
+	return sd.String(), nil
 }
