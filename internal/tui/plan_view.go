@@ -118,6 +118,11 @@ func (m *model) planMsg(msg tea.Msg) {
 
 func (m *model) planOpen() bool { return m.cards != nil && m.cards.plan != nil }
 
+// planWaiting is the busy row's activity while the plan card is open.
+func (m *model) planWaiting() string {
+	return accentFgStyle.Bold(true).Render(glyphs.ToolQueued) + " " + accentFgStyle.Render(m.tr("Waiting for your plan review"))
+}
+
 // planExitMode is the mode approving the plan switches to: the one plan mode
 // was entered from, or normal when the session started in plan mode.
 func (m *model) planExitMode() string {

@@ -428,3 +428,13 @@ func TestCardsTakeTypedBurstsKeyByKey(t *testing.T) {
 		t.Fatalf("reject = %+v", got)
 	}
 }
+
+func TestBusyRowWaitsForThePlanReview(t *testing.T) {
+	m := compactCmdModel()
+	m.width = 100
+	m.busy = true
+	openPlan(m)
+	if row := ansi.Strip(m.busyRow()); !strings.Contains(row, "Waiting for your plan review") || strings.Contains(row, "Esc to interrupt") {
+		t.Fatalf("busy row = %q", row)
+	}
+}
