@@ -1,37 +1,37 @@
-[96m❯[0m [1mKeyboard shortcuts[0m                                                                                               [37m1/38[0m
+[96m❯[0m [1mKeyboard shortcuts[0m                                                                                               [37m1/54[0m
   [1;96m[Keys][0m [90m Commands [0m
   [96m/[0m [37mtype to filter[0m
 [90m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [90mAnywhere[0m
-[1;96m❯ Shift+Tab                         cycle the permission mode                                                          [0m
-  Ctrl+K                            [37mclear the conversation[0m[37m[0m
-  Ctrl+T                            [37mfocus the subagent dock[0m[37m[0m
-  Ctrl+O                            [37mshow or hide thinking tokens[0m[37m[0m
-  Ctrl+E                            [37mexpand the last tool result[0m[37m[0m
-  Ctrl+G                            [37medit the draft in an external editor[0m[37m[0m
-  Ctrl+V                            [37mpaste an image[0m[37m[0m
-  PgUp / PgDn                       [37mscroll the transcript[0m[37m[0m
-  Ctrl+C Ctrl+C                     [37mquit[0m[37m[0m
-  Ctrl+P                            [37mopen the command palette[0m[37m[0m
-  F2                                [37mopen settings[0m[37m[0m
+[1;96m❯ Shift+Tab                          cycle the permission mode                                                         [0m
+  Ctrl+K                             [37mclear the conversation[0m[37m[0m
+  Ctrl+T                             [37mfocus the subagent dock[0m[37m[0m
+  Ctrl+O                             [37mshow or hide thinking tokens[0m[37m[0m
+  Ctrl+E                             [37mexpand the last tool result[0m[37m[0m
+  Ctrl+G                             [37medit the draft in an external editor[0m[37m[0m
+  Ctrl+V                             [37mpaste an image[0m[37m[0m
+  PgUp / PgDn                        [37mscroll the transcript[0m[37m[0m
+  Ctrl+C Ctrl+C                      [37mquit[0m[37m[0m
+  Ctrl+P                             [37mopen the command palette[0m[37m[0m
+  F2                                 [37mopen settings[0m[37m[0m
 
   [90mComposer[0m
-  Tab                               [37mcomplete a command, path or mention[0m[37m[0m
-  Ctrl+J / Shift+Enter / Alt+Enter  [37minsert a newline[0m[37m[0m
-  Esc                               [37mclear the draft[0m[37m[0m
-  Enter                             [37msend the message[0m[37m[0m
-  ↑                                 [37mprevious prompt from history[0m[37m[0m
-  ↓ / Ctrl+N                        [37mnext prompt from history[0m[37m[0m
-  Alt+B / Alt+←                     [37mmove one word left[0m[37m[0m
-
-  [90mIdle, composer empty[0m
-  Esc Esc                           [37mrewind to an earlier message[0m[37m[0m
-
-  [90mWhile a turn runs[0m
-  Esc / Ctrl+C                      [37minterrupt the agent[0m[37m[0m
-
-  [90mQueued messages[0m
-[37m  ↓ 18 more[0m
+  Tab                                [37mcomplete a command, path or mention[0m[37m[0m
+  Ctrl+J / Shift+Enter / Alt+Enter   [37minsert a newline[0m[37m[0m
+  Esc                                [37mclear the draft[0m[37m[0m
+  Enter                              [37msend the message[0m[37m[0m
+  ↑                                  [37mprevious prompt from history[0m[37m[0m
+  ↓ / Ctrl+N                         [37mnext prompt from history[0m[37m[0m
+  Alt+B / Alt+←                      [37mmove one word left[0m[37m[0m
+  Ctrl+Z / Ctrl+_                    [37mundo the last draft edit[0m[37m[0m
+  Alt+Z                              [37mredo the draft edit[0m[37m[0m
+  Ctrl+W / Alt+Backspace             [37mcut the word before the cursor[0m[37m[0m
+  Ctrl+U                             [37mcut to the start of the line[0m[37m[0m
+  Alt+K                              [37mcut to the end of the line[0m[37m[0m
+  Alt+D                              [37mcut the next word[0m[37m[0m
+  Ctrl+Y                             [37mpaste the last cut text[0m[37m[0m
+  Alt+Y                              [37mswap in older cut text[0m[37m[0m
+[37m  ↓ 28 more[0m
 [90m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [1mShift+Tab[0m  [37mcycle the permission mode[0m
   [37mShift+Tab — cycle Normal / Plan / Auto review / Always allow[0m

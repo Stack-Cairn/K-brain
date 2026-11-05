@@ -1,4 +1,4 @@
-> Keyboard shortcuts                                                       1/38
+> Keyboard shortcuts                                                       1/54
   [Keys]  Commands
   / type to filter
 --------------------------------------------------------------------------------
@@ -15,7 +15,7 @@
   Ctrl+P                      open the command palette
   F2                          open settings
 
-  Down 27 more
+  Down 43 more
 --------------------------------------------------------------------------------
   Shift+Tab  cycle the permission mode
   Shift+Tab - cycle Normal / Plan / Auto review / Always allow

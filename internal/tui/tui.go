@@ -275,7 +275,7 @@ type model struct {
 	// model, so branches for different areas merge without conflicts.
 	tx  *transcriptState // transcript engine (transcript.go)
 	cmp *composerState   // composer: undo, kill ring, chips, stash, history search, queue editing
-	app *appSurfaceState
+	app *appSurfaceState // app surfaces: cheatsheet, settings, extensions, memory (picker_view.go)
 }
 
 type initialPromptMsg struct{}

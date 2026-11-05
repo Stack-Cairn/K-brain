@@ -1,37 +1,37 @@
-[38;2;47;191;160m❯[0m [1mKeyboard shortcuts[0m                                                                                               [38;2;154;160;170m1/38[0m
+[38;2;47;191;160m❯[0m [1mKeyboard shortcuts[0m                                                                                               [38;2;154;160;170m1/54[0m
   [1;38;2;47;191;160m[Keys][0m [38;2;134;139;149m Commands [0m
   [38;2;47;191;160m/[0m [38;2;154;160;170mtype to filter[0m
 [38;2;58;64;72m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [38;2;134;139;149mAnywhere[0m
-[1;38;2;47;191;160;48;2;38;43;52m❯ Shift+Tab                         cycle the permission mode                                                          [0m
-  Ctrl+K                            [38;2;200;204;211mclear the conversation[0m[38;2;154;160;170m[0m
-  Ctrl+T                            [38;2;200;204;211mfocus the subagent dock[0m[38;2;154;160;170m[0m
-  Ctrl+O                            [38;2;200;204;211mshow or hide thinking tokens[0m[38;2;154;160;170m[0m
-  Ctrl+E                            [38;2;200;204;211mexpand the last tool result[0m[38;2;154;160;170m[0m
-  Ctrl+G                            [38;2;200;204;211medit the draft in an external editor[0m[38;2;154;160;170m[0m
-  Ctrl+V                            [38;2;200;204;211mpaste an image[0m[38;2;154;160;170m[0m
-  PgUp / PgDn                       [38;2;200;204;211mscroll the transcript[0m[38;2;154;160;170m[0m
-  Ctrl+C Ctrl+C                     [38;2;200;204;211mquit[0m[38;2;154;160;170m[0m
-  Ctrl+P                            [38;2;200;204;211mopen the command palette[0m[38;2;154;160;170m[0m
-  F2                                [38;2;200;204;211mopen settings[0m[38;2;154;160;170m[0m
+[1;38;2;47;191;160;48;2;38;43;52m❯ Shift+Tab                          cycle the permission mode                                                         [0m
+  Ctrl+K                             [38;2;200;204;211mclear the conversation[0m[38;2;154;160;170m[0m
+  Ctrl+T                             [38;2;200;204;211mfocus the subagent dock[0m[38;2;154;160;170m[0m
+  Ctrl+O                             [38;2;200;204;211mshow or hide thinking tokens[0m[38;2;154;160;170m[0m
+  Ctrl+E                             [38;2;200;204;211mexpand the last tool result[0m[38;2;154;160;170m[0m
+  Ctrl+G                             [38;2;200;204;211medit the draft in an external editor[0m[38;2;154;160;170m[0m
+  Ctrl+V                             [38;2;200;204;211mpaste an image[0m[38;2;154;160;170m[0m
+  PgUp / PgDn                        [38;2;200;204;211mscroll the transcript[0m[38;2;154;160;170m[0m
+  Ctrl+C Ctrl+C                      [38;2;200;204;211mquit[0m[38;2;154;160;170m[0m
+  Ctrl+P                             [38;2;200;204;211mopen the command palette[0m[38;2;154;160;170m[0m
+  F2                                 [38;2;200;204;211mopen settings[0m[38;2;154;160;170m[0m
 
   [38;2;134;139;149mComposer[0m
-  Tab                               [38;2;200;204;211mcomplete a command, path or mention[0m[38;2;154;160;170m[0m
-  Ctrl+J / Shift+Enter / Alt+Enter  [38;2;200;204;211minsert a newline[0m[38;2;154;160;170m[0m
-  Esc                               [38;2;200;204;211mclear the draft[0m[38;2;154;160;170m[0m
-  Enter                             [38;2;200;204;211msend the message[0m[38;2;154;160;170m[0m
-  ↑                                 [38;2;200;204;211mprevious prompt from history[0m[38;2;154;160;170m[0m
-  ↓ / Ctrl+N                        [38;2;200;204;211mnext prompt from history[0m[38;2;154;160;170m[0m
-  Alt+B / Alt+←                     [38;2;200;204;211mmove one word left[0m[38;2;154;160;170m[0m
-
-  [38;2;134;139;149mIdle, composer empty[0m
-  Esc Esc                           [38;2;200;204;211mrewind to an earlier message[0m[38;2;154;160;170m[0m
-
-  [38;2;134;139;149mWhile a turn runs[0m
-  Esc / Ctrl+C                      [38;2;200;204;211minterrupt the agent[0m[38;2;154;160;170m[0m
-
-  [38;2;134;139;149mQueued messages[0m
-[38;2;154;160;170m  ↓ 18 more[0m
+  Tab                                [38;2;200;204;211mcomplete a command, path or mention[0m[38;2;154;160;170m[0m
+  Ctrl+J / Shift+Enter / Alt+Enter   [38;2;200;204;211minsert a newline[0m[38;2;154;160;170m[0m
+  Esc                                [38;2;200;204;211mclear the draft[0m[38;2;154;160;170m[0m
+  Enter                              [38;2;200;204;211msend the message[0m[38;2;154;160;170m[0m
+  ↑                                  [38;2;200;204;211mprevious prompt from history[0m[38;2;154;160;170m[0m
+  ↓ / Ctrl+N                         [38;2;200;204;211mnext prompt from history[0m[38;2;154;160;170m[0m
+  Alt+B / Alt+←                      [38;2;200;204;211mmove one word left[0m[38;2;154;160;170m[0m
+  Ctrl+Z / Ctrl+_                    [38;2;200;204;211mundo the last draft edit[0m[38;2;154;160;170m[0m
+  Alt+Z                              [38;2;200;204;211mredo the draft edit[0m[38;2;154;160;170m[0m
+  Ctrl+W / Alt+Backspace             [38;2;200;204;211mcut the word before the cursor[0m[38;2;154;160;170m[0m
+  Ctrl+U                             [38;2;200;204;211mcut to the start of the line[0m[38;2;154;160;170m[0m
+  Alt+K                              [38;2;200;204;211mcut to the end of the line[0m[38;2;154;160;170m[0m
+  Alt+D                              [38;2;200;204;211mcut the next word[0m[38;2;154;160;170m[0m
+  Ctrl+Y                             [38;2;200;204;211mpaste the last cut text[0m[38;2;154;160;170m[0m
+  Alt+Y                              [38;2;200;204;211mswap in older cut text[0m[38;2;154;160;170m[0m
+[38;2;154;160;170m  ↓ 28 more[0m
 [38;2;58;64;72m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [1mShift+Tab[0m  [38;2;200;204;211mcycle the permission mode[0m
   [38;2;154;160;170mShift+Tab — cycle Normal / Plan / Auto review / Always allow[0m
