@@ -112,6 +112,15 @@
       "firstRelease": "v0.107.16",
       "evidenceCommit": "1971bcd",
       "missing": "Disable sandbox modes and never send options.sandbox; the backend would ignore it and run commands unconfined."
+    },
+    {
+      "name": "subagent_transcripts",
+      "type": "integer",
+      "compare": "eq",
+      "value": 1,
+      "firstRelease": "v0.107.19",
+      "evidenceCommit": "pending",
+      "missing": "Keep subagents as plain tool rows: no live transcript, no /subagents endpoints and no stop button; subagent payloads lack parent_tool_call_id."
     }
   ]
 }

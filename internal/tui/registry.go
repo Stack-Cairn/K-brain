@@ -126,7 +126,8 @@ func helpTextFor(language string) string {
 	for _, hint := range []string{
 		"Shift+Tab — cycle Normal / Plan / Auto review / Always allow",
 		"Ctrl+K — clear the conversation",
-		"Ctrl+T — focus the subagents dock (↑/↓ select, Enter opens, Esc Backs out)",
+		"Ctrl+T — subagents dock: ↑/↓ select, Space preview, Enter open, Ctrl+X stop",
+		"in a subagent view: Enter steers or follows up, Ctrl+X stops, PgUp/PgDn scroll, Esc returns",
 		palHintThinking + " — toggle thinking tokens",
 		"Ctrl+E — expand the last tool result",
 		"Ctrl+J / Shift+Enter — newline",

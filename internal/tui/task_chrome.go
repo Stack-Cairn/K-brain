@@ -41,6 +41,9 @@ func taskElapsed(task agent.BackgroundTask, now time.Time) string {
 }
 
 func (m *model) taskState(task agent.BackgroundTask) (string, lipgloss.Style, string) {
+	if m.subStop[task.ID] && m.subRunning(task) {
+		return m.tr("stopping…"), errStyle, "◌"
+	}
 	if task.FollowingUp {
 		return m.tr("replying"), accentStyle, "◌"
 	}
@@ -88,12 +91,18 @@ func (m *model) taskDockRow(task agent.BackgroundTask, selected bool) string {
 		marker = "▎"
 	}
 	left := marker + " " + style.Render(icon) + " " + task.ID + "  " + taskLine(task.Description)
+	if a := m.subAct[task.ID]; a != nil && a.latest != "" && m.subRunning(task) && m.width >= 80 {
+		left += dimStyle.Render(" · " + a.latest)
+	}
 	right := style.Render(state)
-	if elapsed := taskElapsed(task, time.Now()); m.width >= 60 && elapsed != "" {
+	if a := m.subAct[task.ID]; a != nil && a.tools > 0 && m.width >= 100 {
+		right += dimStyle.Render(" · " + m.toolCount(a.tools))
+	}
+	if elapsed := taskElapsed(task, m.subNow()); m.width >= 60 && elapsed != "" {
 		right += dimStyle.Render(" · " + elapsed)
 	}
-	if m.width >= 100 && taskUsageTokens(task) > 0 {
-		right += dimStyle.Render(" · " + fmtUsage(task.SubUsage))
+	if u := m.subUsage(task); m.width >= 100 && u.PromptTokens+u.CompletionTokens > 0 {
+		right += dimStyle.Render(" · " + fmtUsage(u))
 	}
 	line := taskColumns(left, right, m.width)
 	if selected {
@@ -109,21 +118,28 @@ func (m *model) taskViewChromeRows() int {
 
 func (m *model) taskViewView() string {
 	tv := m.taskVP
-	task, _ := m.agent.Tasks().Get(tv.id)
+	task, _ := m.subTask(tv.id)
+	foreground := m.isForeground(tv.id)
 	if tv.busy {
 		task.FollowingUp = true
 	}
 	state, style, icon := m.taskState(task)
 	head := taskColumns(accentStyle.Render(icon+" "+tv.id)+"  "+taskLine(task.Description), style.Render("("+state+")"), m.width)
 	meta := taskLine(task.SubModel)
-	if elapsed := taskElapsed(task, time.Now()); elapsed != "" {
+	if foreground {
+		meta = strings.TrimPrefix(meta+" · "+m.tr("foreground"), " · ")
+	}
+	if a := m.subAct[task.ID]; a != nil && a.tools > 0 {
+		meta = strings.TrimPrefix(meta+" · "+m.toolCount(a.tools), " · ")
+	}
+	if elapsed := taskElapsed(task, m.subNow()); elapsed != "" {
 		if meta != "" {
 			meta += " · "
 		}
 		meta += elapsed
 	}
-	if taskUsageTokens(task) > 0 {
-		meta += " · " + fmtUsage(task.SubUsage)
+	if u := m.subUsage(task); u.PromptTokens+u.CompletionTokens > 0 {
+		meta += " · " + fmtUsage(u)
 	}
 	position := m.tr("latest output")
 	if !tv.vp.AtBottom() {
@@ -132,6 +148,8 @@ func (m *model) taskViewView() string {
 	meta = taskColumns(dimStyle.Render(meta), dimStyle.Render(position), m.width)
 	hint := m.tr("Esc Back")
 	switch {
+	case foreground:
+		tv.input.Placeholder = m.tr("foreground subagent — read-only; its report returns to the turn")
 	case task.Restored:
 		tv.input.Placeholder = m.tr("restored session — read-only")
 	case task.FollowingUp:
@@ -146,7 +164,7 @@ func (m *model) taskViewView() string {
 	}
 	hint += m.tr(" · PgUp/PgDn Scroll · Ctrl+End Latest")
 	input := tv.input.View()
-	if task.Restored {
+	if task.Restored || foreground {
 		input = dimStyle.Render(tv.input.Placeholder)
 	}
 	input = ansi.Truncate(input, max(m.width-chromeIndent, 1), "…")

@@ -401,21 +401,66 @@ type QuestionResolution struct {
 }
 
 type Subagent struct {
-	ID          string     `json:"id"`
-	ParentID    string     `json:"parent_id,omitempty"`
-	Description string     `json:"description"`
-	Status      string     `json:"status"`
-	Model       ModelRef   `json:"model"`
-	Attempt     int        `json:"attempt,omitempty"`
-	Report      string     `json:"report,omitempty"`
-	Error       string     `json:"error,omitempty"`
-	StartedAt   *time.Time `json:"started_at,omitempty"`
-	UpdatedAt   *time.Time `json:"updated_at,omitempty"`
-	EndedAt     *time.Time `json:"ended_at,omitempty"`
+	ID          string   `json:"id"`
+	ParentID    string   `json:"parent_id,omitempty"`
+	Description string   `json:"description"`
+	Status      string   `json:"status"`
+	Model       ModelRef `json:"model"`
+	Attempt     int      `json:"attempt,omitempty"`
+	Report      string   `json:"report,omitempty"`
+	Error       string   `json:"error,omitempty"`
+	// ParentToolCallID is the id of the parent's `subagent` tool call that
+	// started this subagent, so a client can show both as one item.
+	ParentToolCallID string `json:"parent_tool_call_id,omitempty"`
+	// Background is true for subagents started with background=true.
+	Background bool `json:"background,omitempty"`
+	// Usage, ToolCount and DurationMS cover the subagent's own requests and
+	// tool calls; DurationMS is set once it has ended.
+	Usage      *Usage     `json:"usage,omitempty"`
+	ToolCount  int        `json:"tool_count,omitempty"`
+	DurationMS int64      `json:"duration_ms,omitempty"`
+	StartedAt  *time.Time `json:"started_at,omitempty"`
+	UpdatedAt  *time.Time `json:"updated_at,omitempty"`
+	EndedAt    *time.Time `json:"ended_at,omitempty"`
 }
 
 type SubagentEvent struct {
 	Subagent Subagent `json:"subagent"`
+}
+
+// Child events record a subagent's own transcript on the parent session's
+// event stream. Every payload carries task_id (the Subagent id). Text and
+// thinking arrive in coalesced chunks; clients that do not know these types
+// ignore them.
+const (
+	EventChildText      = "trajectory.child.text"
+	EventChildThinking  = "trajectory.child.thinking"
+	EventChildSteer     = "trajectory.child.steer"
+	EventChildToolStart = "trajectory.child.tool_start"
+	EventChildToolEnd   = "trajectory.child.tool_end"
+)
+
+// ChildTextEvent is the payload of trajectory.child.text, .thinking and .steer.
+type ChildTextEvent struct {
+	TaskID string `json:"task_id"`
+	Text   string `json:"text"`
+}
+
+// SubagentList answers GET /v1/sessions/{id}/subagents.
+type SubagentList struct {
+	Subagents []Subagent `json:"subagents"`
+	LastSeq   int64      `json:"last_seq"`
+}
+
+// SubagentTranscript answers GET /v1/sessions/{id}/subagents/{task}: the
+// subagent's transcript up to LastSeq. A client continues it live with the
+// child events after LastSeq.
+type SubagentTranscript struct {
+	Subagent Subagent  `json:"subagent"`
+	Messages []Message `json:"messages"`
+	LastSeq  int64     `json:"last_seq"`
+	// Live is true while the subagent is still running in this backend.
+	Live bool `json:"live"`
 }
 
 type RunTerminal struct {

@@ -164,15 +164,24 @@ type runtimeSession struct {
 	questions        map[string]*questionWaiter
 	clientTools      map[string]*clientToolWaiter
 	eventDir         string
-	mcpActivation    *mcp.ToolActivation
-	memoryRuntime    agent.MemoryRuntime
-	runtimeErr       error
-	goal             goalRuntime
-	queue            *queueDocument
-	queueWorker      bool
-	queueDispatchID  string
+	// journal is the event journal kept open while a run streams; journalMarks
+	// are seq/offset pairs that let replay start near a cursor (event_journal.go).
+	journal         *os.File
+	journalPath     string
+	journalMarks    []journalMark
+	journalIdentity os.FileInfo
+	mcpActivation   *mcp.ToolActivation
+	memoryRuntime   agent.MemoryRuntime
+	runtimeErr      error
+	goal            goalRuntime
+	queue           *queueDocument
+	queueWorker     bool
+	queueDispatchID string
 	// wake holds background notices that arrived while no turn was running.
 	wake wakeState
+	// subagents tracks this runtime's subagents; see subagents.go.
+	subagentMu sync.Mutex
+	subagents  map[string]*liveSubagent
 }
 
 func New(opts Options) (*Server, error) {
@@ -308,6 +317,7 @@ func (s *Server) Close() error {
 		processManager := rt.processManager
 		rt.terminalManager = nil
 		rt.processManager = nil
+		rt.closeJournalLocked()
 		rt.mu.Unlock()
 		if terminalManager != nil {
 			terminalManager.CloseAll()
@@ -503,6 +513,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			s.trajectoryDetails(w, r, id, parts[2])
 			return
 		}
+	}
+	if len(parts) >= 2 && parts[1] == "subagents" {
+		s.handleSubagents(w, r, id, parts[2:])
+		return
 	}
 	if len(parts) == 1 && r.Method == http.MethodDelete {
 		s.deleteSession(w, r, id)
@@ -1118,7 +1132,7 @@ func (s *Server) wireTasks(rt *runtimeSession, ag *agent.Agent) {
 			defer func() { go s.kickWakes(rt) }()
 		}
 		model, provider, _ := strings.Cut(task.SubModel, " @ ")
-		stored := session.Task{Model: model, Provider: provider, ID: task.ID, Description: task.Description, Prompt: task.Prompt, Status: string(task.Status), Report: task.Report, StartedAt: task.StartedAt, EndedAt: task.EndedAt}
+		stored := session.Task{Model: model, Provider: provider, ID: task.ID, Description: task.Description, Prompt: task.Prompt, Status: string(task.Status), Report: task.Report, StartedAt: task.StartedAt, EndedAt: task.EndedAt, ParentToolCallID: task.ParentToolCallID}
 		if err := s.store.SaveTask(id, stored); err != nil {
 			_, _ = rt.publish(protocol.EventToolStatus, protocol.ToolStatus{Tool: "subagent", Status: "error", Message: "save task: " + err.Error()}, "")
 			return
@@ -1148,17 +1162,36 @@ func (rt *runtimeSession) taskEvent(t *agent.BackgroundTask) {
 	rt.mu.Lock()
 	runID := rt.trajectoryTaskRunLocked(t.ID)
 	rt.mu.Unlock()
+	running := t.Status == agent.TaskRunning
+	if running {
+		// Mark it live before the start is journaled so readers never see a
+		// started subagent as already over.
+		rt.subagent(t.ID, runID)
+		rt.setSubagentRunning(t.ID, true, nil)
+	} else {
+		rt.flushSubagent(t.ID)
+	}
+	rt.subagentStats(t.ID, &view)
+	if usage := protocol.FromAIUsage(&t.SubUsage); usage != nil && *usage != (protocol.Usage{}) {
+		view.Usage = usage
+	}
 	_, _ = rt.publishTrajectory(runID, typ, protocol.SubagentEvent{Subagent: view}, "")
+	if !running {
+		rt.setSubagentRunning(t.ID, false, nil)
+	}
 }
 
 func subagentView(t agent.BackgroundTask) protocol.Subagent {
-	view := storedSubagentView(session.Task{ID: t.ID, Description: t.Description, Status: string(t.Status), Report: t.Report, StartedAt: t.StartedAt, EndedAt: t.EndedAt})
+	view := storedSubagentView(session.Task{ID: t.ID, Description: t.Description, Status: string(t.Status), Report: t.Report, StartedAt: t.StartedAt, EndedAt: t.EndedAt, ParentToolCallID: t.ParentToolCallID})
 	model, provider, _ := strings.Cut(t.SubModel, " @ ")
 	view.Model = protocol.ModelRef{Provider: provider, Model: model}
 	return view
 }
 func storedSubagentView(t session.Task) protocol.Subagent {
-	view := protocol.Subagent{ID: t.ID, Description: t.Description, Status: t.Status, Report: t.Report, Model: protocol.ModelRef{Model: t.Model, Provider: t.Provider}, StartedAt: ptrTime(t.StartedAt), EndedAt: ptrTime(t.EndedAt)}
+	view := protocol.Subagent{ID: t.ID, Description: t.Description, Status: t.Status, Report: t.Report, Model: protocol.ModelRef{Model: t.Model, Provider: t.Provider}, ParentToolCallID: t.ParentToolCallID, Background: true, StartedAt: ptrTime(t.StartedAt), EndedAt: ptrTime(t.EndedAt)}
+	if !t.StartedAt.IsZero() && !t.EndedAt.IsZero() {
+		view.DurationMS = t.EndedAt.Sub(t.StartedAt).Milliseconds()
+	}
 	if t.Status == string(agent.TaskError) {
 		view.Error = t.Report
 	}
@@ -1172,38 +1205,6 @@ func ptrTime(t time.Time) *time.Time {
 	return &x
 }
 
-func (rt *runtimeSession) loadJournal(dir string) error {
-	rt.eventDir = dir
-	path := filepath.Join(dir, rt.id+".jsonl")
-	f, err := os.Open(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return rt.loadRuns(dir)
-	}
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	decoder := json.NewDecoder(f)
-	for {
-		var e protocol.Event
-		err := decoder.Decode(&e)
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return err
-		}
-		if err := e.Validate(); err != nil {
-			return err
-		}
-		rt.appendEventLocked(e)
-		if e.Seq > rt.nextSeq {
-			rt.nextSeq = e.Seq
-		}
-		rt.runID = e.RunID
-	}
-	return rt.loadRuns(dir)
-}
 func (rt *runtimeSession) loadRuns(dir string) error {
 	b, err := os.ReadFile(filepath.Join(dir, rt.id+".runs.json"))
 	if errors.Is(err, os.ErrNotExist) {
@@ -1213,16 +1214,6 @@ func (rt *runtimeSession) loadRuns(dir string) error {
 		return err
 	}
 	return json.Unmarshal(b, &rt.runs)
-}
-func (rt *runtimeSession) persistEvent(dir string, e protocol.Event) error {
-	f, err := os.OpenFile(filepath.Join(dir, rt.id+".jsonl"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	b, _ := json.Marshal(e)
-	_, err = f.Write(append(b, '\n'))
-	return err
 }
 func (rt *runtimeSession) persistRuns(dir string) error {
 	b, err := json.MarshalIndent(rt.runs, "", "  ")
@@ -1326,6 +1317,7 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, end func(),
 		end()
 		rt.runDone = true
 		rt.cancel = nil
+		rt.closeJournalLocked()
 		if rec, ok := rt.runs[in.ClientRequestID]; ok {
 			rec.Terminal = true
 			rt.runs[in.ClientRequestID] = rec

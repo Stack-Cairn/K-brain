@@ -317,6 +317,8 @@ func (s *Server) deleteSession(w http.ResponseWriter, r *http.Request, id string
 		return
 	}
 	rt.deleted = true
+	// Close the journal before its file is removed (an open file cannot be deleted on Windows).
+	rt.resetJournalLocked()
 	// Pending waits and notices must not wake a deleted session, and its
 	// background subagents must not keep working for it.
 	if rt.agent != nil {
