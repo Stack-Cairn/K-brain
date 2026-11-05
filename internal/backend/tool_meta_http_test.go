@@ -12,6 +12,8 @@ import (
 
 	"github.com/Stack-Cairn/K-brain/internal/ai"
 	"github.com/Stack-Cairn/K-brain/internal/protocol"
+	"github.com/Stack-Cairn/K-brain/internal/sandbox"
+	"github.com/Stack-Cairn/K-brain/internal/tools"
 )
 
 // callsClient answers the first user turn with the given tool calls, then "done".
@@ -108,5 +110,16 @@ func TestPermissionRequestedCarriesEditPreview(t *testing.T) {
 				t.Fatalf("redacted trajectory kept the preview: %s", redacted[0].Payload)
 			}
 		}
+	}
+}
+
+func TestToolRunInfoCarriesSandboxDenial(t *testing.T) {
+	code := 1
+	info := toolRunInfo(tools.Result{ExitCode: &code, SandboxDenial: &sandbox.Denial{Kind: "write", Path: "/w/x", SuggestedRoot: "/w"}})
+	if d := info.SandboxDenial; d == nil || *d != (protocol.SandboxDenial{Kind: "write", Path: "/w/x", SuggestedRoot: "/w"}) {
+		t.Fatalf("sandbox denial: %+v", info.SandboxDenial)
+	}
+	if info := toolRunInfo(tools.Result{ExitCode: &code}); info.SandboxDenial != nil {
+		t.Fatalf("denial without one: %+v", info.SandboxDenial)
 	}
 }

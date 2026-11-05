@@ -66,6 +66,8 @@ Landlock 只能"允许"不能"屏蔽"，因此有几处弱于 bubblewrap，并�
 
 被沙箱拦截的命令会得到 `Operation not permitted`（或只读文件系统）错误；不要用 `sudo` 绕过，需要更大权限时请用户切换模式。
 
+`bash`/`Bash` 命令失败后，K-brain 会根据退出码和输出末尾的错误（`Operation not permitted`、`Permission denied`、`Read-only file system`，以及离线时的域名解析失败）判断是否为沙箱拦截，并在工具结果末尾追加一行 `[sandbox] ...` 说明：写到了可写根之外、碰到了受保护路径或被隐藏的凭据目录，或本次运行未开网络。只有被拒绝的路径在宿主机上本来就可写、且不在可写根内时才算沙箱拦截；工作区内的普通权限错误、`/etc` 这类本来就不可写的路径不会被误报。命令本身写出了目标路径时，说明会附上建议加入的可写根（最近的已存在目录；家目录、凭据目录的上级和系统顶层目录除外），客户端在 `tool.result` 的 `sandbox_denial` 字段里拿到同样的信息。这只是提示，不会自动放宽沙箱，也不会记住任何授权。
+
 ## Computer-use
 
 启用 `computer.enabled` 后，模型可以通过工具驱动桌面；`allow`、`deny` 和 `defaultDeny` 控制应用范围。TUI 中输入 `/computer-use <task>` 执行任务，先用 `allow|deny <app>` 调整当前会话授权。

@@ -297,7 +297,7 @@ func bashTool() Tool {
 			s := TruncateTail(res.Output)
 			if isBinary([]byte(res.Output)) {
 
-				s = binaryPlaceholder("", len(res.Output))
+				s = explainSandboxDenial(ctx, binaryPlaceholder("", len(res.Output)), a.Command, WorkingDir(ctx), res)
 				if res.TimedOut {
 					return s + "\n(command timed out)", nil
 				}
@@ -314,6 +314,7 @@ func bashTool() Tool {
 					s += fmt.Sprintf("\n[full output (%d bytes): %s]", len(res.Output), path)
 				}
 			}
+			s = explainSandboxDenial(ctx, s, a.Command, WorkingDir(ctx), res)
 			if res.TimedOut {
 				return s + "\n(command timed out)", nil
 			}

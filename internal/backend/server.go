@@ -1713,7 +1713,11 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, end func(),
 
 // toolRunInfo is the display metadata of a tool result for tool.result events.
 func toolRunInfo(result tools.Result) protocol.ToolRunInfo {
-	return protocol.ToolRunInfo{ExitCode: result.ExitCode, TimedOut: result.TimedOut, DurationMs: result.DurationMs()}
+	info := protocol.ToolRunInfo{ExitCode: result.ExitCode, TimedOut: result.TimedOut, DurationMs: result.DurationMs()}
+	if d := result.SandboxDenial; d != nil {
+		info.SandboxDenial = &protocol.SandboxDenial{Kind: d.Kind, Path: d.Path, SuggestedRoot: d.SuggestedRoot}
+	}
+	return info
 }
 
 func permissionPreview(p *tools.EditPreview) *protocol.PermissionPreview {

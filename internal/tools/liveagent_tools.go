@@ -433,6 +433,7 @@ func liveagentBash(ctx context.Context, manager *liveagentProcessManager, a map[
 	if res.OutputFile != "" {
 		out += fmt.Sprintf("\n[full output (%d bytes): %s]", res.OutputBytes, res.OutputFile)
 	}
+	out = explainSandboxDenial(ctx, out, command, dir, res)
 	if err := ctx.Err(); err != nil {
 		return out, err
 	}
