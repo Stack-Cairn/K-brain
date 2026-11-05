@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Stack-Cairn/K-brain/internal/tui/tuicap"
 )
@@ -51,4 +52,46 @@ func TestPasteChipAndHistorySearch(t *testing.T) {
 	s.WaitGone("history · this directory")
 	screen = s.WaitFor("summarise log line 01")
 	t.Logf("accepted:\n%s", screen)
+}
+
+// While a turn runs, queued messages can be selected, reordered and edited
+// from the queue pane, and Enter on one interjects it.
+func TestQueuePaneEditAndSendNow(t *testing.T) {
+	slow := make([]string, 40)
+	for i := range slow {
+		slow[i] = fmt.Sprintf("streaming part %02d", i+1)
+	}
+	s := tuicap.Start(t, tuicap.Options{
+		Width: 100, Height: 30,
+		Replies: []tuicap.Reply{tuicap.Lines(150*time.Millisecond, slow...)},
+	})
+	s.WaitFor("Ask k-brain anything")
+	s.Type("start a long task")
+	s.Press(tuicap.Enter)
+	s.WaitFor("Esc to interrupt")
+
+	s.Type("then run the linter")
+	s.Press(tuicap.Enter)
+	s.Type("and update the changelog")
+	s.Press(tuicap.Enter)
+	s.WaitFor("queued (2)")
+	s.Press(tuicap.Up)
+	screen := s.WaitFor("Enter send now")
+	t.Logf("queue pane with a selection:\n%s", screen)
+
+	s.Press(tuicap.Up, tuicap.Ctrl('e'))
+	screen = s.WaitFor("editing #1")
+	t.Logf("editing a queued message:\n%s", screen)
+	s.Type(" first")
+	s.Press(tuicap.Enter)
+	s.WaitFor("then run the linter first")
+
+	s.Press(tuicap.Up, tuicap.Up, tuicap.Enter)
+	s.WaitUntil("the interjected message is sent", func(screen string) bool {
+		return len(s.Requests()) >= 2
+	})
+	reqs := s.Requests()
+	if !reqs[1].Contains("then run the linter first") {
+		t.Fatalf("the second turn should carry the interjected message: %+v", reqs[1])
+	}
 }
