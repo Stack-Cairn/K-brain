@@ -1,4 +1,4 @@
-[1m❯[0m [1mKeyboard shortcuts[0m                                                                                               [2m1/54[0m
+[1m❯[0m [1mKeyboard shortcuts[0m                                                                                               [2m1/78[0m
   [1m[Keys][0m [2m Commands [0m
   [1m/[0m [2mtype to filter[0m
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -14,6 +14,7 @@
   Ctrl+C Ctrl+C                      quit[2m[0m
   Ctrl+P                             open the command palette[2m[0m
   F2                                 open settings[2m[0m
+  Alt+↑                              focus the transcript, a block at a time[2m[0m
 
   [2mComposer[0m
   Tab                                complete a command, path or mention[2m[0m
@@ -30,8 +31,7 @@
   Alt+K                              cut to the end of the line[2m[0m
   Alt+D                              cut the next word[2m[0m
   Ctrl+Y                             paste the last cut text[2m[0m
-  Alt+Y                              swap in older cut text[2m[0m
-[2m  ↓ 28 more[0m
+[2m  ↓ 52 more[0m
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   [1mShift+Tab[0m  cycle the permission mode
   [2mShift+Tab — cycle Normal / Plan / Auto review / Always allow[0m

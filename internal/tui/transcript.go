@@ -30,6 +30,11 @@ package tui
 //		})
 //	}
 //
+// A toggle keeps b.expanded true exactly while the block shows its open
+// form: the transcript's fold keys (transcript_focus.go) read it to fold or
+// open every block at once. A kind without a toggle still folds from the
+// keyboard: b.folded cuts it to its first row and a count of the rest.
+//
 // Kind-specific data rides on the block: the generic tool fields (toolID,
 // toolName, toolArgs, toolRunning, toolFailed, live, expanded) and run, how a
 // finished tool call ran (exit status, duration, cancellation).
@@ -317,6 +322,9 @@ type block struct {
 	plain []string
 	// md keeps a reply's frozen markdown units across appends (mdstream.go).
 	md *mdCache
+	// folded cuts a kind without a toggle of its own to its first row
+	// (transcript_focus.go).
+	folded bool
 }
 
 // invalidate drops the block's render cache; call it after changing
@@ -352,6 +360,9 @@ func (b *block) linesAt(width int, ancient bool) []string {
 		b.rows = assistantRows(b.md, b.text, width)
 	default:
 		b.rows = splitRows(b.render(width))
+	}
+	if b.folded {
+		b.rows = foldedRows(b.rows)
 	}
 	b.lines = len(b.rows)
 	b.plain = nil
@@ -391,6 +402,11 @@ func (b block) render(width int) string {
 
 // toggle folds or unfolds the block and reports whether its kind folds.
 func (b *block) toggle() bool {
+	if b.folded {
+		b.folded = false
+		b.invalidate()
+		return true
+	}
 	spec, ok := blockKinds[b.kind]
 	if !ok || spec.toggle == nil || !spec.toggle(b) {
 		return false
@@ -430,6 +446,10 @@ func (m *model) appendRaw(kind blockKind, text string) {
 type transcriptState struct {
 	ix  txIndex
 	seq uint64
+	// focus is set while the transcript has the keyboard, viewer while a
+	// block is open full screen (transcript_focus.go, blockviewer.go).
+	focus  *txFocus
+	viewer *blockViewer
 }
 
 // txs is the transcript state, created on first use (models built directly
@@ -572,7 +592,7 @@ func (m *model) viewportView() string {
 		s = m.highlightSelection(s)
 	}
 
-	lines := strings.Split(s, "\n")
+	lines := m.markFocus(strings.Split(s, "\n"))
 	m.vpLead = 0
 
 	// Keep exactly the transcript rows the viewport is showing and drop only the

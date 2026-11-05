@@ -1,0 +1,24 @@
+[1m▌[0m[1m❯[0m Why does the cache miss after a resize?                                      [0m
+                                                                                
+[3;2m[7m◌[27m Thought · 2 lines[0m                                                             [0m
+[1m┃[0m[3;2m The key holds the [7mwidth[27m.[0m                                                      [0m
+[1m┃[0m[3;2m A resize changes it.[0m                                                          [0m
+                                                                                
+[1m● [0mThe cache is keyed by [1m[7mwidth[0m[7m[27m.[0m                                                  [0m
+[2m  ⋯ 4 more lines[0m                                                                [0m
+                                                                                
+[2m◆[0m [1mBash[0m  grep -n [7mwidth[27m cache.go                                                  [0m
+[2m  └ [0mcache.go:10: key := [7mwidth[27m + 0                                               [0m
+    cache.go:11: key := [7mwidth[27m + 1                                               
+    cache.go:12: key := [7mwidth[27m + 2                                               
+[2m    ⋯ +10 lines · ctrl+e[0m                                                        [0m
+                                                                                
+[1m● [0mKeying by [7mwidth[27m is intended.                                                  [0m
+
+[1m┃ transcript[0m[2m 2/6[0m[2m · thinking[0m[2m · [0m[1m"width"[0m[2m 1/7[0m  [2mn/N older/newer · / new search · Esc…[0m
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+  [1m❯ [0m[7mA[0m[2msk k-brain anything…  / commands · Shift+Tab mode · Ctrl+P menu[0m            [0m
+  [Normal]                                                  kimi-k3-fast[2m · [0m[1m✦ off[0m

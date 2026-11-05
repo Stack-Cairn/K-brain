@@ -1,0 +1,24 @@
+[1;96m▌[0m[1;96m❯[0m Why does the cache miss after a resize?                                      [0m
+                                                                                
+[3;90m[7m◌[27m Thought · 2 lines[0m                                                             [0m
+[1;96m┃[0m[3;90m The key holds the [7mwidth[27m.[0m                                                      [0m
+[1;96m┃[0m[3;90m A resize changes it.[0m                                                          [0m
+                                                                                
+[1;95m● [0mThe cache is keyed by [1m[7mwidth[0m[7m[27m.[0m                                                  [0m
+[37m  ⋯ 4 more lines[0m                                                                [0m
+                                                                                
+[90m◆[0m [1mBash[0m  [37mgrep -n [7mwidth[27m cache.go[0m                                                  [0m
+[90m  └ [0m[37mcache.go:10: key := [7mwidth[27m + 0[0m                                               [0m
+    [37mcache.go:11: key := [7mwidth[27m + 1[0m                                               [0m
+    [37mcache.go:12: key := [7mwidth[27m + 2[0m                                               [0m
+[37m    ⋯ +10 lines · ctrl+e[0m                                                        [0m
+                                                                                
+[1;95m● [0mKeying by [7mwidth[27m is intended.                                                  [0m
+
+[1;96m┃ transcript[0m[90m 2/6[0m[90m · thinking[0m[90m · [0m[1;96m"width"[0m[90m 1/7[0m  [90mn/N older/newer · / new search · Esc…[0m
+
+
+
+[90m────────────────────────────────────────────────────────────────────────────────[0m
+  [1;96m❯ [0m[7mA[0m[90msk k-brain anything…  / commands · Shift+Tab mode · Ctrl+P menu[0m            [0m
+  [100m [0m[1;37;100mNormal[0m[100m [0m                                                  [37mkimi-k3-fast[0m[90m · [0m[1;96m✦ off[0m

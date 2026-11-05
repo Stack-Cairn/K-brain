@@ -22,6 +22,10 @@ const (
 	keyDock keyContext = "dock"
 	// keyTaskView is while a subagent's own view is open.
 	keyTaskView keyContext = "taskview"
+	// keyTranscript is while the transcript has focus (Alt+↑).
+	keyTranscript keyContext = "transcript"
+	// keyViewer is while the block viewer is open.
+	keyViewer keyContext = "viewer"
 )
 
 // keyBinding is one row of the keymap.
@@ -120,6 +124,50 @@ var keymap = []keyBinding{
 	{"shift+down", keyQueue, "queueMove", ""},
 	{"esc", keyQueue, "queueDeselect", ""},
 	{"f2", keyGlobal, "settings", ""},
+	{"alt+up", keyGlobal, "focusTranscript", "Alt+↑ — focus the transcript: j/k select a block, h/l fold / open, e toggle, E fold all, v view, / find, Esc back"},
+	{"down", keyTranscript, "focusNext", ""},
+	{"j", keyTranscript, "focusNext", ""},
+	{"up", keyTranscript, "focusPrev", ""},
+	{"k", keyTranscript, "focusPrev", ""},
+	{"home", keyTranscript, "focusFirst", ""},
+	{"g", keyTranscript, "focusFirst", ""},
+	{"end", keyTranscript, "focusLast", ""},
+	{"G", keyTranscript, "focusLast", ""},
+	{"pgup", keyTranscript, "scroll", ""},
+	{"pgdown", keyTranscript, "scroll", ""},
+	{"left", keyTranscript, "fold", ""},
+	{"h", keyTranscript, "fold", ""},
+	{"right", keyTranscript, "unfold", ""},
+	{"l", keyTranscript, "unfold", ""},
+	{"enter", keyTranscript, "toggleFold", ""},
+	{"space", keyTranscript, "toggleFold", ""},
+	{"e", keyTranscript, "toggleFold", ""},
+	{"E", keyTranscript, "foldAll", ""},
+	{"v", keyTranscript, "view", ""},
+	{"/", keyTranscript, "find", ""},
+	{"n", keyTranscript, "findOlder", ""},
+	{"N", keyTranscript, "findNewer", ""},
+	{"backspace", keyTranscript, "findEdit", ""},
+	{"esc", keyTranscript, "blur", ""},
+	{"q", keyTranscript, "blur", ""},
+	{"esc", keyViewer, "viewerClose", "in the block viewer: j/k scroll, Space/PgDn page, g/G top / end, / find, n/N next / previous, Esc back"},
+	{"q", keyViewer, "viewerClose", ""},
+	{"down", keyViewer, "viewerScroll", ""},
+	{"j", keyViewer, "viewerScroll", ""},
+	{"up", keyViewer, "viewerScroll", ""},
+	{"k", keyViewer, "viewerScroll", ""},
+	{"pgdown", keyViewer, "viewerPage", ""},
+	{"space", keyViewer, "viewerPage", ""},
+	{"pgup", keyViewer, "viewerPage", ""},
+	{"home", keyViewer, "viewerTop", ""},
+	{"g", keyViewer, "viewerTop", ""},
+	{"end", keyViewer, "viewerEnd", ""},
+	{"G", keyViewer, "viewerEnd", ""},
+	{"/", keyViewer, "viewerFind", ""},
+	{"n", keyViewer, "viewerFindNext", ""},
+	{"N", keyViewer, "viewerFindPrev", ""},
+	{"enter", keyViewer, "viewerFind", ""},
+	{"backspace", keyViewer, "viewerFind", ""},
 }
 
 // keymapHelp is /help's key section: every hint in keymap order, translated

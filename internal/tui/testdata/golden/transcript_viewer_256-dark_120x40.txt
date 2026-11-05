@@ -1,0 +1,40 @@
+┃ tool output · 13 lines                                                                                             all
+  └ cache.go:10: key := width + 0
+    cache.go:11: key := width + 1
+    cache.go:12: key := width + 2
+    cache.go:13: key := width + 3
+    cache.go:14: key := width + 4
+    cache.go:15: key := width + 5
+    cache.go:16: key := width + 6
+    cache.go:17: key := width + 7
+    cache.go:18: key := width + 8
+    cache.go:19: key := width + 9
+    cache.go:20: key := width + 10
+    cache.go:21: key := width + 11
+    cache.go:99: // the stale entry is dropped here
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+"width" 1/12                                                                   n/N next/previous · j/k scroll · Esc back

@@ -27,6 +27,8 @@ func busyCmd(text string) bool {
 		return len(fields) == 1 || fields[1] == "clear" || fields[1] == "rounds"
 	case "/settings", "/extensions", "/memory":
 		return true
+	case "/find":
+		return true
 	}
 	return false
 }
@@ -293,6 +295,8 @@ func (m *model) command(text string) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.openRewind()
+	case "/find":
+		return m.findCommand(strings.TrimSpace(strings.TrimPrefix(text, "/find")))
 	case "/copy":
 		return m, m.copyCommand(strings.TrimSpace(strings.TrimPrefix(text, "/copy")))
 	case "/diff":

@@ -1,4 +1,4 @@
-❯ Keyboard shortcuts                                                                                               1/54
+❯ Keyboard shortcuts                                                                                               1/78
   [Keys]  Commands
   / type to filter
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -14,6 +14,7 @@
   Ctrl+C Ctrl+C                      quit
   Ctrl+P                             open the command palette
   F2                                 open settings
+  Alt+↑                              focus the transcript, a block at a time
 
   Composer
   Tab                                complete a command, path or mention
@@ -30,8 +31,7 @@
   Alt+K                              cut to the end of the line
   Alt+D                              cut the next word
   Ctrl+Y                             paste the last cut text
-  Alt+Y                              swap in older cut text
-  ↓ 28 more
+  ↓ 52 more
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   Shift+Tab  cycle the permission mode
   Shift+Tab — cycle Normal / Plan / Auto review / Always allow

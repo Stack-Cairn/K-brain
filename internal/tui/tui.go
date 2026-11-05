@@ -1003,6 +1003,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.key(msg)
 
 	case tea.MouseMsg:
+		if r, cmd, ok := m.transcriptMouse(msg); ok {
+			return r, cmd
+		}
 
 		if msg.Shift {
 			return m, nil

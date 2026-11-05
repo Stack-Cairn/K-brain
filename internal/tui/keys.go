@@ -41,6 +41,10 @@ func (m *model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.surfaceKey(msg)
 	}
 
+	if r, cmd, ok := m.transcriptKey(msg); ok {
+		return r, cmd
+	}
+
 	if r, cmd, ok := m.composerPreKey(msg); ok {
 		return r, cmd
 	}
