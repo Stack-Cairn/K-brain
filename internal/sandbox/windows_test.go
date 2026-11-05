@@ -18,6 +18,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
@@ -122,6 +123,18 @@ func runHelper(args []string) error {
 		for _, key := range args[1:] {
 			fmt.Printf("%s=%s\n", key, os.Getenv(key))
 		}
+		return nil
+	case "desktop":
+		// Prints the command's desktop and opens the named one.
+		h, _, _ := procGetThreadDesktop.Call(uintptr(windows.GetCurrentThreadId()))
+		own, _ := userObjectName(h)
+		fmt.Println("DESKTOP=" + own)
+		name, _ := windows.UTF16PtrFromString(args[1])
+		desk, _, callErr := procOpenDesktopW.Call(uintptr(unsafe.Pointer(name)), 0, 0, 0x0001|0x0040|0x0100) // read objects, enumerate, switch
+		if desk == 0 {
+			return callErr
+		}
+		procCloseDesktop.Call(desk)
 		return nil
 	case "user":
 		u, err := windows.GetCurrentProcessToken().GetTokenUser()

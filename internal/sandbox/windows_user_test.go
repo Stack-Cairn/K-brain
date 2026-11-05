@@ -321,6 +321,24 @@ func TestWindowsSandboxUserAdminCycle(t *testing.T) {
 		}
 	})
 
+	t.Run("PrivateDesktop", func(t *testing.T) {
+		h, _, _ := procGetProcessWindowStation.Call()
+		if station, _ := userObjectName(h); !strings.EqualFold(station, "WinSta0") {
+			t.Skipf("the test runs on window station %q, where commands share the launcher's desktop", station)
+		}
+		d, _, _ := procGetThreadDesktop.Call(uintptr(windows.GetCurrentThreadId()))
+		own, err := userObjectName(d)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, p := range []*Policy{online, offline} {
+			out, ok := helper(t, p, "desktop", own)
+			if ok || !strings.Contains(out, "DESKTOP=KBrainSbx-") {
+				t.Errorf("network=%v command is not confined to a private desktop or opened %q: %s", p.Network, own, out)
+			}
+		}
+	})
+
 	t.Run("OnlineRun", func(t *testing.T) {
 		if out, ok := helper(t, online, "write", filepath.Join(rootA, "online.txt")); !ok {
 			t.Fatalf("online write in the workspace failed: %s", out)
@@ -600,17 +618,12 @@ func diagnoseSandboxUser(t *testing.T) {
 		return
 	}
 	root := workspace(t)
-	for _, run := range []struct {
-		variant string
-		network bool
-	}{{"1", true}, {"1,stagedefault", true}, {"1,stagedefault", false}, {"1,stagedefault,everyone", true}, {"1,everyone,winstaall", true}, {"1,defaultdesk", true}, {"1,defaultdesk", false}} {
-		network := run.network
-		t.Logf("diagnosis: variant %s network=%v", run.variant, network)
+	for _, network := range []bool{false, true} {
 		p := workspacePolicy(root)
 		p.Network = network
-		cmd := exec.Command(cmdExe(), "/d", "/c", "whoami /all & cd & echo x>diag.txt & icacls .")
+		cmd := exec.Command(cmdExe(), "/d", "/c", "%SystemRoot%\\System32\\whoami.exe /all & cd & echo x>diag.txt & icacls .")
 		cmd.Dir = root
-		cmd.Env = append(os.Environ(), traceEnv+"="+run.variant)
+		cmd.Env = append(os.Environ(), traceEnv+"=1")
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		wrapped, err := p.wrapSandboxUserWith(ctx, cmd, root, st, false)
 		if err != nil {

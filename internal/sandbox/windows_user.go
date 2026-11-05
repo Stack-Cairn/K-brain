@@ -78,6 +78,8 @@ var (
 	procCreateRestrictedToken   = modadvapi32.NewProc("CreateRestrictedToken")
 	procCreateDesktopW          = moduser32.NewProc("CreateDesktopW")
 	procCloseDesktop            = moduser32.NewProc("CloseDesktop")
+	procOpenDesktopW            = moduser32.NewProc("OpenDesktopW")
+	procGetThreadDesktop        = moduser32.NewProc("GetThreadDesktop")
 	procOpenWindowStationW      = moduser32.NewProc("OpenWindowStationW")
 	procCloseWindowStation      = moduser32.NewProc("CloseWindowStation")
 )
@@ -691,19 +693,11 @@ func userLaunch(encoded string) (uint32, error) {
 	if spec.Offline {
 		grantees = append(grantees, st.OfflineGroup.SID)
 	}
-	variant := os.Getenv(traceEnv)
-	desktop, closeDesktop := "", func() {}
-	if !strings.Contains(variant, "defaultdesk") {
-		desktop, closeDesktop, err = privateDesktop(grantees, strings.Contains(variant, "winstaall"), strings.Contains(variant, "everyone"))
-		if err != nil {
-			return 0, err
-		}
+	desktop, closeDesktop, err := privateDesktop(grantees)
+	if err != nil {
+		return 0, err
 	}
 	defer closeDesktop()
-	stageDesktop := desktop
-	if strings.Contains(variant, "stagedefault") {
-		stageDesktop = ""
-	}
 	stage, err := encodeJSON(stageSpec{Program: spec.Program, CmdLine: spec.CmdLine, Dir: spec.Dir, Offline: spec.Offline, Restrict: spec.Restrict, Desktop: desktop})
 	if err != nil {
 		return 0, err
@@ -724,13 +718,11 @@ func userLaunch(encoded string) (uint32, error) {
 	if err != nil {
 		return 0, err
 	}
-	var desktopName *uint16
-	if stageDesktop != "" {
-		desktopName, _ = windows.UTF16PtrFromString(stageDesktop)
-	}
+	// Stage two starts on the launcher's desktop, which the secondary logon
+	// service grants it (it does not come up on a desktop named here); it
+	// withdraws that grant and starts the command on the private desktop.
 	si := windows.StartupInfo{
 		Cb:         uint32(unsafe.Sizeof(windows.StartupInfo{})),
-		Desktop:    desktopName,
 		Flags:      windows.STARTF_USESTDHANDLES | startfUseShowWindow,
 		ShowWindow: windows.SW_HIDE,
 		StdInput:   stdio[0],
@@ -754,9 +746,6 @@ func userLaunch(encoded string) (uint32, error) {
 	}
 	var pi windows.ProcessInformation
 	flags := uint32(windows.CREATE_SUSPENDED | windows.CREATE_UNICODE_ENVIRONMENT | windows.CREATE_DEFAULT_ERROR_MODE)
-	if strings.Contains(variant, "nowindow") {
-		flags |= windows.CREATE_NO_WINDOW
-	}
 	r, _, callErr := procCreateProcessWithLogonW.Call(
 		uintptr(unsafe.Pointer(user)), uintptr(unsafe.Pointer(domain)), uintptr(unsafe.Pointer(pw)), logonWithNoProfile,
 		uintptr(unsafe.Pointer(app)), uintptr(unsafe.Pointer(&cmdLine[0])),
@@ -843,7 +832,7 @@ func gitSafeDirectoryEnv(env []string, dirs []string) []string {
 // token) the desktop and the access to the window station that a process
 // needs to start. On other window stations (services, CI) the account inherits the
 // launcher's desktop, which the secondary logon service grants it.
-func privateDesktop(grantees []string, all, everyone bool) (string, func(), error) {
+func privateDesktop(grantees []string) (string, func(), error) {
 	noop := func() {}
 	winsta, _, callErr := procGetProcessWindowStation.Call()
 	if winsta == 0 {
@@ -857,7 +846,7 @@ func privateDesktop(grantees []string, all, everyone bool) (string, func(), erro
 		return "", noop, nil
 	}
 	for _, sid := range grantees {
-		if err := grantWindowStation(station, sid, all); err != nil {
+		if err := grantWindowStation(station, sid); err != nil {
 			return "", noop, fmt.Errorf("let the sandbox account use the window station: %w", err)
 		}
 	}
@@ -868,9 +857,6 @@ func privateDesktop(grantees []string, all, everyone bool) (string, func(), erro
 	sddl := fmt.Sprintf("D:P(A;;GA;;;SY)(A;;GA;;;%s)", userSID)
 	for _, sid := range grantees {
 		sddl += fmt.Sprintf("(A;;GA;;;%s)", sid)
-	}
-	if everyone {
-		sddl += "(A;;GA;;;WD)"
 	}
 	sd, err := windows.SecurityDescriptorFromString(sddl)
 	if err != nil {
@@ -889,7 +875,7 @@ func privateDesktop(grantees []string, all, everyone bool) (string, func(), erro
 // grantWindowStation adds an entry for accountSID to the window station's
 // DACL unless it has one. The window station lives as long as the user's
 // logon session, so the entry goes with it.
-func grantWindowStation(station, accountSID string, all bool) error {
+func grantWindowStation(station, accountSID string) error {
 	name, _ := windows.UTF16PtrFromString(station)
 	h, _, callErr := procOpenWindowStationW.Call(uintptr(unsafe.Pointer(name)), 0, windows.READ_CONTROL|windows.WRITE_DAC)
 	if h == 0 {
@@ -904,11 +890,7 @@ func grantWindowStation(station, accountSID string, all bool) error {
 	if err != nil {
 		return err
 	}
-	access := uint32(winstaSandboxAccess)
-	if all {
-		access = 0x37f
-	}
-	want, err := newACE(accessAllowedACEType, 0, access, accountSID)
+	want, err := newACE(accessAllowedACEType, 0, winstaSandboxAccess, accountSID)
 	if err != nil {
 		return err
 	}
@@ -921,12 +903,44 @@ func grantWindowStation(station, accountSID string, all bool) error {
 		}
 	}
 	sid, _ := windows.StringToSid(accountSID)
-	acl, err := windows.ACLFromEntries([]windows.EXPLICIT_ACCESS{{AccessPermissions: windows.ACCESS_MASK(access), AccessMode: windows.GRANT_ACCESS,
+	acl, err := windows.ACLFromEntries([]windows.EXPLICIT_ACCESS{{AccessPermissions: winstaSandboxAccess, AccessMode: windows.GRANT_ACCESS,
 		Trustee: windows.TRUSTEE{TrusteeForm: windows.TRUSTEE_IS_SID, TrusteeValue: windows.TrusteeValueFromSID(sid)}}}, dacl)
 	if err != nil {
 		return err
 	}
 	return windows.SetSecurityInfo(windows.Handle(h), windows.SE_WINDOW_OBJECT, windows.DACL_SECURITY_INFORMATION, nil, nil, acl, nil)
+}
+
+// withdrawDesktopGrant removes the entries for the account and its logon
+// session that the secondary logon service added to stage two's desktop (the
+// user's), so that the command, which shares the logon session, cannot open
+// it and send input to the user's windows.
+func withdrawDesktopGrant(logon, userSID string) error {
+	h, _, callErr := procGetThreadDesktop.Call(uintptr(windows.GetCurrentThreadId()))
+	if h == 0 {
+		return fmt.Errorf("stage two's desktop: %w", callErr)
+	}
+	name, err := userObjectName(h)
+	if err != nil {
+		return err
+	}
+	n, _ := windows.UTF16PtrFromString(name)
+	desk, _, callErr := procOpenDesktopW.Call(uintptr(unsafe.Pointer(n)), 0, 0, windows.READ_CONTROL|windows.WRITE_DAC)
+	if desk == 0 {
+		return fmt.Errorf("open stage two's desktop: %w", callErr)
+	}
+	defer procCloseDesktop.Call(desk)
+	d, err := readObjectDACL(windows.Handle(desk), windows.SE_WINDOW_OBJECT)
+	if err != nil {
+		return err
+	}
+	if d.null || !d.remove(func(a rawACE) bool { sid := a.sid(); return sid == logon || sid == userSID }) {
+		return nil
+	}
+	if err := writeDACL(windows.Handle(desk), d); err != nil {
+		return fmt.Errorf("withdraw the sandbox account's access to the desktop: %w", err)
+	}
+	return nil
 }
 
 // runUserStage is stage two, run as the sandbox account.
@@ -969,6 +983,11 @@ func userStage() (uint32, error) {
 	}
 	if err := hardenStage(self, userSID); err != nil {
 		return 0, err
+	}
+	if spec.Desktop != "" {
+		if err := withdrawDesktopGrant(logon, userSID); err != nil {
+			return 0, err
+		}
 	}
 	var token windows.Token
 	if spec.Offline {
