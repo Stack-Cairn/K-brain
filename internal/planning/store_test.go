@@ -243,12 +243,15 @@ func TestReminderLeaseAndStaleAcknowledgment(t *testing.T) {
 	}
 }
 func TestSubscriptionRefreshWithoutDesktop(t *testing.T) {
+	// The refresh keeps events from the last 30 days onward, so the fixture is
+	// dated relative to now rather than pinned to a day that eventually ages out.
+	start := time.Now().UTC().Add(24 * time.Hour).Truncate(time.Hour)
 	feed := `BEGIN:VCALENDAR
 VERSION:2.0
 BEGIN:VEVENT
 UID:test-feed
-DTSTART:20261006T100000Z
-DTEND:20261006T110000Z
+DTSTART:` + start.Format("20060102T150405Z") + `
+DTEND:` + start.Add(time.Hour).Format("20060102T150405Z") + `
 SUMMARY:Subscription event
 END:VEVENT
 END:VCALENDAR
