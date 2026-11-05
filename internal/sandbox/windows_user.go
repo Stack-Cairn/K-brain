@@ -115,6 +115,7 @@ type stageSpec struct {
 	Dir      string   `json:"dir"`
 	Offline  bool     `json:"offline"`
 	Restrict []string `json:"restrict,omitempty"`
+	Desktop  string   `json:"desktop,omitempty"`
 }
 
 // traceEnv names a directory where both launch stages append progress
@@ -677,16 +678,6 @@ func userLaunch(encoded string) (uint32, error) {
 			_ = windows.CloseHandle(h)
 		}
 	}()
-	stage, err := encodeJSON(stageSpec{Program: spec.Program, CmdLine: spec.CmdLine, Dir: spec.Dir, Offline: spec.Offline, Restrict: spec.Restrict})
-	if err != nil {
-		return 0, err
-	}
-	env := confinedEnv(os.Environ(), spec.Temp)
-	env = append(gitSafeDirectoryEnv(env, spec.SafeDirs), stageSpecEnv+"="+stage)
-	block, err := environmentBlock(env)
-	if err != nil {
-		return 0, err
-	}
 	stdio, err := launcherStdio()
 	if err != nil {
 		return 0, err
@@ -703,12 +694,26 @@ func userLaunch(encoded string) (uint32, error) {
 	variant := os.Getenv(traceEnv)
 	desktop, closeDesktop := "", func() {}
 	if !strings.Contains(variant, "defaultdesk") {
-		desktop, closeDesktop, err = privateDesktop(grantees, strings.Contains(variant, "winstaall"))
+		desktop, closeDesktop, err = privateDesktop(grantees, strings.Contains(variant, "winstaall"), strings.Contains(variant, "everyone"))
 		if err != nil {
 			return 0, err
 		}
 	}
 	defer closeDesktop()
+	stageDesktop := desktop
+	if strings.Contains(variant, "stagedefault") {
+		stageDesktop = ""
+	}
+	stage, err := encodeJSON(stageSpec{Program: spec.Program, CmdLine: spec.CmdLine, Dir: spec.Dir, Offline: spec.Offline, Restrict: spec.Restrict, Desktop: desktop})
+	if err != nil {
+		return 0, err
+	}
+	env := confinedEnv(os.Environ(), spec.Temp)
+	env = append(gitSafeDirectoryEnv(env, spec.SafeDirs), stageSpecEnv+"="+stage)
+	block, err := environmentBlock(env)
+	if err != nil {
+		return 0, err
+	}
 	job, err := confinementJob()
 	if err != nil {
 		return 0, err
@@ -720,8 +725,8 @@ func userLaunch(encoded string) (uint32, error) {
 		return 0, err
 	}
 	var desktopName *uint16
-	if desktop != "" {
-		desktopName, _ = windows.UTF16PtrFromString(desktop)
+	if stageDesktop != "" {
+		desktopName, _ = windows.UTF16PtrFromString(stageDesktop)
 	}
 	si := windows.StartupInfo{
 		Cb:         uint32(unsafe.Sizeof(windows.StartupInfo{})),
@@ -838,7 +843,7 @@ func gitSafeDirectoryEnv(env []string, dirs []string) []string {
 // token) the desktop and the access to the window station that a process
 // needs to start. On other window stations (services, CI) the account inherits the
 // launcher's desktop, which the secondary logon service grants it.
-func privateDesktop(grantees []string, all bool) (string, func(), error) {
+func privateDesktop(grantees []string, all, everyone bool) (string, func(), error) {
 	noop := func() {}
 	winsta, _, callErr := procGetProcessWindowStation.Call()
 	if winsta == 0 {
@@ -863,6 +868,9 @@ func privateDesktop(grantees []string, all bool) (string, func(), error) {
 	sddl := fmt.Sprintf("D:P(A;;GA;;;SY)(A;;GA;;;%s)", userSID)
 	for _, sid := range grantees {
 		sddl += fmt.Sprintf("(A;;GA;;;%s)", sid)
+	}
+	if everyone {
+		sddl += "(A;;GA;;;WD)"
 	}
 	sd, err := windows.SecurityDescriptorFromString(sddl)
 	if err != nil {
@@ -981,7 +989,7 @@ func userStage() (uint32, error) {
 	return runConfined(confinedProcess{
 		program: spec.Program, cmdLine: spec.CmdLine, dir: spec.Dir, env: env,
 		stdin: stdio[0], stdout: stdio[1], stderr: stdio[2],
-		token: token, inheritDesktop: true,
+		token: token, inheritDesktop: true, desktop: spec.Desktop, inJob: true,
 	})
 }
 

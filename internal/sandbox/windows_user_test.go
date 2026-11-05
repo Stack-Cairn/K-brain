@@ -603,7 +603,7 @@ func diagnoseSandboxUser(t *testing.T) {
 	for _, run := range []struct {
 		variant string
 		network bool
-	}{{"1", false}, {"1", true}, {"1,nowindow", true}, {"1,defaultdesk", true}, {"1,winstaall", true}, {"1,nowindow,defaultdesk", true}, {"1,nowindow,winstaall", false}, {"1,defaultdesk", false}} {
+	}{{"1", true}, {"1,stagedefault", true}, {"1,stagedefault", false}, {"1,stagedefault,everyone", true}, {"1,everyone,winstaall", true}, {"1,defaultdesk", true}, {"1,defaultdesk", false}} {
 		network := run.network
 		t.Logf("diagnosis: variant %s network=%v", run.variant, network)
 		p := workspacePolicy(root)

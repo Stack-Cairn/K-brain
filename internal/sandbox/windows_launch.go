@@ -101,8 +101,13 @@ type confinedProcess struct {
 	stdin, stdout, stderr windows.Handle
 	// token is the command's token; zero means the low-integrity token.
 	token windows.Token
-	// inheritDesktop starts the command on the launcher's desktop.
+	// inheritDesktop starts the command on the launcher's desktop, or on
+	// desktop when that is set.
 	inheritDesktop bool
+	desktop        string
+	// inJob leaves the command in the launcher's job, which it inherits:
+	// a job with UI restrictions cannot be nested in another.
+	inJob bool
 }
 
 const (
@@ -139,17 +144,19 @@ func runConfined(p confinedProcess) (uint32, error) {
 		}
 		defer token.Close()
 	}
-	desktop := ""
+	desktop := p.desktop
 	if !p.inheritDesktop {
 		if desktop, err = sandboxDesktop(); err != nil {
 			return 0, err
 		}
 	}
-	job, err := confinementJob()
-	if err != nil {
-		return 0, err
+	var job windows.Handle
+	if !p.inJob {
+		if job, err = confinementJob(); err != nil {
+			return 0, err
+		}
+		defer windows.CloseHandle(job)
 	}
-	defer windows.CloseHandle(job)
 
 	handles := make([]windows.Handle, 0, 3)
 	for _, h := range []windows.Handle{p.stdin, p.stdout, p.stderr} {
@@ -169,8 +176,10 @@ func runConfined(p confinedProcess) (uint32, error) {
 		return 0, fmt.Errorf("handle list: %w", err)
 	}
 	jobs := []windows.Handle{job}
-	if err := attrs.Update(procThreadAttributeJobList, unsafe.Pointer(&jobs[0]), unsafe.Sizeof(jobs[0])); err != nil {
-		return 0, fmt.Errorf("job list: %w", err)
+	if job != 0 {
+		if err := attrs.Update(procThreadAttributeJobList, unsafe.Pointer(&jobs[0]), unsafe.Sizeof(jobs[0])); err != nil {
+			return 0, fmt.Errorf("job list: %w", err)
+		}
 	}
 
 	var desktopName *uint16
