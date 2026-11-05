@@ -605,7 +605,7 @@ func blockLabel(b *block) string {
 		return "thinking"
 	case blockToolRun, blockToolQueued:
 		return "tool call"
-	case blockTool:
+	case blockTool, blockHostedSearch:
 		return "tool output"
 	}
 	return "note"

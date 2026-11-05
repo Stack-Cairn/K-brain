@@ -4,10 +4,13 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Stack-Cairn/K-brain/internal/tools"
 )
 
 var altUp = tea.KeyMsg{Type: tea.KeyUp, Alt: true}
@@ -21,7 +24,7 @@ func focusModel(w, h int) *model {
 	m.appendRaw(blockUser, "Why does the cache miss after a resize?")
 	m.blocks = append(m.blocks, block{kind: blockThinking, text: "The key holds the width.\nA resize changes it.", thought: &thinkMeta{}})
 	m.appendAssistantBlock("The cache is keyed by **width**.\n\nA resize changes the width, so every entry misses once.\n\nAfter that the new width is cached again.")
-	m.blocks = append(m.blocks, block{kind: blockToolRun, text: toolHeaderRow("bash", `{"command":"grep -n width cache.go"}`, false), toolName: "bash"})
+	m.blocks = append(m.blocks, block{kind: blockToolRun, text: toolHeaderRow("bash", `{"command":"grep -n width cache.go"}`, false), toolName: "bash", toolArgs: `{"command":"grep -n width cache.go"}`})
 	var out []string
 	for i := range 12 {
 		out = append(out, fmt.Sprintf("cache.go:%d: key := width + %d", 10+i, i))
@@ -224,7 +227,7 @@ func TestFindStepsThroughMatches(t *testing.T) {
 // A match in a folded block's hidden text opens the block.
 func TestFindOpensFoldedMatch(t *testing.T) {
 	m := focusModel(80, 60)
-	m.command("/find stale entry")
+	m.command("/find width + 5")
 	res := m.focused()
 	if res == nil || res.kind != blockTool || !res.expanded {
 		t.Fatalf("the match in the folded output did not open it: %+v", res)
@@ -359,5 +362,74 @@ func TestBlockViewerGivesWayToDialogs(t *testing.T) {
 	m.permDialog = &permDialog{}
 	if _, ok := m.blockViewerView(); ok {
 		t.Fatal("the viewer hides a pending approval")
+	}
+}
+
+// Focus and folding go through the tool renderers' own toggles: a verb
+// group opens to its calls, an edit's diff to every line, and E covers both.
+func TestFocusFoldsToolGroupsAndDiffs(t *testing.T) {
+	m := compactCmdModel()
+	m.Update(mkWinSize(100, 60))
+	clock := time.Now()
+	s := toolStage{m: m, clock: &clock}
+	m.appendRaw(blockUser, "fix the status flag")
+	s.call("r1", "read", `{"path":"a.go"}`, 0, "1\n2", &tools.Result{})
+	s.call("r2", "read", `{"path":"b.go"}`, 0, "1\n2", &tools.Result{})
+	var diff strings.Builder
+	for i := range 30 {
+		fmt.Fprintf(&diff, "%d - old line %d\n%d + new line %d\n", 40+i, i, 40+i, i)
+	}
+	s.call("e1", "edit", `{"path":"status.go","old_string":"x","new_string":"y"}`, 0,
+		"Replaced 1 occurrence(s) in status.go\n```diff\n"+strings.TrimSuffix(diff.String(), "\n")+"\n```", &tools.Result{})
+	m.appendAssistantBlock("Done.")
+	m.refreshVP()
+	m.layout()
+	m.View()
+
+	var group, edit *block
+	for i := range m.blocks {
+		b := &m.blocks[i]
+		if toolGroupBlock(b) {
+			group = b
+		}
+		if b.kind == blockTool && strings.Contains(b.text, "```diff") {
+			edit = b
+		}
+	}
+	if group == nil || edit == nil {
+		t.Fatalf("no group (%v) or diff (%v) block", group != nil, edit != nil)
+	}
+
+	m = keys(t, m, "alt+up")
+	for m.focused() != edit {
+		before := m.focused()
+		m = keys(t, m, "k")
+		if m.focused() == before {
+			t.Fatal("never reached the diff")
+		}
+	}
+	folded := edit.height()
+	m = keys(t, m, "l")
+	if !edit.expanded || edit.height() <= folded || !strings.Contains(ansi.Strip(edit.renderAt(m.width)), "new line 29") {
+		t.Fatalf("l did not open the diff: %d -> %d rows", folded, edit.height())
+	}
+	for m.focused() != group {
+		m = keys(t, m, "k")
+	}
+	m = keys(t, m, "l")
+	if !group.expanded || !strings.Contains(ansi.Strip(group.renderAt(m.width)), "Read  b.go") {
+		t.Fatal("l did not open the group")
+	}
+	m = keys(t, m, "E")
+	if group.expanded || edit.expanded {
+		t.Fatalf("E left the group (%v) or diff (%v) open", group.expanded, edit.expanded)
+	}
+	m = keys(t, m, "E")
+	if !group.expanded || !edit.expanded {
+		t.Fatal("second E did not open both")
+	}
+	m.command("/find new line 17")
+	if m.focused() != edit {
+		t.Fatalf("/find focused %v", m.focused().kind)
 	}
 }

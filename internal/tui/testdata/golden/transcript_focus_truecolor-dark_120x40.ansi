@@ -10,14 +10,14 @@
 [38;2;134;139;149m◆[0m [1mBash[0m  [38;2;200;204;211mgrep -n [7mwidth[27m cache.go[0m                                                                                          [0m
 [38;2;134;139;149m  └ [0m[38;2;200;204;211mcache.go:10: key := [7mwidth[27m + 0[0m                                                                                       [0m
     [38;2;200;204;211mcache.go:11: key := [7mwidth[27m + 1[0m                                                                                       [0m
-    [38;2;200;204;211mcache.go:12: key := [7mwidth[27m + 2[0m                                                                                       [0m
-[38;2;154;160;170m    ⋯ +10 lines · ctrl+e[0m                                                                                                [0m
+[38;2;154;160;170m    ⋯ +8 lines · ctrl+e[0m                                                                                                 [0m
+    [38;2;200;204;211mcache.go:20: key := [7mwidth[27m + 10[0m                                                                                      [0m
+    [38;2;200;204;211mcache.go:21: key := [7mwidth[27m + 11[0m                                                                                      [0m
+    [38;2;200;204;211mcache.go:99: // the stale entry is dropped here[0m                                                                     [0m
                                                                                                                         
 [1;38;2;177;140;255m● [0mKeying by [7mwidth[27m is intended.                                                                                          [0m
 
-[1;38;2;47;191;160m┃ transcript[0m[38;2;134;139;149m 2/6[0m[38;2;134;139;149m · thinking[0m[38;2;134;139;149m · [0m[1;38;2;47;191;160m"width"[0m[38;2;134;139;149m 1/7[0m                                      [38;2;134;139;149mn/N older/newer · / new search · Esc back[0m
-
-
+[1;38;2;47;191;160m┃ transcript[0m[38;2;134;139;149m 2/6[0m[38;2;134;139;149m · thinking[0m[38;2;134;139;149m · [0m[1;38;2;47;191;160m"width"[0m[38;2;134;139;149m 1/8[0m                                      [38;2;134;139;149mn/N older/newer · / new search · Esc back[0m
 
 
 

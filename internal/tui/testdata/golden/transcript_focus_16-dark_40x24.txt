@@ -1,4 +1,3 @@
-▌❯ Why does the cache miss after a
 ▌  resize?
 
 ◌ Thought · 2 lines
@@ -11,14 +10,15 @@
 ◆ Bash  grep -n width cache.go
   └ cache.go:10: key := width + 0
     cache.go:11: key := width + 1
-    cache.go:12: key := width + 2
-    ⋯ +10 lines · ctrl+e
+    ⋯ +8 lines · ctrl+e
+    cache.go:20: key := width + 10
+    cache.go:21: key := width + 11
+    cache.go:99: // the stale entry is
+    dropped here
 
 ● Keying by width is intended.
 
 ┃ transcript 2/6 · thinking · "width" 1…
-
-
 ────────────────────────────────────────
   ❯ Ask k-brain anything…  / commands ·
    Normal           kimi-k3-fast · ✦ off
