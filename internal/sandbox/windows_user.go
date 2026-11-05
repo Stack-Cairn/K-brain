@@ -69,11 +69,15 @@ const (
 	// CreateProcessWithLogonW limits the command line to 1024 characters.
 	stageSpecEnv = "K_BRAIN_SANDBOX_STAGE"
 
-	logonWithNoProfile    = 0
-	startfUseShowWindow   = 0x1
-	seGroupLogonID        = 0xC0000000
-	disableMaxPrivilege   = 0x1
-	winstaSandboxAccess   = 0x1 | 0x2 | 0x20 | 0x100 // enumerate desktops, read attributes, global atoms, enumerate
+	logonWithNoProfile  = 0
+	startfUseShowWindow = 0x1
+	seGroupLogonID      = 0xC0000000
+	disableMaxPrivilege = 0x1
+	// winstaSandboxAccess is WINSTA_ALL_ACCESS, what the logon session has
+	// and what a process needs to connect to a desktop of the station; the
+	// job's UI restrictions keep the command from the clipboard, global
+	// atoms, new desktops and logging off.
+	winstaSandboxAccess   = 0x37f
 	desktopGenericAll     = 0x10000000
 	th32csSnapThread      = 0x4
 	tokenAdjustDefaultDCL = windows.TOKEN_ADJUST_DEFAULT

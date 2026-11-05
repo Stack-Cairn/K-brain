@@ -3,8 +3,11 @@
 package sandbox
 
 import (
+	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 	"syscall"
 	"unsafe"
 
@@ -124,12 +127,22 @@ type fwpmFilter0 struct {
 	effectiveWeight     fwpValue0
 }
 
+// mustGUID parses "{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}" without
+// windows.GUIDFromString, which loads ole32 (and with it user32): the
+// package's variables are set in every sandbox launcher stage, and a stage
+// must not connect to a desktop before it needs one.
 func mustGUID(s string) windows.GUID {
-	g, err := windows.GUIDFromString(s)
-	if err != nil {
-		panic(err)
+	digits := strings.ReplaceAll(strings.Trim(s, "{}"), "-", "")
+	b, err := hex.DecodeString(digits)
+	if err != nil || len(b) != 16 || len(s) != 38 {
+		panic("invalid GUID " + s)
 	}
-	return g
+	return windows.GUID{
+		Data1: binary.BigEndian.Uint32(b[0:4]),
+		Data2: binary.BigEndian.Uint16(b[4:6]),
+		Data3: binary.BigEndian.Uint16(b[6:8]),
+		Data4: [8]byte(b[8:16]),
+	}
 }
 
 var (

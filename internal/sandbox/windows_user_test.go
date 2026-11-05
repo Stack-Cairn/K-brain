@@ -41,6 +41,18 @@ func TestWindowsWFPStructLayout(t *testing.T) {
 	}
 }
 
+func TestWindowsMustGUID(t *testing.T) {
+	for _, s := range []string{"{af043a0a-b34d-4f86-979c-c90371af6e66}", "{00000000-0000-0000-0000-000000000001}", "{FFFFFFFF-1234-5678-9ABC-DEF012345678}"} {
+		want, err := windows.GUIDFromString(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := mustGUID(s); got != want {
+			t.Errorf("mustGUID(%s) = %v, want %v", s, got, want)
+		}
+	}
+}
+
 func TestWindowsGitSafeDirectoryEnv(t *testing.T) {
 	env := []string{"PATH=x", "GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=core.editor", "GIT_CONFIG_VALUE_0=vi"}
 	got := gitSafeDirectoryEnv(env, []string{`C:\src\app`})
