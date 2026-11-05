@@ -19,7 +19,6 @@ import (
 	"github.com/Stack-Cairn/K-brain/internal/ai"
 	"github.com/Stack-Cairn/K-brain/internal/protocol"
 	"github.com/Stack-Cairn/K-brain/internal/session"
-	"github.com/Stack-Cairn/K-brain/internal/tools"
 )
 
 type trajectorySection struct {
@@ -159,6 +158,9 @@ func (o *trajectoryObserver) End(ctx context.Context, message ai.Message, usage 
 	state.mu.Lock()
 	provider := state.Provider
 	state.mu.Unlock()
+	if state.TaskID != "" {
+		o.rt.addSubagentUsage(state.TaskID, protocol.FromAIUsage(&usage))
+	}
 	payload := map[string]any{"request_id": state.ID, "task_id": state.TaskID, "provider": provider, "model": state.Model, "stop_reason": message.StopReason, "usage": protocol.FromAIUsage(&usage), "status": "complete"}
 	if err != nil {
 		payload["status"] = "error"
@@ -204,17 +206,6 @@ func (rt *runtimeSession) trajectoryTaskRunLocked(id string) string {
 	}
 	return rt.runID
 }
-func (rt *runtimeSession) trajectoryChildEventsForRun(id, runID string) agent.Events {
-	publish := func(kind string, payload any, parent string) (protocol.Event, error) {
-		return rt.publishTrajectory(runID, kind, payload, parent)
-	}
-	return agent.Events{OnToolStart: func(call, name, args string) {
-		_, _ = publish("trajectory.child.tool_start", map[string]any{"task_id": id, "id": call, "name": name, "arguments": args}, "")
-	}, OnToolResult: func(call, name string, result tools.Result) {
-		_, _ = publish("trajectory.child.tool_end", map[string]any{"task_id": id, "id": call, "name": name, "output": result.Text, "failed": result.Failed, "cancelled": result.Cancelled}, "")
-	}}
-}
-
 func trajectoryRequestPayload(e protocol.Event) map[string]any {
 	var p map[string]any
 	_ = json.Unmarshal(e.Payload, &p)
@@ -246,15 +237,32 @@ func (s *Server) readTrajectorySection(conversationID, id string) (trajectorySec
 	return section, nil
 }
 
-func (o *trajectoryObserver) ChildStart(ctx context.Context, id, prompt string) {
-	_, _ = o.publish(protocol.EventSubagentStarted, protocol.SubagentEvent{Subagent: protocol.Subagent{ID: id, Description: prompt, Status: "running", StartedAt: ptrTime(time.Now().UTC())}}, "")
+func (o *trajectoryObserver) ChildStart(ctx context.Context, info agent.ChildInfo, stop func()) {
+	o.rt.subagent(info.ID, o.runID)
+	o.rt.setSubagentRunning(info.ID, true, stop)
+	_, _ = o.publish(protocol.EventSubagentStarted, protocol.SubagentEvent{Subagent: protocol.Subagent{ID: info.ID, Description: info.Description, Status: string(agent.TaskRunning), Model: protocol.ModelRef{Provider: info.Provider, Model: info.Model}, ParentToolCallID: info.ParentToolCallID, StartedAt: ptrTime(time.Now().UTC())}}, "")
 }
-func (o *trajectoryObserver) ChildEnd(ctx context.Context, id string, err error) {
-	status, kind, message := "done", protocol.EventSubagentCompleted, ""
-	if err != nil {
-		status, kind, message = "error", protocol.EventSubagentFailed, err.Error()
+func (o *trajectoryObserver) ChildEnd(ctx context.Context, info agent.ChildInfo, result agent.ChildResult) {
+	o.rt.flushSubagent(info.ID)
+	status, kind, message := string(agent.TaskDone), protocol.EventSubagentCompleted, ""
+	switch {
+	case result.Stopped:
+		status, kind, message = string(agent.TaskCancelled), protocol.EventSubagentFailed, result.Err.Error()
+	case result.Err != nil:
+		status, kind, message = string(agent.TaskError), protocol.EventSubagentFailed, result.Err.Error()
 	}
-	_, _ = o.publish(kind, protocol.SubagentEvent{Subagent: protocol.Subagent{ID: id, Status: status, Error: message, EndedAt: ptrTime(time.Now().UTC())}}, "")
+	ended := time.Now().UTC()
+	view := protocol.Subagent{ID: info.ID, Description: info.Description, Status: status, Error: message, Model: protocol.ModelRef{Provider: info.Provider, Model: info.Model}, ParentToolCallID: info.ParentToolCallID, EndedAt: &ended}
+	o.rt.subagentStats(info.ID, &view)
+	if usage := protocol.FromAIUsage(&result.Usage); usage != nil && *usage != (protocol.Usage{}) {
+		view.Usage = usage
+	}
+	if started := o.rt.subagentStartedAt(info.ID); !started.IsZero() {
+		view.StartedAt = &started
+		view.DurationMS = ended.Sub(started).Milliseconds()
+	}
+	_, _ = o.publish(kind, protocol.SubagentEvent{Subagent: view}, "")
+	o.rt.setSubagentRunning(info.ID, false, nil)
 }
 func (o *trajectoryObserver) ChildEvents(id string) agent.Events {
 	return o.rt.trajectoryChildEventsForRun(id, o.runID)

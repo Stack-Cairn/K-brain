@@ -68,6 +68,8 @@ type Task struct {
 	Report      string    `json:"report"`
 	StartedAt   time.Time `json:"started_at"`
 	EndedAt     time.Time `json:"ended_at"`
+	// ParentToolCallID is the parent's subagent tool call that started it.
+	ParentToolCallID string `json:"parent_tool_call_id,omitempty"`
 }
 
 type Schedule struct {

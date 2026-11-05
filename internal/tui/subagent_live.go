@@ -98,6 +98,7 @@ type fgChild struct {
 	bytes     int
 	truncated bool
 	subs      map[int]agent.Events
+	stop      func()
 }
 
 func newFgRegistry() *fgRegistry {
@@ -143,14 +144,17 @@ func (r *fgRegistry) End(context.Context, ai.Message, ai.Usage, error) {}
 
 func (r *fgRegistry) Retry(context.Context, ai.RetryEvent) {}
 
-func (r *fgRegistry) ChildStart(ctx context.Context, id, prompt string) {
-	toolID := tools.ToolCallID(ctx)
+func (r *fgRegistry) ChildStart(ctx context.Context, info agent.ChildInfo, stop func()) {
+	id, toolID := info.ID, info.ParentToolCallID
+	if toolID == "" {
+		toolID = tools.ToolCallID(ctx)
+	}
 	r.mu.Lock()
 	description, ok := r.calls[toolID]
 	if ok {
 		delete(r.calls, toolID)
-		r.children[id] = &fgChild{toolID: toolID, task: agent.BackgroundTask{
-			ID: id, Description: description, Prompt: prompt,
+		r.children[id] = &fgChild{toolID: toolID, stop: stop, task: agent.BackgroundTask{
+			ID: id, Description: description, Prompt: info.Prompt,
 			Status: agent.TaskRunning, StartedAt: time.Now(),
 		}}
 	}
@@ -160,12 +164,16 @@ func (r *fgRegistry) ChildStart(ctx context.Context, id, prompt string) {
 	}
 }
 
-func (r *fgRegistry) ChildEnd(ctx context.Context, id string, err error) {
+func (r *fgRegistry) ChildEnd(ctx context.Context, info agent.ChildInfo, result agent.ChildResult) {
+	id, err := info.ID, result.Err
 	r.mu.Lock()
 	c, ok := r.children[id]
 	if ok {
 		c.task.Status, c.task.EndedAt = agent.TaskDone, time.Now()
+		c.stop = nil
 		switch {
+		case result.Stopped:
+			c.task.Status, c.task.Report = agent.TaskCancelled, err.Error()
 		case ctx.Err() != nil:
 			c.task.Status, c.task.Report = agent.TaskCancelled, ctx.Err().Error()
 		case err != nil:
@@ -177,6 +185,22 @@ func (r *fgRegistry) ChildEnd(ctx context.Context, id string, err error) {
 	if ok {
 		r.emit(subChangedMsg{id: id, toolID: c.toolID})
 	}
+}
+
+// stopChild ends one running foreground subagent; the parent turn goes on.
+func (r *fgRegistry) stopChild(id string) bool {
+	r.mu.Lock()
+	c, ok := r.children[id]
+	var stop func()
+	if ok {
+		stop = c.stop
+	}
+	r.mu.Unlock()
+	if stop == nil {
+		return false
+	}
+	stop()
+	return true
 }
 
 func (r *fgRegistry) ChildEvents(id string) agent.Events {
@@ -539,9 +563,7 @@ func (m *model) stopSelectedTask() {
 	switch {
 	case !m.subRunning(t):
 		m.flashNotice(fmt.Sprintf(m.tr("%s already finished"), t.ID))
-	case m.isForeground(t.ID):
-		m.flashNotice(m.tr("foreground subagent — Esc interrupts the turn that waits on it"))
-	case m.agent.Tasks().Cancel(t.ID):
+	case m.isForeground(t.ID) && m.fgReg().stopChild(t.ID), !m.isForeground(t.ID) && m.agent.Tasks().Cancel(t.ID):
 		if m.subStop == nil {
 			m.subStop = map[string]bool{}
 		}

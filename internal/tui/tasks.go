@@ -422,8 +422,7 @@ func (m *model) taskViewKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch {
 		case tv.busy && tv.followCancel != nil:
 			tv.followCancel()
-		case m.isForeground(tv.id):
-		case m.agent.Tasks().Cancel(tv.id):
+		case m.isForeground(tv.id) && m.fgReg().stopChild(tv.id), !m.isForeground(tv.id) && m.agent.Tasks().Cancel(tv.id):
 			if m.subStop == nil {
 				m.subStop = map[string]bool{}
 			}

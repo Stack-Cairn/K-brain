@@ -33,6 +33,8 @@ type BackgroundTask struct {
 	Report      string
 	StartedAt   time.Time
 	EndedAt     time.Time
+	// ParentToolCallID is the parent's subagent tool call that started it.
+	ParentToolCallID string
 
 	Restored    bool
 	FollowingUp bool
@@ -281,7 +283,7 @@ func (a *Agent) RegisterBackgroundContext(parent context.Context, description, p
 	}
 	t := &BackgroundTask{
 		ID: id, Description: description, Prompt: prompt,
-		Status: TaskRunning, StartedAt: time.Now(),
+		Status: TaskRunning, StartedAt: time.Now(), ParentToolCallID: tools.ToolCallID(base),
 		Done: make(chan struct{}), ctx: withRequestTask(taskCtx, id), cancel: cancel,
 		sub: sub,
 
