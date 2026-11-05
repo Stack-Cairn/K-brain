@@ -127,7 +127,7 @@ func TestWindowsACLTreeRoundTrip(t *testing.T) {
 		if !slices.ContainsFunc(daclOf(t, path).aces, func(a rawACE) bool {
 			return a.sid() == sid && a.flags()&aceInherited != 0 && a.mask() == fileModify
 		}) {
-			t.Fatalf("%s lacks the inherited entry", path)
+			t.Fatalf("%s lacks the inherited entry: %s (top %s)", path, sddl(path), sddl(root))
 		}
 	}
 	if left := sandboxACEsUnder(t, root, ours); len(left) == 0 {
@@ -142,6 +142,47 @@ func TestWindowsACLTreeRoundTrip(t *testing.T) {
 	if err := os.WriteFile(file, []byte("y"), 0o644); err != nil {
 		t.Fatalf("the owner lost access: %v", err)
 	}
+}
+
+// TestWindowsACLDenyTree denies a synthetic SID on a tree; the deny walk
+// reports every failure.
+func TestWindowsACLDenyTree(t *testing.T) {
+	root := workspace(t)
+	file := filepath.Join(root, "sub", "f.txt")
+	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	n := namesFor("S-1-5-21-1-2-3-1001")
+	ours := n.sandboxACE(nil)
+	target, err := grantTarget(accessDeniedACEType, fileAll, false, true, n.readerSID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := applyTree(root, target, aclWalkDeny, ours, true); err != nil {
+		t.Fatalf("deny walk: %v", err)
+	}
+	for _, path := range []string{root, filepath.Join(root, "sub"), file} {
+		if !slices.ContainsFunc(daclOf(t, path).aces, func(a rawACE) bool { return a.sid() == n.readerSID() && a.typ() == accessDeniedACEType }) {
+			t.Fatalf("%s lacks the deny entry: %s", path, sddl(path))
+		}
+	}
+	if err := removeTree(root, ours); err != nil {
+		t.Fatal(err)
+	}
+	if left := sandboxACEsUnder(t, root, ours); len(left) > 0 {
+		t.Fatalf("entries left after removeTree: %q", left)
+	}
+}
+
+func sddl(path string) string {
+	sd, err := windows.GetNamedSecurityInfo(path, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION)
+	if err != nil {
+		return err.Error()
+	}
+	return sd.String()
 }
 
 func daclOf(t *testing.T, path string) fileDACL {
