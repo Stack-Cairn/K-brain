@@ -5,6 +5,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/Stack-Cairn/K-brain/internal/skills"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 )
@@ -84,3 +85,124 @@ func (m *model) menuView() string {
 	b.WriteString(dimStyle.Render(ansi.Truncate(footer, width, "…")))
 	return b.String()
 }
+
+type menu struct {
+	head   string
+	cands  []cand
+	idx    int
+	base   string
+	cyc    bool
+	cycled bool
+	frozen []cand
+}
+
+func (m *model) openMenu() {
+	head, cands := m.promptCompletions(m.input.Value())
+	if len(cands) == 0 {
+		return
+	}
+	m.menu = &menu{head: head, cands: cands}
+	m.menuCycle(0)
+}
+
+func (m *model) refreshMenu() {
+	if m.menu != nil && m.menu.cyc && m.menu.frozen != nil && m.menu.idx < len(m.menu.frozen) &&
+		m.input.Value() == m.menu.head+m.menu.frozen[m.menu.idx].Text {
+		return
+	}
+	val := m.input.Value()
+	token := val[strings.LastIndexAny(val, " \n")+1:]
+	if strings.HasPrefix(val, "/") || strings.HasPrefix(token, "@") || strings.HasPrefix(token, "$") {
+		head, cands := m.promptCompletions(val)
+		if len(cands) > 0 {
+			idx := 0
+			if m.menu != nil && m.menu.idx < len(cands) && m.menu.frozen == nil {
+				idx = m.menu.idx
+			}
+			m.menu = &menu{head: head, cands: cands, idx: idx}
+			return
+		}
+	}
+	m.menu = nil
+}
+
+func (m *model) previewCand() {
+	m.input.SetValue(m.menu.head + m.menu.cands[m.menu.idx].Text)
+	m.refreshMenu()
+}
+
+func (m *model) acceptPreview() {
+	m.menu.cyc, m.menu.frozen = false, nil
+	v := m.input.Value()
+	if !strings.HasSuffix(v, "/") {
+		m.input.SetValue(v + " ")
+	}
+	m.refreshMenu()
+}
+
+func (m *model) menuCycle(delta int) {
+	mu := m.menu
+	if mu.frozen == nil {
+		mu.cyc, mu.frozen = true, mu.cands
+		mu.base = mu.head + mu.frozen[mu.idx].Text
+	}
+	if mu.cycled {
+		mu.idx = (mu.idx + delta + len(mu.cands)) % len(mu.cands)
+	} else {
+		mu.cycled = true
+	}
+	m.previewCand()
+}
+
+func (m *model) accept() bool {
+	c := m.menu.cands[m.menu.idx]
+	v := m.menu.head + c.Text
+	if !strings.HasSuffix(c.Text, "/") {
+		v += " "
+	}
+	if strings.TrimRight(m.input.Value(), " ") == strings.TrimRight(v, " ") {
+		m.menu = nil
+		return false
+	}
+	m.input.SetValue(v)
+	m.menu = nil
+	m.refreshMenu()
+	return true
+}
+
+func (m *model) modelCands() []cand {
+	out := make([]cand, 0, len(m.cfg.Models))
+	for name, mdl := range m.cfg.Models {
+		out = append(out, cand{name, "via " + strings.Join(mdl.Providers, ", ")})
+	}
+
+	for _, it := range buildModelItems(m.cfg) {
+		if it.fromCatalog {
+			out = append(out, cand{it.model, "via " + it.provider + " (catalog)"})
+		}
+	}
+	return out
+}
+
+func (m *model) providerCands() []cand {
+	out := make([]cand, 0, len(m.cfg.Providers))
+	for name, p := range m.cfg.Providers {
+		out = append(out, cand{name, p.BaseURL})
+	}
+	return out
+}
+
+func (m *model) skillCands() []cand {
+	sk := skills.Scan(skills.DefaultDirs()...)
+	out := make([]cand, 0, len(sk))
+	for _, s := range sk {
+		d := s.Description
+		if len(d) > 80 {
+			d = d[:80] + "…"
+		}
+		out = append(out, cand{"$" + s.Name, d})
+	}
+	return out
+}
+
+const menuRows = 8

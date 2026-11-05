@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"fmt"
+	"os"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -136,4 +138,54 @@ func (m *model) titledRule(frame string) string {
 	fill := glyphs.Border.Top
 	rule = ruleStyle.Render(strings.Repeat(fill, lead)) + " " + statusTitleStyle.Render(title) + " " + ruleStyle.Render(strings.Repeat(fill, tail))
 	return rule + "\n" + rest
+}
+
+// statusLeft is the left half of the info row after the mode chip: the git
+// readout, then the goal. The working directory lives in the banner instead.
+func (m *model) statusLeft() string {
+	if m.transientNotice != "" {
+		return dimStyle.Render(ansi.Truncate(m.transientNotice, max(m.width/2, 16), "…"))
+	}
+	left := m.git.render()
+	if m.goal != "" {
+		if left != "" {
+			left += "  "
+		}
+		left += dimStyle.Render("◎ " + truncLine(m.goal, 32))
+	}
+	return left
+}
+
+// footerStats is the quiet run readout in front of the model cell. Each item
+// only appears when it says something: no zero costs, no 0% scroll.
+func (m *model) footerStats() string {
+	var parts []string
+	if m.agent != nil && m.agent.ContextLimit > 0 {
+		parts = append(parts, fmt.Sprintf(m.tr("%d%% ctx"), m.agent.ContextTokens()*100/m.agent.ContextLimit))
+	}
+	if cost, ok := m.sessionCost(); ok && cost > 0 {
+		parts = append(parts, fmtCost(cost))
+	} else if u := m.agent.TotalUsage(); m.agent != nil && u.PromptTokens+u.CompletionTokens > 0 {
+		// Unpriced routes still get a sense of spend.
+		parts = append(parts, fmtTok(u.PromptTokens+u.CompletionTokens)+" tok")
+	}
+	if !m.follow && !m.vp.AtBottom() {
+		parts = append(parts, fmt.Sprintf("↑ %d%%", int(m.vp.ScrollPercent()*100)))
+	}
+	if n := m.runningSubagents(); n > 0 {
+		parts = append(parts, fmt.Sprintf("⚙ %d sub", n))
+	}
+	return strings.Join(parts, " · ")
+}
+
+func shortCWD() string {
+	dir := cwd()
+	if home, err := os.UserHomeDir(); err == nil && strings.HasPrefix(dir, home) {
+		dir = "~" + strings.TrimPrefix(dir, home)
+	}
+	parts := strings.Split(strings.Trim(dir, "/"), "/")
+	if len(parts) > 3 {
+		return "…/" + strings.Join(parts[len(parts)-3:], "/")
+	}
+	return dir
 }
