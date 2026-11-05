@@ -19,8 +19,10 @@ func chromeColumns(left, right string, width int) string {
 		return ""
 	}
 	lead := min(chromeIndent, width)
-	right = ansi.Truncate(right, max(width-lead-1, 0), "…")
-	left = ansi.Truncate(left, max(width-lead-lipgloss.Width(right)-1, 0), "…")
+	left, right = chromeGlyphs(left), chromeGlyphs(right)
+	tail := chromeGlyphs("…")
+	right = ansi.Truncate(right, max(width-lead-1, 0), tail)
+	left = ansi.Truncate(left, max(width-lead-lipgloss.Width(right)-1, 0), tail)
 	pad := max(width-lead-lipgloss.Width(left)-lipgloss.Width(right), 0)
 	return ansi.Truncate(strings.Repeat(" ", lead)+left+strings.Repeat(" ", pad)+right, width, "")
 }
@@ -85,7 +87,7 @@ func (m *model) footerModelCell() string {
 }
 
 func (m *model) effortChip() string {
-	return "✦ " + m.tr(effortLabel(m.agent.Effort))
+	return glyphs.Effort + " " + m.tr(effortLabel(m.agent.Effort))
 }
 
 // fixedFrameRows is what viewBody always spends outside the transcript and the
@@ -105,12 +107,13 @@ func (m *model) composerRows() int {
 	}
 }
 
-// kbrainPromptFrame opens the composer with a single accent rule instead of
-// boxing it in; the info row underneath closes the band.
+// kbrainPromptFrame opens the composer with a single quiet rule instead of
+// boxing it in; the info row underneath closes the band. The rule is chrome,
+// not an action, so it takes line.rule — the caret inside carries the accent.
 func kbrainPromptFrame() lipgloss.Style {
 	return lipgloss.NewStyle().
-		Border(lipgloss.Border{Top: "─"}, true, false, false, false).
-		BorderForeground(accentColor).
+		Border(lipgloss.Border{Top: glyphs.Border.Top}, true, false, false, false).
+		BorderForeground(ruleColor).
 		Padding(0, 0, 0, chromeIndent)
 }
 
@@ -129,7 +132,8 @@ func (m *model) titledRule(frame string) string {
 	if lead < 4 || lipgloss.Width(rule) != width {
 		return frame
 	}
-	ruleStyle := lipgloss.NewStyle().Foreground(accentColor)
-	rule = ruleStyle.Render(strings.Repeat("─", lead)) + " " + statusTitleStyle.Render(title) + " " + ruleStyle.Render(strings.Repeat("─", tail))
+	ruleStyle := chromeRuleStyle
+	fill := glyphs.Border.Top
+	rule = ruleStyle.Render(strings.Repeat(fill, lead)) + " " + statusTitleStyle.Render(title) + " " + ruleStyle.Render(strings.Repeat(fill, tail))
 	return rule + "\n" + rest
 }

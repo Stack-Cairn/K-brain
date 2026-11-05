@@ -1,0 +1,24 @@
+
+
+
+
+
+
+        [90m+[0m[90m-[0m [1;37mK-brain[0m [90mdev[0m [90m------------------------------[0m [37m.../src/acme/kn[0m [90m-[0m[90m+[0m        [0m
+        [90m|[0m                                                              [90m|[0m        [0m
+        [90m|[0m               [37mkimi-k3-fast[0m[90m - inference[0m     [1;96m/model[0m            [90m|[0m        [0m
+        [90m|[0m [34m#[0m[96m  #[0m          [90mDirectory .../src/acme/kn[0m    [1;96m/mcp[0m              [90m|[0m        [0m
+        [90m|[0m [34m#[0m[35m##[0m                                                          [90m|[0m        [0m
+        [90m|[0m [34m#[0m[35m  #[0m          [1;37m@[0m [37mattach a file[0m   [1;37m![0m [37mrun shell[0m   [1;37m/[0m [37mcommands[0m     [90m|[0m        [0m
+        [90m|[0m               [1;37mCtrl+P[0m [37mmenu[0m   [1;37mShift+Tab[0m [37mmode[0m   [1;37mEsc Esc[0m [37mrewind[0m  [90m|[0m        [0m
+        [90m+[0m[90m--------------------------------------------------------------[0m[90m+[0m        [0m
+
+
+
+
+
+
+
+[90m--------------------------------------------------------------------------------[0m
+  [1;96m> [0m[7mA[0m[90msk k-brain anything...  / commands - Shift+Tab mode - Ctrl+P menu[0m          [0m
+  [101m [0m[1;30;101mAlways allow[0m[101m [0m                                            [37mkimi-k3-fast[0m[90m - [0m[1;96m* off[0m

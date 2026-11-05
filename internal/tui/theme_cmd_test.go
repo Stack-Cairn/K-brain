@@ -6,34 +6,38 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/muesli/termenv"
 
 	"github.com/Stack-Cairn/K-brain/internal/config"
 )
 
 func TestThemeCommandSwitchesRendering(t *testing.T) {
+	restore := useProfile(t, termenv.ANSI256, true)
+	defer restore()
 	m := compactCmdModel()
 	m.Update(mkWinSize(80, 30))
+	num := tokenTable[tokSynNumber]
 	m.command("/theme light")
 	if CurrentTheme() != "light" {
 		t.Fatalf("theme: %q", CurrentTheme())
 	}
 	out := renderMarkdown("body **bold** `code`\n\n```go\nx := 1\n```", 70)
-	if !strings.Contains(out, "38;5;234") {
-		t.Errorf("light body should be 234: %q", out[:80])
+	if !strings.Contains(out, "38;5;"+num.light.x256) {
+		t.Errorf("light code should use the light syn.number (%s): %q", num.light.x256, out)
 	}
 	m.command("/theme dark")
 	if CurrentTheme() != "dark" {
 		t.Fatalf("theme: %q", CurrentTheme())
 	}
 	out = renderMarkdown("body\n\n```go\nx := 1\n```", 70)
-	if !strings.Contains(out, "38;5;252") || !strings.Contains(out, "38;5;251") {
-		t.Errorf("dark body/code should be 252/251 after switch back: %q", out[:120])
+	if !strings.Contains(out, "38;5;"+num.dark.x256) || !strings.Contains(out, "48;5;"+tokenTable[tokSurfaceBand].dark.x256) {
+		t.Errorf("dark code should use the dark syn.number and band after switching back: %q", out)
 	}
 
 	m.command("/theme light")
 	out = renderMarkdown("```go\nx := 1\n```", 70)
-	if strings.Contains(out, "38;5;251") {
-		t.Errorf("light code block must not use dark chroma 251: %q", out[:120])
+	if strings.Contains(out, "38;5;"+num.dark.x256+"m") {
+		t.Errorf("light code block must not keep the dark syn.number: %q", out)
 	}
 	m.setTheme("dark")
 }
@@ -49,7 +53,7 @@ func TestThemeBareOpensSwitcher(t *testing.T) {
 		t.Fatalf("expected the theme panel, got %+v", pp)
 	}
 
-	if len(pp.list) != 3 || pp.list[0] != "auto" || pp.list[1] != "light" || pp.list[2] != "dark" {
+	if len(pp.list) != 4 || pp.list[0] != "auto" || pp.list[1] != "light" || pp.list[2] != "dark" || pp.list[3] != "mono" {
 		t.Fatalf("theme panel list: %v", pp.list)
 	}
 

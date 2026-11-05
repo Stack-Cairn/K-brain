@@ -5,23 +5,35 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/muesli/termenv"
 )
 
+// Body text keeps the terminal's own foreground in both themes (text.primary
+// is the terminal default); headings take the theme's accent for the active
+// background.
 func TestLightThemeRendersDarkText(t *testing.T) {
+	restore := useProfile(t, termenv.ANSI256, false)
+	defer restore()
 	SetLightTheme(true)
 	defer SetLightTheme(false)
-	out := renderMarkdown("plain body text", 60)
-	if !strings.Contains(out, "\x1b[38;5;234m") {
-		t.Errorf("light theme should render body in color 234, got %q", out)
-	}
-	if strings.Contains(out, "\x1b[38;5;252m") {
-		t.Errorf("light theme must not use dark-style color 252: %q", out)
-	}
-
+	out := renderMarkdown("# Title\n\nplain body text", 60)
+	body := ""
 	for l := range strings.SplitSeq(out, "\n") {
+		if strings.Contains(l, "plain body text") {
+			body = l
+		}
 		if ansi.StringWidth(l) > 60 {
 			t.Errorf("light render overflow: %q", l)
 		}
+	}
+	if strings.Contains(body, "\x1b[38;") {
+		t.Errorf("body text should keep the terminal foreground: %q", body)
+	}
+	if !strings.Contains(out, "38;5;"+tokenTable[tokAccent].light.x256) {
+		t.Errorf("light headings should use the light accent: %q", out)
+	}
+	if strings.Contains(out, "38;5;"+tokenTable[tokAccent].dark.x256+";") {
+		t.Errorf("light theme must not use the dark accent: %q", out)
 	}
 }
 
@@ -131,12 +143,14 @@ func TestRenderedLinesSelfTerminate(t *testing.T) {
 }
 
 func TestThemeSwitchAfterUnknown(t *testing.T) {
+	restore := useProfile(t, termenv.ANSI256, false)
+	defer restore()
 	SetUnknownTheme()
-	_ = renderMarkdown("plain body text", 60)
+	_ = renderMarkdown("# Title", 60)
 	SetLightTheme(true)
 	defer SetLightTheme(false)
-	out := renderMarkdown("plain body text", 60)
-	if !strings.Contains(out, "\x1b[38;5;234m") {
-		t.Errorf("switching unknown→light should re-render in light (234): %q", out)
+	out := renderMarkdown("# Title", 60)
+	if !strings.Contains(out, "38;5;"+tokenTable[tokAccent].light.x256) {
+		t.Errorf("switching unknown→light should re-render with the light accent: %q", out)
 	}
 }

@@ -117,8 +117,13 @@ type linkAtom struct {
 
 func parseLinkAtoms(s string) []linkAtom {
 	var atoms []linkAtom
+	cands := linkAtomSGRs()
 	for i := 0; i < len(s); {
-		sgr, kind := linkAtomAt(s[i:])
+		if s[i] != 0x1b {
+			i++
+			continue
+		}
+		sgr, kind := linkAtomAt(s[i:], cands)
 		if kind == 0 {
 			i++
 			continue
@@ -260,16 +265,29 @@ func hyperlinkGlamourLinks(s string, exists func(string) bool) string {
 	return b.String()
 }
 
-func linkAtomAt(s string) (string, byte) {
-	for _, cand := range []struct {
-		sgr  string
-		kind byte
-	}{
-		{linkTextSGRDark, 't'},
-		{linkTextSGRLight, 't'},
-		{linkSGRDark, 'h'},
-		{linkSGRLight, 'h'},
-	} {
+type linkSGR struct {
+	sgr  string
+	kind byte
+}
+
+// linkAtomSGRs lists the escape sequences that open a link label ('t') or an
+// href ('h'): the ones the active markdown style emits under the active colour
+// profile, then the fixed legacy ones.
+func linkAtomSGRs() []linkSGR {
+	var out []linkSGR
+	if text, href := mdLinkSGRs(); text != "" && href != "" {
+		out = append(out, linkSGR{text, 't'}, linkSGR{href, 'h'})
+	}
+	return append(out,
+		linkSGR{linkTextSGRDark, 't'},
+		linkSGR{linkTextSGRLight, 't'},
+		linkSGR{linkSGRDark, 'h'},
+		linkSGR{linkSGRLight, 'h'},
+	)
+}
+
+func linkAtomAt(s string, cands []linkSGR) (string, byte) {
+	for _, cand := range cands {
 		if strings.HasPrefix(s, cand.sgr) {
 			return cand.sgr, cand.kind
 		}

@@ -16,7 +16,7 @@ func TestToolCallQueuedRowReplacedOnStart(t *testing.T) {
 		t.Fatal("toolCallMsg should append a queued row")
 	}
 	row := m.blocks[len(m.blocks)-1]
-	if !strings.Contains(ansi.Strip(row.render(m.width)), "bash") {
+	if !strings.HasPrefix(ansi.Strip(row.render(m.width)), glyphs.ToolQueued+" Bash  make") {
 		t.Fatalf("queued row should name the tool, got %q", ansi.Strip(row.render(m.width)))
 	}
 
@@ -70,7 +70,7 @@ func TestToolCallQueuedRowUpdatesInPlace(t *testing.T) {
 	}
 	row := m.blocks[len(m.blocks)-1]
 	got := ansi.Strip(row.render(m.width))
-	if !strings.Contains(got, deltas[len(deltas)-1]) {
+	if !strings.Contains(got, "mkdir -p ~/.config/k9s") || strings.Contains(got, `{"command"`) {
 		t.Fatalf("queued row should show the latest args snapshot, got %q", got)
 	}
 

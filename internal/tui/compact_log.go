@@ -29,7 +29,7 @@ func (m *model) compactModelLabel() string {
 func (m *model) compactResultLine(msg compactMsg) string {
 	var b strings.Builder
 	if msg.fresh {
-		fmt.Fprintf(&b, "◎ new context — discarded %d msgs; raw history preserved", msg.took)
+		fmt.Fprintf(&b, "%s new context — discarded %d msgs; raw history preserved", glyphs.Notice, msg.took)
 		if msg.preserved {
 			b.WriteString(" · session saved")
 		}

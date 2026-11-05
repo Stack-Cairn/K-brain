@@ -9,21 +9,15 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
-)
-
-var (
-	toolHeadStyle = lipgloss.NewStyle().Bold(true)
-
-	diffAddStyle = lipgloss.NewStyle().Background(lipgloss.AdaptiveColor{Light: "194", Dark: "22"})
-	diffDelStyle = lipgloss.NewStyle().Background(lipgloss.AdaptiveColor{Light: "224", Dark: "52"})
 )
 
 func toolHeaderName(name string) string {
 	switch name {
 	case "edit":
-		return "Update"
+		return "Edit"
 	case "write":
 		return "Write"
 	case "read":
@@ -108,13 +102,67 @@ func queuedSubject(name, args string) string {
 	return firstLine(args)
 }
 
+// toolHeaderRow is a finished tool call in the one grammar every state shares:
+// glyph, tool name, subject. Only the glyph says how it went; the subject keeps
+// its colour whether the call passed or failed.
 func toolHeaderRow(name, args string, failed bool) string {
-	style := toolHeadStyle
+	glyph := textMutedStyle.Render(glyphs.ToolDone)
 	if failed {
-		style = errStyle
+		glyph = errorTitleStyle.Render(glyphs.Fail)
 	}
-	return style.Render("● " + toolHeaderName(name) + "(" + toolSubject(name, args) + ")")
+	return toolRowText(glyph, name, toolSubject(name, args), textSecondaryStyle)
 }
+
+// toolRowText lays out "glyph  Name  subject"; tag is the batch position
+// (" 2/3") when several calls of one tool run together.
+func toolRowText(glyph, name, subject string, subjectStyle lipgloss.Style, tag ...string) string {
+	head := toolNameStyle.Render(toolHeaderName(name))
+	if len(tag) > 0 && tag[0] != "" {
+		head += textMutedStyle.Render(tag[0])
+	}
+	row := glyph + " " + head
+	if subject != "" {
+		row += "  " + subjectStyle.Render(subject)
+	}
+	return row
+}
+
+// trailingSpaceRE matches the spaces a word wrap leaves at the end of a line,
+// including ones tucked before closing escape sequences.
+var trailingSpaceRE = regexp.MustCompile(` +((?:\x1b\[[0-9;]*m)*)$`)
+
+// withMeta right-aligns a meta cell (state, duration) on a row. A row too long
+// for the terminal wraps with its continuation indented under the tool name
+// rather than losing its tail: the command is what the reader checks.
+func withMeta(row, meta string, width int) string {
+	width = max(width, 1)
+	mw := lipgloss.Width(meta)
+	rw := lipgloss.Width(row)
+	switch {
+	case meta == "" && rw <= width:
+		return row
+	case meta != "" && rw+2+mw <= width:
+		return row + strings.Repeat(" ", width-rw-mw) + meta
+	}
+	const indent = 2
+	lines := strings.Split(wrap(row, max(width-indent, 1)), "\n")
+	for i := range lines {
+		lines[i] = trailingSpaceRE.ReplaceAllString(lines[i], "$1")
+		if i > 0 {
+			lines[i] = strings.Repeat(" ", indent) + lines[i]
+		}
+	}
+	if meta != "" {
+		last := len(lines) - 1
+		if lw := lipgloss.Width(lines[last]); lw+2+mw <= width {
+			lines[last] += strings.Repeat(" ", width-lw-mw) + meta
+		} else {
+			lines = append(lines, strings.Repeat(" ", max(width-mw, 0))+meta)
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
 func extractDiff(result string) (diff, rest string) {
 	before, tail, found := strings.Cut(result, "\n```diff\n")
 	if !found {
@@ -177,20 +225,83 @@ func diffSummary(added, removed int) string {
 
 const diffPreviewRows = 30
 
+// diffRow is one parsed row of an edit diff: "12 + code", "+ code" or a
+// trailing note such as "… +3 more lines".
+type diffRow struct {
+	num  string
+	kind byte // '+', '-', ' ', or 0 for a note
+	code string
+}
+
+func parseDiffRow(l string) diffRow {
+	rest := strings.TrimLeft(l, "0123456789")
+	num := l[:len(l)-len(rest)]
+	if num != "" {
+		if !strings.HasPrefix(rest, " ") {
+			return diffRow{code: l}
+		}
+		rest = rest[1:]
+	}
+	switch {
+	case strings.HasPrefix(rest, "+ ") || rest == "+":
+		return diffRow{num, '+', strings.TrimPrefix(rest[1:], " ")}
+	case strings.HasPrefix(rest, "- ") || rest == "-":
+		return diffRow{num, '-', strings.TrimPrefix(rest[1:], " ")}
+	case strings.HasPrefix(rest, "  ") || rest == " ":
+		return diffRow{num, ' ', strings.TrimPrefix(rest, "  ")}
+	}
+	if num == "" {
+		return diffRow{code: l}
+	}
+	return diffRow{num, ' ', rest}
+}
+
+var diffPathRE = regexp.MustCompile(`[\w./-]+\.[A-Za-z0-9]+`)
+
+// diffCountsCell is "+2 −1": the added count in state.ok, removed in state.error.
+func diffCountsCell(added, removed int) string {
+	var parts []string
+	if added > 0 {
+		parts = append(parts, growStyle.Render(fmt.Sprintf("+%d", added)))
+	}
+	if removed > 0 {
+		parts = append(parts, errStyle.Render(fmt.Sprintf("%s%d", glyphs.Minus, removed)))
+	}
+	if len(parts) == 0 {
+		return textMutedStyle.Render(diffSummary(0, 0))
+	}
+	return strings.Join(parts, " ")
+}
+
+// renderDiffResult draws an edit's diff with a line-number gutter. Added and
+// removed rows keep their +/- sign and, where the terminal has background
+// colour, a tint under syntax-coloured code; elsewhere the sign and a line
+// colour carry the meaning. Long rows wrap under the code, not the gutter.
 func renderDiffResult(diff, rest string, expanded bool, width int) string {
 	added, removed := diffCounts(diff)
 	var b strings.Builder
-	b.WriteString(dimStyle.Render("  ⎿ ") + diffSummary(added, removed))
+	b.WriteString(textMutedStyle.Render("  "+glyphs.Result+" ") + diffCountsCell(added, removed) + textMutedStyle.Render("  "+diffSummary(added, removed)))
 	rows := strings.Split(diff, "\n")
 	shown := rows
 	if !expanded && len(rows) > diffPreviewRows {
 		shown = rows[:diffPreviewRows]
 	}
-	for _, l := range shown {
-		b.WriteString("\n" + renderDiffLine(l, width))
+	numW := 1
+	parsed := make([]diffRow, len(shown))
+	for i, l := range shown {
+		parsed[i] = parseDiffRow(l)
+		numW = max(numW, len(parsed[i].num))
+	}
+	filename := ""
+	if first, _, _ := strings.Cut(rest, "\n"); first != "" {
+		filename = diffPathRE.FindString(first)
+	}
+	lexer := codeLexer("", filename)
+	for _, r := range parsed {
+		b.WriteString("\n" + renderDiffRow(r, numW, lexer, width))
 	}
 	if n := len(rows) - len(shown); n > 0 {
-		b.WriteString(dimStyle.Render(fmt.Sprintf("\n    … +%d more (ctrl+e)", n)))
+		b.WriteString("\n" + textHintStyle.Render(fmt.Sprintf("    %s +%d more lines · ctrl+e", glyphs.Fold, n)))
 	}
 
 	if trail := strings.TrimSpace(strings.Join(strings.Split(rest, "\n")[1:], "\n")); trail != "" {
@@ -199,15 +310,74 @@ func renderDiffResult(diff, rest string, expanded bool, width int) string {
 	return b.String()
 }
 
+// renderDiffLine renders a single raw diff row on its own (gutter sized to it).
 func renderDiffLine(l string, width int) string {
-	row := ansi.Truncate("    "+l, max(width, 8), "…")
-	switch diffLineKind(l) {
-	case '+':
-		return diffAddStyle.Render(row + strings.Repeat(" ", max(width-lipgloss.Width(row), 0)))
-	case '-':
-		return diffDelStyle.Render(row + strings.Repeat(" ", max(width-lipgloss.Width(row), 0)))
+	r := parseDiffRow(l)
+	return renderDiffRow(r, max(len(r.num), 1), nil, width)
+}
+
+func renderDiffRow(r diffRow, numW int, lexer chroma.Lexer, width int) string {
+	if r.kind == 0 {
+		note := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(r.code), "…"))
+		return textHintStyle.Render(ansi.Truncate("    "+glyphs.Fold+" "+note, max(width, 8), "…"))
 	}
-	return dimStyle.Render(row)
+	const lead = "  "
+	gutter := lead + strings.Repeat(" ", numW-len(r.num)) + r.num + "  "
+	prefixW := len(gutter) + 2
+	codeW := max(width-prefixW, 4)
+
+	base := lipgloss.NewStyle()
+	tinted := backgroundsActive()
+	sign := " "
+	lineStyle := lipgloss.NewStyle()
+	switch r.kind {
+	case '+':
+		sign = growStyle.Render("+")
+		lineStyle = growStyle
+		if tinted {
+			base = diffAddStyle
+		}
+	case '-':
+		sign = errStyle.Render("-")
+		lineStyle = errStyle
+		if tinted {
+			base = diffDelStyle
+		}
+	}
+	var code string
+	switch {
+	case r.kind == ' ' || tinted:
+		code = strings.Join(highlightLines(r.code, lexer, base), " ")
+	default:
+		code = lineStyle.Render(strings.ReplaceAll(r.code, "\t", "    "))
+	}
+	pieces := strings.Split(ansi.Hardwrap(code, codeW, true), "\n")
+	var out []string
+	for i, p := range pieces {
+		g := withBG(gutterStyle, base).Render(gutter)
+		s := withBG(lipgloss.NewStyle(), base).Render(" ")
+		if i == 0 {
+			out = append(out, g+withBG(signStyleFor(r.kind), base).Render(ansi.Strip(sign))+s+p)
+		} else {
+			out = append(out, base.Render(strings.Repeat(" ", prefixW))+p)
+		}
+	}
+	for i, l := range out {
+		if r.kind != ' ' && tinted {
+			out[i] = l + base.Render(strings.Repeat(" ", max(width-lipgloss.Width(l), 0)))
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
+func signStyleFor(kind byte) lipgloss.Style {
+	switch kind {
+	case '+':
+		return growStyle
+	case '-':
+		return errStyle
+	}
+	return lipgloss.NewStyle()
 }
 
 // quietResultTool reports tools whose output is read by the model rather than
@@ -341,4 +511,17 @@ func dropLeadSpaces(s string, n int) string {
 	}
 	b.WriteString(s[i:])
 	return b.String()
+}
+
+// exitNoteRE is the note a shell command that exited non-zero ends its output
+// with, "(exit: exit status 1)", possibly wrapped once more in parentheses.
+var exitNoteRE = regexp.MustCompile(`\(+exit: [^\n]*\)+\s*$`)
+
+// toolResultFailed reports whether a tool result is a failure: an error from
+// the tool itself, or a command that exited non-zero.
+func toolResultFailed(result string) bool {
+	if strings.HasPrefix(result, "Error:") {
+		return true
+	}
+	return exitNoteRE.MatchString(result) && !strings.Contains(result, "(exit: cancelled)")
 }

@@ -1,0 +1,24 @@
+                                                                                
+  [90m```go[0m                                                                         [0m
+    [95mfunc[0m [96mstatusJSON[0m(w io.Writer, s Status) [94merror[0m {                              [0m
+        [3;90m// one object per call[0m                                                  [0m
+        [95mreturn[0m json.[96mNewEncoder[0m(w).[96mEncode[0m(s)                                     [0m
+    }                                                                           
+  [90m```[0m                                                                           [0m
+                                                                                
+  Then run the package tests.                                                   
+
+[96m╭[0m[96m─[0m [1;96m?[0m [1mQuestion[0m [96m─────────────────────────────────────────────────────────────────[0m[96m╮[0m
+[96m│[0m [1mWhich output format should --json use?[0m                                       [96m│[0m
+[96m│[0m                                                                              [96m│[0m
+[96m│[0m [1;96m❯ 1  One object per line[0m                                                     [96m│[0m
+[96m│[0m [37m     streams well[0m                                                            [96m│[0m
+[96m│[0m   2  A single array                                                          [96m│[0m
+[96m│[0m   3  Pretty-printed object                                                   [96m│[0m
+[96m│[0m   4  [90mtype your own answer[0m                                                    [96m│[0m
+[96m│[0m                                                                              [96m│[0m
+[96m│[0m [37m↑↓ or 1-9 select · Enter picks · Esc dismisses[0m                               [96m│[0m
+[96m╰[0m[96m──────────────────────────────────────────────────────────────────────────────[0m[96m╯[0m
+[90m────────────────────────────────────────────────────────────────────────────────[0m
+  [1;96m❯ [0m[7mA[0m[90msk k-brain anything…  / commands · Shift+Tab mode · Ctrl+P menu[0m            [0m
+  [101m [0m[1;30;101mAlways allow[0m[101m [0m                                            [37mkimi-k3-fast[0m[90m · [0m[1;96m✦ off[0m

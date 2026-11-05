@@ -11,9 +11,9 @@ import (
 
 func TestWebFetchRowNamesTheURLAndFoldsToChars(t *testing.T) {
 	cases := []struct{ args, result, head, fold string }{
-		{`{"url":"https://example.com/docs/guide/?q=1#top"}`, "url=https://example.com/docs/guide/?q=1\nstatus=200\ncontent_type=text/html\ntotal_chars=12\noffset=0\ntruncated=false\n\nHello\nworld!", "Fetch(example.com/docs/guide)", "⎿ 12 chars"},
-		{`{"url":"https://example.com/long","max_chars":5}`, "url=https://example.com/long\nstatus=200\ncontent_type=text/plain\ntotal_chars=40\noffset=0\ntruncated=true\nnext_offset=5\n\nabcde", "Fetch(example.com/long)", "⎿ 5 of 40 chars"},
-		{`{"url":"https://example.com/` + strings.Repeat("p", 80) + `"}`, "url=x\nstatus=200\ntotal_chars=1\n\nx", "Fetch(example.com/ppp", "⎿ 1 char"},
+		{`{"url":"https://example.com/docs/guide/?q=1#top"}`, "url=https://example.com/docs/guide/?q=1\nstatus=200\ncontent_type=text/html\ntotal_chars=12\noffset=0\ntruncated=false\n\nHello\nworld!", "Fetch  example.com/docs/guide", glyphs.Result + " 12 chars"},
+		{`{"url":"https://example.com/long","max_chars":5}`, "url=https://example.com/long\nstatus=200\ncontent_type=text/plain\ntotal_chars=40\noffset=0\ntruncated=true\nnext_offset=5\n\nabcde", "Fetch  example.com/long", glyphs.Result + " 5 of 40 chars"},
+		{`{"url":"https://example.com/` + strings.Repeat("p", 80) + `"}`, "url=x\nstatus=200\ntotal_chars=1\n\nx", "Fetch  example.com/ppp", glyphs.Result + " 1 char"},
 	}
 	for _, c := range cases {
 		m := compactCmdModel()

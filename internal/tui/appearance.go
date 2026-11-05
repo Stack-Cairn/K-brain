@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"time"
+
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -9,14 +11,28 @@ const defaultPlaceholder = inputPlaceholder
 
 func (m *model) applyAppearance() {
 	invalidateMDRenderer()
-	m.spin = spinner.New(spinner.WithSpinner(spinner.Dot))
-	m.input.Prompt = "❯ "
-	m.input.Placeholder = m.tr(defaultPlaceholder)
-	m.input.FocusedStyle.Text = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "234", Dark: "255"})
+	m.spin = spinner.New(spinner.WithSpinner(themeSpinner()), spinner.WithStyle(runningStyle))
+	m.input.Prompt = glyphUser
+	m.input.Placeholder = chromeGlyphs(m.tr(defaultPlaceholder))
+	// Typed text is body text: the terminal's own foreground. Blurred, it steps
+	// back to text.secondary.
+	m.input.FocusedStyle.Text = lipgloss.NewStyle()
 	m.input.FocusedStyle.Placeholder = dimStyle
-	m.input.BlurredStyle.Text = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "238", Dark: "250"})
+	m.input.FocusedStyle.Prompt = youStyle
+	m.input.BlurredStyle.Text = chromeStyle
 	m.input.BlurredStyle.Placeholder = dimStyle
+	m.input.BlurredStyle.Prompt = dimStyle
 	m.input.Focus()
+}
+
+// themeSpinner is the busy spinner from the active glyph set, at about 7.5
+// frames a second for braille and a little slower for the ASCII bar.
+func themeSpinner() spinner.Spinner {
+	fps := time.Second * 2 / 15
+	if asciiMode {
+		fps = time.Second / 6
+	}
+	return spinner.Spinner{Frames: glyphs.Spinner, FPS: fps}
 }
 
 func viewportWindow(n, idx, budget int) (int, int) {

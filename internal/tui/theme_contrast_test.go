@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/muesli/termenv"
 )
 
 func firstContentFG(l string) int {
@@ -81,6 +82,7 @@ func TestMarkdownContrastBothThemes(t *testing.T) {
 		"codeblock": "```go\nfmt.Println(1)\n```",
 	}
 	for _, light := range []bool{true, false} {
+		restore := useProfile(t, termenv.ANSI256, !light)
 		SetLightTheme(light)
 		bgLum := 0.05
 		if light {
@@ -116,19 +118,30 @@ func TestMarkdownContrastBothThemes(t *testing.T) {
 				break
 			}
 		}
+		restore()
 	}
 	SetLightTheme(false)
 }
 
+// Inline code sits on the band where the terminal can tint it, and keeps its
+// backticks where it cannot.
 func TestInlineCodeLightChip(t *testing.T) {
+	restore := useProfile(t, termenv.ANSI256, false)
 	SetLightTheme(true)
 	defer SetLightTheme(false)
 	out := renderMarkdown("use `config.Save` here", 60)
-	if !strings.Contains(out, "48;5;255") {
-		t.Errorf("light inline code should sit on a 255 chip: %q", out)
+	restore()
+	if !strings.Contains(out, "48;5;"+tokenTable[tokSurfaceBand].light.x256) {
+		t.Errorf("light inline code should sit on the light band: %q", out)
 	}
-	if !strings.Contains(out, "38;5;124") {
-		t.Errorf("light inline code text should be dark red 124: %q", out)
+	if strings.Contains(ansi.Strip(out), "`") {
+		t.Errorf("a tinted chip needs no backticks: %q", ansi.Strip(out))
+	}
+
+	restore = useProfile(t, termenv.ANSI, false)
+	defer restore()
+	if out := ansi.Strip(renderMarkdown("use `config.Save` here", 60)); !strings.Contains(out, "`config.Save`") {
+		t.Errorf("without a tint inline code keeps its backticks: %q", out)
 	}
 }
 

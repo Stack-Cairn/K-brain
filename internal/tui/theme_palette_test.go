@@ -2,6 +2,10 @@ package tui
 
 import (
 	"fmt"
+	"math"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -11,49 +15,113 @@ import (
 	"github.com/muesli/termenv"
 )
 
-func themeRoles() map[string]func(themePalette) themeColor {
-	return map[string]func(themePalette) themeColor{
-		"accent":      func(p themePalette) themeColor { return p.accent },
-		"muted":       func(p themePalette) themeColor { return p.muted },
-		"faint":       func(p themePalette) themeColor { return p.faint },
-		"subtle":      func(p themePalette) themeColor { return p.subtle },
-		"success":     func(p themePalette) themeColor { return p.success },
-		"warn":        func(p themePalette) themeColor { return p.warn },
-		"err":         func(p themePalette) themeColor { return p.err },
-		"info":        func(p themePalette) themeColor { return p.info },
-		"secondary":   func(p themePalette) themeColor { return p.secondary },
-		"border":      func(p themePalette) themeColor { return p.border },
-		"panelBG":     func(p themePalette) themeColor { return p.panelBG },
-		"selectionBG": func(p themePalette) themeColor { return p.selectionBG },
+// Every token is filled in for both backgrounds and every colour depth:
+// lipgloss picks one value per profile and an empty one silently renders
+// uncoloured. Surfaces are the exception on 16 colours, where a tint would
+// collide with the terminal's own palette, and text.primary, which is always
+// the terminal's default foreground.
+func TestTokensCoverEveryColumn(t *testing.T) {
+	names := map[string]bool{}
+	for id := tokenID(0); id < tokenCount; id++ {
+		d := tokenTable[id]
+		if d.name == "" {
+			t.Fatalf("token %d has no name", id)
+		}
+		if names[d.name] {
+			t.Errorf("token name %q is used twice", d.name)
+		}
+		names[d.name] = true
+		if d.termDefault {
+			if d.dark != (themeColor{}) || d.light != (themeColor{}) {
+				t.Errorf("%s keeps the terminal foreground and must not carry colours", d.name)
+			}
+			continue
+		}
+		for mode, c := range map[string]themeColor{"dark": d.dark, "light": d.light} {
+			if !regexp.MustCompile(`^#[0-9a-f]{6}$`).MatchString(c.hex) {
+				t.Errorf("%s/%s: truecolor %q is not a 6-digit lower-case hex", mode, d.name, c.hex)
+			}
+			check := func(label, v string, limit int) {
+				n, err := strconv.Atoi(v)
+				if err != nil || n < 0 || n > limit {
+					t.Errorf("%s/%s: %s value %q is not in 0..%d", mode, d.name, label, v, limit)
+				}
+			}
+			check("256-colour", c.x256, 255)
+			if d.surface {
+				if c.ansi != "" {
+					t.Errorf("%s/%s: a surface must not tint 16-colour terminals, got %q", mode, d.name, c.ansi)
+				}
+				continue
+			}
+			check("16-colour", c.ansi, 15)
+		}
 	}
 }
 
-// Every role needs all three profiles filled in: lipgloss picks one by profile
-// and an empty string silently renders uncoloured.
-func TestPaletteCoversEveryProfile(t *testing.T) {
-	for _, tc := range []struct {
-		mode string
-		p    themePalette
-	}{{"dark", darkPalette}, {"light", lightPalette}} {
-		for name, role := range themeRoles() {
-			c := role(tc.p)
-			if !strings.HasPrefix(c.hex, "#") || len(c.hex) != 7 {
-				t.Errorf("%s/%s: truecolor %q is not a 6-digit hex", tc.mode, name, c.hex)
-			}
-			for label, v := range map[string]string{"ANSI256": c.x256, "ANSI": c.ansi} {
-				n, err := strconv.Atoi(v)
-				if err != nil {
-					t.Errorf("%s/%s: %s fallback %q is not a number", tc.mode, name, label, v)
-					continue
-				}
-				limit := 255
-				if label == "ANSI" {
-					limit = 15
-				}
-				if n < 0 || n > limit {
-					t.Errorf("%s/%s: %s fallback %d out of range 0..%d", tc.mode, name, label, n, limit)
-				}
-			}
+// relLuminance is the WCAG relative luminance of a #rrggbb colour.
+func relLuminance(t *testing.T, hex string) float64 {
+	t.Helper()
+	var r, g, b int
+	if _, err := fmt.Sscanf(hex, "#%02x%02x%02x", &r, &g, &b); err != nil {
+		t.Fatalf("bad hex %q", hex)
+	}
+	lin := func(v int) float64 {
+		c := float64(v) / 255
+		if c <= 0.03928 {
+			return c / 12.92
+		}
+		return math.Pow((c+0.055)/1.055, 2.4)
+	}
+	return 0.2126*lin(r) + 0.7152*lin(g) + 0.0722*lin(b)
+}
+
+func contrast(t *testing.T, a, b string) float64 {
+	la, lb := relLuminance(t, a), relLuminance(t, b)
+	return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+}
+
+// Text tokens meet WCAG AA for body text (4.5:1) and every other foreground
+// meets the non-text minimum (3:1), on a typical dark terminal and on white.
+// Surfaces, rules and diff tints are backgrounds and decoration, so they are
+// checked through the text that sits on them instead.
+func TestTokenContrast(t *testing.T) {
+	const darkBG, lightBG = "#1e1e1e", "#ffffff"
+	for id := tokenID(0); id < tokenCount; id++ {
+		d := tokenTable[id]
+		if d.termDefault || d.surface || id == tokLineRule || id == tokChipInk {
+			continue
+		}
+		minimum := 3.0
+		if strings.HasPrefix(d.name, "text.") {
+			minimum = 4.5
+		}
+		if got := contrast(t, d.dark.hex, darkBG); got < minimum {
+			t.Errorf("%s dark %s on %s: %.2f:1, want >= %.1f:1", d.name, d.dark.hex, darkBG, got, minimum)
+		}
+		if got := contrast(t, d.light.hex, lightBG); got < minimum {
+			t.Errorf("%s light %s on %s: %.2f:1, want >= %.1f:1", d.name, d.light.hex, lightBG, got, minimum)
+		}
+	}
+	// Text that sits on a surface or a chip.
+	for _, pair := range []struct {
+		fg, bg  tokenID
+		minimum float64
+	}{
+		{tokTextSecondary, tokSurfaceBand, 4.5},
+		{tokTextMuted, tokSurfaceBand, 4.5},
+		{tokAccent, tokSurfaceRaised, 3},
+		{tokChipInk, tokStateError, 3},
+		{tokChipInk, tokAccent, 3},
+		{tokChipInk, tokStateWarn, 3},
+		{tokTextSecondary, tokLineRule, 4.5},
+	} {
+		fg, bg := tokenTable[pair.fg], tokenTable[pair.bg]
+		if got := contrast(t, fg.dark.hex, bg.dark.hex); got < pair.minimum {
+			t.Errorf("dark %s on %s: %.2f:1, want >= %.1f:1", fg.name, bg.name, got, pair.minimum)
+		}
+		if got := contrast(t, fg.light.hex, bg.light.hex); got < pair.minimum {
+			t.Errorf("light %s on %s: %.2f:1, want >= %.1f:1", fg.name, bg.name, got, pair.minimum)
 		}
 	}
 }
@@ -74,107 +142,94 @@ func ansi16SGR(idx string) string {
 // The hand-picked fallbacks exist so a 256- or 16-colour terminal keeps the
 // palette's meaning instead of a computed downsample.
 func TestPaletteResolvesPerProfile(t *testing.T) {
-	defer func() {
-		lipgloss.SetColorProfile(termenv.Ascii)
-		lipgloss.SetHasDarkBackground(true)
-	}()
 	for _, tc := range []struct {
 		profile termenv.Profile
+		dark    bool
 		want    func(themeColor) string
 	}{
-		{termenv.ANSI256, func(c themeColor) string { return "38;5;" + c.x256 }},
-		{termenv.ANSI, func(c themeColor) string { return ansi16SGR(c.ansi) }},
+		{termenv.TrueColor, true, func(c themeColor) string {
+			r, _ := strconv.ParseUint(c.hex[1:3], 16, 8)
+			g, _ := strconv.ParseUint(c.hex[3:5], 16, 8)
+			b, _ := strconv.ParseUint(c.hex[5:7], 16, 8)
+			return fmt.Sprintf("38;2;%d;%d;%d", r, g, b)
+		}},
+		{termenv.ANSI256, true, func(c themeColor) string { return "38;5;" + c.x256 }},
+		{termenv.ANSI256, false, func(c themeColor) string { return "38;5;" + c.x256 }},
+		{termenv.ANSI, true, func(c themeColor) string { return ansi16SGR(c.ansi) }},
 	} {
-		lipgloss.SetColorProfile(tc.profile)
-		lipgloss.SetHasDarkBackground(true)
-		got := lipgloss.NewStyle().Foreground(accentColor).Render("x")
-		if want := tc.want(darkPalette.accent); !strings.Contains(got, want) {
-			t.Errorf("profile %v: accent rendered %q, want a %q sequence", tc.profile, got, want)
+		restore := useProfile(t, tc.profile, tc.dark)
+		got := accentFgStyle.Render("x")
+		c := tokenTable[tokAccent].dark
+		if !tc.dark {
+			c = tokenTable[tokAccent].light
 		}
+		if want := tc.want(c); !strings.Contains(got, want) {
+			t.Errorf("profile %v dark=%v: accent rendered %q, want a %q sequence", tc.profile, tc.dark, got, want)
+		}
+		restore()
 	}
 }
 
-func ansiHexLuminance(hex string) float64 {
-	var r, g, b int
-	if _, err := fmt.Sscanf(hex, "#%02x%02x%02x", &r, &g, &b); err != nil {
-		return -1
+// On a 16-colour terminal a surface tint would be one of the user's own palette
+// slots, so bands drop out and the rail carries the structure instead.
+func TestSurfacesDropOutOn16Colours(t *testing.T) {
+	restore := useProfile(t, termenv.ANSI, true)
+	defer restore()
+	if backgroundsActive() {
+		t.Fatal("16 colours should not draw surfaces")
 	}
-	return (0.2126*float64(r) + 0.7152*float64(g) + 0.0722*float64(b)) / 255
-}
-
-// The accent is the one colour the eye is meant to land on, so it has to hold up
-// against both backgrounds — a teal that washes out on white is useless.
-func TestAccentLegibleOnBothBackgrounds(t *testing.T) {
-	for _, tc := range []struct {
-		mode  string
-		hex   string
-		bgLum float64
-	}{
-		{"dark", darkPalette.accent.hex, 0.05},
-		{"light", lightPalette.accent.hex, 1.0},
-	} {
-		lum := ansiHexLuminance(tc.hex)
-		if lum < 0 {
-			t.Fatalf("%s accent %q is unparseable", tc.mode, tc.hex)
-		}
-		if gap := max(lum-tc.bgLum, tc.bgLum-lum); gap < 0.28 {
-			t.Errorf("%s accent %s luminance gap %.2f is too low to read", tc.mode, tc.hex, gap)
-		}
+	if out := bandStyle.Render("x"); strings.Contains(out, "\x1b[") {
+		t.Errorf("the band should render untinted on 16 colours: %q", out)
+	}
+	if out := renderUserBand("hi", 20); !strings.Contains(ansi.Strip(out), glyphs.Band+glyphs.User+" hi") {
+		t.Errorf("without a tint the user row keeps its rail: %q", ansi.Strip(out))
 	}
 }
 
 // Errors and warnings must not collapse into the accent, or "something is wrong"
 // and "here is the action" become indistinguishable.
 func TestSemanticColoursAreDistinct(t *testing.T) {
-	for _, tc := range []struct {
-		mode string
-		p    themePalette
-	}{{"dark", darkPalette}, {"light", lightPalette}} {
+	roles := []tokenID{tokAccent, tokStateOK, tokStateWarn, tokStateError, tokStateRunning, tokRoleAssistant}
+	for _, mode := range []string{"dark", "light"} {
 		seen := map[string]string{}
-		for _, role := range []struct {
-			name string
-			c    themeColor
-		}{
-			{"accent", tc.p.accent}, {"success", tc.p.success},
-			{"warn", tc.p.warn}, {"err", tc.p.err},
-			{"info", tc.p.info}, {"secondary", tc.p.secondary},
-		} {
-			if prev, dup := seen[role.c.hex]; dup {
-				t.Errorf("%s: %s and %s share %s", tc.mode, prev, role.name, role.c.hex)
+		seen256 := map[string]string{}
+		for _, id := range roles {
+			d := tokenTable[id]
+			c := d.dark
+			if mode == "light" {
+				c = d.light
 			}
-			seen[role.c.hex] = role.name
-			if role.c.x256 == tc.p.accent.x256 && role.name != "accent" {
-				t.Errorf("%s: %s collides with the accent on 256-colour terminals", tc.mode, role.name)
+			if prev, dup := seen[c.hex]; dup {
+				t.Errorf("%s: %s and %s share %s", mode, prev, d.name, c.hex)
 			}
+			if prev, dup := seen256[c.x256]; dup {
+				t.Errorf("%s: %s and %s share 256-colour %s", mode, prev, d.name, c.x256)
+			}
+			seen[c.hex], seen256[c.x256] = d.name, d.name
 		}
 	}
 }
 
-// The composer rules and the card border share one colour so the chrome reads as
-// a single system.
+// The composer rule is quiet chrome (line.rule) like the card border; only the
+// caret before the input carries the accent.
 func TestChromeBorderMatchesCardBorder(t *testing.T) {
-	lipgloss.SetColorProfile(termenv.ANSI256)
-	defer lipgloss.SetColorProfile(termenv.Ascii)
+	restore := useProfile(t, termenv.ANSI256, true)
+	defer restore()
 
 	rule := kbrainPromptFrame().GetBorderTopForeground()
 	card := bannerFrame.GetBorderTopForeground()
-	if fmt.Sprint(rule) == fmt.Sprint(card) {
-		t.Fatal("the composer rule and the card border are expected to differ: the rule is the accent, the card is the quiet border")
+	if got, want := fmt.Sprint(rule), fmt.Sprint(card); got != want {
+		t.Errorf("composer rule %s and card border %s should share line.rule", got, want)
 	}
-	if got, want := fmt.Sprint(rule), fmt.Sprint(accentColor); got != want {
-		t.Errorf("composer rule colour = %s, want the accent %s", got, want)
-	}
-	if got, want := fmt.Sprint(card), fmt.Sprint(borderColor); got != want {
-		t.Errorf("card border colour = %s, want the quiet border %s", got, want)
+	if got, want := fmt.Sprint(rule), fmt.Sprint(tokColor(tokLineRule)); got != want {
+		t.Errorf("composer rule colour = %s, want line.rule %s", got, want)
 	}
 }
 
-// A palette swap must not leak raw colours into the chrome: every style in the
-// var block should resolve through the palette.
+// Every chrome style resolves through the token table to one styled cell.
 func TestChromeStylesRenderColoured(t *testing.T) {
-	lipgloss.SetColorProfile(termenv.ANSI256)
-	defer lipgloss.SetColorProfile(termenv.Ascii)
-	lipgloss.SetHasDarkBackground(true)
+	restore := useProfile(t, termenv.ANSI256, true)
+	defer restore()
 
 	for name, style := range map[string]lipgloss.Style{
 		"accentStyle": accentStyle, "brandStyle": brandStyle, "chromeStyle": chromeStyle,
@@ -182,6 +237,7 @@ func TestChromeStylesRenderColoured(t *testing.T) {
 		"growStyle": growStyle, "toolStyle": toolStyle, "youStyle": youStyle,
 		"botStyle": botStyle, "metaStyle": metaStyle, "shortcutStyle": shortcutStyle,
 		"chromeRuleStyle": chromeRuleStyle, "statusTitleStyle": statusTitleStyle,
+		"textHintStyle": textHintStyle, "runningStyle": runningStyle, "okStyle": okStyle,
 	} {
 		out := style.Render("x")
 		if out == "x" || ansi.Strip(out) != "x" {
@@ -189,6 +245,130 @@ func TestChromeStylesRenderColoured(t *testing.T) {
 		}
 		if !strings.Contains(out, "38;5;") {
 			t.Errorf("%s did not resolve to a 256-colour foreground: %q", name, out)
+		}
+	}
+}
+
+// Mono mode drops every colour but keeps the attributes that carry meaning:
+// muted text dims, the accent and errors go bold, the selection reverses.
+func TestMonoModeKeepsAttributesOnly(t *testing.T) {
+	restore := useProfile(t, termenv.ANSI256, true)
+	defer restore()
+	setMonoMode(true, false)
+	for name, c := range map[string]struct {
+		style lipgloss.Style
+		sgr   string
+	}{
+		"muted":    {textMutedStyle, "2"},
+		"accent":   {youStyle, "1"},
+		"error":    {errorTitleStyle, "1"},
+		"selected": {optionSelStyle, "7"},
+		"always":   {modeChipAlways, "7"},
+	} {
+		out := c.style.Render("x")
+		if strings.Contains(out, "38;") || strings.Contains(out, "48;") {
+			t.Errorf("%s: mono must not colour: %q", name, out)
+		}
+		if !regexp.MustCompile(`\x1b\[([0-9;]*;)?` + c.sgr + `(;[0-9;]*)?m`).MatchString(out) {
+			t.Errorf("%s: mono should keep SGR %s: %q", name, c.sgr, out)
+		}
+	}
+	if colorsActive() || backgroundsActive() {
+		t.Error("mono should report colours and backgrounds off")
+	}
+}
+
+func TestWantMono(t *testing.T) {
+	env := func(kv map[string]string) func(string) string { return func(k string) string { return kv[k] } }
+	for _, tc := range []struct {
+		env   map[string]string
+		theme string
+		want  bool
+	}{
+		{nil, "", false},
+		{map[string]string{"NO_COLOR": "1"}, "", true},
+		{map[string]string{"NO_COLOR": ""}, "", false},
+		{map[string]string{"K_BRAIN_THEME": "mono"}, "", true},
+		{nil, "mono", true},
+		{nil, "dark", false},
+	} {
+		if got := wantMono(env(tc.env), tc.theme); got != tc.want {
+			t.Errorf("wantMono(%v, %q) = %v, want %v", tc.env, tc.theme, got, tc.want)
+		}
+	}
+}
+
+func TestWantASCII(t *testing.T) {
+	env := func(kv map[string]string) func(string) string { return func(k string) string { return kv[k] } }
+	for _, tc := range []struct {
+		env  map[string]string
+		want bool
+	}{
+		{nil, false},
+		{map[string]string{"K_BRAIN_ASCII": "1"}, true},
+		{map[string]string{"K_BRAIN_ASCII": "0", "TERM": "linux"}, false},
+		{map[string]string{"TERM": "linux"}, true},
+		{map[string]string{"TERM": "xterm-256color", "LANG": "en_US.UTF-8"}, false},
+		{map[string]string{"LANG": "en_US.ISO-8859-1"}, true},
+		{map[string]string{"LC_ALL": "zh_CN.utf8", "LANG": "C"}, false},
+		{map[string]string{"LANG": "C"}, false},
+	} {
+		if got := wantASCII(env(tc.env)); got != tc.want {
+			t.Errorf("wantASCII(%v) = %v, want %v", tc.env, got, tc.want)
+		}
+	}
+}
+
+// Every glyph in either set is one cell wide, so switching sets never moves a
+// column; the ASCII set is pure 7-bit.
+func TestGlyphSetsAreOneCellAndASCIIIsSevenBit(t *testing.T) {
+	check := func(set string, g glyphSet, sevenBit bool) {
+		fields := map[string]string{
+			"User": g.User, "Assistant": g.Assistant, "ToolQueued": g.ToolQueued, "ToolRun": g.ToolRun,
+			"ToolDone": g.ToolDone, "OK": g.OK, "Fail": g.Fail, "Result": g.Result, "Rail": g.Rail,
+			"Band": g.Band, "Notice": g.Notice, "Warn": g.Warn, "Effort": g.Effort, "Tokens": g.Tokens,
+			"BarFull": g.BarFull, "BarEmpty": g.BarEmpty, "Minus": g.Minus,
+		}
+		for i, f := range g.Spinner {
+			fields[fmt.Sprintf("Spinner[%d]", i)] = f
+		}
+		for name, v := range fields {
+			if w := ansi.StringWidth(v); w != 1 {
+				t.Errorf("%s.%s %q is %d cells wide", set, name, v, w)
+			}
+			if sevenBit {
+				for _, r := range v {
+					if r > 0x7e {
+						t.Errorf("%s.%s %q is not 7-bit", set, name, v)
+					}
+				}
+			}
+		}
+	}
+	check("unicode", unicodeGlyphs, false)
+	check("ascii", asciiGlyphs, true)
+}
+
+// Colours come from theme.go alone: a raw colour anywhere else bypasses the
+// tokens and every fallback with them.
+func TestNoRawColoursOutsideTheme(t *testing.T) {
+	files, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	banned := regexp.MustCompile(`lipgloss\.Color\(|AdaptiveColor\{`)
+	for _, f := range files {
+		if f == "theme.go" || strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		src, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, line := range strings.Split(string(src), "\n") {
+			if banned.MatchString(line) {
+				t.Errorf("%s:%d uses a raw colour; add a token in theme.go instead: %s", f, i+1, strings.TrimSpace(line))
+			}
 		}
 	}
 }

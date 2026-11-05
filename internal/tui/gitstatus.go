@@ -9,7 +9,6 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 // gitStatusTimeout caps the async git readout so a slow or hung git never
@@ -110,13 +109,10 @@ func countUntracked(out string) int {
 	return n
 }
 
-// gitRepoStyle is the git identity colour: the theme's warn yellow
-// (#d9a441 on dark terminals, #b68120 on light ones).
-var gitRepoStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "136", Dark: "179"})
-
-// render formats the git readout as `repo@branch  +N -M ?K` using the TUI's
-// semantic styles: the repo name takes the warn yellow, the branch stays
-// neutral, and the dirty counters keep their success/warn/error colours.
+// render formats the git readout as `repo@branch  +N −M ?K` using the TUI's
+// semantic styles: repo and branch are identity, so they stay text.secondary
+// (a detached HEAD is the exception and takes the warning colour), and the
+// dirty counters keep their success/error/warning colours.
 // It returns "" when there is no git identity to show.
 func (s gitStatus) render() string {
 	if strings.TrimSpace(s.Repo) == "" || strings.TrimSpace(s.Branch) == "" {
@@ -126,7 +122,7 @@ func (s gitStatus) render() string {
 	b.WriteString(gitRepoStyle.Render(s.Repo))
 	b.WriteString(dimStyle.Render("@"))
 	if s.Detached {
-		b.WriteString(gitRepoStyle.Render(s.Branch))
+		b.WriteString(warnStyle.Render(s.Branch))
 	} else {
 		// A branch name is identity, not a success condition — neutral chrome.
 		b.WriteString(chromeStyle.Render(s.Branch))
@@ -134,10 +130,10 @@ func (s gitStatus) render() string {
 
 	var parts []string
 	if s.Added > 0 || s.Removed > 0 {
-		parts = append(parts, growStyle.Render(fmt.Sprintf("+%d", s.Added)), errStyle.Render(fmt.Sprintf("-%d", s.Removed)))
+		parts = append(parts, growStyle.Render(fmt.Sprintf("+%d", s.Added)), errStyle.Render(fmt.Sprintf("%s%d", glyphs.Minus, s.Removed)))
 	}
 	if s.Untracked > 0 {
-		parts = append(parts, gitRepoStyle.Render(fmt.Sprintf("?%d", s.Untracked)))
+		parts = append(parts, warnStyle.Render(fmt.Sprintf("?%d", s.Untracked)))
 	}
 	if len(parts) > 0 {
 		b.WriteString("  ")
