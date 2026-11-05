@@ -42,6 +42,7 @@ type Store struct {
 	fault                func(string) error // Test-only crash boundaries; never called while recovering.
 	snapshotTransactions uint64
 	snapshotBytes        int64
+	reasons              map[string]jobReasons
 }
 
 func OpenStore(dir string) (*Store, error) {
@@ -67,6 +68,7 @@ func OpenStore(dir string) (*Store, error) {
 		lock.Unlock()
 		return nil, err
 	}
+	s.restoreReasons()
 	return s, nil
 }
 func (s *Store) Close() error {
@@ -131,6 +133,7 @@ func (s *Store) Update(ctx context.Context, fn func(*Transaction) error) error {
 		return err
 	}
 	s.data = next
+	s.recordReasons(tx.changedJobs)
 	if s.seq-s.checkpointSeq >= s.snapshotTransactions || s.walBytes >= s.snapshotBytes {
 		s.maintenanceErr = s.checkpoint()
 	}

@@ -170,22 +170,31 @@ func resolveImageAdapter(ctx context.Context, manager *backend.ImageSettingsMana
 		connection.HTTPClient.CloseIdleConnections()
 		return nil, err
 	}
-	return &imageAdapterClient{Adapter: adapter, client: connection.HTTPClient}, nil
+	return &imageAdapterClient{Adapter: adapter, client: connection.HTTPClient, useProxy: connection.UseSystemProxy}, nil
 }
 
 // Resolvers create connection-scoped transports; release idle sockets after use.
 type imageAdapterClient struct {
 	imaging.Adapter
-	client *http.Client
+	client   *http.Client
+	useProxy bool
+}
+
+// routed sends output downloads the same way as the connection's own requests.
+func (a *imageAdapterClient) routed(result imaging.RemoteResult, err error) (imaging.RemoteResult, error) {
+	for i := range result.Outputs {
+		result.Outputs[i].UseProxy = a.useProxy
+	}
+	return result, err
 }
 
 func (a *imageAdapterClient) Submit(ctx context.Context, request imaging.ExecuteRequest) (imaging.RemoteResult, error) {
 	defer a.client.CloseIdleConnections()
-	return a.Adapter.Submit(ctx, request)
+	return a.routed(a.Adapter.Submit(ctx, request))
 }
 func (a *imageAdapterClient) Poll(ctx context.Context, handle string) (imaging.RemoteResult, error) {
 	defer a.client.CloseIdleConnections()
-	return a.Adapter.Poll(ctx, handle)
+	return a.routed(a.Adapter.Poll(ctx, handle))
 }
 func (a *imageAdapterClient) Cancel(ctx context.Context, handle string) error {
 	defer a.client.CloseIdleConnections()
@@ -193,5 +202,5 @@ func (a *imageAdapterClient) Cancel(ctx context.Context, handle string) error {
 }
 func (a *imageAdapterClient) Reconcile(ctx context.Context, key string) (imaging.RemoteResult, error) {
 	defer a.client.CloseIdleConnections()
-	return a.Adapter.Reconcile(ctx, key)
+	return a.routed(a.Adapter.Reconcile(ctx, key))
 }

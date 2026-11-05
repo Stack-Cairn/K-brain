@@ -4,12 +4,18 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
+	"regexp"
+	"strconv"
 	"strings"
+	"sync/atomic"
 
 	"github.com/Stack-Cairn/K-brain/internal/imaging"
+	"github.com/Stack-Cairn/K-brain/internal/netproxy"
 )
 
 const (
@@ -122,18 +128,24 @@ func failure(code string, delivery imaging.Delivery) error {
 	// Do not retain causes: even Unwrap must not expose transport URLs or bodies.
 	return &imaging.AdapterError{Code: code, Delivery: delivery}
 }
+
+// failureReason adds a short public hint. The text is sanitized before it leaves the
+// process; it still must not embed request URLs, headers or a wrapped cause.
+func failureReason(code string, delivery imaging.Delivery, reason string) error {
+	return &imaging.AdapterError{Code: code, Delivery: delivery, Reason: reason}
+}
 func failed(err error) (imaging.RemoteResult, error) {
 	e := err.(*imaging.AdapterError)
 	state := "failed"
 	if e.Delivery == imaging.DeliveryUncertain {
 		state = "unknown"
 	}
-	return imaging.RemoteResult{State: state, ErrorCode: e.Code}, err
+	return imaging.RemoteResult{State: state, ErrorCode: e.Code, ErrorReason: e.Reason}, err
 }
 
 func (a *Adapter) Submit(ctx context.Context, r imaging.ExecuteRequest) (imaging.RemoteResult, error) {
 	if ctx.Err() != nil {
-		return failed(failure(imaging.CodeUnavailable, imaging.DeliveryNotSent))
+		return failed(failureReason(imaging.CodeUnavailable, imaging.DeliveryNotSent, "request was cancelled or timed out before it was sent"))
 	}
 	path, body, err := a.request(ctx, r)
 	if err != nil {
@@ -148,7 +160,7 @@ func (a *Adapter) Submit(ctx context.Context, r imaging.ExecuteRequest) (imaging
 		return failed(failure(imaging.CodeAuthRequired, imaging.DeliveryNotSent))
 	}
 	if ctx.Err() != nil {
-		return failed(failure(imaging.CodeUnavailable, imaging.DeliveryNotSent))
+		return failed(failureReason(imaging.CodeUnavailable, imaging.DeliveryNotSent, "request was cancelled or timed out before it was sent"))
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.base+path, bytes.NewReader(raw))
 	if err != nil {
@@ -165,12 +177,29 @@ func (a *Adapter) Submit(ctx context.Context, r imaging.ExecuteRequest) (imaging
 	} else {
 		req.Header.Set("Authorization", "Bearer "+secret)
 	}
+	var gotConnection atomic.Bool
+	req = req.WithContext(httptrace.WithClientTrace(req.Context(), &httptrace.ClientTrace{
+		GotConn: func(httptrace.GotConnInfo) { gotConnection.Store(true) },
+	}))
 	resp, err := a.client.Do(req)
 	if err != nil {
-		return failed(failure(imaging.CodeResultUnknown, imaging.DeliveryUncertain))
+		if errors.Is(err, netproxy.ErrInvalidProxy) {
+			return failed(failureReason(imaging.CodeUnavailable, imaging.DeliveryNotSent, "app proxy configuration is invalid"))
+		}
+		// Without a connection, including a proxy that refused the tunnel or a failed TLS
+		// handshake, the prompt cannot have been delivered, so nothing was billed and the
+		// scheduler's retries are safe. Once a connection exists, the outcome is uncertain.
+		if !gotConnection.Load() && a.tracksConnections() {
+			return failed(failureReason(imaging.CodeUnavailable, imaging.DeliveryNotSent, "could not connect to the provider"))
+		}
+		reason := "no response from the provider"
+		if why := imaging.TransportReason(err); why != "" {
+			reason += ": " + why
+		}
+		return failed(failureReason(imaging.CodeResultUnknown, imaging.DeliveryUncertain, reason))
 	}
 	if resp.Body == nil {
-		return failed(failure(imaging.CodeResultUnknown, imaging.DeliveryUncertain))
+		return failed(failureReason(imaging.CodeResultUnknown, imaging.DeliveryUncertain, "provider response had no body"))
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -182,9 +211,19 @@ func (a *Adapter) Submit(ctx context.Context, r imaging.ExecuteRequest) (imaging
 	}
 	b, err := io.ReadAll(io.LimitReader(resp.Body, a.limits.MaxResponseBytes+1))
 	if err != nil || int64(len(b)) > a.limits.MaxResponseBytes {
-		return failed(failure(imaging.CodeResultUnknown, imaging.DeliveryUncertain))
+		return failed(failureReason(imaging.CodeResultUnknown, imaging.DeliveryUncertain, "provider response was cut off or too large"))
 	}
 	return a.response(ctx, b, r.Target.Source == "provider")
+}
+
+// tracksConnections reports whether GotConn is meaningful: only the standard transport fires
+// it, so a custom RoundTripper's failure must stay uncertain.
+func (a *Adapter) tracksConnections() bool {
+	switch a.client.Transport.(type) {
+	case nil, *http.Transport:
+		return true
+	}
+	return false
 }
 
 func httpFailure(id string, status int, b []byte, readErr error) error {
@@ -223,5 +262,12 @@ func httpFailure(id string, status int, b []byte, readErr error) error {
 			}
 		}
 	}
-	return failure(code, delivery)
+	// Only the status enum: provider messages can echo keys, signed URLs and internal hosts.
+	reason := "provider returned HTTP " + strconv.Itoa(status)
+	if explicit && providerStatusToken.MatchString(envelope.Error.Status) {
+		reason += " (" + envelope.Error.Status + ")"
+	}
+	return failureReason(code, delivery, reason)
 }
+
+var providerStatusToken = regexp.MustCompile(`^[A-Za-z_]{1,40}$`)

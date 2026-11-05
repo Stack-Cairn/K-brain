@@ -51,6 +51,9 @@ func encodeRecord(seq uint64, payload any) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	if p, err = stripErrorReasons(p); err != nil {
+		return nil, err
+	}
 	b, err := json.Marshal(checkedRecord{seq, p, recordChecksum(seq, p)})
 	if err != nil {
 		return nil, err

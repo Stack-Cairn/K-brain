@@ -235,7 +235,8 @@ func TestSchedulerRealOutputAncestryAndUnsupportedURL(t *testing.T) {
 			q.Start(context.Background())
 			if remote {
 				j = awaitEngine(t, s, scope, j.ID, JobFailed)
-				if j.Error.Code != CodeForbidden {
+				// Still refused and never fetched; the job reports the output as lost and says why.
+				if j.Error.Code != CodeOutputSaveFailed || j.Error.Reason != "provider returned an image address that is not allowed" {
 					t.Fatal(j.Error)
 				}
 				return

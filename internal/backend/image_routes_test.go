@@ -130,6 +130,46 @@ func TestImageHTTPStrictJSONAndErrors(t *testing.T) {
 		t.Fatal("image CORS missing")
 	}
 }
+func TestImageHTTPErrorKeepsProviderOutcomeCodes(t *testing.T) {
+	for _, tc := range []struct {
+		code   string
+		status int
+	}{
+		{imaging.CodeResultUnknown, 502},
+		{imaging.CodeNoImageOutput, 502},
+		{imaging.CodeOutputSaveFailed, 502},
+		{"IMAGE_SOMETHING_NEW", 503},
+	} {
+		r := imageRequest(httptest.NewRequest("GET", "/v1/image/jobs", nil))
+		w := httptest.NewRecorder()
+		imageHTTPError(w, r, &imaging.ImageError{Code: tc.code, Reason: "no response from https://u.example/p?k=1: request timed out"})
+		want := tc.code
+		if tc.code == "IMAGE_SOMETHING_NEW" {
+			want = imaging.CodeUnavailable
+		}
+		var body struct {
+			Error struct {
+				Code   string `json:"code"`
+				Reason string `json:"reason"`
+			} `json:"error"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		if w.Code != tc.status || body.Error.Code != want {
+			t.Fatalf("%s: got %d %s, want %d %s", tc.code, w.Code, body.Error.Code, tc.status, want)
+		}
+		if body.Error.Reason == "" || strings.Contains(body.Error.Reason, "u.example") {
+			t.Fatalf("%s: reason = %q", tc.code, body.Error.Reason)
+		}
+	}
+	r := imageRequest(httptest.NewRequest("GET", "/v1/image/jobs", nil))
+	w := httptest.NewRecorder()
+	imageHTTPError(w, r, errors.New("PRIVATE_SENTINEL"))
+	if bytes.Contains(w.Body.Bytes(), []byte(`"reason"`)) {
+		t.Fatal("untyped errors must not produce a reason")
+	}
+}
 func TestImageHTTPDelegationCannotFallBackToLocal(t *testing.T) {
 	s := imageHTTPFixture(t)
 	for _, header := range []string{"X-Kbrain-Image-Delegation", "Forwarded", "X-Forwarded-For", "X-Forwarded-Host"} {
