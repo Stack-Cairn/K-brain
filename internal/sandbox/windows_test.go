@@ -316,8 +316,17 @@ func TestWindowsProtectedPaths(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// The repository configuration and the hooks directory it names are
+	// protected too.
+	gitConfig := filepath.Join(root, ".git", "config")
+	if err := os.WriteFile(gitConfig, []byte("[core]\n\thooksPath = shared-hooks\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(root, "shared-hooks"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	p := workspacePolicy(root)
-	for _, path := range []string{filepath.Join(root, ".git", "hooks", "pre-commit"), filepath.Join(root, ".k-brain", "new.md"), instructions, filepath.Join(root, ".liveagent", "x")} {
+	for _, path := range []string{filepath.Join(root, ".git", "hooks", "pre-commit"), filepath.Join(root, ".k-brain", "new.md"), instructions, filepath.Join(root, ".liveagent", "x"), gitConfig, filepath.Join(root, "shared-hooks", "pre-commit")} {
 		if out, ok := helper(t, p, "write", path); ok {
 			t.Fatalf("write to protected %s succeeded: %s", path, out)
 		}
@@ -337,6 +346,8 @@ func TestWindowsProtectedPaths(t *testing.T) {
 		{"remove", instructions},
 		{"remove", hook},
 		{"rename", hook, filepath.Join(root, "pre-push")},
+		{"remove", gitConfig},
+		{"rename", filepath.Join(root, "shared-hooks"), filepath.Join(root, "old-shared-hooks")},
 	} {
 		if out, ok := helper(t, p, move...); ok {
 			t.Fatalf("%v succeeded: %s", move, out)
@@ -347,8 +358,11 @@ func TestWindowsProtectedPaths(t *testing.T) {
 			t.Fatalf("%s is gone", path)
 		}
 	}
-	if out, ok := helper(t, p, "write", filepath.Join(root, ".git", "config")); !ok {
-		t.Fatalf("write to .git/config (not protected) failed: %s", out)
+	if data, _ := os.ReadFile(gitConfig); !strings.Contains(string(data), "shared-hooks") {
+		t.Fatalf("protected .git/config changed: %q", data)
+	}
+	if out, ok := helper(t, p, "write", filepath.Join(root, ".git", "description")); !ok {
+		t.Fatalf("write to .git/description (not protected) failed: %s", out)
 	}
 }
 
