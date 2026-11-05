@@ -414,13 +414,15 @@ func TestWindowsSandboxUserAdminCycle(t *testing.T) {
 		powershell := filepath.Join(systemRoot(), "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
 		out, code := sandboxed(t, online, exec.Command(powershell, "-NoProfile", "-NonInteractive", "-Command",
 			"(Invoke-WebRequest -UseBasicParsing -Uri https://github.com).StatusCode"))
-		t.Logf("Windows PowerShell Invoke-WebRequest as the online account: exit %d: %s", code, out)
+		// Its default proxy needs a named object in the session namespace
+		// (documented limitation); without the proxy it works.
+		t.Logf("Windows PowerShell Invoke-WebRequest as the online account (documented limitation): exit %d: %s", code, out)
 		out, code = sandboxed(t, online, exec.Command(powershell, "-NoProfile", "-NonInteractive", "-Command",
 			"[System.Net.WebRequest]::DefaultWebProxy = $null; (Invoke-WebRequest -UseBasicParsing -Uri https://github.com).StatusCode"))
 		t.Logf("Windows PowerShell Invoke-WebRequest without proxy as the online account: exit %d: %s", code, out)
-		out, code = sandboxed(t, online, exec.Command(powershell, "-NoProfile", "-NonInteractive", "-Command",
-			"(New-Object System.Net.Http.HttpClient).GetAsync('https://github.com').Result.StatusCode"))
-		t.Logf("Windows PowerShell HttpClient as the online account: exit %d: %s", code, out)
+		if code != 0 || !strings.Contains(out, "200") {
+			t.Errorf("Windows PowerShell Invoke-WebRequest without proxy failed as the online account: %d %s", code, out)
+		}
 		if pwsh, err := exec.LookPath("pwsh"); err == nil {
 			out, code := sandboxed(t, online, exec.Command(pwsh, "-NoProfile", "-NonInteractive", "-Command",
 				"(Invoke-WebRequest -Uri https://github.com).StatusCode"))
