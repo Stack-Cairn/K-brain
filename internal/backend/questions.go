@@ -50,6 +50,12 @@ func (s *Server) wireQuestions(rt *runtimeSession, ag *agent.Agent) {
 		if runID == "" {
 			return "", errors.New("question requires an active backend run")
 		}
+		// No permission mode prompts for a question (permissions.IsInteractionTool);
+		// the gate is here so that deny rules and per-tool policies apply in every mode,
+		// not only when an AI review gate runs first.
+		if err := tools.Authorize(ctx, "AskUserQuestion", string(args)); err != nil {
+			return "", err
+		}
 		result, err := s.waitQuestion(ctx, rt, runID, tools.ToolCallID(ctx), questions)
 		if result == nil {
 			return "", err

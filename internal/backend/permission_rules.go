@@ -17,6 +17,10 @@ import (
 const (
 	ruleAllowReason     = "allowed by a remembered permission rule"
 	readOnlyAllowReason = "read-only action"
+	// interactionAllowReason allows a call that only asks the user a question
+	// (permissions.IsInteractionTool) in every mode; deny rules and explicit
+	// per-tool policies still decide it first.
+	interactionAllowReason = "asks the user; nothing to approve"
 )
 
 // sessionRulesPath keeps session-scope rules beside the session's event journal, so
