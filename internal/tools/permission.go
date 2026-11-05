@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/Stack-Cairn/K-brain/internal/permissions"
 	"github.com/Stack-Cairn/K-brain/internal/tools/bashrun"
@@ -52,6 +53,10 @@ type GateRequest struct {
 	// OtherDir marks a command that runs outside the session's working directory
 	// because of a cwd argument.
 	OtherDir bool
+	// Preview is the change a file tool (write, edit, Write, Edit) will make,
+	// for the client to show before the user decides; nil for other tools and
+	// when there is nothing to show. Rules never match on it.
+	Preview *EditPreview
 }
 
 var Gate func(GateRequest) (GateDecision, string)
@@ -131,6 +136,7 @@ func GateRequestFor(ctx context.Context, tool string, args json.RawMessage) Gate
 		case "write", "edit":
 			if a.Path != "" {
 				req.Command = winpath.Simplify(ResolvePath(ctx, a.Path))
+				req.Preview = editPreviewFor(tool, req.Command, args)
 			}
 		case "web_fetch":
 			var f struct {
@@ -163,6 +169,7 @@ func GateRequestFor(ctx context.Context, tool string, args json.RawMessage) Gate
 				}
 				if resolved, err := liveagentPath(ctx, a.Path, access, tool, tool == "Delete"); err == nil {
 					req.Command = resolved
+					req.Preview = editPreviewFor(tool, resolved, args)
 				}
 			}
 		}
@@ -250,7 +257,9 @@ func checkGateRequest(ctx context.Context, req GateRequest) string {
 	if gate == nil {
 		return ""
 	}
+	asked := time.Now()
 	decision, redirect := gate(req)
+	callMetaFrom(ctx).addGateWait(time.Since(asked))
 	if decision == GateReject {
 		if redirect == "" {
 			redirect = "the user rejected this action"

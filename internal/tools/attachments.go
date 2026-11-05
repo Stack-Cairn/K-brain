@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"sync"
+	"time"
 
 	"github.com/Stack-Cairn/K-brain/internal/ai"
 )
@@ -13,6 +14,17 @@ type Result struct {
 	Parts     []ai.ContentPart
 	Failed    bool
 	Cancelled bool
+	// ExitCode is the exit status of the command a shell tool (bash, Bash,
+	// ManagedProcess, ProcessWait, ProcessStop) ran or observed, 0 included; nil
+	// when the tool runs no command, or the command did not exit on its own
+	// (it timed out, was cancelled or killed, or is still running).
+	ExitCode *int
+	// TimedOut marks a command the tool killed when its timeout passed.
+	TimedOut bool
+	// Duration is the tool's own wall-clock time, without time spent waiting for
+	// the user's permission; zero when the tool did not run. Display only: the
+	// model sees Text alone.
+	Duration time.Duration
 }
 
 type attachmentKey struct{}

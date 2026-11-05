@@ -27,8 +27,16 @@ type ToolCall struct {
 		Name      string `json:"name"`
 		Arguments string `json:"arguments"`
 	} `json:"function"`
+	// DurationMs, ExitCode, ExitStatus and TimedOut describe how the call ran,
+	// for display; requests never carry them.
 	DurationMs int64 `json:"duration_ms,omitempty"`
-	ExitCode   int   `json:"exit_code,omitempty"`
+	// ExitCode is nonzero for a failed call: the command's status when a shell
+	// tool reported one, else 1 for a result that reads as an error.
+	ExitCode int `json:"exit_code,omitempty"`
+	// ExitStatus is the exit status a shell tool reported, 0 included (see
+	// tools.Result.ExitCode); nil for other calls.
+	ExitStatus *int `json:"exit_status,omitempty"`
+	TimedOut   bool `json:"timed_out,omitempty"`
 }
 
 func stripAuthored(msgs []Message) []Message {
@@ -52,6 +60,8 @@ func stripAuthored(msgs []Message) []Message {
 			for j := range calls {
 				calls[j].DurationMs = 0
 				calls[j].ExitCode = 0
+				calls[j].ExitStatus = nil
+				calls[j].TimedOut = false
 			}
 			out[i].ToolCalls = calls
 		}

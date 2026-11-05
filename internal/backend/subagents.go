@@ -212,7 +212,17 @@ func (rt *runtimeSession) trajectoryChildEventsForRun(id, runID string) agent.Ev
 			sub.publishChild(rt, id, protocol.EventChildToolStart, map[string]any{"task_id": id, "id": call, "name": name, "arguments": args})
 		},
 		OnToolResult: func(call, name string, result tools.Result) {
-			sub.publishChild(rt, id, protocol.EventChildToolEnd, map[string]any{"task_id": id, "id": call, "name": name, "output": result.Text, "failed": result.Failed, "cancelled": result.Cancelled})
+			payload := map[string]any{"task_id": id, "id": call, "name": name, "output": result.Text, "failed": result.Failed, "cancelled": result.Cancelled}
+			if result.ExitCode != nil {
+				payload["exit_code"] = *result.ExitCode
+			}
+			if result.TimedOut {
+				payload["timed_out"] = true
+			}
+			if ms := result.DurationMs(); ms > 0 {
+				payload["duration_ms"] = ms
+			}
+			sub.publishChild(rt, id, protocol.EventChildToolEnd, payload)
 		},
 	}
 }

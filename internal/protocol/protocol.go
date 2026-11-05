@@ -188,6 +188,24 @@ type ToolCall struct {
 	ID        string          `json:"id"`
 	Name      string          `json:"name"`
 	Arguments json.RawMessage `json:"arguments"`
+	// ToolRunInfo is filled in history once the call has run; absent in
+	// tool.call events and in messages a client sends.
+	ToolRunInfo
+}
+
+// ToolRunInfo describes how a tool call ran, for display. Every field is
+// optional and absent when unknown; the model never sees them.
+type ToolRunInfo struct {
+	// ExitCode is the exit status of the command a shell tool (bash, Bash,
+	// ManagedProcess, ProcessWait, ProcessStop) ran or observed, 0 included;
+	// absent for other tools and for a command that timed out, was cancelled,
+	// was killed or is still running.
+	ExitCode *int `json:"exit_code,omitempty"`
+	// TimedOut marks a command killed when its timeout passed.
+	TimedOut bool `json:"timed_out,omitempty"`
+	// DurationMs is the tool's own wall-clock time in milliseconds, rounded
+	// up, without time spent waiting for permission.
+	DurationMs int64 `json:"duration_ms,omitempty"`
 }
 
 type ToolResult struct {
@@ -197,6 +215,7 @@ type ToolResult struct {
 	Output    string         `json:"output"`
 	Failed    bool           `json:"failed,omitempty"`
 	Cancelled bool           `json:"cancelled,omitempty"`
+	ToolRunInfo
 }
 
 type Usage struct {
@@ -298,6 +317,22 @@ type PermissionRequest struct {
 	// ToolCallID is the model tool call awaiting this decision, when known, so
 	// clients can show the prompt beside that call.
 	ToolCallID string `json:"tool_call_id,omitempty"`
+	// Preview is the change a file tool (write, edit, Write, Edit) will make;
+	// absent for other tools and when there is nothing to show.
+	Preview *PermissionPreview `json:"preview,omitempty"`
+}
+
+// PermissionPreview shows a pending file change while the user decides.
+type PermissionPreview struct {
+	Path string `json:"path"`
+	// Diff lists the changed lines as "<line> <mark> <text>", mark one of ' ',
+	// '-', '+': the format of the diff block in edit and write results. It holds
+	// at most 200 rows and 32 KiB; empty when the change is too large to preview.
+	Diff string `json:"diff,omitempty"`
+	// NewFile marks a write that creates the file.
+	NewFile bool `json:"new_file,omitempty"`
+	// Truncated marks a Diff cut to those limits or left out.
+	Truncated bool `json:"truncated,omitempty"`
 }
 
 type PermissionDecision struct {
@@ -801,7 +836,7 @@ func FromAIMessage(m ai.Message) Message {
 		}
 	}
 	for _, tc := range m.ToolCalls {
-		out.ToolCalls = append(out.ToolCalls, ToolCall{ID: tc.ID, Name: tc.Function.Name, Arguments: json.RawMessage(tc.Function.Arguments)})
+		out.ToolCalls = append(out.ToolCalls, ToolCall{ID: tc.ID, Name: tc.Function.Name, Arguments: json.RawMessage(tc.Function.Arguments), ToolRunInfo: ToolRunInfo{ExitCode: tc.ExitStatus, TimedOut: tc.TimedOut, DurationMs: tc.DurationMs}})
 	}
 	return out
 }

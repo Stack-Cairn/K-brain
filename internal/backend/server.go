@@ -1599,7 +1599,7 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, end func(),
 		_, _ = rt.publish(protocol.EventToolCall, protocol.ToolCallEvent{ToolCall: protocol.ToolCall{ID: id, Name: name, Arguments: json.RawMessage(args)}}, "")
 	}, OnToolResult: func(id, name string, result tools.Result) {
 		toolOutput.finish(id)
-		_, _ = rt.publish(protocol.EventToolResult, protocol.ToolResultEvent{ToolResult: protocol.ToolResult{ID: id, Name: name, Output: result.Text, Content: protocol.FromAIMessage(ai.Message{Role: "tool", Parts: result.Parts}).Content, Failed: result.Failed, Cancelled: result.Cancelled}}, "")
+		_, _ = rt.publish(protocol.EventToolResult, protocol.ToolResultEvent{ToolResult: protocol.ToolResult{ID: id, Name: name, Output: result.Text, Content: protocol.FromAIMessage(ai.Message{Role: "tool", Parts: result.Parts}).Content, Failed: result.Failed, Cancelled: result.Cancelled, ToolRunInfo: toolRunInfo(result)}}, "")
 	}, OnToolOutput: toolOutput.update, OnUsage: func(u ai.Usage) {
 		_, _ = rt.publish(protocol.EventUsage, protocol.Usage{InputTokens: u.PromptTokens, OutputTokens: u.CompletionTokens, CachedTokens: u.Cached(), CacheWriteTokens: u.CacheWrite()}, "")
 	}}
@@ -1711,6 +1711,18 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, end func(),
 	}
 }
 
+// toolRunInfo is the display metadata of a tool result for tool.result events.
+func toolRunInfo(result tools.Result) protocol.ToolRunInfo {
+	return protocol.ToolRunInfo{ExitCode: result.ExitCode, TimedOut: result.TimedOut, DurationMs: result.DurationMs()}
+}
+
+func permissionPreview(p *tools.EditPreview) *protocol.PermissionPreview {
+	if p == nil {
+		return nil
+	}
+	return &protocol.PermissionPreview{Path: p.Path, Diff: p.Diff, NewFile: p.NewFile, Truncated: p.Truncated}
+}
+
 // waitPermission asks the client; sessionGrant marks a prompt whose approval also
 // grants the session, labelling allow_once accordingly.
 // permissionPrompt carries what a prompt can remember: the suggested rules, the
@@ -1734,7 +1746,7 @@ func (s *Server) waitPermission(rt *runtimeSession, runID string, req tools.Gate
 	}
 	gateReq := req
 	gateReq.Context = nil
-	p := &permissionWaiter{request: protocol.PermissionRequest{PermissionID: id, Tool: req.Tool, Command: req.Command, Shell: req.Shell, Rule: req.Rule, Description: req.Description, Options: options, Suggestion: prompt.suggestion, Scope: scope, ToolCallID: tools.ToolCallID(ctx)}, result: make(chan tools.GateDecision, 1), reason: make(chan string, 1), gate: gateReq, root: prompt.root, ruleSettleable: prompt.settleable && !sessionGrant}
+	p := &permissionWaiter{request: protocol.PermissionRequest{PermissionID: id, Tool: req.Tool, Command: req.Command, Shell: req.Shell, Rule: req.Rule, Description: req.Description, Options: options, Suggestion: prompt.suggestion, Scope: scope, ToolCallID: tools.ToolCallID(ctx), Preview: permissionPreview(req.Preview)}, result: make(chan tools.GateDecision, 1), reason: make(chan string, 1), gate: gateReq, root: prompt.root, ruleSettleable: prompt.settleable && !sessionGrant}
 	rt.mu.Lock()
 	_, _, rememberable := computerApprovalRule(req.Command)
 	if sessionGrant && rememberable && rt.computerAllowAll {

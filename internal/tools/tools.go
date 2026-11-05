@@ -181,19 +181,25 @@ func executeResult(ctx context.Context, ts []Tool, name string, args json.RawMes
 	}
 	for _, t := range ts {
 		if t.Def.Function.Name == name {
-			out, err := t.Run(ctx, args)
+			callCtx, meta := withCallMeta(ctx)
+			start := time.Now()
+			out, err := t.Run(callCtx, args)
 			cancelled := ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+			var result Result
 			if err != nil {
 				text := "Error: " + err.Error()
 				if out != "" {
 					text += "\n" + out
 				}
-				return Result{Text: text, Failed: true, Cancelled: cancelled}
+				result = Result{Text: text, Failed: true, Cancelled: cancelled}
+			} else {
+				if out == "" {
+					out = "(no output)"
+				}
+				result = Result{Text: out, Failed: cancelled, Cancelled: cancelled}
 			}
-			if out == "" {
-				out = "(no output)"
-			}
-			return Result{Text: out, Failed: cancelled, Cancelled: cancelled}
+			meta.apply(&result, start)
+			return result
 		}
 	}
 	msg := fmt.Sprintf("Error: unknown tool %q", name)
@@ -286,6 +292,7 @@ func bashTool() Tool {
 				Dir:      WorkingDir(ctx),
 				OnUpdate: onUpdate,
 			})
+			reportShellRun(ctx, res.ExitCode, res.TimedOut)
 
 			s := TruncateTail(res.Output)
 			if isBinary([]byte(res.Output)) {
@@ -383,7 +390,7 @@ func writeTool(reads *readLedger) Tool {
 			if a.Path, err = resolveFilePath(ctx, a.Path); err != nil {
 				return "", err
 			}
-			if deny := checkGate(ctx, "write", a.Path); deny != "" {
+			if deny := checkGateRequest(ctx, GateRequest{Context: ctx, Tool: "write", Command: a.Path, Rule: CommandRule(a.Path), Preview: filePreview("write", a.Path, previewArgs{Content: a.Content})}); deny != "" {
 				return "", errors.New(deny)
 			}
 
@@ -432,7 +439,7 @@ func editTool(reads *readLedger) Tool {
 			if a.Path, err = resolveFilePath(ctx, a.Path); err != nil {
 				return "", err
 			}
-			if deny := checkGate(ctx, "edit", a.Path); deny != "" {
+			if deny := checkGateRequest(ctx, GateRequest{Context: ctx, Tool: "edit", Command: a.Path, Rule: CommandRule(a.Path), Preview: filePreview("edit", a.Path, previewArgs{OldString: a.OldString, NewString: a.NewString, ReplaceAll: a.ReplaceAll})}); deny != "" {
 				return "", errors.New(deny)
 			}
 			data, err := os.ReadFile(a.Path)
@@ -483,6 +490,13 @@ func editTool(reads *readLedger) Tool {
 }
 
 func editDiff(oldS, newS string, startLine int) string {
+	d, _ := editDiffRows(oldS, newS, startLine)
+	return d
+}
+
+// editDiffRows is editDiff that also reports whether rows past editDiffMaxLines
+// were left out.
+func editDiffRows(oldS, newS string, startLine int) (string, bool) {
 	o := strings.Split(strings.TrimSuffix(oldS, "\n"), "\n")
 	n := strings.Split(strings.TrimSuffix(newS, "\n"), "\n")
 	p := 0
@@ -494,7 +508,7 @@ func editDiff(oldS, newS string, startLine int) string {
 		s++
 	}
 	if p == len(o) && p == len(n) {
-		return ""
+		return "", false
 	}
 	var b strings.Builder
 	rows := 0
@@ -503,9 +517,7 @@ func editDiff(oldS, newS string, startLine int) string {
 		if rows > editDiffMaxLines {
 			return
 		}
-		if len(line) > 200 {
-			line = line[:200] + "…"
-		}
+		line = clipDiffLine(line)
 		if startLine > 0 {
 			fmt.Fprintf(&b, "%d %s %s\n", num, mark, line)
 		} else {
@@ -527,8 +539,16 @@ func editDiff(oldS, newS string, startLine int) string {
 	out := strings.TrimSuffix(b.String(), "\n")
 	if rows > editDiffMaxLines {
 		out += fmt.Sprintf("\n… +%d more lines", rows-editDiffMaxLines)
+		return out, true
 	}
-	return out
+	return out, false
+}
+
+func clipDiffLine(line string) string {
+	if len(line) > 200 {
+		return line[:200] + "…"
+	}
+	return line
 }
 
 const editDiffMaxLines = 200
