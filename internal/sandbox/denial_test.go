@@ -53,6 +53,8 @@ func TestExplainFailureClassifiesDenials(t *testing.T) {
 			&Denial{Kind: "write", Path: filepath.Join(outside, "a"), SuggestedRoot: outside}},
 		{"protected relative", "git config user.name x", "error: could not lock config file .git/config: Operation not permitted",
 			&Denial{Kind: "protected", Path: filepath.Join(root, ".git", "config")}},
+		{"rename over a bound file", "git config user.name x", "error: could not write config file .git/config: Device or resource busy",
+			&Denial{Kind: "protected", Path: filepath.Join(root, ".git", "config")}},
 		{"configured read-only", "echo > docs/a", "sh: docs/a: Read-only file system",
 			&Denial{Kind: "protected", Path: filepath.Join(root, "docs", "a")}},
 		{"masked", "cat " + filepath.Join(masked, "id"), "cat: " + filepath.Join(masked, "id") + ": Operation not permitted",

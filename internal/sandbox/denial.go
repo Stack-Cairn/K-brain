@@ -50,8 +50,10 @@ func (d *Denial) Hint() string {
 
 // denialMarkers are the error texts a denied file operation produces: EACCES
 // under Seatbelt and Landlock, EPERM and EROFS under bubblewrap's read-only
-// mounts, in the spellings of the C library, Go, Node and Python.
-var denialMarkers = []string{"operation not permitted", "permission denied", "read-only file system", "eacces", "eperm", "erofs"}
+// mounts, and EBUSY for a rename over a file bubblewrap bound in place (git
+// writes its config that way), in the spellings of the C library, Go, Node and
+// Python.
+var denialMarkers = []string{"operation not permitted", "permission denied", "read-only file system", "resource busy", "eacces", "eperm", "erofs", "ebusy"}
 
 // networkMarkers are resolver and connect failures an offline run produces.
 var networkMarkers = []string{
