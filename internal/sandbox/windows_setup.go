@@ -389,10 +389,16 @@ func uninstallPlatform(ctx context.Context) error {
 		return err
 	}
 	n := namesFor(sid)
-	var groups []string
+	var groups, principals []string
 	if st, err := loadSetupState(); err == nil {
 		groups = []string{st.Group.SID, st.OfflineGroup.SID}
+		principals = []string{st.Online.SID, st.Offline.SID}
 	} else {
+		for _, name := range []string{n.online, n.offline} {
+			if s, _, _, err := windows.LookupSID("", name); err == nil {
+				principals = append(principals, s.String())
+			}
+		}
 		for _, name := range []string{n.group, n.offlineGroup} {
 			if s, _, _, err := windows.LookupSID("", name); err == nil {
 				groups = append(groups, s.String())
@@ -404,6 +410,10 @@ func uninstallPlatform(ctx context.Context) error {
 	roots, err := readACLRoots(rootsFile)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		errs = append(errs, err)
+	}
+	if len(principals)+len(groups) > 0 {
+		// Best effort: the entries go with the logon session anyway.
+		_ = withdrawWindowStation(append(principals, groups...))
 	}
 	ours := n.sandboxACE(groups)
 	for _, root := range roots {

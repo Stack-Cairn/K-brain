@@ -597,6 +597,17 @@ func TestWindowsSandboxUserAdminCycle(t *testing.T) {
 	if n, err := wfpFiltersPresent(names); err != nil || n != 0 {
 		t.Errorf("filters after uninstall: %d (%v)", n, err)
 	}
+	if ws, _, _ := procGetProcessWindowStation.Call(); ws != 0 {
+		if d, err := readObjectDACL(windows.Handle(ws), windows.SE_WINDOW_OBJECT); err == nil {
+			for _, a := range d.aces {
+				if sid := a.sid(); sid == st.Online.SID || sid == st.Offline.SID || sid == st.Group.SID || sid == st.OfflineGroup.SID {
+					t.Errorf("the window station still grants %s", sid)
+				}
+			}
+		} else {
+			t.Logf("window station DACL: %v", err)
+		}
+	}
 	if key, err := registry.OpenKey(registry.LOCAL_MACHINE, specialAccountsKey, registry.QUERY_VALUE); err == nil {
 		for _, name := range []string{names.online, names.offline} {
 			if _, _, err := key.GetIntegerValue(name); !errors.Is(err, registry.ErrNotExist) {

@@ -919,6 +919,34 @@ func grantWindowStation(station, accountSID string) error {
 	return windows.SetSecurityInfo(windows.Handle(h), windows.SE_WINDOW_OBJECT, windows.DACL_SECURITY_INFORMATION, nil, nil, acl, nil)
 }
 
+// withdrawWindowStation removes the entries grantWindowStation added for sids
+// from the launcher's window station; uninstall calls it so that no entry
+// for a deleted account stays until the user logs off.
+func withdrawWindowStation(sids []string) error {
+	winsta, _, callErr := procGetProcessWindowStation.Call()
+	if winsta == 0 {
+		return fmt.Errorf("window station: %w", callErr)
+	}
+	station, err := userObjectName(winsta)
+	if err != nil {
+		return err
+	}
+	name, _ := windows.UTF16PtrFromString(station)
+	h, _, callErr := procOpenWindowStationW.Call(uintptr(unsafe.Pointer(name)), 0, windows.READ_CONTROL|windows.WRITE_DAC)
+	if h == 0 {
+		return callErr
+	}
+	defer procCloseWindowStation.Call(h)
+	d, err := readObjectDACL(windows.Handle(h), windows.SE_WINDOW_OBJECT)
+	if err != nil || d.null {
+		return err
+	}
+	if !d.remove(func(a rawACE) bool { return a.typ() == accessAllowedACEType && slices.Contains(sids, a.sid()) }) {
+		return nil
+	}
+	return writeDACL(windows.Handle(h), d)
+}
+
 // runUserStage is stage two, run as the sandbox account.
 func runUserStage() int {
 	code, err := userStage()

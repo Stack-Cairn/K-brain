@@ -93,7 +93,11 @@ type fileDACL struct {
 }
 
 func readDACL(h windows.Handle) (fileDACL, error) {
-	sd, err := windows.GetSecurityInfo(h, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION)
+	return readObjectDACL(h, windows.SE_FILE_OBJECT)
+}
+
+func readObjectDACL(h windows.Handle, typ windows.SE_OBJECT_TYPE) (fileDACL, error) {
+	sd, err := windows.GetSecurityInfo(h, typ, windows.DACL_SECURITY_INFORMATION)
 	if err != nil {
 		return fileDACL{}, err
 	}
