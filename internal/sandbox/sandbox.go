@@ -26,6 +26,9 @@ type Policy struct {
 	// root: project instructions and hooks that a later, unsandboxed session
 	// would trust.
 	Protected []string
+	// EnvKeep lists variable names (globs allowed) a sandboxed command still
+	// inherits although they look like credentials (FilterEnv).
+	EnvKeep []string
 }
 
 func (p *Policy) ForRoot(root string) *Policy {
@@ -38,6 +41,7 @@ func (p *Policy) ForRoot(root string) *Policy {
 	copy.ReadOnly = append([]string(nil), p.ReadOnly...)
 	copy.Masked = append([]string(nil), p.Masked...)
 	copy.Protected = append([]string(nil), p.Protected...)
+	copy.EnvKeep = append([]string(nil), p.EnvKeep...)
 	return &copy
 }
 
@@ -65,6 +69,13 @@ func (p *Policy) Wrap(ctx context.Context, cmd *exec.Cmd) (*exec.Cmd, error) {
 	if !p.Enabled() {
 		return cmd, nil
 	}
+	// Every backend hands cmd.Env to the wrapped command; nil would inherit
+	// this process's environment, credentials included.
+	env := cmd.Env
+	if env == nil {
+		env = os.Environ()
+	}
+	cmd.Env = p.FilterEnv(env)
 	if p.Root == "" {
 		return nil, fmt.Errorf("sandbox root is empty")
 	}

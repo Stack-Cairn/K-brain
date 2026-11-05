@@ -80,6 +80,8 @@ type RunRequest struct {
 	// Masked and Protected extend the defaults (MaskedDirs, ProtectedPaths).
 	Masked    []string
 	Protected []string
+	// EnvKeep extends the policy's EnvKeep.
+	EnvKeep []string
 }
 
 // ForRun builds the policy for a run that asked for the workspace sandbox. A
@@ -107,6 +109,7 @@ func ForRun(base *Policy, req RunRequest) (*Policy, error) {
 	} else {
 		p = &Policy{Mode: "workspace", Backend: "auto", Root: root, Network: req.Network, Writable: append([]string(nil), req.Writable...)}
 	}
+	p.EnvKeep = append(p.EnvKeep, req.EnvKeep...)
 	p.Masked = append(p.Masked, MaskedDirs()...)
 	p.Masked = append(p.Masked, req.Masked...)
 	p.Protected = append(p.Protected, ProtectedPaths(root)...)

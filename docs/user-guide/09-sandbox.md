@@ -35,6 +35,8 @@ Landlock 只能"允许"不能"屏蔽"，因此有几处弱于 bubblewrap，并�
 
 受限的是命令类工具：`Bash`/`bash`、`ManagedProcess`、`TerminalSession` 以及插件 hook。命令可以读整台机器，只能写工作区根、额外 `writable` 路径和系统临时目录（`TMPDIR`、`/tmp`、`/var/tmp`）；`/dev/null`、`/dev/tty` 等设备节点可写。
 
+沙箱里的命令不继承看起来像凭据的环境变量：名字（不区分大小写）匹配 `*KEY*`、`*SECRET*`、`*TOKEN*`、`*PASSWORD*`、`*PASSWD*`、`*CREDENTIAL*`、`*_PAT` 的变量，以及 `LD_PRELOAD`、`LD_AUDIT`、`DYLD_INSERT_LIBRARIES`。凭据目录已对命令隐藏，环境里的同一份密钥也不应再带进去。确实需要的变量用 `"envKeep": ["NPM_TOKEN", "CI_*"]` 放行（可用通配符）；该配置同样作用于按次运行的沙箱。未开沙箱时环境不变。
+
 ## 按次运行的沙箱（`options.sandbox`）
 
 客户端可以在单次运行请求里打开沙箱，无需改全局配置：

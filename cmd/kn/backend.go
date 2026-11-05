@@ -211,6 +211,7 @@ func backendCLI(args []string) error {
 		Build:                   protocol.NewBuild(version, revision),
 		PermissionRulesDir:      permissionRulesDir(),
 		SandboxMasked:           sandboxMaskedDirs(store.SessionsDir()),
+		SandboxEnvKeep:          cfg.Sandbox.EnvKeep,
 	})
 	if err != nil {
 		return err

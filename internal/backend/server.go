@@ -67,6 +67,9 @@ type Options struct {
 	// SandboxMasked lists directories hidden from commands of sandboxed runs in
 	// addition to the credential directories: the backend's own data and config.
 	SandboxMasked []string
+	// SandboxEnvKeep lists the credential-looking variables commands of
+	// sandboxed runs still inherit (sandbox.envKeep).
+	SandboxEnvKeep []string
 }
 
 type Server struct {
@@ -81,6 +84,7 @@ type Server struct {
 	eventDir             string
 	permissionDir        string
 	sandboxMasked        []string
+	sandboxEnvKeep       []string
 	defaultCWD           string
 	filesystemRoots      []string
 	filesystemMu         sync.Mutex
@@ -220,7 +224,7 @@ func New(opts Options) (*Server, error) {
 		filesystemRoots: append([]string(nil), opts.FilesystemRoots...),
 		store:           opts.Store, factory: opts.Factory, token: opts.Token, models: append([]protocol.ModelRef(nil), opts.Models...),
 		settings: opts.Settings, usage: NewProviderUsageService(opts.Settings), prompts: opts.Prompts,
-		eventDir: opts.EventDir, permissionDir: opts.PermissionRulesDir, sandboxMasked: append([]string(nil), opts.SandboxMasked...), defaultCWD: opts.DefaultCWD, memoryStore: memoryStore, questionWait: opts.QuestionTimeout, memoryRuntimeFactory: opts.MemoryRuntimeFactory, cron: cron, hookStore: hookStore, hookRunner: NewBackendHookRunner(hookStore), mcp: opts.MCP, sessions: make(map[string]*runtimeSession), snapshots: make(map[string]sessionHTTPSnapshot),
+		eventDir: opts.EventDir, permissionDir: opts.PermissionRulesDir, sandboxMasked: append([]string(nil), opts.SandboxMasked...), sandboxEnvKeep: append([]string(nil), opts.SandboxEnvKeep...), defaultCWD: opts.DefaultCWD, memoryStore: memoryStore, questionWait: opts.QuestionTimeout, memoryRuntimeFactory: opts.MemoryRuntimeFactory, cron: cron, hookStore: hookStore, hookRunner: NewBackendHookRunner(hookStore), mcp: opts.MCP, sessions: make(map[string]*runtimeSession), snapshots: make(map[string]sessionHTTPSnapshot),
 		build: opts.Build,
 	}
 	if len(server.filesystemRoots) == 0 && opts.DefaultCWD != "" {

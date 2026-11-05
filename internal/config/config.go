@@ -232,6 +232,9 @@ type SandboxConfig struct {
 	Network  *bool    `json:"network,omitempty"`
 	Writable []string `json:"writable,omitempty"`
 	ReadOnly []string `json:"readOnly,omitempty"`
+	// EnvKeep names variables (globs allowed) sandboxed commands still inherit
+	// although they look like credentials.
+	EnvKeep []string `json:"envKeep,omitempty"`
 }
 
 func (s SandboxConfig) Policy(root string) *sandbox.Policy {
@@ -242,7 +245,11 @@ func (s SandboxConfig) Policy(root string) *sandbox.Policy {
 	if root == "" {
 		root = sandbox.RootFromEnv()
 	}
-	return sandbox.New(s.Mode, s.Backend, root, network, s.Writable, s.ReadOnly)
+	p := sandbox.New(s.Mode, s.Backend, root, network, s.Writable, s.ReadOnly)
+	if p != nil {
+		p.EnvKeep = append([]string(nil), s.EnvKeep...)
+	}
+	return p
 }
 
 // HookEvents lists the lifecycle events a hooks entry may name.

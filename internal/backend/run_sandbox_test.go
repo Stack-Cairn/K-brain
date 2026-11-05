@@ -107,7 +107,7 @@ func TestRunSandboxPolicyUsesWriteRoots(t *testing.T) {
 		got = req
 		return &sandbox.Policy{Mode: "workspace", Root: req.Root}, nil
 	})
-	s := &Server{sandboxMasked: []string{"/data/liveagent"}}
+	s := &Server{sandboxMasked: []string{"/data/liveagent"}, sandboxEnvKeep: []string{"NPM_TOKEN"}}
 	configured := &sandbox.Policy{Mode: "workspace", Root: cwd}
 	if p, err := s.runSandboxPolicy(configured, cwd, protocol.RunOptions{}); err != nil || p != configured {
 		t.Fatalf("unsandboxed run changed the configured policy: %v %v", p, err)
@@ -123,7 +123,7 @@ func TestRunSandboxPolicyUsesWriteRoots(t *testing.T) {
 	if _, err := s.runSandboxPolicy(configured, cwd, options); err != nil {
 		t.Fatal(err)
 	}
-	if got.Root != cwd || !slices.Equal(got.Writable, []string{extra}) || !got.Network || !slices.Equal(got.Masked, []string{"/data/liveagent"}) {
+	if got.Root != cwd || !slices.Equal(got.Writable, []string{extra}) || !got.Network || !slices.Equal(got.Masked, []string{"/data/liveagent"}) || !slices.Equal(got.EnvKeep, []string{"NPM_TOKEN"}) {
 		t.Fatalf("request = %+v", got)
 	}
 }
