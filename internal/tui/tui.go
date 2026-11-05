@@ -156,7 +156,6 @@ type model struct {
 	turnSnapshotSeq *int
 
 	hist     []string
-	pasteBuf string
 	images   []pastedImage
 	imageSeq int
 	histIdx  int
@@ -274,7 +273,8 @@ type model struct {
 	// the type and its methods in that area's own files. Add one line per
 	// area at the end of the block rather than loose fields elsewhere in
 	// model, so branches for different areas merge without conflicts.
-	tx *transcriptState // transcript engine (transcript.go)
+	tx  *transcriptState // transcript engine (transcript.go)
+	cmp *composerState   // composer: undo, kill ring, chips, stash, history search, queue editing
 }
 
 type initialPromptMsg struct{}

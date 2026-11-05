@@ -57,36 +57,25 @@ func TestSaveClipboardImageStaysWithinPasteDirectory(t *testing.T) {
 	}
 }
 
-func TestPasteCollapseOptIn(t *testing.T) {
-	paste := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("line1\nline2\nline3"), Paste: true}
+func TestPasteChipOnByDefault(t *testing.T) {
+	paste := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("line1\nline2\nline3\nline4"), Paste: true}
 
 	m := compactCmdModel()
 	m.Update(paste)
-	if !strings.Contains(m.input.Value(), "line1") {
-		t.Fatalf("paste should land verbatim by default, got %q", m.input.Value())
+	chip := "[Pasted 4 lines" + chipSentinel + "]"
+	if m.input.Value() != chip {
+		t.Fatalf("a large paste should become one chip by default, got %q", m.input.Value())
 	}
-	if m.pasteBuf != "" {
-		t.Fatal("no buffer held when collapse is off")
+	if got := m.expandPasteChips(m.input.Value()); got != "line1\nline2\nline3\nline4" {
+		t.Fatalf("send should expand the chip, got %q", got)
 	}
 
-	on := true
+	off := false
 	m2 := compactCmdModel()
-	m2.cfg.CollapsePaste = &on
+	m2.cfg.CollapsePaste = &off
 	m2.Update(paste)
-	if !strings.Contains(m2.input.Value(), "[Pasted ~3 lines]") {
-		t.Fatalf("collapsed input should show the placeholder, got %q", m2.input.Value())
-	}
-	if m2.pasteBuf == "" {
-		t.Fatal("the real paste text should be held")
-	}
-
-	m2.input.SetValue(m2.input.Value())
-	m2.permDialog = nil
-
-	text := strings.TrimSpace(m2.input.Value())
-	text = strings.Replace(text, "[Pasted ~3 lines]", strings.TrimSpace(m2.pasteBuf), 1)
-	if !strings.Contains(text, "line1\nline2\nline3") {
-		t.Fatalf("submit should restore the real text, got %q", text)
+	if !strings.Contains(m2.input.Value(), "line1\nline2") || strings.Contains(m2.input.Value(), "[Pasted") {
+		t.Fatalf("collapsePaste=false should paste verbatim, got %q", m2.input.Value())
 	}
 }
 

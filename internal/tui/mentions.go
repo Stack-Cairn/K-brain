@@ -31,7 +31,7 @@ func expandSkills(text string, sk []skills.Skill) string {
 		" — read each SKILL.md with the read tool and follow its instructions for this request]"
 }
 
-var rangeRe = regexp.MustCompile(`#(\d+)(?:-(\d+))?$`)
+var rangeRe = regexp.MustCompile(`[#:](\d+)(?:-(\d+))?$`)
 
 func mentionPaths(text string) [][2]string {
 	var out [][2]string

@@ -1,0 +1,24 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────
+  ❯ dep
+  history · this directory          1/2
+› deploy the staging server and tail th…
+  fix the deploy script so it stops on …
+  Enter use · Esc cancel
+   Always allow     kimi-k3-fast · ✦ off

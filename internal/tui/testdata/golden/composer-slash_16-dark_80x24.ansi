@@ -1,0 +1,24 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[90m────────────────────────────────────────────────────────────────────────────────[0m
+  [1;96m❯ [0m/mo[7m [0m                                                                        [0m
+[1;96m› /model              switch model (refresh pulls the catalog)[0m                  
+  /model-for-session  [90mswitch model for this session only[0m
+  /mouse              [90mtoggle mouse capture[0m
+  /memory             [90mlist saved memories; mark entry n done[0m
+[90m  1/4[0m
+  [101m [0m[1;30;101mAlways allow[0m[101m [0m                                            [37mkimi-k3-fast[0m[90m · [0m[1;96m✦ off[0m

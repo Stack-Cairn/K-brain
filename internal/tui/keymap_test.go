@@ -34,6 +34,12 @@ var legacyHelpKeys = []string{
 	"while busy with queued messages: ↑/↓ select, Del removes",
 	"PgUp/PgDn — scroll · wheel — scroll · drag — select/copy text",
 	palHintQuit + " — quit",
+	"Ctrl+Z / Alt+Z — undo / redo the draft",
+	"Ctrl+W / Ctrl+U / Alt+K / Alt+D — cut word, to line start, to line end, next word · Ctrl+Y paste it back (Alt+Y older)",
+	"Alt+M — multiline mode: Enter adds a line, Ctrl+J sends",
+	"Ctrl+R — search prompt history (Tab: all directories)",
+	"Ctrl+S — stash the draft, or restore it on an empty composer",
+	"with a queued message selected: Enter sends it now, Ctrl+E edits, Alt+↑/↓ moves",
 }
 
 func TestKeymapHelpUnchanged(t *testing.T) {

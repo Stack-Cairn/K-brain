@@ -25,7 +25,7 @@ func TestPromptEditorApply(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			m := compactCmdModel()
 			m.input.SetValue("original")
-			m.pasteBuf = "stored paste"
+			m.composer().pastes, m.composer().pasteSeq = map[int]string{1: "stored paste"}, 1
 			path := filepath.Join(t.TempDir(), "draft.md")
 			if err := os.WriteFile(path, []byte(tc.data), 0600); err != nil {
 				t.Fatal(err)
@@ -53,7 +53,7 @@ func TestPromptEditorApply(t *testing.T) {
 			if !tc.retained && !os.IsNotExist(err) {
 				t.Fatal("temporary file not removed")
 			}
-			if !tc.retained && m.pasteBuf != "" {
+			if !tc.retained && len(m.composer().pastes) != 0 {
 				t.Fatal("stale collapsed paste")
 			}
 		})

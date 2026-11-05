@@ -1,0 +1,24 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────
+  ❯ /mo
+› /model              switch model (ref…
+  /model-for-session  switch model for …
+  /mouse              toggle mouse capt…
+  /memory             list saved memori…
+  1/4
+  [Always allow]    kimi-k3-fast · ✦ off

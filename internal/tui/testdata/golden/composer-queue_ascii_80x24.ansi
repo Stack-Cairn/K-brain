@@ -1,0 +1,24 @@
+[1;96m|[0m[1;96m>[0m add a --json flag to `kn status` and run the tests                           [0m
+                                                                                
+[1;95m* [0mI'll add the flag next to the existing ones.                                  [0m
+                                                                                
+  [90m```go[0m                                                                         [0m
+    [95mfunc[0m [96mstatusJSON[0m(w io.Writer, s Status) [94merror[0m {                              [0m
+        [3;90m// one object per call[0m                                                  [0m
+        [95mreturn[0m json.[96mNewEncoder[0m(w).[96mEncode[0m(s)                                     [0m
+    }                                                                           
+  [90m```[0m                                                                           [0m
+                                                                                
+  Then run the package tests.                                                   
+
+  [36m|[0m [36mthinking...[0m                                          [90m0:07 - Esc to interrupt[0m
+[90mqueued (2) - Enter send now - Ctrl+E edit - Del remove - Up/Down select[0m
+[1;96m > [0m[90m1 [0mthen run the linter
+[1;96m -> 2 and update the changelog with a line about the new flag[0m                   
+
+
+
+
+[90m--------------------------------------------------------------------------------[0m
+  [1;96m> [0m[7mb[0m[90musy - type to queue (sent when the turn ends)[0m                              [0m
+  [101m [0m[1;30;101mAlways allow[0m[101m [0m                                            [37mkimi-k3-fast[0m[90m - [0m[1;96m* off[0m

@@ -3,7 +3,6 @@ package tui
 import (
 	"fmt"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/Stack-Cairn/K-brain/internal/config"
@@ -119,7 +118,7 @@ func (m *model) promptCompletions(val string) (string, []cand) {
 	if strings.HasPrefix(val, "/") && !strings.ContainsAny(val, " \t\n") {
 		m.loadPrompts(false)
 		for _, tpl := range m.promptCatalog.items {
-			if strings.HasPrefix("/"+tpl.Name, val) {
+			if len(rankCommands([]cand{{Text: "/" + tpl.Name}}, val, nil)) > 0 {
 				for i := len(cands) - 1; i >= 0; i-- {
 					if cands[i].Text == "/"+tpl.Name {
 						cands = append(cands[:i], cands[i+1:]...)
@@ -129,7 +128,7 @@ func (m *model) promptCompletions(val string) (string, []cand) {
 				cands = append(cands, cand{Text: "/" + tpl.Name, Desc: desc})
 			}
 		}
-		sort.Slice(cands, func(i, j int) bool { return cands[i].Text < cands[j].Text })
+		cands = rankCommands(cands, val, m.slashRecent().rank())
 	}
 	for i := range cands {
 		isTemplate := false

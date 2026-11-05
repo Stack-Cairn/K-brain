@@ -1,0 +1,24 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+  ❯ dep
+  history · this directory                                                  1/2
+› deploy the staging server and tail the logs
+  fix the deploy script so it stops on the first error
+  Enter use · Esc cancel · Tab all directories · ↑/↓ select
+   Always allow                                             kimi-k3-fast · ✦ off

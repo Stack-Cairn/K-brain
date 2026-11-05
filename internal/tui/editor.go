@@ -1,9 +1,7 @@
 package tui
 
 import (
-	"fmt"
 	"os"
-	"strings"
 
 	"github.com/Stack-Cairn/K-brain/internal/editor"
 	tea "github.com/charmbracelet/bubbletea"
@@ -21,11 +19,8 @@ func (m *model) openPromptEditor() tea.Cmd {
 		return nil
 	}
 	original := m.input.Value()
-	text := original
-	if m.pasteBuf != "" {
-		marker := fmt.Sprintf("[Pasted ~%d lines]", strings.Count(m.pasteBuf, "\n")+1)
-		text = strings.Replace(text, marker, m.pasteBuf, 1)
-	}
+	// The editor gets the real text, not chips it could not expand again.
+	text := m.expandPasteChips(original)
 	cmd, path, err := editor.Prepare(text)
 	if err != nil {
 		m.append(errStyle.Render("editor: " + err.Error()))
@@ -57,7 +52,7 @@ func (m *model) applyPromptEdit(msg promptEditedMsg) {
 		m.append(errStyle.Render("editor: text exceeds input limits or contains unsupported controls — draft preserved at " + msg.path))
 		return
 	}
-	m.pasteBuf = ""
+	m.composer().dropUnusedPastes(m.input.Value())
 	m.menu = nil
 	m.input.CursorEnd()
 	m.growInput()
