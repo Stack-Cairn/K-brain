@@ -32,9 +32,13 @@ func renderMarkdown(s string, width int) string {
 		if r == nil {
 			return s
 		}
-		out, err := r.Render(seg.text)
+		text, held := holdCodeHyphens(seg.text)
+		out, err := r.Render(text)
 		if err != nil {
 			return s
+		}
+		if held {
+			out = strings.ReplaceAll(out, heldHyphen, "-")
 		}
 		parts = append(parts, stripLinePadding(strings.Trim(out, "\n")))
 	}
@@ -146,6 +150,29 @@ func withBG(fg, base lipgloss.Style) lipgloss.Style {
 		}
 	}
 	return fg
+}
+
+// heldHyphen stands in for a hyphen inside an inline code span while glamour
+// wraps the prose: its word wrap breaks after any hyphen, which split spans
+// such as `--json` across two lines. It has the same width and is put back
+// once the paragraph is laid out.
+const heldHyphen = "\u2011"
+
+var inlineCodeRE = regexp.MustCompile("`[^`\n]+`")
+
+func holdCodeHyphens(s string) (string, bool) {
+	if strings.Contains(s, heldHyphen) || !strings.Contains(s, "`") {
+		return s, false
+	}
+	held := false
+	out := inlineCodeRE.ReplaceAllStringFunc(s, func(span string) string {
+		if !strings.Contains(span, "-") {
+			return span
+		}
+		held = true
+		return strings.ReplaceAll(span, "-", heldHyphen)
+	})
+	return out, held
 }
 
 func wrapWideLines(s string, width int) string {
