@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -178,6 +179,9 @@ type runtimeSession struct {
 	queueDispatchID string
 	// wake holds background notices that arrived while no turn was running.
 	wake wakeState
+	// subagents tracks this runtime's subagents; see subagents.go.
+	subagentMu sync.Mutex
+	subagents  map[string]*liveSubagent
 }
 
 func New(opts Options) (*Server, error) {
@@ -510,6 +514,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if len(parts) >= 2 && parts[1] == "subagents" {
+		s.handleSubagents(w, r, id, parts[2:])
+		return
+	}
 	if len(parts) == 1 && r.Method == http.MethodDelete {
 		s.deleteSession(w, r, id)
 		return
@@ -725,6 +733,9 @@ func (s *Server) historyRuntime(id string) (*runtimeSession, error) {
 	if _, _, err := s.store.Load(id); err != nil {
 		return nil, err
 	}
+	if err := s.reconcileStaleTasks(id); err != nil {
+		log.Printf("backend: settle stale subagents of %s: %v", id, err)
+	}
 	rt = &runtimeSession{id: id, runs: map[string]runRecord{}}
 	if err := rt.loadJournal(s.eventDir); err != nil {
 		return nil, err
@@ -909,6 +920,11 @@ func (s *Server) rebuildAgentLocked(rt *runtimeSession, selected protocol.ModelR
 	if closed {
 		return errors.New("backend is closed")
 	}
+	// The running subagents belong to the current agent's registry and report
+	// through it; a replacement agent would orphan them.
+	if !rt.backgroundSettledLocked() {
+		return errBackgroundRunning
+	}
 	ag, err := s.factory(context.Background(), cwd, selected)
 	if err != nil {
 		return err
@@ -1059,6 +1075,10 @@ func (s *Server) loadRuntime(id string, model protocol.ModelRef, cwd string) (*r
 		s.mu.Unlock()
 		return nil, err
 	}
+	if err := s.reconcileStaleTasks(id); err != nil {
+		s.mu.Unlock()
+		return nil, err
+	}
 	rt.leases.Store(1)
 	rt.lastUsed = time.Now()
 	s.sessions[id] = rt
@@ -1067,18 +1087,52 @@ func (s *Server) loadRuntime(id string, model protocol.ModelRef, cwd string) (*r
 	return rt, nil
 }
 
+// staleTaskReport matches the TUI's wording for a subagent whose process ended first.
+const staleTaskReport = "interrupted — k-brain exited before this subagent finished"
+
+// reconcileStaleTasks settles stored tasks still marked running when no runtime
+// owns the session. A runtime is never evicted or rebuilt while its subagents
+// run, so such a task belonged to a k-brain process that exited. The caller
+// holds s.mu, so no runtime for the session can start one meanwhile.
+func (s *Server) reconcileStaleTasks(id string) error {
+	tasks, err := s.store.LoadTasks(id)
+	if err != nil {
+		return err
+	}
+	for _, task := range tasks {
+		if task.Status != string(agent.TaskRunning) {
+			continue
+		}
+		task.Status, task.Report = string(agent.TaskError), staleTaskReport
+		if task.EndedAt.IsZero() {
+			task.EndedAt = time.Now()
+		}
+		if err := s.store.SaveTask(id, task); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *Server) wireTasks(rt *runtimeSession, ag *agent.Agent) {
 	s.wireQuestions(rt, ag)
 	s.wireWakes(rt, ag)
 	ag.Tasks().SetSessionID(rt.id)
 	ag.Tasks().OnEvents = rt.trajectoryChildEvents
 	ag.Tasks().OnRecord = func(id string, task *agent.BackgroundTask) {
+		rt.mu.Lock()
+		deleted := rt.deleted
+		rt.mu.Unlock()
+		if deleted {
+			// A subagent cancelled by the delete must not write the session back.
+			return
+		}
 		if task.Status != agent.TaskRunning {
 			// A settled child task may be all that kept pending notices waiting.
 			defer func() { go s.kickWakes(rt) }()
 		}
 		model, provider, _ := strings.Cut(task.SubModel, " @ ")
-		stored := session.Task{Model: model, Provider: provider, ID: task.ID, Description: task.Description, Prompt: task.Prompt, Status: string(task.Status), Report: task.Report, StartedAt: task.StartedAt, EndedAt: task.EndedAt}
+		stored := session.Task{Model: model, Provider: provider, ID: task.ID, Description: task.Description, Prompt: task.Prompt, Status: string(task.Status), Report: task.Report, StartedAt: task.StartedAt, EndedAt: task.EndedAt, ParentToolCallID: task.ParentToolCallID}
 		if err := s.store.SaveTask(id, stored); err != nil {
 			_, _ = rt.publish(protocol.EventToolStatus, protocol.ToolStatus{Tool: "subagent", Status: "error", Message: "save task: " + err.Error()}, "")
 			return
@@ -1108,17 +1162,36 @@ func (rt *runtimeSession) taskEvent(t *agent.BackgroundTask) {
 	rt.mu.Lock()
 	runID := rt.trajectoryTaskRunLocked(t.ID)
 	rt.mu.Unlock()
+	running := t.Status == agent.TaskRunning
+	if running {
+		// Mark it live before the start is journaled so readers never see a
+		// started subagent as already over.
+		rt.subagent(t.ID, runID)
+		rt.setSubagentRunning(t.ID, true, nil)
+	} else {
+		rt.flushSubagent(t.ID)
+	}
+	rt.subagentStats(t.ID, &view)
+	if usage := protocol.FromAIUsage(&t.SubUsage); usage != nil && *usage != (protocol.Usage{}) {
+		view.Usage = usage
+	}
 	_, _ = rt.publishTrajectory(runID, typ, protocol.SubagentEvent{Subagent: view}, "")
+	if !running {
+		rt.setSubagentRunning(t.ID, false, nil)
+	}
 }
 
 func subagentView(t agent.BackgroundTask) protocol.Subagent {
-	view := storedSubagentView(session.Task{ID: t.ID, Description: t.Description, Status: string(t.Status), Report: t.Report, StartedAt: t.StartedAt, EndedAt: t.EndedAt})
+	view := storedSubagentView(session.Task{ID: t.ID, Description: t.Description, Status: string(t.Status), Report: t.Report, StartedAt: t.StartedAt, EndedAt: t.EndedAt, ParentToolCallID: t.ParentToolCallID})
 	model, provider, _ := strings.Cut(t.SubModel, " @ ")
 	view.Model = protocol.ModelRef{Provider: provider, Model: model}
 	return view
 }
 func storedSubagentView(t session.Task) protocol.Subagent {
-	view := protocol.Subagent{ID: t.ID, Description: t.Description, Status: t.Status, Report: t.Report, Model: protocol.ModelRef{Model: t.Model, Provider: t.Provider}, StartedAt: ptrTime(t.StartedAt), EndedAt: ptrTime(t.EndedAt)}
+	view := protocol.Subagent{ID: t.ID, Description: t.Description, Status: t.Status, Report: t.Report, Model: protocol.ModelRef{Model: t.Model, Provider: t.Provider}, ParentToolCallID: t.ParentToolCallID, Background: true, StartedAt: ptrTime(t.StartedAt), EndedAt: ptrTime(t.EndedAt)}
+	if !t.StartedAt.IsZero() && !t.EndedAt.IsZero() {
+		view.DurationMS = t.EndedAt.Sub(t.StartedAt).Milliseconds()
+	}
 	if t.Status == string(agent.TaskError) {
 		view.Error = t.Report
 	}
@@ -1832,6 +1905,10 @@ func (s *Server) closeSession(w http.ResponseWriter, r *http.Request, id string)
 	rt.holdWakesLocked(false, true)
 	if rt.cancel != nil {
 		rt.cancel()
+	}
+	// Background subagents outlive their turn, not the session: closing ends them.
+	if rt.agent != nil {
+		rt.agent.Tasks().CancelRunning()
 	}
 	rt.mu.Unlock()
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "session_id": id})

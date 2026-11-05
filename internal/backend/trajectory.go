@@ -199,6 +199,8 @@ func redactTrajectoryEvents(events []protocol.Event) []protocol.Event {
 			p["arguments"] = "[redacted]"
 		case "trajectory.child.tool_end":
 			p["output"] = "[redacted]"
+		case protocol.EventChildText, protocol.EventChildThinking, protocol.EventChildSteer:
+			p["text"] = "[redacted]"
 		case protocol.EventToolCall:
 			if call, ok := p["tool_call"].(map[string]any); ok {
 				call["arguments"] = map[string]any{"redacted": true}

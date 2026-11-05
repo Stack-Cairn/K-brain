@@ -254,11 +254,40 @@ func TestBackgroundRegistrationInheritsCancellation(t *testing.T) {
 	cancel()
 	select {
 	case <-task.ctx.Done():
-	default:
+	case <-time.After(time.Second):
 		t.Fatal("background task did not inherit parent cancellation")
 	}
 	if task.Status != TaskRunning {
 		t.Fatalf("registration should not settle before launch: %s", task.Status)
+	}
+}
+
+// A background task outlives the turn that registered it when that turn ends on its
+// own, and is still cancelled when the turn is stopped.
+func TestBackgroundRegistrationOutlivesTurnEnd(t *testing.T) {
+	parent := New(ai.New("http://unused", "k"), "m", 100, "sys")
+	ctx, end := context.WithCancelCause(context.Background())
+	task := parent.RegisterBackgroundContext(ctx, "outlive", "work", SubModel{})
+	end(tools.ErrTurnEnded)
+	select {
+	case <-task.ctx.Done():
+		t.Fatalf("background task ended with its turn: %v", context.Cause(task.ctx))
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	ctx, stop := context.WithCancelCause(context.Background())
+	stopped := parent.RegisterBackgroundContext(ctx, "stopped", "work", SubModel{})
+	stop(context.Canceled)
+	select {
+	case <-stopped.ctx.Done():
+	case <-time.After(time.Second):
+		t.Fatal("stopping the turn did not cancel its background task")
+	}
+	task.cancel()
+	select {
+	case <-task.ctx.Done():
+	default:
+		t.Fatal("task cancel did not end the background task")
 	}
 }
 

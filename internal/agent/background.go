@@ -33,6 +33,8 @@ type BackgroundTask struct {
 	Report      string
 	StartedAt   time.Time
 	EndedAt     time.Time
+	// ParentToolCallID is the parent's subagent tool call that started it.
+	ParentToolCallID string
 
 	Restored    bool
 	FollowingUp bool
@@ -186,6 +188,26 @@ func (r *taskRegistry) Cancel(id string) bool {
 	return true
 }
 
+// CancelRunning requests cancellation of every running task and follow-up, and
+// reports how many it reached. Each task still settles on its own goroutine.
+func (r *taskRegistry) CancelRunning() int {
+	r.mu.Lock()
+	var cancels []context.CancelFunc
+	for _, t := range r.tasks {
+		switch {
+		case t.FollowingUp && t.followCancel != nil:
+			cancels = append(cancels, t.followCancel)
+		case t.Status == TaskRunning && t.cancel != nil:
+			cancels = append(cancels, t.cancel)
+		}
+	}
+	r.mu.Unlock()
+	for _, cancel := range cancels {
+		cancel()
+	}
+	return len(cancels)
+}
+
 func (r *taskRegistry) settle(id string, status TaskStatus, report string) {
 	r.mu.Lock()
 	t, ok := r.tasks[id]
@@ -267,7 +289,11 @@ func (a *Agent) RegisterBackgroundContext(parent context.Context, description, p
 	if a.SandboxPolicy != nil && sandbox.FromContext(base) == nil {
 		base = sandbox.WithPolicy(base, a.SandboxPolicy)
 	}
-	taskCtx, cancel := context.WithCancel(base)
+	// The task reports after the turn that started it has ended, which is the point
+	// of a background subagent; stopping that turn still cancels it.
+	outlive, release := tools.OutliveTurn(base)
+	taskCtx, cancelTask := context.WithCancel(outlive)
+	cancel := func() { cancelTask(); release() }
 	sub := a.newSubContext(base, o)
 
 	scope := a.SessionIDValue()
@@ -281,7 +307,7 @@ func (a *Agent) RegisterBackgroundContext(parent context.Context, description, p
 	}
 	t := &BackgroundTask{
 		ID: id, Description: description, Prompt: prompt,
-		Status: TaskRunning, StartedAt: time.Now(),
+		Status: TaskRunning, StartedAt: time.Now(), ParentToolCallID: tools.ToolCallID(base),
 		Done: make(chan struct{}), ctx: withRequestTask(taskCtx, id), cancel: cancel,
 		sub: sub,
 
