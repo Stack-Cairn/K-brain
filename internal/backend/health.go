@@ -24,6 +24,7 @@ type healthCapabilities struct {
 	PermissionModes         []string           `json:"permission_modes"`
 	Image                   healthImageV1      `json:"image"`
 	RunSandbox              healthRunSandboxV1 `json:"run_sandbox"`
+	SubagentTranscripts     int                `json:"subagent_transcripts"`
 }
 
 // healthRunSandboxV1 describes per-run sandboxing (options.sandbox). Clients
@@ -114,6 +115,7 @@ func (s *Server) health() healthResponse {
 			PermissionModes:         append([]string(nil), permissionModes...),
 			Image:                   healthImageV1{Supported: s.image != nil, Version: imageWireVersion()},
 			RunSandbox:              runSandboxCapability(),
+			SubagentTranscripts:     1,
 		},
 	}
 }

@@ -210,14 +210,14 @@ func taskTool(parent *Agent) tools.Tool {
 				sub := parent.newSubContext(ctx, o)
 				ctx = sub.setWorktree(ctx, wtPath)
 				ctx = sandbox.WithPolicy(ctx, sub.SandboxPolicy)
-				report, runErr := sub.observedChildTurn(ctx, prompt)
+				report, runErr := sub.observedChildTurn(ctx, desc, prompt)
 				if runErr != nil {
 					return report, fmt.Errorf("subagent in worktree %s: %w", wtPath, runErr)
 				}
 				return capReport(report) + "\n\nWorktree: " + wtPath, nil
 			}
 			sub := parent.newSubContext(ctx, o)
-			report, err := sub.observedChildTurn(ctx, prompt)
+			report, err := sub.observedChildTurn(ctx, desc, prompt)
 			if err != nil {
 				return report, err
 			}

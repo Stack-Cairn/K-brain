@@ -78,6 +78,10 @@ VITE_KBRAIN_TOKEN=<backend-token>
 | POST | `/v1/sessions/{id}/runs` | 提交提示及可选模型切换 |
 | GET | `/v1/sessions/{id}/events?after_seq=N` | 从指定序号之后重放并订阅事件 |
 | POST | `/v1/sessions/{id}/runs/{run}/cancel` | 取消运行 |
+| GET | `/v1/sessions/{id}/subagents` | 本会话的前台与后台子代理（按开始时间排序）及当前 `last_seq` |
+| GET | `/v1/sessions/{id}/subagents/{task}` | 子代理截至此刻的只读转录（运行中或已结束）、`live` 与 `last_seq` |
+| GET | `/v1/sessions/{id}/subagents/{task}/events?after_seq=N` | 只含该子代理事件的 SSE，子代理结束后关闭 |
+| POST | `/v1/sessions/{id}/subagents/{task}/cancel` | 只停止该子代理，父运行继续；未运行返回 409，未知返回 404 |
 | POST | `/v1/sessions/{id}/permissions/{permission}` | 提交审批结果 |
 | POST | `/v1/sessions/{id}/close` | 结束当前会话运行并保存 |
 
@@ -114,6 +118,7 @@ CLI 可用 `-config FILE -session-dir DIR` 指定配置与存储目录；省略�
 - `tool.call`, `tool.result`, `tool.status`
 - `permission.requested`, `permission.resolved`, `permission.auto_resolved`
 - `subagent.started`, `subagent.updated`, `subagent.completed`, `subagent.failed`
+- `trajectory.child.text`, `trajectory.child.thinking`, `trajectory.child.steer`, `trajectory.child.tool_start`, `trajectory.child.tool_end`（子代理自己的转录）
 - `usage.updated`
 - `run.completed`, `run.failed`, `run.cancelled`
 
@@ -124,6 +129,20 @@ CLI 可用 `-config FILE -session-dir DIR` 指定配置与存储目录；省略�
 用户停止运行时，模型已经流出的回复写入会话历史：一条 `stop_reason:"cancelled"` 的 assistant 消息，内容是已推送的文本与思考，不含尚未流完的工具调用。事件流不变，仍以 `run.cancelled` 结束、不另发 `assistant.message.created`（已发布的桌面端会把这类事件并进本地流式副本），客户端从历史读取这条回复。之前几轮已执行的工具调用和结果照常保留，停止时正在执行的工具得到 `stop_reason:"cancelled"` 的结果，历史里不会留下没有结果的调用。还没有任何输出就停止时不写 assistant 消息，历史只多出本轮用户消息。下一轮请求中，这条回复的文本后面附一行 `[response interrupted by the user]`（只在请求里，不写入历史）；只有思考、没有文本的停止回复不发给模型。`stop_reason` 原本就有 `cancelled`（工具结果使用），旧客户端按已有取值处理；旧版后端读到这条消息时当普通 assistant 文本发送。
 
 模型交给后台的工作（`wait` 轮询、未设 `isolated` 的 `ManagedProcess` 进程）在本轮正常结束后继续运行，结果作为下一轮送回；用户停止运行或关闭会话时它们照常一起结束。后端自己送来的通知——`wait` 结果、进程退出、后台子代理与工作流报告，无论是插进正在进行的一轮，还是作为唤醒运行（`client_request_id` 以 `wake-` 开头）的用户消息——在 `user.message.appended` 和会话历史里带 `origin:"background"`，客户端把它显示为系统通知，而不是用户发的消息；用户自己写的消息不带该字段。这类消息不计为用户输入，不进输入历史，也不附加本轮时间前缀。旧客户端忽略该字段，显示与以前相同；旧版后端读到该字段直接忽略。
+
+### 子代理转录（`capabilities.subagent_transcripts: 1`）
+
+`Subagent` 载荷除 `id/description/status/model/started_at/ended_at/result/error` 外增加：`parent_tool_call_id`（发起它的父 `subagent` 工具调用 id，客户端据此把 `subagent.*` 事件并进那张工具卡片）、`background`（后台任务为 `true`）、`usage`（子代理全部请求的 token 合计）、`tool_count`（子代理已发起的工具调用数）与 `duration_ms`（结束后给出）。前台子代理的 `description` 取工具参数里的描述，`model` 为子代理实际使用的模型。用户停止的子代理以 `subagent.failed` 结束，`status:"cancelled"`、`error:"subagent stopped by the user"`；前台子代理被停止后父运行照常继续，父模型看到一次失败的工具结果。
+
+子代理运行期间，后端把它自己的转录以 `trajectory.child.*` 事件写进同一事件日志，`run_id` 为父运行、`payload.task_id` 为子代理 id：
+
+- `trajectory.child.text` / `trajectory.child.thinking`：`{task_id,text}`，文本增量按约 100ms 或 8 KiB 合并后发出，类型切换或工具调用前先发出已积累的文本，因此每个子代理每秒最多约 10 条；
+- `trajectory.child.tool_start`：`{task_id,id,name,arguments}`；`trajectory.child.tool_end`：`{task_id,id,name,output,failed,cancelled}`；
+- `trajectory.child.steer`：`{task_id,text}`，运行中插入给子代理的消息。
+
+这些事件不改变会话历史，旧客户端按未知事件忽略。父运行结束后仍在运行的后台子代理不会出现在主 SSE 中（主流在没有活动运行时关闭），客户端用 `/subagents/{task}/events` 跟随：它先重放 `after_seq` 之后属于该子代理的事件（`subagent.*` 与 `trajectory.child.*`），再持续推送，子代理结束并发出终态事件后关闭。
+
+`/subagents` 与 `/subagents/{task}` 从事件日志和已保存的后台任务折叠得到，重载或后端重启后仍可读取；重启前仍在运行、此后没有终态的子代理报 `cancelled`。已结束的后台子代理返回其保存的完整对话（去掉 system/developer 消息），其他情况由事件重建：首条为子代理收到的提示，随后是 assistant 文本/思考与工具调用、工具结果。轨迹接口带 `redact_tool_content=true` 时，子代理文本与工具内容一样替换为 `[redacted]`。
 
 ### 记住的权限规则（`capabilities.permission_rules: 1`、`readonly_auto_allow: 1`）
 

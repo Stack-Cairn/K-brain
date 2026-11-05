@@ -172,6 +172,9 @@ type runtimeSession struct {
 	queueDispatchID  string
 	// wake holds background notices that arrived while no turn was running.
 	wake wakeState
+	// subagents tracks this runtime's subagents; see subagents.go.
+	subagentMu sync.Mutex
+	subagents  map[string]*liveSubagent
 }
 
 func New(opts Options) (*Server, error) {
@@ -502,6 +505,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			s.trajectoryDetails(w, r, id, parts[2])
 			return
 		}
+	}
+	if len(parts) >= 2 && parts[1] == "subagents" {
+		s.handleSubagents(w, r, id, parts[2:])
+		return
 	}
 	if len(parts) == 1 && r.Method == http.MethodDelete {
 		s.deleteSession(w, r, id)
@@ -1071,7 +1078,7 @@ func (s *Server) wireTasks(rt *runtimeSession, ag *agent.Agent) {
 			defer func() { go s.kickWakes(rt) }()
 		}
 		model, provider, _ := strings.Cut(task.SubModel, " @ ")
-		stored := session.Task{Model: model, Provider: provider, ID: task.ID, Description: task.Description, Prompt: task.Prompt, Status: string(task.Status), Report: task.Report, StartedAt: task.StartedAt, EndedAt: task.EndedAt}
+		stored := session.Task{Model: model, Provider: provider, ID: task.ID, Description: task.Description, Prompt: task.Prompt, Status: string(task.Status), Report: task.Report, StartedAt: task.StartedAt, EndedAt: task.EndedAt, ParentToolCallID: task.ParentToolCallID}
 		if err := s.store.SaveTask(id, stored); err != nil {
 			_, _ = rt.publish(protocol.EventToolStatus, protocol.ToolStatus{Tool: "subagent", Status: "error", Message: "save task: " + err.Error()}, "")
 			return
@@ -1101,17 +1108,36 @@ func (rt *runtimeSession) taskEvent(t *agent.BackgroundTask) {
 	rt.mu.Lock()
 	runID := rt.trajectoryTaskRunLocked(t.ID)
 	rt.mu.Unlock()
+	running := t.Status == agent.TaskRunning
+	if running {
+		// Mark it live before the start is journaled so readers never see a
+		// started subagent as already over.
+		rt.subagent(t.ID, runID)
+		rt.setSubagentRunning(t.ID, true, nil)
+	} else {
+		rt.flushSubagent(t.ID)
+	}
+	rt.subagentStats(t.ID, &view)
+	if usage := protocol.FromAIUsage(&t.SubUsage); usage != nil && *usage != (protocol.Usage{}) {
+		view.Usage = usage
+	}
 	_, _ = rt.publishTrajectory(runID, typ, protocol.SubagentEvent{Subagent: view}, "")
+	if !running {
+		rt.setSubagentRunning(t.ID, false, nil)
+	}
 }
 
 func subagentView(t agent.BackgroundTask) protocol.Subagent {
-	view := storedSubagentView(session.Task{ID: t.ID, Description: t.Description, Status: string(t.Status), Report: t.Report, StartedAt: t.StartedAt, EndedAt: t.EndedAt})
+	view := storedSubagentView(session.Task{ID: t.ID, Description: t.Description, Status: string(t.Status), Report: t.Report, StartedAt: t.StartedAt, EndedAt: t.EndedAt, ParentToolCallID: t.ParentToolCallID})
 	model, provider, _ := strings.Cut(t.SubModel, " @ ")
 	view.Model = protocol.ModelRef{Provider: provider, Model: model}
 	return view
 }
 func storedSubagentView(t session.Task) protocol.Subagent {
-	view := protocol.Subagent{ID: t.ID, Description: t.Description, Status: t.Status, Report: t.Report, Model: protocol.ModelRef{Model: t.Model, Provider: t.Provider}, StartedAt: ptrTime(t.StartedAt), EndedAt: ptrTime(t.EndedAt)}
+	view := protocol.Subagent{ID: t.ID, Description: t.Description, Status: t.Status, Report: t.Report, Model: protocol.ModelRef{Model: t.Model, Provider: t.Provider}, ParentToolCallID: t.ParentToolCallID, Background: true, StartedAt: ptrTime(t.StartedAt), EndedAt: ptrTime(t.EndedAt)}
+	if !t.StartedAt.IsZero() && !t.EndedAt.IsZero() {
+		view.DurationMS = t.EndedAt.Sub(t.StartedAt).Milliseconds()
+	}
 	if t.Status == string(agent.TaskError) {
 		view.Error = t.Report
 	}
