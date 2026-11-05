@@ -117,6 +117,22 @@ type stageSpec struct {
 	Restrict []string `json:"restrict,omitempty"`
 }
 
+// traceEnv names a directory where both launch stages append progress
+// lines; it is for diagnosing a launch that hangs.
+const traceEnv = "K_BRAIN_SANDBOX_TRACE"
+
+func stageTrace(dir, stage, format string, args ...any) {
+	if dir == "" || os.Getenv(traceEnv) == "" {
+		return
+	}
+	f, err := os.OpenFile(filepath.Join(dir, "trace-"+stage+".txt"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return
+	}
+	fmt.Fprintf(f, time.Now().Format("15:04:05.000")+" "+format+"\n", args...)
+	f.Close()
+}
+
 func encodeJSON(v any) (string, error) {
 	data, err := json.Marshal(v)
 	if err != nil {
@@ -728,8 +744,10 @@ func userLaunch(encoded string) (uint32, error) {
 		windows.CREATE_SUSPENDED|windows.CREATE_UNICODE_ENVIRONMENT, uintptr(unsafe.Pointer(&block[0])),
 		uintptr(unsafe.Pointer(dir)), uintptr(unsafe.Pointer(&si)), uintptr(unsafe.Pointer(&pi)))
 	if r == 0 {
+		stageTrace(spec.Temp, "1", "logon failed: %v", callErr)
 		return 0, fmt.Errorf("log on the sandbox account %s: %w", account.Name, callErr)
 	}
+	stageTrace(spec.Temp, "1", "started stage two pid %d desktop %q", pi.ProcessId, desktop)
 	defer windows.CloseHandle(pi.Process)
 	defer windows.CloseHandle(pi.Thread)
 	if err := windows.AssignProcessToJobObject(job, pi.Process); err != nil {
@@ -740,6 +758,7 @@ func userLaunch(encoded string) (uint32, error) {
 		_ = windows.TerminateProcess(pi.Process, launcherFailureCode)
 		return 0, err
 	}
+	stageTrace(spec.Temp, "1", "resumed stage two")
 	if _, err := windows.WaitForSingleObject(pi.Process, windows.INFINITE); err != nil {
 		return 0, err
 	}
@@ -747,6 +766,7 @@ func userLaunch(encoded string) (uint32, error) {
 	if err := windows.GetExitCodeProcess(pi.Process, &code); err != nil {
 		return 0, err
 	}
+	stageTrace(spec.Temp, "1", "stage two exited %#x", code)
 	return code, nil
 }
 
@@ -898,6 +918,8 @@ func userStage() (uint32, error) {
 		key, _, _ := strings.Cut(kv, "=")
 		return strings.EqualFold(key, stageSpecEnv)
 	})
+	temp := os.Getenv("TEMP")
+	stageTrace(temp, "2", "stage two running")
 	var self windows.Token
 	if err := windows.OpenProcessToken(windows.CurrentProcess(), windows.TOKEN_DUPLICATE|windows.TOKEN_QUERY|windows.TOKEN_ASSIGN_PRIMARY|windows.TOKEN_ADJUST_DEFAULT, &self); err != nil {
 		return 0, fmt.Errorf("open the sandbox account's token: %w", err)
@@ -929,6 +951,8 @@ func userStage() (uint32, error) {
 	if err != nil {
 		return 0, err
 	}
+	stageTrace(temp, "2", "token ready; stdio %v; starting %s", stdio, spec.Program)
+	defer stageTrace(temp, "2", "command finished")
 	return runConfined(confinedProcess{
 		program: spec.Program, cmdLine: spec.CmdLine, dir: spec.Dir, env: env,
 		stdin: stdio[0], stdout: stdio[1], stderr: stdio[2],

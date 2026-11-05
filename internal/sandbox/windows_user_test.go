@@ -589,8 +589,8 @@ func TestWindowsSandboxUserAdminCycle(t *testing.T) {
 	}
 }
 
-// diagnoseSandboxUser logs the token and the workspace's access as seen by
-// both accounts, bypassing the probe.
+// diagnoseSandboxUser logs, for a command started as each account, the
+// processes the accounts run after a few seconds and the launch traces.
 func diagnoseSandboxUser(t *testing.T) {
 	t.Helper()
 	forgetSandboxState()
@@ -600,16 +600,49 @@ func diagnoseSandboxUser(t *testing.T) {
 		return
 	}
 	root := workspace(t)
-	if out, err := exec.Command("icacls", root).CombinedOutput(); err == nil {
-		t.Logf("diagnosis: workspace before: %s", out)
-	}
 	for _, network := range []bool{false, true} {
 		p := workspacePolicy(root)
 		p.Network = network
-		cmd := exec.Command(cmdExe(), "/d", "/c", "whoami /all & cd & icacls . & echo x>diag.txt & dir")
+		cmd := exec.Command(cmdExe(), "/d", "/c", "whoami /all & cd & echo x>diag.txt & icacls .")
 		cmd.Dir = root
-		cmd.Env = os.Environ()
-		code, out, err := runProbeCommand(p, st, cmd, root)
-		t.Logf("diagnosis: network=%v exit %d err %v:\n%s", network, code, err, out)
+		cmd.Env = append(os.Environ(), traceEnv+"=1")
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		wrapped, err := p.wrapSandboxUserWith(ctx, cmd, root, st, false)
+		if err != nil {
+			cancel()
+			t.Logf("diagnosis: wrap: %v", err)
+			continue
+		}
+		var out strings.Builder
+		wrapped.Stdout, wrapped.Stderr = &out, &out
+		if err := wrapped.Start(); err != nil {
+			cancel()
+			t.Logf("diagnosis: start: %v", err)
+			continue
+		}
+		done := make(chan error, 1)
+		go func() { done <- wrapped.Wait() }()
+		select {
+		case err := <-done:
+			t.Logf("diagnosis: network=%v finished: %v", network, err)
+		case <-time.After(8 * time.Second):
+			for _, user := range []string{st.Online.Name, st.Offline.Name} {
+				list, _ := exec.Command("tasklist", "/v", "/fo", "csv", "/fi", "USERNAME eq "+user).CombinedOutput()
+				t.Logf("diagnosis: network=%v processes of %s after 8s:\n%s", network, user, list)
+			}
+			err := <-done
+			t.Logf("diagnosis: network=%v ended: %v", network, err)
+		}
+		cancel()
+		t.Logf("diagnosis: network=%v output: %s", network, out.String())
+		temp := fencedTempPath(root)
+		for _, stage := range []string{"1", "2"} {
+			data, err := os.ReadFile(filepath.Join(temp, "trace-"+stage+".txt"))
+			t.Logf("diagnosis: network=%v trace of stage %s (%v):\n%s", network, stage, err, data)
+		}
+		_ = os.Remove(filepath.Join(temp, "trace-1.txt"))
+		_ = os.Remove(filepath.Join(temp, "trace-2.txt"))
 	}
+	sessions, _ := exec.Command("query", "session").CombinedOutput()
+	t.Logf("diagnosis: sessions:\n%s", sessions)
 }
