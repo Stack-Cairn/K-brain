@@ -44,7 +44,9 @@ func liveagentManagedProcess(ctx context.Context, manager *liveagentProcessManag
 		if err != nil {
 			return "", err
 		}
-		return liveagentProcessText("status", p.snapshot(), "", 0, 0, false, false), nil
+		snap := p.snapshot()
+		reportProcess(ctx, snap)
+		return liveagentProcessText("status", snap, "", 0, 0, false, false), nil
 	case "read_log":
 		if err := AuthorizePoll(ctx, "ManagedProcess", strings.TrimSpace(laString(a, "process_id"))); err != nil {
 			return "", err
@@ -64,7 +66,9 @@ func liveagentManagedProcess(ctx context.Context, manager *liveagentProcessManag
 		if err != nil {
 			return "", err
 		}
-		return liveagentProcessText("read_log", p.snapshot(), out, cursor, bytes, truncated, false), nil
+		snap := p.snapshot()
+		reportProcess(ctx, snap)
+		return liveagentProcessText("read_log", snap, out, cursor, bytes, truncated, false), nil
 	case "wait":
 		return liveagentProcessWaitWithTool(ctx, manager, a, "ManagedProcess")
 	case "stop":
@@ -104,7 +108,9 @@ func liveagentProcessWait(ctx context.Context, manager *liveagentProcessManager,
 	if err != nil {
 		return "", err
 	}
-	return liveagentProcessText("wait", p.snapshot(), out, next, bytes, truncated, timedOut), nil
+	snap := p.snapshot()
+	reportProcess(ctx, snap)
+	return liveagentProcessText("wait", snap, out, next, bytes, truncated, timedOut), nil
 }
 
 func liveagentProcessStopWithTool(ctx context.Context, manager *liveagentProcessManager, a map[string]any, tool string) (string, error) {
@@ -131,5 +137,6 @@ func liveagentProcessStopWithTool(ctx context.Context, manager *liveagentProcess
 		return "", readErr
 	}
 	snap := p.snapshot()
+	reportProcess(ctx, snap)
 	return liveagentProcessText(fmt.Sprintf("stop stopped=%t", stopped), snap, out, next, bytes, truncated, false), nil
 }

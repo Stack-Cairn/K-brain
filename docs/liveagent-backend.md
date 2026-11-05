@@ -37,9 +37,9 @@ VITE_KBRAIN_TOKEN=<backend-token>
 | 一轮运行 | backend run record | `run_id`, `client_request_id` | 前端消息 ID 作为幂等键 |
 | 模型 | Agent model/provider | `{provider, model}` | assistant provider/model |
 | 用户/助手 | `ai.Message` | `Message` | LiveAgent 自有 `Message` 展示类型 |
-| 工具调用 | `ai.ToolCall` | `{id,name,arguments}` | `ToolCall` 与工具轨迹 |
-| 工具结果 | `tools.Result` | `{id,name,output,failed,cancelled}` | `ToolResultMessage` |
-| 权限 | `tools.GateRequest` | `permission_id`, `tool`, `command`, `options`, `scope`, `tool_call_id` | 集中审批栏 |
+| 工具调用 | `ai.ToolCall` | `{id,name,arguments}`，历史中另有可选 `exit_code`/`timed_out`/`duration_ms` | `ToolCall` 与工具轨迹 |
+| 工具结果 | `tools.Result` | `{id,name,output,failed,cancelled}`，可选 `exit_code`/`timed_out`/`duration_ms` | `ToolResultMessage` |
+| 权限 | `tools.GateRequest` | `permission_id`, `tool`, `command`, `options`, `scope`, `tool_call_id`，可选 `preview` | 集中审批栏 |
 | 子代理 | `agent.BackgroundTask` | `Subagent` | 状态与报告工具轨迹 |
 | 流顺序 | durable event journal | 单会话单调递增 `seq` | 去重与续传游标 |
 | 用量 | `ai.Usage` | input/output/cache token 计数 | assistant usage |
@@ -124,6 +124,15 @@ CLI 可用 `-config FILE -session-dir DIR` 指定配置与存储目录；省略�
 
 `bash`/`Bash` 命令运行期间，后端以 `tool.status{tool_call_id,status:"running",message}` 推送输出：`message` 是截至此刻的输出尾部快照（最多 4 KiB，尽量从整行开始），客户端整体替换而非拼接；同一调用最多每 500ms 发一次，输出停住后补发最后一份，且全部排在该调用的 `tool.result` 之前。快照只进事件日志，会话历史仍只保存最终的 `tool.result`。不认识该字段的旧客户端可以忽略。
 
+`tool.result` 的 `tool_result` 与会话历史里 assistant 消息的 `tool_calls[]` 带可选的运行信息，只用于展示，模型看到的工具结果文本不变：
+
+- `exit_code`：shell 类工具（`bash`、`Bash`、`ManagedProcess` 的 `status`/`read_log`/`wait`/`stop`、`ProcessWait`、`ProcessStop`）运行或观察到的命令退出码，包括 0；其他工具、超时、被取消或被信号杀死、仍在运行的命令不带该字段。
+- `timed_out`：命令因超时被杀死时为 `true`。
+- `duration_ms`：工具自身的耗时（毫秒，向上取整），不含等待用户审批的时间；工具没有运行时不带。
+- `trajectory.child.tool_end` 同样带这三个可选字段。
+
+`permission.requested` 对 `write`/`edit`/`Write`/`Edit` 带可选的 `preview:{path,diff,new_file,truncated}`，让客户端在用户决定前显示将要写入的改动。`diff` 与编辑结果里的 diff 块格式相同（每行 `<行号> <标记> <文本>`，标记为空格、`-` 或 `+`），最多 200 行、32 KiB；文件或新内容超过 2 MiB 时只给 `truncated:true` 不给 `diff`；二进制文件、注定失败的编辑（找不到 `old_string`）和其他工具不带 `preview`。`redact_tool_content=true` 的轨迹去掉 `preview`。旧客户端忽略这些字段。
+
 流连接结束与运行终态是两个不同事实。客户端只有消费终态事件后才能确认运行结束。
 
 用户停止运行时，模型已经流出的回复写入会话历史：一条 `stop_reason:"cancelled"` 的 assistant 消息，内容是已推送的文本与思考，不含尚未流完的工具调用。事件流不变，仍以 `run.cancelled` 结束、不另发 `assistant.message.created`（已发布的桌面端会把这类事件并进本地流式副本），客户端从历史读取这条回复。之前几轮已执行的工具调用和结果照常保留，停止时正在执行的工具得到 `stop_reason:"cancelled"` 的结果，历史里不会留下没有结果的调用。还没有任何输出就停止时不写 assistant 消息，历史只多出本轮用户消息。下一轮请求中，这条回复的文本后面附一行 `[response interrupted by the user]`（只在请求里，不写入历史）；只有思考、没有文本的停止回复不发给模型。`stop_reason` 原本就有 `cancelled`（工具结果使用），旧客户端按已有取值处理；旧版后端读到这条消息时当普通 assistant 文本发送。
@@ -137,7 +146,7 @@ CLI 可用 `-config FILE -session-dir DIR` 指定配置与存储目录；省略�
 子代理运行期间，后端把它自己的转录以 `trajectory.child.*` 事件写进同一事件日志，`run_id` 为父运行、`payload.task_id` 为子代理 id：
 
 - `trajectory.child.text` / `trajectory.child.thinking`：`{task_id,text}`，文本增量按约 100ms 或 8 KiB 合并后发出，类型切换或工具调用前先发出已积累的文本，因此每个子代理每秒最多约 10 条；
-- `trajectory.child.tool_start`：`{task_id,id,name,arguments}`；`trajectory.child.tool_end`：`{task_id,id,name,output,failed,cancelled}`；
+- `trajectory.child.tool_start`：`{task_id,id,name,arguments}`；`trajectory.child.tool_end`：`{task_id,id,name,output,failed,cancelled}`，可选 `exit_code`/`timed_out`/`duration_ms`；
 - `trajectory.child.steer`：`{task_id,text}`，运行中插入给子代理的消息。
 
 这些事件不改变会话历史，旧客户端按未知事件忽略。父运行结束后仍在运行的后台子代理不会出现在主 SSE 中（主流在没有活动运行时关闭），客户端用 `/subagents/{task}/events` 跟随：它先重放 `after_seq` 之后属于该子代理的事件（`subagent.*` 与 `trajectory.child.*`），再持续推送，子代理结束并发出终态事件后关闭。

@@ -76,14 +76,21 @@ func (b *Bridge) requestPermission(ctx context.Context, s *acpSession, req tools
 		})
 	}
 
+	call := acp.ToolCallUpdate{
+		ToolCallId: acp.ToolCallId("perm-" + req.Tool),
+		Title:      new(name),
+		Kind:       new(toolKind(req.Tool)),
+	}
+	if p := req.Preview; p != nil {
+		call.Locations = []acp.ToolCallLocation{{Path: p.Path}}
+		if text := previewText(p); text != "" {
+			call.Content = []acp.ToolCallContent{acp.ToolContent(acp.TextBlock(text))}
+		}
+	}
 	resp, err := b.conn.RequestPermission(ctx, acp.RequestPermissionRequest{
 		SessionId: s.id,
-		ToolCall: acp.ToolCallUpdate{
-			ToolCallId: acp.ToolCallId("perm-" + req.Tool),
-			Title:      new(name),
-			Kind:       new(toolKind(req.Tool)),
-		},
-		Options: options,
+		ToolCall:  call,
+		Options:   options,
 	})
 	if err != nil {
 		if ctx.Err() != nil {
@@ -112,4 +119,20 @@ func (b *Bridge) requestPermission(ctx context.Context, s *acpSession, req tools
 	default:
 		return tools.GateReject, "the user cancelled the permission prompt"
 	}
+}
+
+// previewText renders a pending file change for the permission prompt: the
+// preview diff as a fenced block, or a note when it is too large to show.
+func previewText(p *tools.EditPreview) string {
+	switch {
+	case p.Diff != "":
+		text := "```diff\n" + p.Diff + "\n```"
+		if p.Truncated {
+			text += "\n(preview truncated)"
+		}
+		return text
+	case p.Truncated:
+		return "(change too large to preview)"
+	}
+	return ""
 }

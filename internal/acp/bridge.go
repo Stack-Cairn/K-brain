@@ -15,6 +15,7 @@ import (
 	"github.com/Stack-Cairn/K-brain/internal/permissions"
 	"github.com/Stack-Cairn/K-brain/internal/session"
 	"github.com/Stack-Cairn/K-brain/internal/session/recording"
+	"github.com/Stack-Cairn/K-brain/internal/tools"
 )
 
 const (
@@ -405,8 +406,10 @@ func (b *Bridge) Prompt(ctx context.Context, params acp.PromptRequest) (acp.Prom
 		OnText:      func(d string) { _ = b.update(turnCtx, s.id, acp.UpdateAgentMessageText(d)) },
 		OnThink:     func(d string) { _ = b.update(turnCtx, s.id, updateThoughtText(d)) },
 		OnToolStart: func(id, name, args string) { _ = b.update(turnCtx, s.id, startToolCall(id, name, args)) },
-		OnToolEnd:   func(id, name, result string) { _ = b.update(turnCtx, s.id, b.endTool(s, id, name, result)) },
-		OnUsage:     func(u ai.Usage) { b.sendUsage(turnCtx, s, u) },
+		OnToolResult: func(id, name string, result tools.Result) {
+			_ = b.update(turnCtx, s.id, b.endTool(s, id, name, result))
+		},
+		OnUsage: func(u ai.Usage) { b.sendUsage(turnCtx, s, u) },
 	}))
 
 	if persistErr := s.recorder.Save(); persistErr != nil {
@@ -492,7 +495,7 @@ func (b *Bridge) sendTitle(ctx context.Context, s *acpSession) {
 	}})
 }
 
-func (b *Bridge) endTool(s *acpSession, id, name, result string) acp.SessionUpdate {
+func (b *Bridge) endTool(s *acpSession, id, name string, result tools.Result) acp.SessionUpdate {
 	args := ""
 	for _, m := range s.ag.MessagesSnapshot() {
 		for _, tc := range m.ToolCalls {
@@ -501,7 +504,7 @@ func (b *Bridge) endTool(s *acpSession, id, name, result string) acp.SessionUpda
 			}
 		}
 	}
-	return endToolCall(id, name, args, result)
+	return withRunMeta(endToolCall(id, name, args, result.Text), result.ExitCode, result.TimedOut, result.DurationMs())
 }
 
 func (b *Bridge) sendUsage(ctx context.Context, s *acpSession, u ai.Usage) {

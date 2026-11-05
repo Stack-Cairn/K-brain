@@ -116,6 +116,7 @@ func runInteractive(ctx context.Context, cmd *exec.Cmd, opts Options) Result {
 					return res
 				}
 				res.Exit = exitString(waitErr)
+				res.ExitCode = exitCode(cmd)
 				return res
 			}
 			buf.Write(chunk)

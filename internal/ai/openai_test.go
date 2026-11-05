@@ -538,14 +538,14 @@ func TestMessageUnmarshalPlainString(t *testing.T) {
 }
 
 func TestStripInternalLeavesCallerToolCallsIntact(t *testing.T) {
-	tc := ToolCall{ID: "c1", Type: "function", DurationMs: 1234, ExitCode: 2}
+	tc := ToolCall{ID: "c1", Type: "function", DurationMs: 1234, ExitCode: 2, ExitStatus: new(2), TimedOut: true}
 	tc.Function.Name = "bash"
 	history := []Message{{Role: "assistant", ToolCalls: []ToolCall{tc}}}
 	out := stripAuthored(history)
-	if got := out[0].ToolCalls[0]; got.DurationMs != 0 || got.ExitCode != 0 {
+	if got := out[0].ToolCalls[0]; got.DurationMs != 0 || got.ExitCode != 0 || got.ExitStatus != nil || got.TimedOut {
 		t.Fatalf("wire copy should be stripped: %+v", got)
 	}
-	if got := history[0].ToolCalls[0]; got.DurationMs != 1234 || got.ExitCode != 2 {
+	if got := history[0].ToolCalls[0]; got.DurationMs != 1234 || got.ExitCode != 2 || got.ExitStatus == nil || !got.TimedOut {
 		t.Fatalf("caller's history was mutated: %+v", got)
 	}
 }

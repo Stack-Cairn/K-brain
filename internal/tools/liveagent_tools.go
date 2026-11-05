@@ -215,11 +215,21 @@ func laBool(a map[string]any, k string, fallback bool) bool {
 }
 
 func liveagentAuthorizePath(ctx context.Context, name, raw, access string, directory bool) (string, error) {
+	return liveagentAuthorizeChange(ctx, name, raw, access, directory, nil)
+}
+
+// liveagentAuthorizeChange is liveagentAuthorizePath for a file change: the gate
+// request carries the preview computed from args (Write, Edit).
+func liveagentAuthorizeChange(ctx context.Context, name, raw, access string, directory bool, args *previewArgs) (string, error) {
 	path, err := liveagentPath(ctx, raw, access, name, directory)
 	if err != nil {
 		return "", err
 	}
-	if deny := checkGate(ctx, name, path); deny != "" {
+	req := GateRequest{Context: ctx, Tool: name, Command: path, Rule: CommandRule(path)}
+	if args != nil {
+		req.Preview = filePreview(name, path, *args)
+	}
+	if deny := checkGateRequest(ctx, req); deny != "" {
 		return "", errors.New(deny)
 	}
 	if err := ctx.Err(); err != nil {
@@ -244,7 +254,7 @@ func (s *liveagentState) baseline(path string, data []byte, info fs.FileInfo) er
 	return nil
 }
 func (s *liveagentState) mutate(ctx context.Context, name string, a map[string]any) (string, error) {
-	path, err := liveagentAuthorizePath(ctx, name, laString(a, "path"), "write", false)
+	path, err := liveagentAuthorizeChange(ctx, name, laString(a, "path"), "write", false, &previewArgs{Content: laString(a, "content"), OldString: laString(a, "old_string"), NewString: laString(a, "new_string"), ReplaceAll: laBool(a, "replace_all", false)})
 	if err != nil {
 		return "", err
 	}
@@ -418,6 +428,7 @@ func liveagentBash(ctx context.Context, manager *liveagentProcessManager, a map[
 	}
 	update, _ := ctx.Value(updateKey{}).(func(string))
 	res := bashrun.Run(ctx, bashrun.Options{Command: command, Dir: dir, Timeout: timeout, OnUpdate: update})
+	reportShellRun(ctx, res.ExitCode, res.TimedOut)
 	out := TruncateTail(res.Output)
 	if res.OutputFile != "" {
 		out += fmt.Sprintf("\n[full output (%d bytes): %s]", res.OutputBytes, res.OutputFile)

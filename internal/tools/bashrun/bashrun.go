@@ -27,6 +27,10 @@ type Result struct {
 
 	Exit string
 
+	// ExitCode is the status the command exited with, 0 included; nil when it
+	// did not start, timed out, was cancelled or was killed by a signal.
+	ExitCode *int
+
 	TimedOut bool
 
 	Killed bool
@@ -238,7 +242,19 @@ func runPiped(ctx context.Context, cmd *exec.Cmd, onUpdate func(string)) Result 
 	}
 	res.Exit = exitString(waitErr)
 	res.Killed = killed
+	res.ExitCode = exitCode(cmd)
 	return res
+}
+
+// exitCode is the status of a command that has exited on its own; nil when it
+// never ran or a signal ended it.
+func exitCode(cmd *exec.Cmd) *int {
+	state := cmd.ProcessState
+	if state == nil || !state.Exited() {
+		return nil
+	}
+	code := state.ExitCode()
+	return &code
 }
 
 func exitString(err error) string {

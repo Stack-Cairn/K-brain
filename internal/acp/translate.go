@@ -113,6 +113,30 @@ func endToolCall(id, name, args, result string) acp.SessionUpdate {
 	)
 }
 
+// withRunMeta attaches how a finished tool call ran to its update, under
+// _meta.kbrain: exit_code (a shell tool's exit status, 0 included), timed_out and
+// duration_ms. Nothing is attached when none is known.
+func withRunMeta(u acp.SessionUpdate, exitCode *int, timedOut bool, durationMs int64) acp.SessionUpdate {
+	info := map[string]any{}
+	if exitCode != nil {
+		info["exit_code"] = *exitCode
+	}
+	if timedOut {
+		info["timed_out"] = true
+	}
+	if durationMs > 0 {
+		info["duration_ms"] = durationMs
+	}
+	if len(info) == 0 || u.ToolCallUpdate == nil {
+		return u
+	}
+	if u.ToolCallUpdate.Meta == nil {
+		u.ToolCallUpdate.Meta = map[string]any{}
+	}
+	u.ToolCallUpdate.Meta["kbrain"] = info
+	return u
+}
+
 func toolCallContent(name, args, result string) []acp.ToolCallContent {
 	out := []acp.ToolCallContent{acp.ToolContent(acp.TextBlock(result))}
 	if isErrorResult(result) {
@@ -204,7 +228,7 @@ func mimeExt(mime string) string {
 func replayUpdates(msgs []ai.Message) []acp.SessionUpdate {
 	var out []acp.SessionUpdate
 
-	argsByID := map[string]struct{ name, args string }{}
+	argsByID := map[string]ai.ToolCall{}
 	for _, m := range msgs {
 		switch m.Role {
 		case "user":
@@ -232,7 +256,7 @@ func replayUpdates(msgs []ai.Message) []acp.SessionUpdate {
 				out = append(out, acp.UpdateAgentMessageText(t))
 			}
 			for _, tc := range m.ToolCalls {
-				argsByID[tc.ID] = struct{ name, args string }{tc.Function.Name, tc.Function.Arguments}
+				argsByID[tc.ID] = tc
 				out = append(out, acp.StartToolCall(acp.ToolCallId(tc.ID),
 					toolTitle(tc.Function.Name, tc.Function.Arguments),
 					acp.WithStartKind(toolKind(tc.Function.Name)),
@@ -240,11 +264,12 @@ func replayUpdates(msgs []ai.Message) []acp.SessionUpdate {
 				))
 			}
 		case "tool":
-			info, ok := argsByID[m.ToolCallID]
+			tc, ok := argsByID[m.ToolCallID]
 			if !ok {
 				continue
 			}
-			out = append(out, endToolCall(m.ToolCallID, info.name, info.args, m.TextContent()))
+			end := endToolCall(m.ToolCallID, tc.Function.Name, tc.Function.Arguments, m.TextContent())
+			out = append(out, withRunMeta(end, tc.ExitStatus, tc.TimedOut, tc.DurationMs))
 		}
 	}
 	return out

@@ -171,7 +171,7 @@ func TestInternalStampsStrippedFromRequest(t *testing.T) {
 	u := ai.Usage{PromptTokens: 9}
 	ag.Messages = append(ag.Messages, ai.Message{
 		Role: "assistant", Content: "prior", Usage: &u, Model: "m @ p",
-		ToolCalls: []ai.ToolCall{{ID: "x", DurationMs: 5, ExitCode: 1}},
+		ToolCalls: []ai.ToolCall{{ID: "x", DurationMs: 5, ExitCode: 1, ExitStatus: new(1), TimedOut: true}},
 	})
 	ag.Messages = append(ag.Messages, ai.Message{Role: "user", Content: "old", Authored: true, SentAt: &sent, RewoundFrom: "earlier"})
 	if _, err := ag.Turn(context.Background(), "go", Events{}); err != nil {
@@ -181,7 +181,7 @@ func TestInternalStampsStrippedFromRequest(t *testing.T) {
 		t.Fatal("no request captured")
 	}
 	body := string(bodies[len(bodies)-1])
-	for _, leak := range []string{"usage\":{", "\"model\":\"m @ p\"", "duration_ms", "exit_code", "sent_at", "rewound_from", "authored"} {
+	for _, leak := range []string{"usage\":{", "\"model\":\"m @ p\"", "duration_ms", "exit_code", "exit_status", "timed_out", "sent_at", "rewound_from", "authored"} {
 		if strings.Contains(body, leak) {
 			t.Errorf("internal field %q leaked to provider:\n%s", leak, body)
 		}

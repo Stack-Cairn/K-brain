@@ -142,7 +142,15 @@ func (a *Agent) runTools(ctx context.Context, calls []ai.ToolCall, ev Events) []
 			ev.OnToolResult(calls[oc.i].ID, calls[oc.i].Function.Name, oc.out)
 		}
 		calls[oc.i].DurationMs = oc.ms
+		if ms := oc.out.DurationMs(); ms > 0 {
+			calls[oc.i].DurationMs = ms
+		}
 		calls[oc.i].ExitCode = oc.code
+		if status := oc.out.ExitCode; status != nil {
+			code := *status
+			calls[oc.i].ExitCode, calls[oc.i].ExitStatus = code, &code
+		}
+		calls[oc.i].TimedOut = oc.out.TimedOut
 	}
 	return results
 }
