@@ -483,21 +483,21 @@ func TestPortProbeSquatterTriggersFallback(t *testing.T) {
 		t.Skip("skipped via K_BRAIN_SKIP_PORT_SQUATTER_TEST")
 	}
 
-	var lns []net.Listener
-	for _, p := range []int{9222, 9223} {
-		ln, err := net.Listen("tcp", fmt.Sprintf(":%d", p))
+	// Private ports: a real browser on 9222 would answer the probe instead of the squatter.
+	ports := debugPorts
+	t.Cleanup(func() { debugPorts = ports })
+	debugPorts = nil
+	for range 2 {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
-			continue
+			t.Fatal(err)
 		}
-		lns = append(lns, ln)
+		debugPorts = append(debugPorts, ln.Addr().(*net.TCPAddr).Port)
 		srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			http.NotFound(w, r)
 		})}
 		go srv.Serve(ln)
 		defer srv.Close()
-	}
-	if len(lns) == 0 {
-		t.Skip("could not bind 9222/9223")
 	}
 	noEnvCDP(t)
 	t.Setenv("HOME", t.TempDir())

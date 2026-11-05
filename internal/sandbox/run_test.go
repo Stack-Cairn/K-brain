@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -44,8 +45,13 @@ func TestForRunRefusesOfflineWithoutNetworkControl(t *testing.T) {
 func TestForRunOnlyTightensConfiguredPolicy(t *testing.T) {
 	withProbe(t, Capability{Supported: true, NetworkControl: true})
 	root := t.TempDir()
+	// "/data/kbrain" has no drive on Windows, so it would resolve under the root.
+	mask, err := filepath.Abs("/data/kbrain")
+	if err != nil {
+		t.Fatal(err)
+	}
 	base := &Policy{Mode: "strict", Backend: "auto", Root: root, Network: false, Writable: []string{"cache"}, ReadOnly: []string{"docs"}}
-	p, err := ForRun(base, RunRequest{Root: root, Writable: []string{t.TempDir()}, Network: true, Masked: []string{"/data/kbrain"}})
+	p, err := ForRun(base, RunRequest{Root: root, Writable: []string{t.TempDir()}, Network: true, Masked: []string{mask}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +61,7 @@ func TestForRunOnlyTightensConfiguredPolicy(t *testing.T) {
 	if !slices.Equal(p.Writable, []string{"cache"}) || !slices.Equal(p.ReadOnly, []string{"docs"}) {
 		t.Fatalf("run changed configured grants: %+v", p)
 	}
-	if !slices.Contains(p.Masked, "/data/kbrain") || len(p.Protected) == 0 {
+	if !slices.Contains(p.Masked, mask) || len(p.Protected) == 0 {
 		t.Fatalf("run did not add masks and protected paths: %+v", p)
 	}
 	if base.Masked != nil || base.Protected != nil {
@@ -115,6 +121,9 @@ func TestResolveBwrapSkipsWorkspace(t *testing.T) {
 }
 
 func TestSeatbeltProfileOrdersMasksBeforeRootAndReadOnly(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("seatbelt profiles hold macOS paths; Windows paths are escaped differently")
+	}
 	root, err := canonicalPath(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

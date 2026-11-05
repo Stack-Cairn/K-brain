@@ -208,9 +208,14 @@ func TestCLISearchArgumentErrors(t *testing.T) {
 }
 
 func TestSearchTreeTimeoutReturnsPartialResults(t *testing.T) {
-	_, dir := searchFixture(t, map[string]string{"a.txt": "needle\n"})
-	caps := searchCaps{timeout: time.Nanosecond}
-	out, err := searchTree(context.Background(), "Grep", dir, map[string]any{"pattern": "needle"}, searchOptions{caps: caps})
+	_, dir := searchFixture(t, map[string]string{"a.txt": "needle\n", "b.txt": "needle\n"})
+	caps := searchCaps{timeout: time.Millisecond}
+	// The walk has to outlast the timeout, or a fast disk finishes a complete search first.
+	slow := func(string) error {
+		time.Sleep(50 * time.Millisecond)
+		return nil
+	}
+	out, err := searchTree(context.Background(), "Grep", dir, map[string]any{"pattern": "needle"}, searchOptions{caps: caps, allow: slow})
 	if err != nil || !strings.Contains(out, "results are partial") {
 		t.Errorf("own timeout should return partial results, got %q, %v", out, err)
 	}

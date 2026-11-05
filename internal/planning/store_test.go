@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -89,7 +90,8 @@ func TestPersistenceCASIdempotencyAndRollback(t *testing.T) {
 		t.Fatal("lost idempotency")
 	}
 	info, e := os.Stat(s.path)
-	if e != nil || info.Mode().Perm() != 0600 {
+	// Windows reports every writable file as 0666; there is no POSIX mode to check.
+	if e != nil || (runtime.GOOS != "windows" && info.Mode().Perm() != 0600) {
 		t.Fatalf("permissions %v %v", info, e)
 	}
 }

@@ -301,6 +301,12 @@ func matchPath(pattern, target, root string) bool {
 	// The pattern is already slash separated; ToSlash would turn its `\[` escapes
 	// into separators on Windows.
 	if runtime.GOOS == "windows" {
+		// "/p/**" names a directory on the workspace's drive, where the tools resolve "/p".
+		if strings.HasPrefix(pattern, "/") && !strings.HasPrefix(pattern, "//") {
+			if volume := filepath.VolumeName(root); volume != "" {
+				pattern = escapeGlob(filepath.ToSlash(volume)) + pattern
+			}
+		}
 		pattern = strings.ToLower(pattern)
 	}
 	return globMatch(strings.Split(pattern, "/"), strings.Split(subject, "/"))

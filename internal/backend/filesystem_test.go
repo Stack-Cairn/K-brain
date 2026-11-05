@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -20,8 +21,19 @@ func TestFilesystemRootConfinementAndText(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// Creating a symlink on Windows needs a privilege most accounts lack. The other cases still
+	// apply, so only the ones that need the link drop out.
+	listed := uint32(3)
+	escapes := []filesystemInput{
+		{Action: "read_text", Workdir: project, Path: "escape"},
+		{Action: "read_preview", Workdir: project, Path: "escape"},
+	}
 	if err := os.Symlink("../outside.txt", filepath.Join(project, "escape")); err != nil {
-		t.Fatal(err)
+		if runtime.GOOS != "windows" {
+			t.Fatal(err)
+		}
+		t.Logf("not testing symlink escapes: %v", err)
+		listed, escapes = 2, nil
 	}
 	server := &Server{filesystemRoots: []string{root}}
 	request := httptest.NewRequest("POST", "/v1/fs", nil)
@@ -33,17 +45,15 @@ func TestFilesystemRootConfinementAndText(t *testing.T) {
 	if text["content"] != "hello\nworld" || text["total_lines"] != 2 || len(text["content_hash"].(string)) != 64 {
 		t.Fatal(text)
 	}
-	for _, input := range []filesystemInput{
+	for _, input := range append(escapes, []filesystemInput{
 		{Action: "read_text", Workdir: project, Path: "../outside.txt"},
-		{Action: "read_text", Workdir: project, Path: "escape"},
-		{Action: "read_preview", Workdir: project, Path: "escape"},
 		{Action: "read_preview", Workdir: project, Path: "../outside.txt"},
 		{Action: "read_text", Workdir: project, Path: "binary"},
 		{Action: "read_text", Workdir: project, Path: root},
 		{Action: "list_dirs", Path: filepath.Dir(root)},
 		{Action: "list", Workdir: project, Depth: 100},
 		{Action: "unsupported", Workdir: project, Path: "readme.txt"},
-	} {
+	}...) {
 		if _, err := server.filesystem(request, input); err == nil {
 			t.Fatalf("accepted invalid operation: %+v", input)
 		}
@@ -53,7 +63,7 @@ func TestFilesystemRootConfinementAndText(t *testing.T) {
 		t.Fatal(err)
 	}
 	listing := result.(map[string]any)
-	if listing["total"] != uint32(3) || listing["has_more"] != true || len(listing["entries"].([]map[string]any)) != 1 {
+	if listing["total"] != listed || listing["has_more"] != true || len(listing["entries"].([]map[string]any)) != 1 {
 		t.Fatal(listing)
 	}
 	result, err = server.filesystem(request, filesystemInput{Action: "list_dirs", Path: root})

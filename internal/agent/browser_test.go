@@ -14,11 +14,12 @@ import (
 
 	"github.com/Stack-Cairn/K-brain/internal/ai"
 	"github.com/Stack-Cairn/K-brain/internal/browser"
+	"github.com/Stack-Cairn/K-brain/internal/testhome"
 	"github.com/Stack-Cairn/K-brain/internal/tools"
 )
 
 func TestBrowserExecReachesModel(t *testing.T) {
-	home, _ := os.UserHomeDir()
+	home := testhome.RealHome()
 	bin := home + "/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell"
 	if _, err := os.Stat(bin); err != nil {
 		bin = home + "/.cache/ms-playwright/chromium-1234/chrome-linux64/chrome"

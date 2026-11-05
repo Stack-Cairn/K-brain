@@ -127,7 +127,7 @@ func darwinUserTempParent(tmp string) string {
 	if prefix != "var" && prefix != "private/var" {
 		return ""
 	}
-	return filepath.Dir(tmp)
+	return "/" + strings.Join(parts[:n-1], "/")
 }
 
 // resolveBwrap finds bubblewrap at a pinned system path first, then on absolute
