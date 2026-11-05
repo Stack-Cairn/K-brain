@@ -12,6 +12,17 @@ func IsReadOnlyTool(tool string) bool {
 	return false
 }
 
+// IsInteractionTool reports tools whose only effect is to put a question to the user
+// and return the user's own answer: AskUserQuestion (backend) and question (TUI).
+// They touch no file, process, network or credential, so an AI review of the call
+// has nothing to judge and its output is the user's words, not untrusted content.
+// Gates allow them in every permission mode; deny rules and explicit per-tool
+// policies still apply. ExitPlanMode is not one: approving a plan changes the mode
+// the next turn runs in.
+func IsInteractionTool(tool string) bool {
+	return tool == "AskUserQuestion" || tool == "question"
+}
+
 // IsReadOnlyCommand reports a shell command whose every simple command only reads.
 // The list is an allow list on purpose: unknown commands and aliases are not read-only.
 func IsReadOnlyCommand(command, shell string) bool {

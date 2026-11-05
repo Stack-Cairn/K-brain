@@ -183,7 +183,7 @@ func (m *model) receivePermission(msg permRequest) {
 	switch {
 	case msg.req.Context != nil && msg.req.Context.Err() != nil:
 		msg.reply <- permAnswer{tools.GateReject, "cancelled"}
-	case m.permissionMode == "plan" && !tools.AsksInPlanMode(msg.req.Tool):
+	case m.permissionMode == "plan" && !tools.AsksInPlanMode(msg.req.Tool) && !permissions.IsInteractionTool(msg.req.Tool):
 		msg.reply <- permAnswer{tools.GateReject, "Plan mode only allows read-only inspection"}
 	case decision.Effect == permissions.Deny:
 		msg.reply <- permAnswer{tools.GateReject, "denied by permission rule " + decision.Rule}
@@ -194,6 +194,9 @@ func (m *model) receivePermission(msg permRequest) {
 		// The command cannot be checked against the deny rules, so even an
 		// allowing mode asks.
 		m.permDialog = &permDialog{req: msg.req, reply: msg.reply}
+	case permissions.IsInteractionTool(msg.req.Tool):
+		// Asking the user a question needs no approval in any mode.
+		msg.reply <- permAnswer{decision: tools.GateAllowOnce}
 	case m.permissionMode == "always":
 		msg.reply <- permAnswer{decision: tools.GateAllowOnce}
 	case auto && reviewed && report.Safe():

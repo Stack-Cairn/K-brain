@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Stack-Cairn/K-brain/internal/permissions"
 	"github.com/Stack-Cairn/K-brain/internal/tools"
 )
 
@@ -73,6 +74,21 @@ func (r *RunReviewer) Hooks(gate func(tools.GateRequest) (tools.GateDecision, st
 	return tools.ReviewHooks{Before: func(ctx context.Context, name string, args json.RawMessage) (context.Context, error) {
 		// Nested calls must receive a fresh review, never inherit approval of their parent.
 		ctx = context.WithValue(ctx, ReviewedActionKey{}, "")
+		if permissions.IsInteractionTool(name) {
+			// Asking the user has no effect to review; waiting up to Timeout for a
+			// reviewer (or a manual prompt when its reply is unreadable) only delays
+			// the question. The gate still applies deny rules and per-tool policies.
+			if r.Mode == "risk_only" {
+				return ctx, nil
+			}
+			if decision, reason := gate(tools.GateRequestFor(ctx, name, args)); decision == tools.GateReject {
+				return ctx, fmt.Errorf("%s", reason)
+			}
+			if err := ctx.Err(); err != nil {
+				return ctx, err
+			}
+			return context.WithValue(ctx, ReviewedActionKey{}, name), nil
+		}
 		target := pollTarget(name, args)
 		r.mu.Lock()
 		tainted := r.outputRisk
@@ -115,7 +131,8 @@ func (r *RunReviewer) Hooks(gate func(tools.GateRequest) (tools.GateDecision, st
 		// Only an approved call may record the processes it starts.
 		return tools.WithProcessStarted(context.WithValue(ctx, ReviewedActionKey{}, name), r.recordOwned), nil
 	}, After: func(ctx context.Context, name string, args json.RawMessage, result tools.Result) tools.Result {
-		if ctx.Err() != nil {
+		if ctx.Err() != nil || permissions.IsInteractionTool(name) {
+			// An interaction tool returns the user's own answer, not untrusted output.
 			return result
 		}
 		report := r.reviewer.Review(ctx, Evidence{Phase: "tool_output", Tool: name, Action: string(args), UserIntent: r.intent, Output: result.Text})

@@ -280,6 +280,9 @@ func runToolGate(options protocol.RunOptions, req tools.GateRequest, rules permi
 			}
 		}
 	}
+	if permissions.IsInteractionTool(req.Tool) {
+		return tools.GateAllowOnce, interactionAllowReason
+	}
 	switch options.PermissionMode {
 	case permissions.FullAccess, permissions.Always:
 		return tools.GateAllowOnce, "per-run permission mode"

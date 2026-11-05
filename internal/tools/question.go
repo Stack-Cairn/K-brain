@@ -59,6 +59,10 @@ func QuestionTool() Tool {
 			if err := json.Unmarshal(args, &a); err != nil {
 				return "", err
 			}
+			// Gates never prompt for a question; deny rules still refuse it.
+			if err := Authorize(ctx, "question", string(args)); err != nil {
+				return "", err
+			}
 			ask, scoped := ctx.Value(askContextKey{}).(AskFunc)
 			if !scoped {
 				ask = Ask
