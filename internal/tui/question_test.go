@@ -11,14 +11,11 @@ import (
 func newAskModel(multiple bool) (*model, chan askAnswer) {
 	m := compactCmdModel()
 	reply := make(chan askAnswer, 1)
-	m.askDialog = &askDialog{
-		req: tools.AskRequest{
-			Question: "Which planner?",
-			Options:  []tools.AskOption{{Label: "fable (Recommended)", Description: "default"}, {Label: "opus"}, {Label: "gpt-5.6-sol"}},
-			Multiple: multiple,
-		},
-		reply: reply, picked: map[int]bool{},
-	}
+	m.askDialog = newAskDialog(tools.AskRequest{
+		Question: "Which planner?",
+		Options:  []tools.AskOption{{Label: "fable (Recommended)", Description: "default"}, {Label: "opus"}, {Label: "gpt-5.6-sol"}},
+		Multiple: multiple,
+	}, reply)
 	return m, reply
 }
 
@@ -39,9 +36,9 @@ func TestQuestionCustomAndMulti(t *testing.T) {
 	m, reply := newAskModel(false)
 	m.askKey(tea.KeyMsg{Type: tea.KeyUp})
 	m.askKey(tea.KeyMsg{Type: tea.KeyEnter})
-	m.askKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("grok")})
+	m.askKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("my own")})
 	m.askKey(tea.KeyMsg{Type: tea.KeyEnter})
-	if got := <-reply; !got.ok || got.answers[0] != "grok" {
+	if got := <-reply; !got.ok || got.answers[0] != "my own" {
 		t.Fatalf("custom: got %+v", got)
 	}
 

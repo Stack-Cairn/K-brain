@@ -78,10 +78,10 @@ func TestQuestionCardShape(t *testing.T) {
 	defer restore()
 	m := compactCmdModel()
 	m.width = 60
-	m.askDialog = &askDialog{req: tools.AskRequest{
+	m.askDialog = newAskDialog(tools.AskRequest{
 		Question: "Which output format?",
 		Options:  []tools.AskOption{{Label: "Lines", Description: "streams well"}, {Label: "Array"}},
-	}, picked: map[int]bool{}}
+	}, nil)
 	out := m.askView()
 	plain := ansi.Strip(out)
 	for _, want := range []string{"? Question", "Which output format?", glyphs.User + " 1  Lines", "streams well", "2  Array", "3  type your own answer"} {

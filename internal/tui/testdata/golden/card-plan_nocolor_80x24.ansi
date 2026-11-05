@@ -1,0 +1,24 @@
+[1m▌[0m[1m❯[0m add a --json flag to `kn status`                                             [0m
+
+[1m╭[0m[1m─[0m [1m◆[0m [1mPlan ready for review[0m [1m────────────────────────────────────────────────────[0m[1m╮[0m
+[1m│[0m   [2m1[0m [1mAdd --json to kn status[0m                                                  [1m│[0m
+[1m│[0m   [2m2[0m                                                                          [1m│[0m
+[1m│[0m   [2m3[0m 1. Add a `--json` flag next to the existing ones in cmd/kn/status.go.    [1m│[0m
+[1m│[0m [1m❯[0m [2m4[0m 2. Encode Status with encoding/json, one object per call.                [1m│[0m
+[1m│[0m     [1m└ [0m[1mkeep the old text output as the default[0m                                [1m│[0m
+[1m│[0m   [2m5[0m 3. Cover both outputs in status_test.go.                                 [1m│[0m
+[1m│[0m   [2m6[0m 4. Run go test ./cmd/kn/ and go vet ./...                                [1m│[0m
+[1m│[0m                                                                              [1m│[0m
+[1m│[0m [1;7m❯ 1  Yes, approve the plan and switch to Always allow [0m                       [1m│[0m
+[1m│[0m   2  No, request changes                                                     [1m│[0m
+[1m│[0m      1 line comment is sent with the changes                                 [1m│[0m
+[1m│[0m                                                                              [1m│[0m
+[1m│[0m [2m↑↓ line · c comment · 1 approve · 2 request changes · Esc close[0m              [1m│[0m
+[1m╰[0m[1m──────────────────────────────────────────────────────────────────────────────[0m[1m╯[0m
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+  [1m❯ [0m[7mA[0m[2msk k-brain anything…  / commands · Shift+Tab mode · Ctrl+P menu[0m            [0m
+  [1m[Plan][0m [read-only]                                        kimi-k3-fast[2m · [0m[1m✦ off[0m

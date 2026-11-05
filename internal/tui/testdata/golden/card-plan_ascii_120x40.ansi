@@ -1,0 +1,40 @@
+[1;96m|[0m[1;96m>[0m add a --json flag to `kn status`                                                                                     [0m
+
+[96m+[0m[96m-[0m [1;96m*[0m [1mPlan ready for review[0m [96m--------------------------------------------------------------------------------------------[0m[96m+[0m
+[96m|[0m   [37m1[0m [1mAdd --json to kn status[0m                                                                                          [96m|[0m
+[96m|[0m   [37m2[0m                                                                                                                  [96m|[0m
+[96m|[0m   [37m3[0m 1. Add a `--json` flag next to the existing ones in cmd/kn/status.go.                                            [96m|[0m
+[96m|[0m [96m>[0m [37m4[0m 2. Encode Status with encoding/json, one object per call.                                                        [96m|[0m
+[96m|[0m     [96m` [0m[96mkeep the old text output as the default[0m                                                                        [96m|[0m
+[96m|[0m   [37m5[0m 3. Cover both outputs in status_test.go.                                                                         [96m|[0m
+[96m|[0m   [37m6[0m 4. Run go test ./cmd/kn/ and go vet ./...                                                                        [96m|[0m
+[96m|[0m                                                                                                                      [96m|[0m
+[96m|[0m [1;96m> 1  Yes, approve the plan and switch to Always allow[0m                                                                [96m|[0m
+[96m|[0m   2  No, request changes                                                                                             [96m|[0m
+[96m|[0m [37m     1 line comment is sent with the changes[0m                                                                         [96m|[0m
+[96m|[0m                                                                                                                      [96m|[0m
+[96m|[0m [37mUp/Down line - c comment - 1 approve - 2 request changes - Esc close[0m                                                 [96m|[0m
+[96m+[0m[96m----------------------------------------------------------------------------------------------------------------------[0m[96m+[0m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[90m------------------------------------------------------------------------------------------------------------------------[0m
+  [1;96m> [0m[7mA[0m[90msk k-brain anything...  / commands - Shift+Tab mode - Ctrl+P menu[0m                                                  [0m
+  [106m [0m[1;30;106mPlan[0m[106m [0m [96mread-only[0m                                                                                  [37mkimi-k3-fast[0m[90m - [0m[1;96m* off[0m

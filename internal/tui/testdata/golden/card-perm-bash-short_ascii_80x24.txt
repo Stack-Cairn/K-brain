@@ -1,0 +1,24 @@
+|> add a --json flag to `kn status`
+
++- ! Run this command? --------------------------------------------------------+
+|   go test ./internal/...                                                     |
+|                                                                              |
+| Normal mode confirms commands and file changes                               |
+|                                                                              |
+| > 1  Yes, once (a)                                                           |
+|   2  Yes, always allow Bash(go test:*) (A)                                   |
+|      exact - prefix - program - kept for every project                       |
+|   3  No, and tell the agent why (r)                                          |
+|                                                                              |
+| Up/Down select - 1-3 or a/A/r - Tab scope - Esc reject                       |
++------------------------------------------------------------------------------+
+
+
+
+
+
+
+
+--------------------------------------------------------------------------------
+  > Ask k-brain anything...  / commands - Shift+Tab mode - Ctrl+P menu
+   Normal                                                   kimi-k3-fast - * off

@@ -1,0 +1,24 @@
+[1;96m▌[0m[1;96m❯[0m add a --json flag to `kn status`                                             [0m
+
+[93m╭[0m[93m─[0m [1;93m![0m [1mCreate this file?[0m [93m────────────────────────────────────────────────────────[0m[93m╮[0m
+[93m│[0m [1mcmd/kn/json.go[0m  [96mnew file[0m                                                     [93m│[0m
+[93m│[0m [90m  1  [0m[92m+[0m [92mpackage main[0m                                                          [93m│[0m
+[93m│[0m [90m  2  [0m[92m+[0m                                                                       [93m│[0m
+[93m│[0m [90m  3  [0m[92m+[0m [92mimport "encoding/json"[0m                                                [93m│[0m
+[93m│[0m [90m  4  [0m[92m+[0m                                                                       [93m│[0m
+[93m│[0m [90m  5  [0m[92m+[0m [92mfunc statusJSON(s Status) ([]byte, error) {[0m                           [93m│[0m
+[93m│[0m [90m  6  [0m[92m+[0m [92m    return json.Marshal(s)[0m                                            [93m│[0m
+[93m│[0m [90m  7  [0m[92m+[0m [92m}[0m                                                                     [93m│[0m
+[93m│[0m [1;96m❯ 1  Yes, once[37m (a)[0m[0m                                                           [93m│[0m
+[93m│[0m   2  Yes, always allow Edit(cmd/kn/**)[37m (A)[0m                                   [93m│[0m
+[93m│[0m      [90mthis file[0m[37m · [0m[1;96mfolder[0m[37m · [0m[90mproject[0m[90m · kept for this project[0m                    [93m│[0m
+[93m│[0m   3  No, and tell the agent why[37m (r)[0m                                          [93m│[0m
+[93m│[0m [37m1-3 or a/A/r · Tab scope · Esc reject[0m                                        [93m│[0m
+[93m╰[0m[93m──────────────────────────────────────────────────────────────────────────────[0m[93m╯[0m
+
+
+
+
+[90m────────────────────────────────────────────────────────────────────────────────[0m
+  [1;96m❯ [0m[7mA[0m[90msk k-brain anything…  / commands · Shift+Tab mode · Ctrl+P menu[0m            [0m
+  [100m [0m[1;37;100mNormal[0m[100m [0m                                                  [37mkimi-k3-fast[0m[90m · [0m[1;96m✦ off[0m

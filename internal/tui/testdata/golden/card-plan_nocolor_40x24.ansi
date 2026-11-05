@@ -1,0 +1,24 @@
+[1m▌[0m[1m❯[0m add a --json flag to `kn status`     [0m
+
+[1m╭[0m[1m─[0m [1m◆[0m [1mPlan ready for review[0m [1m────────────[0m[1m╮[0m
+[1m│[0m     cmd/kn/status.go.                [1m│[0m
+[1m│[0m [1m❯[0m [2m4[0m 2. Encode Status with            [1m│[0m
+[1m│[0m     encoding/json, one object per    [1m│[0m
+[1m│[0m     call.                            [1m│[0m
+[1m│[0m     [1m└ [0m[1mkeep the old text output as    [1m│[0m
+[1m│[0m       the default[0m                    [1m│[0m
+[1m│[0m [2m⋯ 5-10 / 14 · PgUp/PgDn[0m              [1m│[0m
+[1m│[0m [1;7m❯ 1  Yes, approve the plan and [0m      [1m│[0m
+[1m│[0m [1;7m     switch to Always allow [0m         [1m│[0m
+[1m│[0m   2  No, request changes             [1m│[0m
+[1m│[0m      1 line comment is sent with the [1m│[0m
+[1m│[0m      changes                         [1m│[0m
+[1m│[0m [2m↑↓ line · c comment · 1/2 · Esc[0m      [1m│[0m
+[1m╰[0m[1m──────────────────────────────────────[0m[1m╯[0m
+
+
+
+
+────────────────────────────────────────
+  [1m❯ [0m[7mA[0m[2msk k-brain anything…  / commands ·[0m [0m
+  [1m[Plan][0m            kimi-k3-fast[2m · [0m[1m✦ off[0m

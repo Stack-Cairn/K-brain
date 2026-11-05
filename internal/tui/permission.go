@@ -3,13 +3,17 @@ package tui
 import (
 	"context"
 	"fmt"
-	"github.com/Stack-Cairn/K-brain/internal/approval"
-	"github.com/charmbracelet/x/ansi"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 
+	"github.com/alecthomas/chroma/v2"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Stack-Cairn/K-brain/internal/approval"
 
 	"github.com/Stack-Cairn/K-brain/internal/permissions"
 	"github.com/Stack-Cairn/K-brain/internal/tools"
@@ -31,6 +35,51 @@ type permDialog struct {
 	sel       int
 	rejecting bool
 	rejectIn  string
+
+	// why says what made this action ask: a rule, the reviewer or the mode.
+	why string
+	// levels are the breadths "always allow" can remember, narrowest first,
+	// and scope the one chosen (permissions.SuggestScopes); read on first use.
+	levels      []permissions.ScopeLevel
+	scope       int
+	levelsReady bool
+	// expanded shows the whole edit preview instead of its first rows.
+	expanded bool
+	scroll   cardScroll
+}
+
+// permPreviewRows is how many diff rows a folded edit preview shows.
+const permPreviewRows = 12
+
+// scopes returns the dialog's remember levels, reading them on first use.
+func (d *permDialog) scopes() []permissions.ScopeLevel {
+	if !d.levelsReady {
+		d.levelsReady = true
+		d.levels, d.scope = permissions.SuggestScopes(permRequestOf(d.req), permOptions(false))
+		d.scope = max(d.scope, 0)
+	}
+	return d.levels
+}
+
+// chosenRules are the rules "always allow" stores at the chosen scope.
+func (d *permDialog) chosenRules() []string {
+	levels := d.scopes()
+	if len(levels) == 0 {
+		return nil
+	}
+	return levels[min(d.scope, len(levels)-1)].Rules
+}
+
+// widen moves the chosen scope by delta levels, wrapping around.
+func (d *permDialog) widen(delta int, cycle bool) {
+	n := len(d.scopes())
+	switch {
+	case n < 2:
+	case cycle:
+		d.scope = (d.scope + delta + n) % n
+	default:
+		d.scope = min(max(d.scope+delta, 0), n-1)
+	}
 }
 
 // permRules holds the remembered rules shared with the backend: user-scope rules,
@@ -86,10 +135,13 @@ func (r *permRules) suggestions(req tools.GateRequest) []string {
 	return permissions.Suggest(permRequestOf(req), permOptions(false))
 }
 
-// remember stores the suggested rules for req and reports whether there were any.
-// Relative path rules go to the current project, the rest to the user scope.
-func (r *permRules) remember(req tools.GateRequest) bool {
-	rules := r.suggestions(req)
+// remember stores rules (the suggested ones when nil) for req and reports
+// whether there were any. Relative path rules go to the current project, the
+// rest to the user scope.
+func (r *permRules) remember(req tools.GateRequest, rules []string) bool {
+	if rules == nil {
+		rules = r.suggestions(req)
+	}
 	if len(rules) == 0 {
 		return false
 	}
@@ -194,7 +246,11 @@ func (m *model) receivePermission(msg permRequest) {
 	case decision.Effect == permissions.Ask:
 		// The command cannot be checked against the deny rules, so even an
 		// allowing mode asks.
-		m.permDialog = &permDialog{req: msg.req, reply: msg.reply}
+		why := m.tr("an ask rule requires confirmation: ") + decision.Rule
+		if decision.Rule == "" {
+			why = m.tr("this command cannot be checked against the deny rules")
+		}
+		m.openPermDialog(msg, why)
 	case permissions.IsInteractionTool(msg.req.Tool):
 		// Asking the user a question needs no approval in any mode.
 		msg.reply <- permAnswer{decision: tools.GateAllowOnce}
@@ -206,14 +262,33 @@ func (m *model) receivePermission(msg permRequest) {
 		// The review only urged caution and the user already remembered this action.
 		msg.reply <- permAnswer{decision: tools.GateAllowOnce}
 	case auto && reviewed && !report.Safe():
-		m.permDialog = &permDialog{req: msg.req, reply: msg.reply}
+		m.openPermDialog(msg, m.tr("the AI reviewer flagged this action"))
 	case m.permissionMode == "auto_review":
-		m.permDialog = &permDialog{req: msg.req, reply: msg.reply}
+		m.openPermDialog(msg, m.tr("Auto review asks for actions it did not review"))
 	case m.permissionMode == "full_access" || (m.permissionMode == "auto_edit" && permissions.IsEdit(msg.req.Tool)) || decision.Effect == permissions.Allow:
 		msg.reply <- permAnswer{decision: tools.GateAllowOnce}
 	default:
-		m.permDialog = &permDialog{req: msg.req, reply: msg.reply}
+		m.openPermDialog(msg, m.modeWhy())
 	}
+}
+
+// openPermDialog shows the approval card for msg; why says what made it ask.
+func (m *model) openPermDialog(msg permRequest, why string) {
+	if msg.req.OtherDir {
+		why += m.tr(" · runs outside the working directory")
+	}
+	m.permDialog = &permDialog{req: msg.req, reply: msg.reply, why: why}
+}
+
+// modeWhy is why the current mode asks.
+func (m *model) modeWhy() string {
+	switch m.permissionMode {
+	case "plan":
+		return m.tr("Plan mode asks before reaching the network")
+	case "auto_edit":
+		return m.tr("Auto edit allows file edits; other actions ask")
+	}
+	return m.tr("Normal mode confirms commands and file changes")
 }
 
 func (m *model) permKey(msg tea.KeyMsg) bool {
@@ -225,6 +300,9 @@ func (m *model) permKey(msg tea.KeyMsg) bool {
 		d.reply <- a
 		m.permDialog = nil
 	}
+	if !d.rejecting && cardRunes(msg, func(k tea.KeyMsg) bool { m.permKey(k); return m.permDialog == d }) {
+		return true
+	}
 	if d.rejecting {
 		switch msg.Type {
 		case tea.KeyEnter:
@@ -232,25 +310,52 @@ func (m *model) permKey(msg tea.KeyMsg) bool {
 		case tea.KeyEsc:
 			d.rejecting, d.rejectIn = false, ""
 		case tea.KeyBackspace:
-			if len(d.rejectIn) > 0 {
-				d.rejectIn = d.rejectIn[:len(d.rejectIn)-1]
+			if r := []rune(d.rejectIn); len(r) > 0 {
+				d.rejectIn = string(r[:len(r)-1])
 			}
 		case tea.KeyRunes, tea.KeySpace:
 			d.rejectIn += string(msg.Runes)
 		}
 		return true
 	}
+	if cardScrollKey(&d.scroll, msg) {
+		return true
+	}
+	scoped := len(d.scopes()) > 1
 	switch msg.Type {
-	case tea.KeyLeft, tea.KeyUp:
+	case tea.KeyUp:
 		d.sel = (d.sel + 2) % 3
-	case tea.KeyRight, tea.KeyDown:
+	case tea.KeyDown:
 		d.sel = (d.sel + 1) % 3
+	case tea.KeyLeft, tea.KeyRight:
+		delta := 1
+		if msg.Type == tea.KeyLeft {
+			delta = -1
+		}
+		if d.sel == 1 && scoped {
+			d.widen(delta, false)
+		} else {
+			d.sel = (d.sel + 3 + delta) % 3
+		}
+	case tea.KeyTab, tea.KeyShiftTab:
+		if scoped {
+			if d.sel == 1 {
+				if msg.Type == tea.KeyTab {
+					d.widen(1, true)
+				} else {
+					d.widen(-1, true)
+				}
+			}
+			d.sel = 1
+		}
+	case tea.KeyCtrlE:
+		d.toggleExpanded()
 	case tea.KeyEnter:
 		switch d.sel {
 		case 0:
 			answer(permAnswer{decision: tools.GateAllowOnce})
 		case 1:
-			answer(m.allowAlways(d.req))
+			answer(m.allowAlways(d))
 		case 2:
 			d.rejecting = true
 		}
@@ -259,9 +364,11 @@ func (m *model) permKey(msg tea.KeyMsg) bool {
 		case "a", "1":
 			answer(permAnswer{decision: tools.GateAllowOnce})
 		case "A", "2":
-			answer(m.allowAlways(d.req))
+			answer(m.allowAlways(d))
 		case "r", "3":
 			d.rejecting = true
+		case "e":
+			d.toggleExpanded()
 		}
 	case tea.KeyEsc:
 		answer(permAnswer{tools.GateReject, "rejected without a reason"})
@@ -269,13 +376,122 @@ func (m *model) permKey(msg tea.KeyMsg) bool {
 	return true
 }
 
-// allowAlways remembers the request's suggested rules. Actions that cannot be
-// remembered, such as deletions, are allowed once.
-func (m *model) allowAlways(req tools.GateRequest) permAnswer {
-	if m.perms.remember(req) {
+// toggleExpanded unfolds or folds the edit preview.
+func (d *permDialog) toggleExpanded() {
+	if d.req.Preview != nil && d.req.Preview.Diff != "" {
+		d.expanded = !d.expanded
+		d.scroll.off = 0
+	}
+}
+
+// allowAlways remembers the rules at the dialog's chosen scope. Actions that
+// cannot be remembered, such as deletions, are allowed once.
+func (m *model) allowAlways(d *permDialog) permAnswer {
+	if rules := d.chosenRules(); len(rules) > 0 && m.perms.remember(d.req, rules) {
 		return permAnswer{decision: tools.GateAllowAlways}
 	}
 	return permAnswer{decision: tools.GateAllowOnce}
+}
+
+// permTitle is the card's question, by what the action does.
+func (m *model) permTitle(req tools.GateRequest) string {
+	switch {
+	case req.Tool == "bash" || req.Tool == "Bash":
+		return m.tr("Run this command?")
+	case req.Tool == "web_fetch" || req.Tool == "WebFetch":
+		return m.tr("Fetch this URL?")
+	case req.Preview != nil && req.Preview.NewFile:
+		return m.tr("Create this file?")
+	case req.Tool == "edit" || req.Tool == "Edit":
+		return m.tr("Apply this edit?")
+	case req.Tool == "write" || req.Tool == "Write":
+		return m.tr("Write this file?")
+	}
+	return m.tr("Allow") + " " + req.Tool + "?"
+}
+
+// permBody is what the action will do, in full: the highlighted command, or
+// the file and the diff of the change.
+func (m *model) permBody(d *permDialog, w int) []string {
+	req := d.req
+	if p := req.Preview; p != nil {
+		return m.permPreview(d, p, w)
+	}
+	var lexer chroma.Lexer
+	if req.Tool == "bash" || req.Tool == "Bash" {
+		lexer = codeLexer("bash", "")
+	}
+	return cardCode(req.Command, lexer, w)
+}
+
+// permPreview is an edit's path line and its diff, folded unless expanded.
+func (m *model) permPreview(d *permDialog, p *tools.EditPreview, w int) []string {
+	inner := cardInner(w)
+	path := p.Path
+	if path == "" {
+		path = d.req.Command
+	}
+	head := cardTitleStyle.Render(displayPath(path))
+	switch {
+	case p.NewFile:
+		head += "  " + accentFgStyle.Render(m.tr("new file"))
+	case p.Diff != "":
+		head += "  " + diffCountsCell(diffCounts(p.Diff))
+	}
+	if p.Truncated {
+		head += "  " + warnStyle.Render(m.tr("preview truncated"))
+	}
+	lines := cardLines([]string{head}, w)
+	switch {
+	case p.Diff == "" && p.Truncated:
+		return append(lines, textMutedStyle.Render(wrap(m.tr("the file or the change is too large to preview"), inner)))
+	case p.Diff == "":
+		return append(lines, textMutedStyle.Render(m.tr("no lines change")))
+	}
+	rows := permPreviewRows
+	if d.expanded {
+		rows = 0
+	}
+	return append(lines, strings.Split(renderDiffFolded(p.Diff, path, inner, rows), "\n")...)
+}
+
+// displayPath is path relative to the working directory when it is inside,
+// else with the home directory shortened to ~.
+func displayPath(path string) string {
+	if path == "" {
+		return path
+	}
+	if wd := cwd(); wd != "" {
+		if rel, err := filepath.Rel(wd, path); err == nil && rel != "." && !strings.HasPrefix(rel, "..") && filepath.IsAbs(path) {
+			return filepath.ToSlash(rel)
+		}
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" && strings.HasPrefix(path, home+string(filepath.Separator)) {
+		return "~" + filepath.ToSlash(path[len(home):])
+	}
+	return path
+}
+
+// scopeKind names a remember level for the card.
+func (m *model) scopeKind(kind string, edit bool) string {
+	switch kind {
+	case "exact":
+		if edit {
+			return m.tr("this file")
+		}
+		return m.tr("exact")
+	case "prefix":
+		return m.tr("prefix")
+	case "command":
+		return m.tr("program")
+	case "dir":
+		return m.tr("folder")
+	case "project":
+		return m.tr("project")
+	case "host":
+		return m.tr("host")
+	}
+	return m.tr("tool")
 }
 
 func (m *model) permView() string {
@@ -284,40 +500,104 @@ func (m *model) permView() string {
 		return ""
 	}
 	w := cardWidth(m.width)
-	title := m.tr("Allow") + " " + d.req.Tool + "?"
-	switch d.req.Tool {
-	case "bash":
-		title = m.tr("Run this command?")
-	case "web_fetch":
-		title = m.tr("Fetch this URL?")
+	head := cardTitleStyle.Inherit(fgTok(tokStateWarn)).Render(glyphs.Warn) + " " + cardTitleStyle.Render(m.permTitle(d.req))
+
+	body := m.permBody(d, w)
+	tail := m.permTail(d, w, false)
+	// On a short screen the body would be cut to a sliver: drop the spacing
+	// and the mode note so the command or diff keeps a few rows.
+	if room := m.cardMaxHeight() - 2 - len(tail); room < min(len(body), permMinBody) {
+		tail = m.permTail(d, w, true)
 	}
-	rows := []string{cardBand(d.req.Command, w)}
+	body = d.scroll.window(body, m.cardMaxHeight()-2-len(tail))
+	return renderCard(tokStateWarn, head, append(body, tail...), w)
+}
+
+// permMinBody is the body rows a card keeps before its tail is compacted.
+const permMinBody = 6
+
+// permTail is the card below its body: why it asks, the options with the
+// remembered scope, and the key hints, one line each. compact leaves out the
+// blank rows and the mode note.
+func (m *model) permTail(d *permDialog, w int, compact bool) []string {
+	inner := cardInner(w)
+	gap := []string{""}
+	if compact {
+		gap = nil
+	}
+	tail := append([]string(nil), gap...)
+	if d.why != "" && !compact {
+		tail = append(tail, textMutedStyle.Render(wrap(chromeGlyphs(d.why), inner)))
+	}
 	if d.req.Description != "" {
-		rows = append(rows, textSecondaryStyle.Render(wrap(d.req.Description, cardInner(w))))
+		tail = append(tail, textSecondaryStyle.Render(wrap(d.req.Description, inner)))
 	}
 	if m.perms.saveErr != "" {
-		rows = append(rows, warnStyle.Render(wrap(glyphs.Warn+" "+m.tr("a remembered rule was not saved: ")+m.perms.saveErr, cardInner(w))))
+		tail = append(tail, warnStyle.Render(wrap(glyphs.Warn+" "+m.tr("a remembered rule was not saved: ")+m.perms.saveErr, inner)))
 	}
-	always := m.tr("Yes, always allow")
-	if rules := m.perms.suggestions(d.req); len(rules) > 0 {
-		rows = append(rows, textMutedStyle.Render(wrap(m.tr("always allows: ")+strings.Join(rules, ", "), cardInner(w))))
-	} else {
-		rows = append(rows, textMutedStyle.Render(wrap(m.tr("always allow is not available for this action; it allows once"), cardInner(w))))
-	}
-	head := cardTitleStyle.Inherit(fgTok(tokStateWarn)).Render(glyphs.Warn) + " " + cardTitleStyle.Render(title)
+	levels := d.scopes()
 	if d.rejecting {
-		rows = append(rows, "", accentFgStyle.Render(m.tr("reject with message: "))+d.rejectIn+"█",
-			textHintStyle.Render(m.tr("Enter sends · Esc Back")))
-		return renderCard(tokStateWarn, head, rows, w)
+		tail = append(append(tail, gap...), accentFgStyle.Render(m.tr("reject with message: "))+d.rejectIn+"█",
+			textHintStyle.Render(chromeGlyphs(m.tr("Enter sends · Esc Back"))))
+	} else {
+		always := m.tr("Yes, always allow")
+		if rules := d.chosenRules(); len(rules) > 0 {
+			always += " " + strings.Join(rules, ", ")
+		}
+		opts := []string{m.tr("Yes, once"), always, m.tr("No, and tell the agent why")}
+		keys := []string{"a", "A", "r"}
+		if len(tail) > 1 {
+			tail = append(tail, gap...)
+		}
+		for i, o := range opts {
+			tail = append(tail, cardOption(i == d.sel, strconv.Itoa(i+1), o+textHintStyle.Render(" ("+keys[i]+")"), w))
+			if i != 1 {
+				continue
+			}
+			switch {
+			case len(levels) == 0:
+				tail = append(tail, textMutedStyle.Render(wrapHanging("     ", m.tr("always allow is not available for this action; it allows once"), inner)))
+			default:
+				tail = append(tail, wrapHanging("     ", m.scopeLine(d), inner))
+			}
+		}
+		hint := m.tr("↑↓ select · 1-3 or a/A/r")
+		if compact {
+			hint = m.tr("1-3 or a/A/r")
+		}
+		if len(levels) > 1 {
+			hint += m.tr(" · Tab scope")
+		}
+		if p := d.req.Preview; p != nil && p.Diff != "" && len(strings.Split(strings.TrimRight(p.Diff, "\n"), "\n")) > permPreviewRows {
+			if d.expanded {
+				hint += m.tr(" · ctrl+e fold")
+			} else {
+				hint += m.tr(" · ctrl+e expand")
+			}
+		}
+		hint += m.tr(" · Esc reject")
+		tail = append(append(tail, gap...), textHintStyle.Render(chromeGlyphs(hint)))
 	}
-	opts := []string{m.tr("Yes, once"), always, m.tr("No, and tell the agent why")}
-	keys := []string{"a", "A", "r"}
-	rows = append(rows, "")
-	for i, o := range opts {
-		rows = append(rows, cardOption(i == d.sel, strconv.Itoa(i+1), o+textHintStyle.Render(" ("+keys[i]+")"), w))
+	return cardLines(tail, w)
+}
+
+// scopeLine is the row under "always allow": the breadths it can remember,
+// the chosen one marked, and where the rule is kept.
+func (m *model) scopeLine(d *permDialog) string {
+	levels := d.scopes()
+	edit := permissions.IsEdit(d.req.Tool)
+	where := m.tr("kept for every project")
+	if rules := d.chosenRules(); len(rules) > 0 && permissions.DefaultScope(rules[0]) == permissions.ScopeProject {
+		where = m.tr("kept for this project")
 	}
-	rows = append(rows, "", textHintStyle.Render(chromeGlyphs(m.tr("↑↓ select · 1-3 or a/A/r · Esc reject"))))
-	return renderCard(tokStateWarn, head, rows, w)
+	if len(levels) < 2 {
+		return textMutedStyle.Render(where)
+	}
+	kinds := make([]string, len(levels))
+	for i, l := range levels {
+		kinds[i] = m.scopeKind(l.Kind, edit)
+	}
+	return cardChoice(kinds, d.scope) + textMutedStyle.Render(chromeGlyphs(" · "+where))
 }
 
 func ansi_Truncate(s string, width int) string {

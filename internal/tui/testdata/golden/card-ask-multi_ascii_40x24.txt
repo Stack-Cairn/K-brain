@@ -1,0 +1,24 @@
+|> add a --json flag to `kn status`
+
++- ? Questions 2/3 --------------------+
+|  v Format    o Fields    o Docs      |
+| Submit                               |
+|                                      |
+| Which fields go in the output?       |
+| (select all that apply)              |
+|                                      |
+| > 1  [ ] name                        |
+|   2  [ ] status                      |
+|   3  [ ] duration                    |
+|   4  type your own answer            |
+|                                      |
+| <--> questions - Up/Down or 1-9      |
+| toggle - Enter confirms - Esc        |
+| dismisses                            |
++--------------------------------------+
+
+
+
+----------------------------------------
+  > Ask k-brain anything...  / commands
+   Always allow     kimi-k3-fast - * off

@@ -50,7 +50,7 @@ func TestPermissionGateFlow(t *testing.T) {
 
 	reply := make(chan permAnswer, 1)
 	m.permDialog = &permDialog{req: req, reply: reply}
-	if got := m.permView(); !strings.Contains(got, "always allows: Bash(git checkout:*)") {
+	if got := m.permView(); !strings.Contains(got, "Yes, always allow Bash(git checkout:*)") {
 		t.Fatalf("the dialog previews the rule it installs:\n%s", got)
 	}
 	m.permKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("A")})
@@ -279,7 +279,7 @@ func TestReviewPromptOffersCommandRule(t *testing.T) {
 	if m.permDialog == nil {
 		t.Fatal("a medium-risk review asks the user")
 	}
-	if got := m.permView(); !strings.Contains(got, "always allows: Bash(go version:*)") {
+	if got := m.permView(); !strings.Contains(got, "Yes, always allow Bash(go version:*)") {
 		t.Fatalf("prompt:\n%s", got)
 	}
 }

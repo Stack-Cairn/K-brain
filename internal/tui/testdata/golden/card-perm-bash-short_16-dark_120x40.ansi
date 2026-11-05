@@ -1,0 +1,40 @@
+[1;96m▌[0m[1;96m❯[0m add a --json flag to `kn status`                                                                                     [0m
+
+[93m╭[0m[93m─[0m [1;93m![0m [1mRun this command?[0m [93m────────────────────────────────────────────────────────────────────────────────────────────────[0m[93m╮[0m
+[93m│[0m   go [96mtest[0m ./internal/...                                                                                             [93m│[0m
+[93m│[0m                                                                                                                      [93m│[0m
+[93m│[0m [90mNormal mode confirms commands and file changes[0m                                                                       [93m│[0m
+[93m│[0m                                                                                                                      [93m│[0m
+[93m│[0m [1;96m❯ 1  Yes, once[37m (a)[0m[0m                                                                                                   [93m│[0m
+[93m│[0m   2  Yes, always allow Bash(go test:*)[37m (A)[0m                                                                           [93m│[0m
+[93m│[0m      [90mexact[0m[37m · [0m[1;96mprefix[0m[37m · [0m[90mprogram[0m[90m · kept for every project[0m                                                               [93m│[0m
+[93m│[0m   3  No, and tell the agent why[37m (r)[0m                                                                                  [93m│[0m
+[93m│[0m                                                                                                                      [93m│[0m
+[93m│[0m [37m↑↓ select · 1-3 or a/A/r · Tab scope · Esc reject[0m                                                                    [93m│[0m
+[93m╰[0m[93m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m[93m╯[0m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[90m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  [1;96m❯ [0m[7mA[0m[90msk k-brain anything…  / commands · Shift+Tab mode · Ctrl+P menu[0m                                                    [0m
+  [100m [0m[1;37;100mNormal[0m[100m [0m                                                                                          [37mkimi-k3-fast[0m[90m · [0m[1;96m✦ off[0m
