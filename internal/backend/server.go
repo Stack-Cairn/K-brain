@@ -163,13 +163,19 @@ type runtimeSession struct {
 	questions        map[string]*questionWaiter
 	clientTools      map[string]*clientToolWaiter
 	eventDir         string
-	mcpActivation    *mcp.ToolActivation
-	memoryRuntime    agent.MemoryRuntime
-	runtimeErr       error
-	goal             goalRuntime
-	queue            *queueDocument
-	queueWorker      bool
-	queueDispatchID  string
+	// journal is the event journal kept open while a run streams; journalMarks
+	// are seq/offset pairs that let replay start near a cursor (event_journal.go).
+	journal         *os.File
+	journalPath     string
+	journalMarks    []journalMark
+	journalIdentity os.FileInfo
+	mcpActivation   *mcp.ToolActivation
+	memoryRuntime   agent.MemoryRuntime
+	runtimeErr      error
+	goal            goalRuntime
+	queue           *queueDocument
+	queueWorker     bool
+	queueDispatchID string
 	// wake holds background notices that arrived while no turn was running.
 	wake wakeState
 }
@@ -307,6 +313,7 @@ func (s *Server) Close() error {
 		processManager := rt.processManager
 		rt.terminalManager = nil
 		rt.processManager = nil
+		rt.closeJournalLocked()
 		rt.mu.Unlock()
 		if terminalManager != nil {
 			terminalManager.CloseAll()
@@ -1125,38 +1132,6 @@ func ptrTime(t time.Time) *time.Time {
 	return &x
 }
 
-func (rt *runtimeSession) loadJournal(dir string) error {
-	rt.eventDir = dir
-	path := filepath.Join(dir, rt.id+".jsonl")
-	f, err := os.Open(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return rt.loadRuns(dir)
-	}
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	decoder := json.NewDecoder(f)
-	for {
-		var e protocol.Event
-		err := decoder.Decode(&e)
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return err
-		}
-		if err := e.Validate(); err != nil {
-			return err
-		}
-		rt.appendEventLocked(e)
-		if e.Seq > rt.nextSeq {
-			rt.nextSeq = e.Seq
-		}
-		rt.runID = e.RunID
-	}
-	return rt.loadRuns(dir)
-}
 func (rt *runtimeSession) loadRuns(dir string) error {
 	b, err := os.ReadFile(filepath.Join(dir, rt.id+".runs.json"))
 	if errors.Is(err, os.ErrNotExist) {
@@ -1166,16 +1141,6 @@ func (rt *runtimeSession) loadRuns(dir string) error {
 		return err
 	}
 	return json.Unmarshal(b, &rt.runs)
-}
-func (rt *runtimeSession) persistEvent(dir string, e protocol.Event) error {
-	f, err := os.OpenFile(filepath.Join(dir, rt.id+".jsonl"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	b, _ := json.Marshal(e)
-	_, err = f.Write(append(b, '\n'))
-	return err
 }
 func (rt *runtimeSession) persistRuns(dir string) error {
 	b, err := json.MarshalIndent(rt.runs, "", "  ")
@@ -1279,6 +1244,7 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, end func(),
 		end()
 		rt.runDone = true
 		rt.cancel = nil
+		rt.closeJournalLocked()
 		if rec, ok := rt.runs[in.ClientRequestID]; ok {
 			rec.Terminal = true
 			rt.runs[in.ClientRequestID] = rec
