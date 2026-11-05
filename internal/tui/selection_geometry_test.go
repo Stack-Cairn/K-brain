@@ -62,7 +62,15 @@ func TestSelectionUsesRenderedCoordinates(t *testing.T) {
 						t.Fatal("input selection highlighted transcript")
 					}
 					_, cmd := m.handleMouseSelect(tea.MouseMsg{Action: tea.MouseActionRelease, Button: tea.MouseButtonLeft, X: x + ansi.StringWidth(text), Y: y})
-					if cmd != nil || len(m.blocks) != blocks || m.vp.YOffset != offset {
+					if cmd == nil {
+						t.Fatal("release after a drag must copy the selection")
+					}
+					done, ok := cmd().(copyDoneMsg)
+					if !ok {
+						t.Fatal("release command must report the copy")
+					}
+					m.Update(done)
+					if len(m.blocks) != blocks || m.vp.YOffset != offset {
 						t.Fatal("release must keep the selection without modifying the transcript")
 					}
 					if _, afterY := renderedTextPosition(t, m.View(), text); afterY != y {

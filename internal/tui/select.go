@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"fmt"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -222,6 +224,76 @@ func reverseRange(line string, start, end int) string {
 
 type selScrollTick struct{}
 
+// copyDoneMsg reports a finished selection copy.
+type copyDoneMsg struct {
+	chars int
+	route copyRoute
+	err   error
+}
+
+// copySelection copies the current selection off the event loop, since the
+// native clipboard tools can take a moment to start.
+func (m *model) copySelection() tea.Cmd {
+	if m.sel == nil {
+		return nil
+	}
+	text := m.selText(*m.sel)
+	if strings.TrimSpace(text) == "" {
+		return nil
+	}
+	clip := clipboardFor()
+	return func() tea.Msg {
+		route, err := clip.copyText(text)
+		return copyDoneMsg{chars: utf8.RuneCountInString(text), route: route, err: err}
+	}
+}
+
+func (m *model) copyNotice(msg copyDoneMsg) string {
+	switch {
+	case msg.err != nil:
+		return fmt.Sprintf(m.tr("Copy failed: %s"), msg.err.Error())
+	case msg.route == copyOSC52:
+		return fmt.Sprintf(m.tr("Sent %d characters to the terminal clipboard"), msg.chars)
+	default:
+		return fmt.Sprintf(m.tr("Copied %d characters"), msg.chars)
+	}
+}
+
+// isSuperC reports Cmd+C (super+c) as sent by terminals speaking the kitty
+// keyboard protocol, e.g. "\x1b[99;9u". Other terminals keep Cmd+C to
+// themselves, which is why a drag copies on release.
+func isSuperC(rendered string) bool {
+	mm := csiURe.FindStringSubmatch(rendered)
+	if mm == nil {
+		return false
+	}
+	var b []byte
+	for f := range strings.FieldsSeq(mm[1]) {
+		n, err := strconv.ParseUint(f, 10, 8)
+		if err != nil {
+			return false
+		}
+		b = append(b, byte(n))
+	}
+	body, ok := strings.CutSuffix(string(b), "u")
+	if !ok {
+		return false
+	}
+	codeStr, modStr, _ := strings.Cut(body, ";")
+	codeStr, _, _ = strings.Cut(codeStr, ":")
+	modStr, _, _ = strings.Cut(modStr, ":")
+	code, err := strconv.Atoi(codeStr)
+	if err != nil || (code != 'c' && code != 'C') {
+		return false
+	}
+	mods, err := strconv.Atoi(modStr)
+	if err != nil || mods < 1 {
+		return false
+	}
+	mods--
+	return mods&8 != 0 && mods&(2|4) == 0
+}
+
 func (m *model) handleMouseSelect(msg tea.MouseMsg) (handled bool, cmd tea.Cmd) {
 	switch msg.Action {
 	case tea.MouseActionPress:
@@ -261,10 +333,11 @@ func (m *model) handleMouseSelect(msg tea.MouseMsg) (handled bool, cmd tea.Cmd) 
 			return false, nil
 		}
 		if m.sel.anchor != m.sel.cur {
-			// A drag selects text: keep the highlight so the terminal's native
-			// copy (ctrl+shift+c / cmd+c) can grab it. No auto-copy, no notice.
+			// Mouse capture keeps the terminal from selecting anything itself,
+			// so a finished drag copies the highlighted text and keeps the
+			// highlight until the next key or click.
 			m.sel.done = true
-			return true, nil
+			return true, m.copySelection()
 		}
 		inputClick := m.sel.anchor.input
 		m.sel = nil

@@ -1,18 +1,13 @@
 package tui
 
 import (
-	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/Stack-Cairn/K-brain/internal/ai"
-	"github.com/Stack-Cairn/K-brain/internal/process"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -59,37 +54,6 @@ func assistantReply(msgs []ai.Message, n int) (string, error) {
 	return "", fmt.Errorf("not enough assistant replies")
 }
 
-func writeClipboard(text string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	var commands [][]string
-	switch runtime.GOOS {
-	case "windows":
-		commands = [][]string{{"powershell.exe", "-NoProfile", "-NonInteractive", "-Command", "[Console]::InputEncoding = [System.Text.UTF8Encoding]::new(); Set-Clipboard -Value ([Console]::In.ReadToEnd())"}}
-	case "darwin":
-		commands = [][]string{{"pbcopy"}}
-	default:
-		commands = [][]string{{"wl-copy"}, {"xclip", "-selection", "clipboard"}, {"xsel", "--clipboard", "--input"}}
-	}
-	var last error
-	for _, args := range commands {
-		path, err := exec.LookPath(args[0])
-		if err != nil {
-			last = err
-			continue
-		}
-		cmd := exec.CommandContext(ctx, path, args[1:]...)
-		process.Configure(cmd, false)
-		cmd.WaitDelay = time.Second
-		cmd.Stdin = strings.NewReader(text)
-		if err = cmd.Run(); err == nil {
-			return nil
-		}
-		last = err
-	}
-	return fmt.Errorf("clipboard unavailable: %v; use /copy [N] <file> instead", last)
-}
-
 func (m *model) copyCommand(arg string) tea.Cmd {
 	n, path, err := parseCopyArgs(arg)
 	if err != nil {
@@ -128,8 +92,12 @@ func (m *model) copyCommand(arg string) tea.Cmd {
 			}
 			return noticeMsg("Reply saved to " + path)
 		}
-		if err := writeClipboard(text); err != nil {
-			return noticeMsg("/copy: " + err.Error())
+		route, err := clipboardFor().copyText(text)
+		if err != nil {
+			return noticeMsg("/copy: " + err.Error() + "; use /copy [N] <file> instead")
+		}
+		if route == copyOSC52 {
+			return noticeMsg("Reply sent to the terminal clipboard (OSC 52)")
 		}
 		return noticeMsg("Reply copied to clipboard")
 	}
