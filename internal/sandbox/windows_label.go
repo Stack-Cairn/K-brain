@@ -137,8 +137,10 @@ const (
 	// every failure is an error, since a descendant left low stays writable.
 	walkProtect
 	// walkMask (masked directories) replaces every label that does not
-	// satisfy the masked label, explicit or not, and descends everywhere;
-	// every failure is an error, since a descendant left alone stays readable.
+	// satisfy the masked label, explicit or not, and descends everywhere,
+	// except into a subtree with an explicit low label: that is a sandbox
+	// workspace inside the masked directory, readable and writable on purpose.
+	// Every failure is an error, since a descendant left alone stays readable.
 	walkMask
 )
 
@@ -198,6 +200,9 @@ func labelTree(top string, dir bool, want integrityLabel, mode walkMode) error {
 		current, _, explicit := labelOf(sd)
 		label := want
 		if mode == walkMask {
+			if explicit && current.rid == lowIntegrityRID {
+				return skip(nil)
+			}
 			if current.satisfies(want) {
 				// Already hidden (inherited, or an explicit label at least as
 				// strict); its own descendants are still checked.

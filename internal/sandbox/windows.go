@@ -155,7 +155,7 @@ func (p *Policy) wrapWindows(ctx context.Context, cmd *exec.Cmd, root string) (*
 		}
 		cmdLine = composeCommandLine(args)
 	}
-	spec, err := launchSpec{Program: program, CmdLine: cmdLine, Dir: dir, Temp: plan.temp, Pins: plan.pins}.encode()
+	spec, err := windowsLaunchSpec{Program: program, CmdLine: cmdLine, Dir: dir, Temp: plan.temp, Pins: plan.pins}.encode()
 	if err != nil {
 		return nil, err
 	}
@@ -179,28 +179,15 @@ type windowsPlan struct {
 	pins []string
 }
 
-// prepareWindows labels the masked directories medium with no-read-up, the
-// writable roots and the fenced temp directory low, and the protected and
-// read-only paths inside the roots medium. Masked directories are outside
-// every writable root (checkRoot refuses a root that encloses one); a root
-// inside a masked directory is refused too, since its low label would expose
-// it.
+// prepareWindows labels the writable roots and the fenced temp directory low,
+// the protected and read-only paths inside the roots medium, and the masked
+// directories medium with no-read-up. Masked directories are outside every
+// writable root (checkRoot refuses a root that encloses one). A root inside a
+// masked directory (the default project of a client usually lives in its data
+// directory) keeps its low label: it is labelled first, and the mask's walk
+// leaves explicitly low subtrees alone, much as the other platforms bind the
+// root back inside the mask.
 func (p *Policy) prepareWindows(root string) (windowsPlan, error) {
-	masked, err := p.prepareMasks()
-	if err != nil {
-		return windowsPlan{}, err
-	}
-	insideMask := func(path string) error {
-		for _, m := range masked {
-			if encloses(m, path) {
-				return fmt.Errorf("sandbox refuses %q: it is inside the masked directory %q, which the native Windows sandbox hides from commands", path, m)
-			}
-		}
-		return nil
-	}
-	if err := insideMask(root); err != nil {
-		return windowsPlan{}, err
-	}
 	roots := []string{root}
 	writable, err := resolveAll(root, p.Writable)
 	if err != nil {
@@ -211,9 +198,6 @@ func (p *Policy) prepareWindows(root string) (windowsPlan, error) {
 			continue
 		}
 		if err := checkRoot(path, p.Masked); err != nil {
-			return windowsPlan{}, err
-		}
-		if err := insideMask(path); err != nil {
 			return windowsPlan{}, err
 		}
 		roots = append(roots, path)
@@ -261,18 +245,18 @@ func (p *Policy) prepareWindows(root string) (windowsPlan, error) {
 	if err != nil {
 		return windowsPlan{}, err
 	}
-	if err := insideMask(temp); err != nil {
+	if err := p.prepareMasks(); err != nil {
 		return windowsPlan{}, err
 	}
 	return windowsPlan{temp: temp, pins: pins}, nil
 }
 
 // prepareMasks labels the existing masked directories (after resolving links)
-// medium with no-read-up and returns them, outermost only. A masked path that
+// medium with no-read-up, outermost first. A masked path that
 // does not exist has nothing to hide. Masking a drive root, the profile or a
 // system directory is refused, as is anything not on a local drive, because
 // such a label would hide far more than credentials or cannot be set.
-func (p *Policy) prepareMasks() ([]string, error) {
+func (p *Policy) prepareMasks() error {
 	var masked []string
 	for _, path := range p.Masked {
 		if strings.TrimSpace(path) == "" || !filepath.IsAbs(path) {
@@ -280,15 +264,15 @@ func (p *Policy) prepareMasks() ([]string, error) {
 		}
 		resolved, err := canonicalPath(path)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if _, err := os.Lstat(resolved); errors.Is(err, fs.ErrNotExist) {
 			continue
 		} else if err != nil {
-			return nil, fmt.Errorf("sandbox cannot hide %s: %w", resolved, err)
+			return fmt.Errorf("sandbox cannot hide %s: %w", resolved, err)
 		}
 		if err := checkMaskable(resolved); err != nil {
-			return nil, err
+			return err
 		}
 		if !slices.Contains(masked, resolved) {
 			masked = append(masked, resolved)
@@ -302,10 +286,10 @@ func (p *Policy) prepareMasks() ([]string, error) {
 	}
 	for _, m := range outer {
 		if err := ensureMasked(m); err != nil {
-			return nil, fmt.Errorf("sandbox cannot hide %s from sandboxed commands: %w", m, err)
+			return fmt.Errorf("sandbox cannot hide %s from sandboxed commands: %w", m, err)
 		}
 	}
-	return outer, nil
+	return nil
 }
 
 func checkMaskable(path string) error {
@@ -470,8 +454,8 @@ func systemRoot() string {
 	return `C:\Windows`
 }
 
-// launchSpec is what the launcher needs to start the confined command.
-type launchSpec struct {
+// windowsLaunchSpec is what the launcher needs to start the confined command.
+type windowsLaunchSpec struct {
 	Program string   `json:"program"`
 	CmdLine string   `json:"cmdline"`
 	Dir     string   `json:"dir"`
@@ -479,7 +463,7 @@ type launchSpec struct {
 	Pins    []string `json:"pins,omitempty"`
 }
 
-func (s launchSpec) encode() (string, error) {
+func (s windowsLaunchSpec) encode() (string, error) {
 	data, err := json.Marshal(s)
 	if err != nil {
 		return "", err
@@ -487,8 +471,8 @@ func (s launchSpec) encode() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(data), nil
 }
 
-func decodeLaunchSpec(text string) (launchSpec, error) {
-	var s launchSpec
+func decodeWindowsLaunchSpec(text string) (windowsLaunchSpec, error) {
+	var s windowsLaunchSpec
 	data, err := base64.RawURLEncoding.DecodeString(text)
 	if err != nil {
 		return s, err

@@ -35,7 +35,7 @@ func init() {
 }
 
 func runLauncher(encoded string) int {
-	spec, err := decodeLaunchSpec(encoded)
+	spec, err := decodeWindowsLaunchSpec(encoded)
 	if err == nil {
 		var stdio [3]windows.Handle
 		stdio, err = launcherStdio()

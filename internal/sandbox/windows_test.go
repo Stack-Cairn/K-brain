@@ -54,6 +54,9 @@ func runHelper(args []string) error {
 	case "read":
 		_, err := os.ReadFile(args[1])
 		return err
+	case "list":
+		_, err := os.ReadDir(args[1])
+		return err
 	case "rename":
 		return os.Rename(args[1], args[2])
 	case "remove":
@@ -136,8 +139,10 @@ func workspace(t *testing.T) string {
 	return root
 }
 
+// workspacePolicy is a run's policy without masks: the tests never label the
+// real credential directories. The masking tests add their own.
 func workspacePolicy(root string, writable ...string) *Policy {
-	return &Policy{Mode: "workspace", Backend: "auto", Root: root, Network: true, Writable: writable, Masked: MaskedDirs(), Protected: ProtectedPaths(root)}
+	return &Policy{Mode: "workspace", Backend: "auto", Root: root, Network: true, Writable: writable, Protected: ProtectedPaths(root)}
 }
 
 // sandboxed runs cmd under p and returns its combined output and exit code.
@@ -189,7 +194,7 @@ func TestWindowsCapability(t *testing.T) {
 	if !c.Supported {
 		t.Fatalf("native sandbox unsupported: %s", c.Reason)
 	}
-	if c.Mechanism != windowsMechanism || c.Platform != "windows" || c.NetworkControl || c.ReadMasking || c.Reason == "" {
+	if c.Mechanism != windowsMechanism || c.Platform != "windows" || c.NetworkControl || !c.ReadMasking || !c.PathProtection || c.Reason == "" {
 		t.Fatalf("capability = %+v", c)
 	}
 	data, err := json.Marshal(c)
@@ -200,7 +205,7 @@ func TestWindowsCapability(t *testing.T) {
 	if err := json.Unmarshal(data, &fields); err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]any{"supported": true, "mechanism": "low-integrity", "platform": "windows", "network_control": false, "read_masking": false}
+	want := map[string]any{"supported": true, "mechanism": "low-integrity", "platform": "windows", "network_control": false, "read_masking": true, "path_protection": true}
 	for key, value := range want {
 		if fields[key] != value {
 			t.Fatalf("capability JSON %s = %v, want %v (%s)", key, fields[key], value, data)
@@ -465,19 +470,134 @@ func TestWindowsCannotEscapeThroughProcessesDACLsOrRegistry(t *testing.T) {
 	t.Logf("DACL change of a workspace file allowed=%v (%s)", ok, out)
 }
 
-// TestWindowsReadMaskingIsReportedHonestly checks that a confined command can
-// read a file outside its workspace and requires the capability to say so.
-func TestWindowsReadMaskingIsReportedHonestly(t *testing.T) {
+// TestWindowsMaskedDirsAreHidden checks that a confined command cannot read
+// or list a masked directory, including files that existed before, files
+// created later, files moved in from elsewhere and a subtree that carried a
+// weaker explicit label, while this (medium-integrity) process and an
+// unconfined command still can, and that files elsewhere stay readable.
+func TestWindowsMaskedDirsAreHidden(t *testing.T) {
 	isolateState(t)
-	root, secretDir := workspace(t), workspace(t)
-	secret := filepath.Join(secretDir, "secret.txt")
-	if err := os.WriteFile(secret, []byte("secret"), 0o644); err != nil {
+	recheck := maskRecheck
+	maskRecheck = 0
+	t.Cleanup(func() { maskRecheck = recheck })
+	root, home, elsewhere := workspace(t), workspace(t), workspace(t)
+	masked := filepath.Join(home, ".ssh")
+	nested := filepath.Join(masked, "sub", "dir")
+	if err := os.MkdirAll(nested, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	out, readable := helper(t, workspacePolicy(root), "read", secret)
-	t.Logf("a confined read outside the workspace succeeded: %v (%s)", readable, out)
-	if readable == probeWindows().ReadMasking {
-		t.Fatalf("capability read_masking=%v, but a confined read succeeded=%v", probeWindows().ReadMasking, readable)
+	key, deep := filepath.Join(masked, "id_ed25519"), filepath.Join(nested, "deep.txt")
+	weak := filepath.Join(masked, "weak")
+	if err := os.Mkdir(weak, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// A subtree with an explicit medium no-write-up label (no no-read-up).
+	if err := setLabel(weak, protectedLabel, true, false); err != nil {
+		t.Fatal(err)
+	}
+	weakFile := filepath.Join(weak, "weak.txt")
+	plain := filepath.Join(elsewhere, "plain.txt")
+	for _, path := range []string{key, deep, weakFile, plain} {
+		if err := os.WriteFile(path, []byte("masked-secret"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	p := workspacePolicy(root)
+	p.Masked = []string{masked, filepath.Join(home, ".aws")} // .aws does not exist
+	for _, path := range []string{key, deep, weakFile} {
+		if out, ok := helper(t, p, "read", path); ok {
+			t.Fatalf("confined read of masked %s succeeded: %s", path, out)
+		}
+	}
+	for _, dir := range []string{masked, nested} {
+		if out, ok := helper(t, p, "list", dir); ok {
+			t.Fatalf("confined listing of masked %s succeeded: %s", dir, out)
+		}
+	}
+	for _, args := range [][]string{{"/d", "/c", "type", key}, {"/d", "/c", "dir", "/b", masked}} {
+		if out, code := sandboxed(t, p, exec.Command(cmdExe(), args...)); code == 0 || strings.Contains(out, "masked-secret") || strings.Contains(out, "id_ed25519") {
+			t.Fatalf("confined cmd %v: exit %d: %s", args, code, out)
+		}
+	}
+	powershell := filepath.Join(systemRoot(), "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+	if out, code := sandboxed(t, p, exec.Command(powershell, "-NoProfile", "-NonInteractive", "-Command", "Get-Content -Path '"+key+"'")); code == 0 || strings.Contains(out, "masked-secret") {
+		t.Fatalf("confined Get-Content of a masked file: exit %d: %s", code, out)
+	}
+	if out, ok := helper(t, p, "write", filepath.Join(masked, "planted")); ok {
+		t.Fatalf("confined write into a masked directory succeeded: %s", out)
+	}
+	if out, ok := helper(t, p, "read", plain); !ok {
+		t.Fatalf("confined read of an unmasked file failed: %s", out)
+	}
+
+	// This process and unconfined tools are unaffected.
+	if data, err := os.ReadFile(key); err != nil || string(data) != "masked-secret" {
+		t.Fatalf("masked file unreadable outside the sandbox: %q %v", data, err)
+	}
+	if out, err := exec.Command(cmdExe(), "/d", "/c", "type", key).CombinedOutput(); err != nil || !strings.Contains(string(out), "masked-secret") {
+		t.Fatalf("unconfined type of the masked file: %v %s", err, out)
+	}
+	created := filepath.Join(masked, "created-later")
+	if err := os.WriteFile(created, []byte("masked-secret"), 0o600); err != nil {
+		t.Fatalf("writing the masked directory outside the sandbox: %v", err)
+	}
+	if entries, err := os.ReadDir(masked); err != nil || len(entries) == 0 {
+		t.Fatalf("listing the masked directory outside the sandbox: %v", err)
+	}
+	moved := filepath.Join(elsewhere, "moved-in")
+	if err := os.WriteFile(moved, []byte("masked-secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(moved, filepath.Join(masked, "moved-in")); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{created, filepath.Join(masked, "moved-in")} {
+		if out, ok := helper(t, p, "read", path); ok {
+			t.Fatalf("confined read of %s succeeded: %s", path, out)
+		}
+	}
+	if l, _, _, err := fileLabel(weak); err != nil || !l.satisfies(maskedLabel) {
+		t.Fatalf("label of the weakly labelled subtree = %+v (%v)", l, err)
+	}
+	if !probeWindows().ReadMasking {
+		t.Fatal("masked reads fail but the capability reports read_masking=false")
+	}
+}
+
+// TestWindowsWorkspaceInsideMask is a client's default project inside its
+// own (masked) data directory: the workspace stays usable and the rest of the
+// data directory stays hidden.
+func TestWindowsWorkspaceInsideMask(t *testing.T) {
+	isolateState(t)
+	data := workspace(t)
+	root := filepath.Join(data, "default-project")
+	if err := os.MkdirAll(filepath.Join(root, "src"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	config := filepath.Join(data, "config.json")
+	for _, path := range []string{config, filepath.Join(root, "src", "main.go")} {
+		if err := os.WriteFile(path, []byte("apikey"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	p := workspacePolicy(root)
+	p.Masked = []string{data}
+	for range 2 {
+		if out, ok := helper(t, p, "write", filepath.Join(root, "f.txt")); !ok {
+			t.Fatalf("write in a workspace inside a mask failed: %s", out)
+		}
+		if out, ok := helper(t, p, "read", filepath.Join(root, "src", "main.go")); !ok {
+			t.Fatalf("read in a workspace inside a mask failed: %s", out)
+		}
+		if out, ok := helper(t, p, "read", config); ok {
+			t.Fatalf("read of the mask around the workspace succeeded: %s", out)
+		}
+		if out, ok := helper(t, p, "write", config); ok {
+			t.Fatalf("write of the mask around the workspace succeeded: %s", out)
+		}
+	}
+	if out, code := sandboxed(t, p, exec.Command(cmdExe(), "/d", "/c", "cd & echo ok> g.txt & type g.txt")); code != 0 || !strings.Contains(out, "ok") {
+		t.Fatalf("cmd in a workspace inside a mask: exit %d: %s", code, out)
 	}
 }
 
@@ -487,7 +607,18 @@ func TestWindowsLabelsAreIdempotent(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, ".git", "hooks"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	masked := filepath.Join(workspace(t), "masked")
+	if err := os.Mkdir(masked, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(masked, "key"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	recheck := maskRecheck
+	maskRecheck = 0
+	t.Cleanup(func() { maskRecheck = recheck })
 	p := workspacePolicy(root)
+	p.Masked = []string{masked}
 	sddl := func(path string) string {
 		sd, err := windows.GetNamedSecurityInfo(path, windows.SE_FILE_OBJECT, windows.LABEL_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION)
 		if err != nil {
@@ -498,7 +629,7 @@ func TestWindowsLabelsAreIdempotent(t *testing.T) {
 	if _, err := p.Wrap(context.Background(), exec.Command(cmdExe(), "/c", "exit", "0")); err != nil {
 		t.Fatal(err)
 	}
-	paths := []string{root, filepath.Join(root, ".git"), filepath.Join(root, ".git", "hooks")}
+	paths := []string{root, filepath.Join(root, ".git"), filepath.Join(root, ".git", "hooks"), masked, filepath.Join(masked, "key")}
 	var before []string
 	for _, path := range paths {
 		before = append(before, sddl(path))
@@ -513,9 +644,9 @@ func TestWindowsLabelsAreIdempotent(t *testing.T) {
 			t.Fatalf("security of %s changed across runs: %s -> %s", path, before[i], after)
 		}
 	}
-	for path, want := range map[string]uint32{root: lowIntegrityRID, filepath.Join(root, ".git"): lowIntegrityRID, filepath.Join(root, ".git", "hooks"): mediumIntegrityRID} {
-		if rid, _, _, err := fileLabel(path); err != nil || rid != want {
-			t.Fatalf("label of %s = %#x (%v), want %#x", path, rid, err, want)
+	for path, want := range map[string]integrityLabel{root: writableLabel, filepath.Join(root, ".git"): writableLabel, filepath.Join(root, ".git", "hooks"): protectedLabel, masked: maskedLabel, filepath.Join(masked, "key"): maskedLabel} {
+		if l, _, _, err := fileLabel(path); err != nil || l != want {
+			t.Fatalf("label of %s = %+v (%v), want %+v", path, l, err, want)
 		}
 	}
 }
@@ -541,9 +672,24 @@ func TestWindowsLabelingDoesNotFollowJunctions(t *testing.T) {
 		t.Fatalf("write to the junction target succeeded: %s", out)
 	}
 	for _, path := range []string{target, victim} {
-		if rid, _, _, err := fileLabel(path); err != nil || rid < mediumIntegrityRID {
-			t.Fatalf("label of %s = %#x (%v): labelling followed the junction", path, rid, err)
+		if l, _, _, err := fileLabel(path); err != nil || l != protectedLabel {
+			t.Fatalf("label of %s = %+v (%v): labelling followed the junction", path, l, err)
 		}
+	}
+	// Masking does not follow a junction either.
+	masked := filepath.Join(workspace(t), "masked")
+	if err := os.Mkdir(masked, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command(cmdExe(), "/d", "/c", "mklink", "/J", filepath.Join(masked, "link"), target).CombinedOutput(); err != nil {
+		t.Fatalf("mklink: %v %s", err, out)
+	}
+	p.Masked = []string{masked}
+	if out, ok := helper(t, p, "read", victim); !ok {
+		t.Fatalf("masking followed a junction: %s", out)
+	}
+	if l, _, _, err := fileLabel(victim); err != nil || l != protectedLabel {
+		t.Fatalf("label of %s = %+v (%v): masking followed the junction", victim, l, err)
 	}
 }
 
