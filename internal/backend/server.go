@@ -1266,7 +1266,8 @@ func (s *Server) startRun(w http.ResponseWriter, r *http.Request, id string) {
 	writeJSON(w, status, accepted)
 }
 
-func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, runID string, in protocol.PromptRequest, options protocol.RunOptions, sandboxPolicy *sandbox.Policy) {
+// end cancels ctx once the run is over; a stop that came first keeps its own cause.
+func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, end func(), runID string, in protocol.PromptRequest, options protocol.RunOptions, sandboxPolicy *sandbox.Policy) {
 	progress := &runProgress{started: time.Now(), publish: rt.publish}
 	progress.phase("preparing")
 	rt.mu.Lock()
@@ -1275,9 +1276,7 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, runID strin
 	defer func() {
 		rt.mu.Lock()
 		restoreRunOptions()
-		if rt.cancel != nil {
-			rt.cancel()
-		}
+		end()
 		rt.runDone = true
 		rt.cancel = nil
 		if rec, ok := rt.runs[in.ClientRequestID]; ok {
@@ -1576,7 +1575,11 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, runID strin
 	if in.ResumeMessageID != "" {
 		_, err = rt.agent.ContinueUser(ctx, in.ResumeMessageID, ev)
 	} else {
-		_, err = rt.agent.TurnParts(ctx, converted.Content, converted.Parts, ev)
+		turnCtx := ctx
+		if isWakeRun(ctx) {
+			turnCtx = agent.WithBackgroundNotice(ctx)
+		}
+		_, err = rt.agent.TurnParts(turnCtx, converted.Content, converted.Parts, ev)
 	}
 	toolOutput.close()
 	progress.phase("persisting")

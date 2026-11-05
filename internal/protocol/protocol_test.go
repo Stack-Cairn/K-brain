@@ -120,3 +120,29 @@ func TestPermissionAndSubagentPayloadsAreJSONStable(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestMessageOriginOnlyMarksUserNotices(t *testing.T) {
+	notice := FromAIMessage(ai.Message{Role: "user", Content: "[wait w1 done] condition met", Origin: ai.OriginBackground})
+	if notice.Origin != ai.OriginBackground {
+		t.Fatalf("protocol origin = %q", notice.Origin)
+	}
+	back, err := notice.ToAIMessage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if back.Origin != ai.OriginBackground {
+		t.Fatalf("ai origin = %q", back.Origin)
+	}
+	for _, m := range []Message{
+		{Role: RoleUser, Origin: "something-else", Content: []ContentBlock{{Type: ContentText, Text: "x"}}},
+		{Role: RoleAssistant, Origin: ai.OriginBackground, Content: []ContentBlock{{Type: ContentText, Text: "x"}}},
+	} {
+		out, err := m.ToAIMessage()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if out.Origin != "" {
+			t.Fatalf("origin %q on %s must not be stored", out.Origin, m.Role)
+		}
+	}
+}

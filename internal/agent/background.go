@@ -218,7 +218,7 @@ func (a *Agent) StartBackground(description, prompt string, o SubModel) *Backgro
 	if a.WorktreeSubagents {
 		go func() {
 			if _, err := a.prepareBackground(t, true); err != nil {
-				a.Steer(fmt.Sprintf("[subagent %s] %s", t.ID, err))
+				a.Notify(fmt.Sprintf("[subagent %s] %s", t.ID, err))
 			}
 		}()
 	} else {
@@ -341,7 +341,7 @@ func (a *Agent) launchBackground(t *BackgroundTask) {
 		a.bg.mu.Unlock()
 		a.bg.settle(id, status, text)
 
-		a.Steer(fmt.Sprintf("[subagent %s %s] %s\n\n%s", id, status, description, capReport(text)))
+		a.Notify(fmt.Sprintf("[subagent %s %s] %s\n\n%s", id, status, description, capReport(text)))
 	}()
 }
 

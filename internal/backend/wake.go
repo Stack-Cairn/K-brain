@@ -76,7 +76,7 @@ func (s *Server) steerRuntime(rt *runtimeSession, text string) {
 	gone := rt.deleted || rt.closing
 	rt.mu.Unlock()
 	if ag != nil && !gone {
-		ag.Steer(text)
+		ag.Notify(text)
 	}
 }
 

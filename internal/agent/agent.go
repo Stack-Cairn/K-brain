@@ -229,23 +229,32 @@ type Agent struct {
 
 func (a *Agent) TurnRunning() bool { return a.running.Load() }
 
-func (a *Agent) Steer(text string) {
+func (a *Agent) Steer(text string) { a.steer(pendingSteer{text: text}) }
+
+// Notify delivers a notice the runtime produced on its own (a wait result, a
+// process exit, a background report) the way Steer delivers user text: into the
+// running turn, or through OnOrphanedSteer when none is running. The message it
+// adds to the history carries ai.OriginBackground.
+func (a *Agent) Notify(text string) { a.steer(pendingSteer{text: text, notice: true}) }
+
+func (a *Agent) steer(s pendingSteer) {
 	// The running check and the append share a.mu with the end of a turn, so a
 	// message is either drained by that turn's teardown or handed to OnOrphanedSteer,
 	// never left in pending with no turn to read it.
 	a.mu.Lock()
 	if orphaned := a.OnOrphanedSteer; !a.running.Load() && orphaned != nil {
 		a.mu.Unlock()
-		orphaned(text)
+		orphaned(s.text)
 		return
 	}
-	a.pending = append(a.pending, pendingSteer{text: text})
+	a.pending = append(a.pending, s)
 	a.mu.Unlock()
 }
 
 type pendingSteer struct {
-	text  string
-	parts []ai.ContentPart
+	text   string
+	parts  []ai.ContentPart
+	notice bool
 }
 
 func (a *Agent) SteerImages(text string, parts []ai.ContentPart) {
@@ -615,6 +624,9 @@ func (a *Agent) turnPending(ctx context.Context, input string, parts []ai.Conten
 	}
 	userMessage := ai.Message{ID: messageID, Role: "user", Content: input, Parts: parts, Authored: authored,
 		PromptContext: a.todoContext(), PromptSnapshots: a.contextSnapshots()}
+	if backgroundNotice(ctx) {
+		userMessage.Authored, userMessage.Origin = false, ai.OriginBackground
+	}
 	if snapshot, ok := turnSnapshot(ctx); ok {
 		userMessage.PromptSnapshots = append(userMessage.PromptSnapshots, snapshot)
 	}
@@ -795,7 +807,11 @@ func (a *Agent) turnPending(ctx context.Context, input string, parts []ai.Conten
 				ev.OnSteer(s.text)
 			}
 			now := time.Now()
-			a.Messages = append(a.Messages, ai.Message{Role: "user", Content: s.text, Parts: s.parts, SentAt: &now, PromptSnapshots: a.memoryOffMarks()})
+			message := ai.Message{Role: "user", Content: s.text, Parts: s.parts, SentAt: &now, PromptSnapshots: a.memoryOffMarks()}
+			if s.notice {
+				message.Origin = ai.OriginBackground
+			}
+			a.Messages = append(a.Messages, message)
 		}
 		if len(steered) > 0 {
 			a.msgsMu.Unlock()

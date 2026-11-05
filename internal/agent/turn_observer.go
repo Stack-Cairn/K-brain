@@ -43,6 +43,20 @@ func memoryOffAuthored(ctx context.Context) bool {
 	return off
 }
 
+type backgroundNoticeKey struct{}
+
+// WithBackgroundNotice marks the turn's user message as a notice from background
+// work (a wait, a process or subagent finishing) rather than something the user
+// wrote: it is not authored and carries ai.OriginBackground.
+func WithBackgroundNotice(ctx context.Context) context.Context {
+	return context.WithValue(ctx, backgroundNoticeKey{}, true)
+}
+
+func backgroundNotice(ctx context.Context) bool {
+	notice, _ := ctx.Value(backgroundNoticeKey{}).(bool)
+	return notice
+}
+
 func WithUserMessageID(ctx context.Context, id string) context.Context {
 	return context.WithValue(ctx, userMessageIDKey{}, id)
 }

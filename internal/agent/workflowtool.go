@@ -146,7 +146,7 @@ func (a *Agent) onWorkflowSettle(run workflow.RunSummary) {
 		}
 		fmt.Fprintf(&b, "\n\n%s", text)
 	}
-	a.Steer(b.String())
+	a.Notify(b.String())
 }
 
 type structuredCapture struct {

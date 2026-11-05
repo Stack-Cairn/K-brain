@@ -270,8 +270,12 @@ func TestWaitBusySteersInsteadOfWaking(t *testing.T) {
 	if woke.Load() != 0 {
 		t.Fatal("busy delivery must not fire OnWake")
 	}
-	if got := len(ag.drainPending()); got != 1 {
-		t.Fatalf("busy delivery should queue exactly one steer, got %d", got)
+	pending := ag.drainPending()
+	if len(pending) != 1 {
+		t.Fatalf("busy delivery should queue exactly one steer, got %d", len(pending))
+	}
+	if !pending[0].notice {
+		t.Fatal("a wait result must be queued as a background notice, not as user text")
 	}
 }
 

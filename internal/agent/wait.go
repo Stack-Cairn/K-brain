@@ -146,7 +146,11 @@ func (a *Agent) StartWaitContext(ctx context.Context, spec WaitTaskSpec) (*waitT
 	}
 	id := taskSlug(spec.Command, waitIDCounter.Add(1))
 	id = "wait-" + id
-	ctx, cancel := context.WithTimeout(ctx, spec.Timeout)
+	// The poller reports after the turn that started it has ended, which is the
+	// point of a wait; stopping that turn still cancels it.
+	ctx, release := tools.OutliveTurn(ctx)
+	ctx, cancelTimeout := context.WithTimeout(ctx, spec.Timeout)
+	cancel := func() { cancelTimeout(); release() }
 	stop := context.AfterFunc(r.ctx, cancel)
 	w := &waitTask{
 		ID: id, Command: spec.Command, Shell: spec.Shell, Until: spec.Until,
@@ -232,7 +236,7 @@ func (r *waitRegistry) settle(w *waitTask, status WaitStatus, msg string, notify
 
 	if notify {
 		if r.agent.TurnRunning() {
-			r.agent.Steer(msg)
+			r.agent.Notify(msg)
 		} else if r.OnWake != nil {
 			r.OnWake(msg)
 		}
