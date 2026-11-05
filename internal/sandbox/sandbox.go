@@ -81,80 +81,9 @@ func (p *Policy) Wrap(ctx context.Context, cmd *exec.Cmd) (*exec.Cmd, error) {
 		return p.wrapSandboxExec(ctx, cmd, root)
 	}
 	if runtime.GOOS == "windows" {
-		return p.wrapWindowsWSL(ctx, cmd, root)
+		return p.wrapWindows(ctx, cmd, root)
 	}
 	return nil, fmt.Errorf("sandbox backend %q is unavailable on %s; set sandbox.mode to off", p.Backend, runtime.GOOS)
-}
-
-func (p *Policy) wrapWindowsWSL(ctx context.Context, cmd *exec.Cmd, root string) (*exec.Cmd, error) {
-	backend := strings.ToLower(strings.TrimSpace(p.Backend))
-	if backend != "wsl" && backend != "bubblewrap" && backend != "auto" && backend != "" {
-		return nil, fmt.Errorf("unsupported Windows sandbox backend %q; use wsl", p.Backend)
-	}
-	wsl, err := exec.LookPath("wsl.exe")
-	if err != nil {
-		return nil, fmt.Errorf("sandbox requires WSL2 with bubblewrap: %w", err)
-	}
-	dir := commandDir(cmd, root)
-	dirLinux, err := windowsToWSLPath(dir)
-	if err != nil {
-		return nil, err
-	}
-	bwrap, err := exec.LookPath("bwrap")
-	if err != nil {
-		if _, err = exec.LookPath("wsl.exe"); err != nil {
-			return nil, fmt.Errorf("sandbox requires bubblewrap inside WSL2: %w", err)
-		}
-		bwrap = "bwrap"
-	}
-	args := []string{"--", bwrap, "--die-with-parent", "--new-session", "--unshare-pid", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp"}
-	if !p.Network {
-		args = append(args, "--unshare-net")
-	}
-	for _, path := range append([]string{root}, p.Writable...) {
-		resolved, pathErr := resolvePath(root, path)
-		if pathErr != nil {
-			return nil, pathErr
-		}
-		linuxPath, pathErr := windowsToWSLPath(resolved)
-		if pathErr != nil {
-			return nil, pathErr
-		}
-		args = append(args, "--bind", linuxPath, linuxPath)
-	}
-	for _, path := range p.ReadOnly {
-		resolved, pathErr := resolvePath(root, path)
-		if pathErr != nil {
-			return nil, pathErr
-		}
-		linuxPath, pathErr := windowsToWSLPath(resolved)
-		if pathErr != nil {
-			return nil, pathErr
-		}
-		args = append(args, "--ro-bind", linuxPath, linuxPath)
-	}
-	program := cmd.Path
-	if converted, convErr := windowsToWSLPath(program); convErr == nil {
-		program = converted
-	}
-	args = append(args, "--chdir", dirLinux, "--", program)
-	args = append(args, cmd.Args[1:]...)
-	w := exec.CommandContext(ctx, wsl, args...)
-	w.Dir = dir
-	w.Env = cmd.Env
-	return w, nil
-}
-
-func windowsToWSLPath(path string) (string, error) {
-	if strings.HasPrefix(path, `\\`) {
-		return "", fmt.Errorf("UNC sandbox roots are not supported: %s", path)
-	}
-	vol := filepath.VolumeName(path)
-	if len(vol) == 2 && vol[1] == ':' {
-		rest := filepath.ToSlash(strings.TrimPrefix(path, vol))
-		return "/mnt/" + strings.ToLower(string(vol[0])) + rest, nil
-	}
-	return filepath.ToSlash(path), nil
 }
 
 func (p *Policy) wrapBubblewrap(ctx context.Context, cmd *exec.Cmd, root string) (*exec.Cmd, error) {

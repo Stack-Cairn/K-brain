@@ -54,7 +54,7 @@ func probePlatform() Capability {
 	case "linux":
 		return probeLinux(ctx)
 	case "windows":
-		return Capability{Mechanism: "none", Platform: "windows", Reason: "per-run sandboxing is not available on native Windows; run K-brain inside WSL2 or use per-call confirmation"}
+		return probeWindows()
 	default:
 		return Capability{Mechanism: "none", Platform: runtime.GOOS, Reason: "no sandbox mechanism for " + runtime.GOOS}
 	}

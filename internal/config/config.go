@@ -403,7 +403,7 @@ func parseConfigJSONC(data []byte, cfg *Config) error {
 	if cfg.Sandbox.Mode != "" && cfg.Sandbox.Mode != "off" && cfg.Sandbox.Mode != "disabled" && cfg.Sandbox.Mode != "workspace" && cfg.Sandbox.Mode != "strict" {
 		return fmt.Errorf("sandbox.mode must be off, workspace, or strict")
 	}
-	if cfg.Sandbox.Backend != "" && cfg.Sandbox.Backend != "auto" && cfg.Sandbox.Backend != "bwrap" && cfg.Sandbox.Backend != "bubblewrap" && cfg.Sandbox.Backend != "seatbelt" && cfg.Sandbox.Backend != "wsl" && cfg.Sandbox.Backend != "landlock" {
+	if cfg.Sandbox.Backend != "" && cfg.Sandbox.Backend != "auto" && cfg.Sandbox.Backend != "bwrap" && cfg.Sandbox.Backend != "bubblewrap" && cfg.Sandbox.Backend != "seatbelt" && cfg.Sandbox.Backend != "wsl" && cfg.Sandbox.Backend != "landlock" && cfg.Sandbox.Backend != "low-integrity" {
 		return fmt.Errorf("unsupported sandbox.backend %q", cfg.Sandbox.Backend)
 	}
 	cfg.Models = make(map[string]Model)

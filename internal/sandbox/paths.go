@@ -56,8 +56,12 @@ func encloses(ancestor, descendant string) bool {
 }
 
 // checkRoot refuses a root whose write grant would re-expose a masked directory
-// (a workspace at the home directory encloses ~/.ssh).
+// (a workspace at the home directory encloses ~/.ssh), and a root the platform
+// mechanism cannot fence safely (checkPlatformRoot).
 func checkRoot(root string, masked []string) error {
+	if err := checkPlatformRoot(root); err != nil {
+		return err
+	}
 	resolved, err := resolveAll(root, masked)
 	if err != nil {
 		return err

@@ -52,8 +52,8 @@ func (d *Denial) Hint() string {
 // under Seatbelt and Landlock, EPERM and EROFS under bubblewrap's read-only
 // mounts, and EBUSY for a rename over a file bubblewrap bound in place (git
 // writes its config that way), in the spellings of the C library, Go, Node and
-// Python.
-var denialMarkers = []string{"operation not permitted", "permission denied", "read-only file system", "resource busy", "eacces", "eperm", "erofs", "ebusy"}
+// Python, and ERROR_ACCESS_DENIED under the Windows low-integrity sandbox.
+var denialMarkers = []string{"operation not permitted", "permission denied", "read-only file system", "resource busy", "eacces", "eperm", "erofs", "ebusy", "access is denied"}
 
 // networkMarkers are resolver and connect failures an offline run produces.
 var networkMarkers = []string{
@@ -93,7 +93,7 @@ func (p *Policy) ExplainFailure(command, dir, output string, exitCode *int) *Den
 	writable, _ := resolveAll(root, p.Writable)
 	masked, _ := resolveAll(root, p.Masked)
 	protected, _ := resolveAll(root, append(append([]string(nil), p.ReadOnly...), p.Protected...))
-	grants := append(append([]string{root}, writable...), tempDirs([]string{homeDir()})...)
+	grants := append(append([]string{root}, writable...), commandTempDirs(root)...)
 	network := false
 	for _, line := range strings.Split(output, "\n") {
 		lower := strings.ToLower(line)

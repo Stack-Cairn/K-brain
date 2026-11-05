@@ -6,6 +6,7 @@ on:
       - 'internal/sandbox/**'
       - 'internal/backend/run_sandbox*.go'
       - 'internal/tools/bashrun/**'
+      - 'internal/process/**'
       - 'internal/tools/result_meta.go'
       - 'internal/tools/sandbox_denial_test.go'
       - 'go.mod'
@@ -17,11 +18,13 @@ on:
       - 'internal/sandbox/**'
       - 'internal/backend/run_sandbox*.go'
       - 'internal/tools/bashrun/**'
+      - 'internal/process/**'
       - 'internal/tools/result_meta.go'
       - 'internal/tools/sandbox_denial_test.go'
       - 'go.mod'
       - 'go.sum'
       - '.github/workflows/sandbox-tests.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -44,6 +47,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
+      - name: Preserve committed LF on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
@@ -57,6 +64,7 @@ jobs:
           GOOS=linux GOARCH=arm64 go vet ./internal/sandbox/...
           GOOS=darwin go vet ./internal/sandbox/...
           GOOS=windows go build ./...
+          GOOS=windows go vet ./internal/sandbox/... ./internal/process/ ./internal/tools/bashrun/
       - name: Linux kernel and Landlock
         if: runner.os == 'Linux'
         shell: bash
@@ -107,3 +115,6 @@ jobs:
       - name: Windows tests
         if: runner.os == 'Windows'
         run: go test ./internal/sandbox/... -count=1 -v
+      - name: Windows sandboxed shell commands
+        if: runner.os == 'Windows'
+        run: go test ./internal/tools/bashrun/ ./internal/process/ -count=1 -v -run "Sandbox|Process"
