@@ -10,7 +10,7 @@ Plugins 为本地扩展提供工具或命令。`/plugins list` 查看插件，`/
 
 ## Subagent
 
-`/subagent [-m model] <prompt>` 启动后台子代理，`/subagents`（或 `Ctrl+T`）显示运行状态、日志和结果。子代理可以使用独立模型；`worktreeSubagents` 可让实现使用 Git worktree 隔离。
+`/subagent [-m model] <prompt>` 启动后台子代理，`/subagents`（或 `Ctrl+T`）显示运行状态、日志和结果。前台子代理（模型调用的 `subagent` 工具，未设 `background`）同样出现在面板中，可以打开只读的实时记录；面板中的 `Ctrl+X` 可停止后台子代理。按键详见 [TUI 与快捷键](03-tui.md)。子代理可以使用独立模型；`worktreeSubagents` 可让实现使用 Git worktree 隔离。
 
 主模型还可以直接调用以下工具（在 K-brain 后端执行，CLI 与 LiveAgent 共用）：
 
