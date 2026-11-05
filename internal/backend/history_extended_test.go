@@ -231,7 +231,7 @@ func TestSessionListingPaginationFiltersAndTotal(t *testing.T) {
 	}
 }
 
-func TestHistoryMutationsRejectActiveRunAndChildTask(t *testing.T) {
+func TestHistoryMutationsRejectActiveRunNotStaleTask(t *testing.T) {
 	store, err := session.Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -261,16 +261,22 @@ func TestHistoryMutationsRejectActiveRunAndChildTask(t *testing.T) {
 		t.Fatalf("active DELETE status=%d", status)
 	}
 
+	// A task stored as running with no runtime to own it was left by a k-brain that
+	// exited; loading the session settles it instead of blocking the session forever.
 	childID := createStoredHistorySession(t, store, t.TempDir(), []ai.Message{{Role: protocol.RoleUser, Content: "child"}})
-	child := getSession(t, server.URL, childID)
-	if err := store.SaveTask(childID, session.Task{ID: "child-active", Status: "running", StartedAt: time.Now()}); err != nil {
+	if err := store.SaveTask(childID, session.Task{ID: "child-stale", Status: "running", StartedAt: time.Now()}); err != nil {
 		t.Fatal(err)
 	}
-	if status := doJSON(t, http.MethodPost, server.URL+"/v1/sessions/"+childID+"/branch", protocol.BranchSessionRequest{ExpectedRevision: child.Revision, MessageRef: protocol.HistoryMessageRef{MessageID: child.Messages[0].ID}}, nil); status != http.StatusConflict {
-		t.Fatalf("child branch status=%d", status)
+	child := getSession(t, server.URL, childID)
+	tasks, err := store.LoadTasks(childID)
+	if err != nil || len(tasks) != 1 || tasks[0].Status != "error" || tasks[0].Report != staleTaskReport || tasks[0].EndedAt.IsZero() {
+		t.Fatalf("stale stored task after load = %+v, %v", tasks, err)
 	}
-	if status := doJSON(t, http.MethodDelete, server.URL+"/v1/sessions/"+childID, nil, nil); status != http.StatusConflict {
-		t.Fatalf("child DELETE status=%d", status)
+	if status := doJSON(t, http.MethodPost, server.URL+"/v1/sessions/"+childID+"/branch", protocol.BranchSessionRequest{ExpectedRevision: child.Revision, MessageRef: protocol.HistoryMessageRef{MessageID: child.Messages[0].ID}}, nil); status != http.StatusCreated {
+		t.Fatalf("branch after a stale task status=%d", status)
+	}
+	if status := doJSON(t, http.MethodDelete, server.URL+"/v1/sessions/"+childID, nil, nil); status != http.StatusOK {
+		t.Fatalf("DELETE after a stale task status=%d", status)
 	}
 }
 

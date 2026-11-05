@@ -15,28 +15,31 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Stack-Cairn/K-brain/internal/agent"
 	"github.com/Stack-Cairn/K-brain/internal/ai"
 	"github.com/Stack-Cairn/K-brain/internal/protocol"
 	"github.com/Stack-Cairn/K-brain/internal/session"
 	"github.com/Stack-Cairn/K-brain/internal/session/recording"
 )
 
+// activeLocked reports whether a turn is running. Background subagents are not
+// counted: they outlive the turn that started them, and a new run steers their
+// reports in. Callers that must also wait for them check backgroundSettledLocked.
 func (rt *runtimeSession) activeLocked() bool {
 	if rt.cancel != nil && !rt.runDone {
 		return true
 	}
-	if rt.agent != nil {
-		if rt.agent.TurnRunning() {
-			return true
-		}
-		for _, task := range rt.agent.Tasks().List() {
-			if task.Status == agent.TaskRunning || task.FollowingUp {
-				return true
-			}
-		}
+	return rt.agent != nil && rt.agent.TurnRunning()
+}
+
+// errBackgroundRunning refuses work that would orphan or race a running
+// background subagent, such as rebuilding the agent that owns its registry.
+var errBackgroundRunning = errors.New("session has a running background subagent")
+
+func rebuildErrorStatus(err error) int {
+	if errors.Is(err, errBackgroundRunning) {
+		return http.StatusConflict
 	}
-	return false
+	return http.StatusBadRequest
 }
 
 func mutationError(w http.ResponseWriter, err error) {
@@ -56,20 +59,12 @@ func (s *Server) mutationAllowed(w http.ResponseWriter, rt *runtimeSession) bool
 		return false
 	}
 	if rt.activeLocked() {
-		writeJSONError(w, 409, "session has an active turn or child task")
+		writeJSONError(w, 409, "session has an active turn")
 		return false
 	}
 	if rt.queue != nil && (len(rt.queue.Items) > 0 || len(rt.queue.Edits) > 0 || rt.queueDispatchID != "") {
 		writeJSONError(w, 409, "session has queued work")
 		return false
-	}
-	if tasks, err := s.store.LoadTasks(rt.id); err == nil {
-		for _, task := range tasks {
-			if task.Status == string(agent.TaskRunning) {
-				writeJSONError(w, 409, "session has an active child task")
-				return false
-			}
-		}
 	}
 	return true
 }
@@ -226,13 +221,13 @@ func (s *Server) updateSession(w http.ResponseWriter, r *http.Request, id string
 	}
 	if in.Model != nil {
 		if err := s.switchModelLocked(rt, *in.Model); err != nil {
-			writeJSONError(w, 400, "model switch failed: "+err.Error())
+			writeJSONError(w, rebuildErrorStatus(err), "model switch failed: "+err.Error())
 			return
 		}
 	}
 	if in.CWD != nil {
 		if err := s.switchWorkingDirLocked(rt, *in.CWD); err != nil {
-			writeJSONError(w, 400, "workspace switch failed: "+err.Error())
+			writeJSONError(w, rebuildErrorStatus(err), "workspace switch failed: "+err.Error())
 			return
 		}
 	}
@@ -322,9 +317,11 @@ func (s *Server) deleteSession(w http.ResponseWriter, r *http.Request, id string
 		return
 	}
 	rt.deleted = true
-	// Pending waits and notices must not wake a deleted session.
+	// Pending waits and notices must not wake a deleted session, and its
+	// background subagents must not keep working for it.
 	if rt.agent != nil {
 		rt.agent.Waits().Close()
+		rt.agent.Tasks().CancelRunning()
 	}
 	rt.holdWakesLocked(false, true)
 	rt.recorder = nil

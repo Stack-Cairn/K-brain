@@ -186,6 +186,26 @@ func (r *taskRegistry) Cancel(id string) bool {
 	return true
 }
 
+// CancelRunning requests cancellation of every running task and follow-up, and
+// reports how many it reached. Each task still settles on its own goroutine.
+func (r *taskRegistry) CancelRunning() int {
+	r.mu.Lock()
+	var cancels []context.CancelFunc
+	for _, t := range r.tasks {
+		switch {
+		case t.FollowingUp && t.followCancel != nil:
+			cancels = append(cancels, t.followCancel)
+		case t.Status == TaskRunning && t.cancel != nil:
+			cancels = append(cancels, t.cancel)
+		}
+	}
+	r.mu.Unlock()
+	for _, cancel := range cancels {
+		cancel()
+	}
+	return len(cancels)
+}
+
 func (r *taskRegistry) settle(id string, status TaskStatus, report string) {
 	r.mu.Lock()
 	t, ok := r.tasks[id]

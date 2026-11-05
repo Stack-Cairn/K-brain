@@ -127,7 +127,7 @@ func (s *Server) startCanonicalRunWith(ctx context.Context, rt *runtimeSession, 
 	}
 	if in.Model != nil && (in.Model.Model != "" || in.Model.Provider != "") {
 		if err := s.switchModelLocked(rt, *in.Model); err != nil {
-			return fail(400, "model switch failed: "+err.Error())
+			return fail(rebuildErrorStatus(err), "model switch failed: "+err.Error())
 		}
 	}
 	if err := s.refreshSettingsLocked(rt); err != nil {

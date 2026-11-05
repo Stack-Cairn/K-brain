@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -718,6 +719,9 @@ func (s *Server) historyRuntime(id string) (*runtimeSession, error) {
 	if _, _, err := s.store.Load(id); err != nil {
 		return nil, err
 	}
+	if err := s.reconcileStaleTasks(id); err != nil {
+		log.Printf("backend: settle stale subagents of %s: %v", id, err)
+	}
 	rt = &runtimeSession{id: id, runs: map[string]runRecord{}}
 	if err := rt.loadJournal(s.eventDir); err != nil {
 		return nil, err
@@ -902,6 +906,11 @@ func (s *Server) rebuildAgentLocked(rt *runtimeSession, selected protocol.ModelR
 	if closed {
 		return errors.New("backend is closed")
 	}
+	// The running subagents belong to the current agent's registry and report
+	// through it; a replacement agent would orphan them.
+	if !rt.backgroundSettledLocked() {
+		return errBackgroundRunning
+	}
 	ag, err := s.factory(context.Background(), cwd, selected)
 	if err != nil {
 		return err
@@ -1052,6 +1061,10 @@ func (s *Server) loadRuntime(id string, model protocol.ModelRef, cwd string) (*r
 		s.mu.Unlock()
 		return nil, err
 	}
+	if err := s.reconcileStaleTasks(id); err != nil {
+		s.mu.Unlock()
+		return nil, err
+	}
 	rt.leases.Store(1)
 	rt.lastUsed = time.Now()
 	s.sessions[id] = rt
@@ -1060,12 +1073,46 @@ func (s *Server) loadRuntime(id string, model protocol.ModelRef, cwd string) (*r
 	return rt, nil
 }
 
+// staleTaskReport matches the TUI's wording for a subagent whose process ended first.
+const staleTaskReport = "interrupted — k-brain exited before this subagent finished"
+
+// reconcileStaleTasks settles stored tasks still marked running when no runtime
+// owns the session. A runtime is never evicted or rebuilt while its subagents
+// run, so such a task belonged to a k-brain process that exited. The caller
+// holds s.mu, so no runtime for the session can start one meanwhile.
+func (s *Server) reconcileStaleTasks(id string) error {
+	tasks, err := s.store.LoadTasks(id)
+	if err != nil {
+		return err
+	}
+	for _, task := range tasks {
+		if task.Status != string(agent.TaskRunning) {
+			continue
+		}
+		task.Status, task.Report = string(agent.TaskError), staleTaskReport
+		if task.EndedAt.IsZero() {
+			task.EndedAt = time.Now()
+		}
+		if err := s.store.SaveTask(id, task); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *Server) wireTasks(rt *runtimeSession, ag *agent.Agent) {
 	s.wireQuestions(rt, ag)
 	s.wireWakes(rt, ag)
 	ag.Tasks().SetSessionID(rt.id)
 	ag.Tasks().OnEvents = rt.trajectoryChildEvents
 	ag.Tasks().OnRecord = func(id string, task *agent.BackgroundTask) {
+		rt.mu.Lock()
+		deleted := rt.deleted
+		rt.mu.Unlock()
+		if deleted {
+			// A subagent cancelled by the delete must not write the session back.
+			return
+		}
 		if task.Status != agent.TaskRunning {
 			// A settled child task may be all that kept pending notices waiting.
 			defer func() { go s.kickWakes(rt) }()
@@ -1866,6 +1913,10 @@ func (s *Server) closeSession(w http.ResponseWriter, r *http.Request, id string)
 	rt.holdWakesLocked(false, true)
 	if rt.cancel != nil {
 		rt.cancel()
+	}
+	// Background subagents outlive their turn, not the session: closing ends them.
+	if rt.agent != nil {
+		rt.agent.Tasks().CancelRunning()
 	}
 	rt.mu.Unlock()
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "session_id": id})

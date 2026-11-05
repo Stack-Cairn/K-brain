@@ -76,7 +76,7 @@ func (s *Server) compactSession(w http.ResponseWriter, r *http.Request, id strin
 	}
 	if rt.activeLocked() {
 		rt.mu.Unlock()
-		writeJSONError(w, http.StatusConflict, "session has an active turn or child task")
+		writeJSONError(w, http.StatusConflict, "session has an active turn")
 		return
 	}
 	if rt.runtimeErr != nil {

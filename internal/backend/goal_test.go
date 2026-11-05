@@ -581,16 +581,51 @@ func TestGoalPauseLeavesPlainRunsAlone(t *testing.T) {
 	}
 }
 
+// The next round waits briefly for a turn someone else is running, then pauses.
 func TestGoalRoundWaitsForBusySessionThenPauses(t *testing.T) {
 	retries, delay := goalBusyRetries, goalBusyDelay
 	goalBusyRetries, goalBusyDelay = 3, 20*time.Millisecond
 	t.Cleanup(func() { goalBusyRetries, goalBusyDelay = retries, delay })
-	client := &replyQueue{block: make(chan struct{})}
+	client := &replyQueue{}
+	server, _, base := newGoalTestServer(t, client)
+	sess := createTestSession(t, base)
+	rt, err := server.loadRuntimeByID(sess.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer server.releaseRuntime(rt)
+	rt.mu.Lock()
+	server.ensureGoalLoadedLocked(rt)
+	rt.goal.text, rt.goal.status, rt.goal.round, rt.goal.nonce = "long task", "active", 1, "busy-nonce"
+	rt.goal.next = &goalContinuation{afterRunID: "round-1", clientRequestID: "goal-busy-nonce-2", prompt: "/goal continue"}
+	// Another run holds the session when the round would start.
+	rt.cancel, rt.runDone = func() {}, false
+	rt.mu.Unlock()
+	t.Cleanup(func() {
+		rt.mu.Lock()
+		rt.cancel, rt.runDone = nil, true
+		rt.mu.Unlock()
+	})
+	server.continueGoal(rt, "round-1", protocol.PromptRequest{})
+	rt.mu.Lock()
+	status, reason := rt.goal.status, rt.goal.reason
+	rt.mu.Unlock()
+	if status != "paused" || reason != "busy" {
+		t.Fatalf("busy session must pause with a fixed reason: status=%s reason=%s", status, reason)
+	}
+	if n := len(client.userTurns()); n != 0 {
+		t.Fatalf("no round may start while busy, got %d turns", n)
+	}
+}
+
+// A background subagent does not hold the session: the next round starts while it
+// works, and its report reaches whichever turn is running when it arrives.
+func TestGoalRoundContinuesWhileBackgroundSubagentRuns(t *testing.T) {
+	client := &replyQueue{block: make(chan struct{}), replies: []string{"still working", "GOAL_MET done"}}
 	server, _, base := newGoalTestServer(t, client)
 	sess := createTestSession(t, base)
 	postGoal(t, base, sess.ID, protocol.GoalRequest{Action: "set", Goal: "long task", Run: &protocol.PromptRequest{ClientRequestID: "b-1"}})
 	waitTurns(t, client, 1)
-	// A background subagent keeps the session busy after the round ends.
 	rt, err := server.loadRuntimeByID(sess.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -601,13 +636,19 @@ func TestGoalRoundWaitsForBusySessionThenPauses(t *testing.T) {
 	task := ag.RegisterBackground("busy", "work", agent.SubModel{})
 	server.releaseRuntime(rt)
 	t.Cleanup(func() { ag.Tasks().Cancel(task.ID) })
+	client.mu.Lock()
 	close(client.block)
-	paused := waitGoal(t, base, sess.ID, func(s protocol.GoalState) bool { return s.Status == "paused" })
-	if paused.Reason != "busy" {
-		t.Fatalf("busy session must pause with a fixed reason: %+v", paused)
+	client.block = nil
+	client.mu.Unlock()
+	met := waitGoal(t, base, sess.ID, func(s protocol.GoalState) bool { return s.Status != "active" })
+	if met.Status != "met" {
+		t.Fatalf("goal with a running background subagent = %+v", met)
 	}
-	if n := len(client.userTurns()); n != 1 {
-		t.Fatalf("no round may start while busy, got %d turns", n)
+	if n := len(client.userTurns()); n != 2 {
+		t.Fatalf("goal rounds = %d, want 2", n)
+	}
+	if snap, _ := ag.Tasks().Get(task.ID); snap.Status != agent.TaskRunning {
+		t.Fatalf("background subagent = %s", snap.Status)
 	}
 }
 

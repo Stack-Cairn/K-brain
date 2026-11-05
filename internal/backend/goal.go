@@ -62,7 +62,8 @@ type goalContinuation struct {
 }
 
 // goalBusyRetries and goalBusyDelay bound how long the next goal round waits for a
-// session kept busy by background work, such as a background subagent.
+// turn someone else started in between, such as a user or wake run. A background
+// subagent does not hold the session; its report reaches whichever turn runs.
 var (
 	goalBusyRetries = 20
 	goalBusyDelay   = 250 * time.Millisecond
@@ -462,7 +463,7 @@ func appendSnapshot(in *protocol.PromptRequest, text string) {
 // continueGoal starts the round decided by evaluateGoal once the finished run has
 // released the session. evaluateGoal only decides rounds for goal runs, so previous is
 // always the goal's own last round and the next round inherits its options. A clear, pause or new goal in between drops it. A session kept
-// busy by background work is retried briefly; a round that still cannot start pauses
+// busy by another turn is retried briefly; a round that still cannot start pauses
 // the goal.
 func (s *Server) continueGoal(rt *runtimeSession, runID string, previous protocol.PromptRequest) {
 	rt.mu.Lock()
