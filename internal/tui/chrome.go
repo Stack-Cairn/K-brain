@@ -41,6 +41,7 @@ func (m *model) footerHintsAt() (string, int) {
 		if m.taskExpanded {
 			hint = m.tr("Ctrl+T Input · ↑/↓ Select · Space Collapse · Enter Open")
 		}
+		hint += m.tr(" · Ctrl+X Stop")
 		return ansi.Truncate(strings.Repeat(" ", min(chromeIndent, max(m.width, 0)))+shortcutStyle.Render(hint), max(m.width, 0), "…"), -1
 	}
 	return m.infoRowAt()

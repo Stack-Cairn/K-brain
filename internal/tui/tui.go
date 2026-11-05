@@ -299,6 +299,14 @@ type model struct {
 	dockTaskRows int
 	taskVP       *taskView
 	dockRows     int
+	// dockOrder is the dock's row order at the last render, so a selection
+	// follows its task when running rows move ahead of finished ones.
+	dockOrder []string
+
+	fg         *fgRegistry
+	subAct     map[string]*subActivity
+	subStop    map[string]bool
+	subTicking bool
 
 	rew    *rewindState
 	esc1   bool
@@ -508,6 +516,7 @@ func Run(cfg *config.Config, modelName, provName, sysPrompt, resumeID string, ca
 	}
 	p := tea.NewProgram(m, opts...)
 	m.prog = p
+	m.wireProgram()
 
 	m.irunner = newInteractiveRunner(p)
 	tools.InteractiveBash = m.irunner
@@ -792,6 +801,10 @@ func (m *model) seedTranscript(msgs []ai.Message, base int) {
 				break
 			}
 			bi = len(m.blocks)
+			if msg.Origin == ai.OriginBackground {
+				m.blocks = append(m.blocks, m.noticeBlocks(msg.TextContent())...)
+				break
+			}
 			m.blocks = append(m.blocks, block{kind: blockUser, text: linkifyFilePaths(msg.TextContent(), realFileExists)})
 		case "assistant":
 			if strings.TrimSpace(msg.TextContent()) != "" {
@@ -995,6 +1008,11 @@ type block struct {
 	toolArgs string
 
 	live string
+
+	// subID binds a subagent tool row to the subagent it runs; subLine marks
+	// the status row under a background spawn.
+	subID   string
+	subLine bool
 
 	// think marks a thinking paragraph that later reasoning lines extend.
 	think bool
@@ -1850,6 +1868,16 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		result := block{kind: blockTool, text: msg.result, toolName: msg.name}
+		if msg.name == "subagent" {
+			if id := backgroundSpawnID(msg.result); id != "" {
+				// The spawn result is written for the model; the row shows the
+				// task's live state instead.
+				result = block{kind: blockText, subID: id, subLine: true}
+				if t, ok := m.subTask(id); ok {
+					result.text = m.subagentRowText(t, true)
+				}
+			}
+		}
 		if hdr >= 0 && hdr+1 < len(m.blocks) {
 			m.blocks = append(m.blocks[:hdr+1], append([]block{result}, m.blocks[hdr+1:]...)...)
 
@@ -1862,6 +1890,11 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.blocks = append(m.blocks, result)
 		}
 		m.keepFollow()
+		if msg.name == "subagent" {
+			m.refreshSubagentRows()
+			m.refreshVP()
+			return m, m.ensureSubTick()
+		}
 		m.refreshVP()
 		return m, nil
 
@@ -1938,6 +1971,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case steeredMsg:
 		m.flushThink()
 		m.flushCurrent()
+		if _, ok := parseNotice(string(msg)); ok {
+			m.appendNotice(string(msg))
+			return m, nil
+		}
 		m.append(youStyle.Render(glyphUser) + linkifyFilePaths(string(msg), realFileExists) + dimStyle.Render("  (steered)"))
 		return m, nil
 
@@ -2123,31 +2160,40 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case taskUpdateMsg:
-
-		if m.taskVP != nil {
-			if t, ok := m.agent.Tasks().Get(m.taskVP.id); ok && t.Status != agent.TaskRunning && !t.FollowingUp && m.taskVP.live {
-				m.openTask(m.taskVP.id)
-			} else {
-				m.refreshTaskVP()
-			}
-		}
-		return m, nil
+		return m, m.onSubagentsChanged()
 
 	case orphanSteerMsg:
 
 		if !m.busy {
+			if _, ok := parseNotice(string(msg)); ok {
+				return m.submitNotice(string(msg))
+			}
 			return m.submitTurn(string(msg), true)
 		}
 		return m, nil
 
 	case waitWakeMsg:
 
-		m.append(dimStyle.Render("⏲ " + firstLine(string(msg))))
 		if m.busy {
-			m.agent.Steer(string(msg))
+			// The running turn echoes it back through OnSteer as a notice row.
+			m.agent.Notify(string(msg))
 			return m, nil
 		}
-		return m.submitTurn(string(msg), false)
+		return m.submitNotice(string(msg))
+
+	case subProgressMsg:
+		m.applySubProgress(msg)
+		m.refreshSubagentRows()
+		return m, m.ensureSubTick()
+
+	case subChangedMsg:
+		m.bindForegroundRow(msg)
+		return m, m.onSubagentsChanged()
+
+	case subTickMsg:
+		m.subTicking = false
+		m.refreshSubagentRows()
+		return m, m.ensureSubTick()
 
 	case mcpStatusMsg:
 
@@ -2321,6 +2367,11 @@ func (m *model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.Type {
 	case tea.KeyCtrlG:
 		return m, m.openPromptEditor()
+	case tea.KeyCtrlX:
+		if m.tasksFocus && len(m.dockTasks()) > 0 {
+			m.stopSelectedTask()
+			return m, nil
+		}
 	case tea.KeyCtrlT:
 
 		if len(m.dockTasks()) == 0 {
@@ -2599,7 +2650,7 @@ func (m *model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.tasksFocus {
 			m.tasksFocus = false
 
-			if tasks := m.dockTasks(); len(tasks) > 0 {
+			if tasks := m.dockList(); len(tasks) > 0 {
 				m.openTask(tasks[min(m.taskSel, len(tasks)-1)].ID)
 			}
 			return m, nil
@@ -2965,6 +3016,19 @@ func (m *model) wireTasks() {
 	}
 	m.agent.Tasks().SetSessionID(m.sessionID)
 	m.agent.SetSessionID(m.sessionID)
+	m.fgReg().clearSettled()
+	m.subAct, m.subStop = nil, nil
+	m.wireProgram()
+
+	if m.mcpMgr != nil {
+		m.agent.SetMCPTools(m.mcpMgr.Tools())
+	}
+}
+
+// wireProgram connects the agent's asynchronous callbacks to the running
+// program. The first agent is built before the program exists, so Run calls it
+// again once the program is up.
+func (m *model) wireProgram() {
 	m.wireWaits()
 	if m.prog == nil {
 		return
@@ -2977,10 +3041,14 @@ func (m *model) wireTasks() {
 
 		go m.prog.Send(taskUpdateMsg{})
 	}
-
-	if m.mcpMgr != nil {
-		m.agent.SetMCPTools(m.mcpMgr.Tools())
+	p := m.prog
+	m.agent.Tasks().OnEvents = func(id string) agent.Events {
+		return agent.Events{
+			OnToolStart: func(_, n, a string) { p.Send(subProgressMsg{id: id, tool: subToolLabel(n, a)}) },
+			OnUsage:     func(u ai.Usage) { p.Send(subProgressMsg{id: id, usage: u}) },
+		}
 	}
+	m.fgReg().setSend(func(msg tea.Msg) { p.Send(msg) })
 }
 
 func (m *model) wireWaits() {
@@ -3363,12 +3431,26 @@ func (m *model) submitGoal(text string) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) submitTurn(text string, authored bool) (tea.Model, tea.Cmd) {
+	return m.submitTurnAs(text, authored, false)
+}
+
+// submitNotice runs a turn for a runtime notice (a background subagent, wait or
+// workflow reporting back): it shows as a status row and reaches the model as
+// a background message, not as something the user wrote.
+func (m *model) submitNotice(text string) (tea.Model, tea.Cmd) {
+	return m.submitTurnAs(text, false, true)
+}
+
+func (m *model) submitTurnAs(text string, authored, notice bool) (tea.Model, tea.Cmd) {
 	m.cancelGoalFromContext()
 	m.prepareHistory()
 	m.turnSnapshotSeq = nil
 	m.busy = true
 	m.turnStart = m.nowFn()
 	prepared, parts := m.prepareTurn(text)
+	if notice {
+		prepared, parts = text, nil
+	}
 	userMsgIdx := len(m.agent.Messages)
 
 	preSnap := snapshotWorkspace()
@@ -3390,10 +3472,16 @@ func (m *model) submitTurn(text string, authored bool) (tea.Model, tea.Cmd) {
 			keep = append(keep, m.taskVP.id)
 		}
 		m.agent.Tasks().ClearSettled(keep...)
+		m.fgReg().clearSettled(keep...)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	ctx = sandbox.WithPolicy(ctx, m.sandboxPolicy)
 	ctx = m.withAIApproval(ctx, text)
+	fg := m.fgReg()
+	ctx = agent.WithRequestObserver(ctx, fg)
+	if notice {
+		ctx = agent.WithBackgroundNotice(ctx)
+	}
 	m.cancel = cancel
 	p := m.prog
 
@@ -3412,9 +3500,17 @@ func (m *model) submitTurn(text string, authored bool) (tea.Model, tea.Cmd) {
 			OnText:  stream.text,
 			OnThink: stream.think,
 			OnToolStart: func(id, n, a string) {
+				if n == "subagent" && !subagentBackgroundArg(a) {
+					fg.expect(id, toolSubject("subagent", a))
+				}
 				send(toolStartMsg{id, n, a})
 			},
-			OnToolEnd: func(id, n, r string) { send(toolEndMsg{id, n, r}) },
+			OnToolEnd: func(id, n, r string) {
+				if n == "subagent" {
+					fg.forget(id)
+				}
+				send(toolEndMsg{id, n, r})
+			},
 
 			OnToolCall: func(id, n, a string) { send(toolCallMsg{id, n, a}) },
 
@@ -3472,7 +3568,11 @@ func (m *model) submitTurn(text string, authored bool) (tea.Model, tea.Cmd) {
 		}
 		stream.finish(turnDoneMsg{final: final, stopReason: m.agent.LastStopReason(), err: err, at: turnAt, snap: preSnap, clean: workspaceClean()})
 	}()
-	m.appendRaw(blockUser, linkifyFilePaths(text, realFileExists))
+	if notice {
+		m.appendNotice(text)
+	} else {
+		m.appendRaw(blockUser, linkifyFilePaths(text, realFileExists))
+	}
 	if authored {
 
 		for len(m.msgBlock) <= userMsgIdx {
@@ -4316,7 +4416,7 @@ func (m *model) footerStats() string {
 	if !m.follow && !m.vp.AtBottom() {
 		parts = append(parts, fmt.Sprintf("↑ %d%%", int(m.vp.ScrollPercent()*100)))
 	}
-	if n := m.runningTasks(); n > 0 {
+	if n := m.runningSubagents(); n > 0 {
 		parts = append(parts, fmt.Sprintf("⚙ %d sub", n))
 	}
 	return strings.Join(parts, " · ")
