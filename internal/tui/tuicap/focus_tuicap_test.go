@@ -75,3 +75,37 @@ func TestTranscriptFocusFoldViewerFind(t *testing.T) {
 	s.Type("back in the composer")
 	s.WaitFor("back in the composer")
 }
+
+// Reasoning streams as a block showing its last lines, then folds to how
+// long it took once the reply starts; Alt+↑ and e open it.
+func TestThinkingFoldsAfterRun(t *testing.T) {
+	s := tuicap.Start(t, tuicap.Options{
+		Width: 80, Height: 24, Timeout: 20 * time.Second,
+		Config: map[string]any{"thinking": true},
+		Replies: []tuicap.Reply{{
+			Reasoning: []string{"The user asks about the cache.\n", "It is keyed by width.\n", "A resize changes the width.\n", "So every entry misses once.\n", "Then it fills again.\n"},
+			Chunks:    []string{"Every entry misses once ", "after a resize."},
+			Delay:     150 * time.Millisecond,
+		}},
+	})
+	s.WaitFor("Ask k-brain anything")
+	s.Type("why does the cache miss?")
+	s.Press(tuicap.Enter)
+	live := s.WaitFor("Thinking…")
+	t.Logf("while it reasons:\n%s", live)
+	done := s.WaitFor("after a resize.")
+	s.WaitGone("Esc to interrupt")
+	done = s.WaitFor("Thought for")
+	if strings.Contains(done, "keyed by width") {
+		t.Fatalf("the finished run did not fold:\n%s", done)
+	}
+	t.Logf("folded after the reply:\n%s", done)
+
+	s.Press(altUp)
+	s.WaitFor("┃ transcript")
+	s.Type("k")
+	s.WaitFor("· thinking")
+	s.Type("e")
+	opened := s.WaitFor("It is keyed by width.")
+	t.Logf("opened with e:\n%s", opened)
+}

@@ -208,6 +208,13 @@ func (m *model) viewerShown() bool {
 	return m.tx != nil && m.tx.viewer != nil && m.permDialog == nil && m.askDialog == nil && m.iactive == nil
 }
 
+func rowsLabel(n int) string {
+	if n == 1 {
+		return "1 line"
+	}
+	return fmt.Sprintf("%d lines", n)
+}
+
 // blockViewerView is the viewer's frame, and false while it is not shown.
 func (m *model) blockViewerView() (string, bool) {
 	if !m.viewerShown() {
@@ -231,7 +238,7 @@ func (m *model) blockViewerView() (string, bool) {
 	default:
 		where = fmt.Sprintf("%d%%", v.off*100/v.maxOff(h))
 	}
-	title := accentStyle.Render(focusMark()+" "+m.tr(blockLabel(b))) + dimStyle.Render(chromeGlyphs(" · ")+m.tr(linesLabel(strings.Join(v.rows, "\n"))))
+	title := accentStyle.Render(focusMark()+" "+m.tr(blockLabel(b))) + dimStyle.Render(chromeGlyphs(" · ")+rowsLabel(len(v.rows)))
 	out := make([]string, 0, h+2)
 	out = append(out, barColumns(title, dimStyle.Render(where), w))
 	for i := v.off; i < v.off+h; i++ {
