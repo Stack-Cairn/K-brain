@@ -1,0 +1,40 @@
+[1;95m* [0mStage 1 keeps a [1mcheckpoint[0m per input, so a rerun skips work it has already done:[0m                                      [0m
+                                                                                                                        
+  * read the checkpoint                                                                                                 
+  * skip inputs it lists                                                                                                
+                                                                                                                        
+  [90m```go[0m                                                                                                                 [0m
+    [95mif[0m done[in.ID] {                                                                                                    [0m
+        [95mcontinue[0m                                                                                                        [0m
+    }                                                                                                                   
+  [90m```[0m                                                                                                                   [0m
+                                                                                                                        
+[90m*[0m [1mBash[0m  [37mgo test ./pkg/stage1/...[0m                                                                                  [92mv[0m[90m 1.1s[0m
+[90m  ` [0m[37mok      github.com/acme/kn/pkg/stage1    0.2s[0m                                                                       [0m
+                                                                                                                        
+[1;96m|[0m[1;96m>[0m Stage 2: make the pipeline step idempotent and rerun its tests.                                                      [0m
+                                                                                                                        
+[1;95m* [0mStage 2 keeps a [1mcheckpoint[0m per input, so a rerun skips work it has already done:[0m                                      [0m
+                                                                                                                        
+  * read the checkpoint                                                                                                 
+  * skip inputs it lists                                                                                                
+                                                                                                                        
+  [90m```go[0m                                                                                                                 [0m
+    [95mif[0m done[in.ID] {                                                                                                    [0m
+        [95mcontinue[0m                                                                                                        [0m
+    }                                                                                                                   
+  [90m```[0m                                                                                                                   [0m
+                                                                                                                        
+[90m*[0m [1mBash[0m  [37mgo test ./pkg/stage2/...[0m                                                                                  [92mv[0m[90m 1.4s[0m
+[90m  ` [0m[37mok      github.com/acme/kn/pkg/stage2    0.3s[0m                                                                       [0m
+                                                                                                                        
+[1;96m|[0m[1;96m>[0m Stage 3: make the pipeline step idempotent and rerun its tests.                                                      [0m
+                                                                                                                        
+[1;95m* [0mStage 3 keeps a [1mcheckpoint[0m per input, so a rerun skips work it has already done:[0m                                      [0m
+                                                                                                                        
+  * read the checkpoint                                                                                                 
+  * skip inputs it lists                                                                                                
+                                                                                                                        
+[90m------------------------------------------------------------------------------------------------------------------------[0m
+  [1;96m> [0m[7mA[0m[90msk k-brain anything...  / commands - Shift+Tab mode - Ctrl+P menu[0m                                                  [0m
+  [100m [0m[1;37;100mNormal[0m[100m [0m                                                                                 [90mUp 30% - [0m[37mkimi-k3-fast[0m[90m - [0m[1;96m* off[0m

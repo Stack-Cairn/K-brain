@@ -46,12 +46,18 @@ func TestResumeShowsInterruptedToolCalls(t *testing.T) {
 		rows = append(rows, ansi.Strip(b.render(m.width)))
 	}
 	var sawCallRow, sawNote bool
-	for _, r := range rows {
-		if strings.Contains(r, "⚒ bash") && strings.Contains(r, "interrupted") {
+	for i, b := range m.blocks {
+		// The call's header turns failed and the recorded result under it says
+		// why, as the row would have looked had the result arrived live.
+		if b.kind == blockToolRun && b.toolName == "bash" && b.toolFailed && b.run != nil && b.run.interrupted &&
+			i+1 < len(m.blocks) && strings.Contains(rows[i+1], "interrupted") {
 			sawCallRow = true
 		}
-		if strings.Contains(r, "1 tool call(s) were interrupted") && strings.Contains(r, "can retry") {
+		if strings.Contains(rows[i], "1 tool call(s) were interrupted") && strings.Contains(rows[i], "can retry") {
 			sawNote = true
+		}
+		if b.kind == blockToolRun && b.toolName == "read" && (b.toolFailed || b.run != nil && b.run.interrupted) {
+			t.Fatalf("answered tool mislabeled as interrupted: %q", rows[i])
 		}
 	}
 	if !sawCallRow {
@@ -59,11 +65,5 @@ func TestResumeShowsInterruptedToolCalls(t *testing.T) {
 	}
 	if !sawNote {
 		t.Fatalf("transcript missing the resume summary note:\n%s", strings.Join(rows, "\n"))
-	}
-
-	for _, r := range rows {
-		if strings.Contains(r, "⚒ read") && strings.Contains(r, "interrupted") {
-			t.Fatalf("answered tool mislabeled as interrupted: %q", r)
-		}
 	}
 }

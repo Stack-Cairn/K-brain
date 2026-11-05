@@ -196,6 +196,9 @@ func renderToolRun(b block, width int) string {
 	// duration and tokens.
 	switch {
 	case b.toolName == "subagent":
+	case b.run != nil && b.run.duration > 0:
+		// Restored from history, which recorded how long the tool ran.
+		meta = toolDoneMeta(b.toolFailed, b.run.duration)
 	case b.toolName != "" && b.toolID != "":
 		if d, ok := toolTimer.finish(b.toolID); ok {
 			meta = toolDoneMeta(b.toolFailed, d)

@@ -36,13 +36,26 @@ func BenchmarkSeedTranscript(b *testing.B) {
 	}
 }
 
-func BenchmarkAppendStream(b *testing.B) {
+func BenchmarkAppendStream(b *testing.B) { benchAppend(b, 200) }
+
+// benchAppend measures appending one notice line to a session of the given
+// number of turns. Every 100 appends the transcript is cut back to the
+// seeded session, outside the timer, so the session length stays what the
+// benchmark's name says however large b.N grows.
+func benchAppend(b *testing.B, turns int) {
 	m := compactCmdModel()
 	m.Update(mkWinSize(120, 40))
-	m.seedTranscript(benchTranscript(200), 1)
+	m.seedTranscript(benchTranscript(turns), 1)
+	base := len(m.blocks)
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := range b.N {
+		if i%100 == 99 {
+			b.StopTimer()
+			m.blocks = m.blocks[:base]
+			m.refreshVP()
+			b.StartTimer()
+		}
 		m.append(fmt.Sprintf("streamed line %d", i))
 	}
 }
@@ -97,13 +110,4 @@ func BenchmarkSeedTranscript1000Turns(b *testing.B) {
 	}
 }
 
-func BenchmarkAppendStream1000Turns(b *testing.B) {
-	m := compactCmdModel()
-	m.Update(mkWinSize(120, 40))
-	m.seedTranscript(benchTranscript(1000), 1)
-	b.ResetTimer()
-	b.ReportAllocs()
-	for i := range b.N {
-		m.append(fmt.Sprintf("streamed line %d", i))
-	}
-}
+func BenchmarkAppendStream1000Turns(b *testing.B) { benchAppend(b, 1000) }

@@ -1,0 +1,24 @@
+[1;38;5;141m● [0mStage 1 keeps a [1mcheckpoint[0m per[0m        [0m
+  input, so a rerun skips work it       
+  has already done:                     
+                                        
+  • read the checkpoint                 
+  • skip inputs it lists                
+                                        
+  [48;5;235m                                 [0m[38;5;245;48;5;235mgo [0m  [0m
+  [48;5;235m  [0m[38;5;141;48;5;235mif[0m[48;5;235m [0m[48;5;235mdone[0m[48;5;235m[[0m[48;5;235min[0m[48;5;235m.[0m[48;5;235mID[0m[48;5;235m][0m[48;5;235m [0m[48;5;235m{[0m[48;5;235m                  [0m  [0m
+  [48;5;235m  [0m[48;5;235m    [0m[38;5;141;48;5;235mcontinue[0m[48;5;235m                      [0m  [0m
+  [48;5;235m  [0m[48;5;235m}[0m[48;5;235m                                 [0m  [0m
+                                        
+[38;5;245m◆[0m [1mBash[0m  [38;5;252mgo test ./pkg/stage1/...[0m  [38;5;108m✓[0m[38;5;245m 1.1s[0m
+[38;5;245m  └ [0m[38;5;252mok[0m                                  [0m
+[38;5;252m    github.com/acme/kn/pkg/stage1[0m       [0m
+[38;5;252m    0.2s[0m                                [0m
+                                        
+[1;38;5;79;48;5;235m▌[0m[1;38;5;79;48;5;235m❯[0m[48;5;235m [0m[48;5;235mStage 2: make the pipeline step[0m[48;5;235m      [0m
+[1;38;5;79;48;5;235m▌[0m[48;5;235m  [0m[48;5;235midempotent and rerun its tests.[0m[48;5;235m      [0m
+                                        
+[1;38;5;141m● [0mStage 2 keeps a [1mcheckpoint[0m per[0m        [0m
+[38;5;238m────────────────────────────────────────[0m
+  [1;38;5;79m❯ [0m[7mA[0m[38;5;245msk k-brain anything…  / commands ·[0m [0m
+  [48;5;238m [0m[1;38;5;252;48;5;238mNormal[0m[48;5;238m [0m  [38;5;245m↑ 23% · [0m[38;5;252mkimi-k3-fast[0m[38;5;245m · [0m[1;38;5;79m✦ off[0m
