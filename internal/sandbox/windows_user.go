@@ -73,11 +73,12 @@ const (
 	startfUseShowWindow = 0x1
 	seGroupLogonID      = 0xC0000000
 	disableMaxPrivilege = 0x1
-	// winstaSandboxAccess is WINSTA_ALL_ACCESS, what the logon session has
-	// and what a process needs to connect to a desktop of the station; the
-	// job's UI restrictions keep the command from the clipboard, global
-	// atoms, new desktops and logging off.
-	winstaSandboxAccess   = 0x37f
+	// winstaSandboxAccess is WINSTA_ALL_ACCESS with READ_CONTROL, what the
+	// logon session has short of changing the station's security, and what
+	// a process needs to connect to a desktop of the station; the job's UI
+	// restrictions keep the command from the clipboard, global atoms, new
+	// desktops and logging off.
+	winstaSandboxAccess   = 0x2037f
 	desktopGenericAll     = 0x10000000
 	th32csSnapThread      = 0x4
 	tokenAdjustDefaultDCL = windows.TOKEN_ADJUST_DEFAULT
