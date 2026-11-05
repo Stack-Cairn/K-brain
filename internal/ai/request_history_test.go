@@ -181,3 +181,42 @@ func TestRequestHistoryResolvesHashNamespaceCollisions(t *testing.T) {
 		})
 	}
 }
+
+func TestRequestHistoryRendersCancelledReplies(t *testing.T) {
+	call := ToolCall{ID: "call", Type: "function"}
+	call.Function.Name = "lookup"
+	call.Function.Arguments = "{}"
+	messages := []Message{
+		{Role: "user", Content: "first"},
+		{Role: "assistant", Content: "partial", Reasoning: "seen", StopReason: StopReasonCancelled},
+		{Role: "user", Content: "second"},
+		{Role: "assistant", Reasoning: "only thinking", StopReason: StopReasonCancelled},
+		{Role: "user", Content: "third"},
+		{Role: "assistant", ToolCalls: []ToolCall{call}, StopReason: StopReasonToolUse},
+		{Role: "tool", ToolCallID: "call", Content: "Error: cancelled", StopReason: StopReasonCancelled},
+		{Role: "user", Content: "fourth"},
+	}
+	before, _ := json.Marshal(messages)
+	for _, api := range []string{APIChatCompletions, APIResponses, APIMessages, APIGemini} {
+		out := prepareRequestHistory(messages, api, "https://e.test", "m")
+		if len(out) != len(messages)-1 {
+			t.Fatalf("%s: thinking-only cancelled reply was sent: %+v", api, out)
+		}
+		if out[1].Content != "partial"+cancelledReplyNote || out[1].Reasoning != "" || out[1].StopReason != "" {
+			t.Fatalf("%s: cancelled reply = %+v", api, out[1])
+		}
+		if out[2].Content != "second" || out[3].Content != "third" {
+			t.Fatalf("%s: order changed: %+v", api, out)
+		}
+		if out[5].Role != "tool" || out[5].Content != "Error: cancelled" {
+			t.Fatalf("%s: cancelled tool result changed: %+v", api, out[5])
+		}
+	}
+	if after, _ := json.Marshal(messages); string(before) != string(after) {
+		t.Fatal("stored history mutated")
+	}
+	plain := []Message{{Role: "user", Content: "q"}, {Role: "assistant", Content: "a"}}
+	if got := cancelledReplies(plain); &got[0] != &plain[0] {
+		t.Fatal("history without cancelled replies must not be copied")
+	}
+}
