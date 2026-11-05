@@ -37,6 +37,7 @@ type healthRunSandboxV1 struct {
 	Platform       string   `json:"platform"`
 	NetworkControl bool     `json:"network_control"`
 	ReadMasking    bool     `json:"read_masking"`
+	PathProtection bool     `json:"path_protection"`
 	Modes          []string `json:"modes"`
 	Reason         string   `json:"reason,omitempty"`
 }

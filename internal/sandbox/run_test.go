@@ -185,6 +185,9 @@ func outsideTempDir(t *testing.T) string {
 	if err != nil {
 		t.Skip("no user cache directory")
 	}
+	if err := os.MkdirAll(cache, 0o755); err != nil {
+		t.Skipf("cannot create the user cache directory: %v", err)
+	}
 	dir, err := os.MkdirTemp(cache, "kbrain-sandbox-test-")
 	if err != nil {
 		t.Skipf("cannot create a directory outside the temporary roots: %v", err)
@@ -206,22 +209,26 @@ func confinedRun(t *testing.T, p *Policy, script string) (string, error) {
 	return string(out), err
 }
 
-func liveSandbox(t *testing.T) {
+func liveSandbox(t *testing.T) Capability {
 	t.Helper()
 	probeOnce = sync.Once{}
 	t.Cleanup(func() { probeOnce = sync.Once{} })
-	if c := Probe(); !c.Supported || !c.NetworkControl {
+	c := Probe()
+	if !c.Supported || !c.NetworkControl {
 		t.Skipf("platform sandbox unavailable: %s", c.Reason)
 	}
+	t.Logf("sandbox mechanism %s: read masking %v, path protection %v", c.Mechanism, c.ReadMasking, c.PathProtection)
+	return c
 }
 
 func TestLiveSandboxConfinesWrites(t *testing.T) {
-	liveSandbox(t)
+	c := liveSandbox(t)
 	root := t.TempDir()
 	// Temporary directories are writable by design; probe a directory under the
-	// user cache instead.
+	// user cache instead. The mask lives there too: a temporary directory that
+	// holds a mask is not granted where masks cannot be hidden.
 	outside := outsideTempDir(t)
-	masked := t.TempDir()
+	masked := outsideTempDir(t)
 	if err := os.WriteFile(filepath.Join(masked, "key"), []byte("secret"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -244,16 +251,24 @@ func TestLiveSandboxConfinesWrites(t *testing.T) {
 	if _, statErr := os.Stat(filepath.Join(outside, "leak.txt")); statErr == nil {
 		t.Fatal("file written outside the workspace")
 	}
-	if out, err := confinedRun(t, p, `cat `+filepath.Join(masked, "key")); err == nil || strings.Contains(out, "secret") {
-		t.Fatalf("masked file readable: %q %v", out, err)
+	_, _ = confinedRun(t, p, `echo evil > `+filepath.Join(masked, "key"))
+	if data, err := os.ReadFile(filepath.Join(masked, "key")); err != nil || string(data) != "secret" {
+		t.Fatalf("masked file changed: %q %v", data, err)
 	}
-	if out, err := confinedRun(t, p, `echo evil > .git/hooks/pre-commit`); err == nil {
-		t.Fatalf("protected hook written: %q", out)
+	if c.ReadMasking {
+		if out, err := confinedRun(t, p, `cat `+filepath.Join(masked, "key")); err == nil || strings.Contains(out, "secret") {
+			t.Fatalf("masked file readable: %q %v", out, err)
+		}
+	}
+	if c.PathProtection {
+		if out, err := confinedRun(t, p, `echo evil > .git/hooks/pre-commit`); err == nil {
+			t.Fatalf("protected hook written: %q", out)
+		}
 	}
 }
 
 func TestLiveSandboxRootInsideMask(t *testing.T) {
-	liveSandbox(t)
+	c := liveSandbox(t)
 	masked := t.TempDir()
 	root := filepath.Join(masked, "default-project")
 	if err := os.MkdirAll(root, 0o755); err != nil {
@@ -269,8 +284,14 @@ func TestLiveSandboxRootInsideMask(t *testing.T) {
 	if out, err := confinedRun(t, p, `echo ok > f && cat f`); err != nil || strings.TrimSpace(out) != "ok" {
 		t.Fatalf("root inside mask unusable: %q %v", out, err)
 	}
-	if out, err := confinedRun(t, p, `cat ../config.json`); err == nil || strings.Contains(out, "apikey") {
-		t.Fatalf("mask around the root readable: %q %v", out, err)
+	_, _ = confinedRun(t, p, `echo stolen > ../config.json`)
+	if data, err := os.ReadFile(filepath.Join(masked, "config.json")); err != nil || string(data) != "apikey" {
+		t.Fatalf("mask around the root changed: %q %v", data, err)
+	}
+	if c.ReadMasking {
+		if out, err := confinedRun(t, p, `cat ../config.json`); err == nil || strings.Contains(out, "apikey") {
+			t.Fatalf("mask around the root readable: %q %v", out, err)
+		}
 	}
 }
 

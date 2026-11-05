@@ -108,7 +108,7 @@
       "name": "run_sandbox",
       "type": "object",
       "compare": "object",
-      "value": {"supported": "boolean", "version": "kbrain.sandbox.v1", "mechanism": "string", "platform": "string", "network_control": "boolean", "read_masking": "boolean", "modes": "string[]"},
+      "value": {"supported": "boolean", "version": "kbrain.sandbox.v1", "mechanism": "string", "platform": "string", "network_control": "boolean", "read_masking": "boolean", "path_protection": "boolean", "modes": "string[]"},
       "firstRelease": "v0.107.16",
       "evidenceCommit": "1971bcd",
       "missing": "Disable sandbox modes and never send options.sandbox; the backend would ignore it and run commands unconfined."

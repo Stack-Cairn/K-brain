@@ -75,7 +75,7 @@ func (p *Policy) Wrap(ctx context.Context, cmd *exec.Cmd) (*exec.Cmd, error) {
 		return nil, err
 	}
 	if runtime.GOOS == "linux" {
-		return p.wrapBubblewrap(ctx, cmd, root)
+		return p.wrapLinux(ctx, cmd, root)
 	}
 	if runtime.GOOS == "darwin" {
 		return p.wrapSandboxExec(ctx, cmd, root)
