@@ -206,6 +206,27 @@ type ToolRunInfo struct {
 	// DurationMs is the tool's own wall-clock time in milliseconds, rounded
 	// up, without time spent waiting for permission.
 	DurationMs int64 `json:"duration_ms,omitempty"`
+	// SandboxDenial explains a shell command the OS sandbox most likely
+	// stopped. Only in tool.result events; history keeps the same explanation
+	// in the output text alone.
+	SandboxDenial *SandboxDenial `json:"sandbox_denial,omitempty"`
+}
+
+// SandboxDenial is a hint recognized from a failed command's output. Nothing
+// is granted from it: a client may offer the user to add SuggestedRoot as a
+// writable workspace root for a later run.
+type SandboxDenial struct {
+	// Kind is "write" (outside the writable roots), "protected" (git
+	// configuration, hooks or agent settings inside the workspace), "masked"
+	// (a hidden credential directory) or "network" (network access is off).
+	Kind string `json:"kind"`
+	// Path is the refused path, absolute and with symlinks resolved; absent for
+	// "network".
+	Path string `json:"path,omitempty"`
+	// SuggestedRoot is set only for "write" when the command itself named the
+	// path, and never for a directory holding the home directory, a credential
+	// directory or a system top-level directory.
+	SuggestedRoot string `json:"suggested_root,omitempty"`
 }
 
 type ToolResult struct {

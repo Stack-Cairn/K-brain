@@ -24,7 +24,7 @@ func TestToolRunInfoAndPreviewOmittedWhenEmpty(t *testing.T) {
 		PermissionRequest{PermissionID: "p", Tool: "bash", Command: "ls"},
 	} {
 		got := marshalString(t, v)
-		for _, field := range []string{"exit_code", "timed_out", "duration_ms", "preview"} {
+		for _, field := range []string{"exit_code", "timed_out", "duration_ms", "preview", "sandbox_denial"} {
 			if strings.Contains(got, field) {
 				t.Errorf("%T has %s when empty: %s", v, field, got)
 			}
@@ -40,6 +40,13 @@ func TestToolRunInfoJSON(t *testing.T) {
 	got = marshalString(t, ToolResult{ID: "c1", Output: "", Failed: true, ToolRunInfo: ToolRunInfo{TimedOut: true, DurationMs: 3}})
 	if got != `{"id":"c1","output":"","failed":true,"timed_out":true,"duration_ms":3}` {
 		t.Fatalf("timed out result: %s", got)
+	}
+	got = marshalString(t, ToolResult{ID: "c1", Output: "x", ToolRunInfo: ToolRunInfo{ExitCode: new(1), SandboxDenial: &SandboxDenial{Kind: "write", Path: "/w/x", SuggestedRoot: "/w"}}})
+	if got != `{"id":"c1","output":"x","exit_code":1,"sandbox_denial":{"kind":"write","path":"/w/x","suggested_root":"/w"}}` {
+		t.Fatalf("sandbox denial: %s", got)
+	}
+	if got = marshalString(t, SandboxDenial{Kind: "network"}); got != `{"kind":"network"}` {
+		t.Fatalf("network denial: %s", got)
 	}
 	var back ToolResult
 	if err := json.Unmarshal([]byte(`{"id":"c1","output":"ok","exit_code":2,"duration_ms":5}`), &back); err != nil || back.ExitCode == nil || *back.ExitCode != 2 || back.DurationMs != 5 {

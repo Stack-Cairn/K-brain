@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Stack-Cairn/K-brain/internal/ai"
+	"github.com/Stack-Cairn/K-brain/internal/sandbox"
 )
 
 type Result struct {
@@ -25,6 +26,9 @@ type Result struct {
 	// the user's permission; zero when the tool did not run. Display only: the
 	// model sees Text alone.
 	Duration time.Duration
+	// SandboxDenial is set when the OS sandbox most likely caused a shell
+	// command to fail; the same explanation is appended to Text.
+	SandboxDenial *sandbox.Denial
 }
 
 type attachmentKey struct{}

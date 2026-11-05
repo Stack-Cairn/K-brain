@@ -2,8 +2,12 @@ package tools
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/Stack-Cairn/K-brain/internal/sandbox"
+	"github.com/Stack-Cairn/K-brain/internal/tools/bashrun"
 )
 
 // callMeta collects what a running tool reports about itself beside its text:
@@ -14,6 +18,7 @@ type callMeta struct {
 	exitCode *int
 	timedOut bool
 	gateWait time.Duration
+	denial   *sandbox.Denial
 }
 
 type callMetaKey struct{}
@@ -73,6 +78,26 @@ func reportProcess(ctx context.Context, snap liveagentProcessSnapshot) {
 	}
 }
 
+// explainSandboxDenial recognizes a command the OS sandbox most likely
+// stopped, records the denial for the tool result and returns text with the
+// hint line appended for the model; text is unchanged when the sandbox is off
+// or does not explain the failure.
+func explainSandboxDenial(ctx context.Context, text, command, dir string, res bashrun.Result) string {
+	d := sandbox.FromContext(ctx).ExplainFailure(command, dir, res.Output, res.ExitCode)
+	if d == nil {
+		return text
+	}
+	if m := callMetaFrom(ctx); m != nil {
+		m.mu.Lock()
+		m.denial = d
+		m.mu.Unlock()
+	}
+	if text != "" && !strings.HasSuffix(text, "\n") {
+		text += "\n"
+	}
+	return text + d.Hint()
+}
+
 func (m *callMeta) addGateWait(d time.Duration) {
 	if m == nil || d <= 0 {
 		return
@@ -89,6 +114,7 @@ func (m *callMeta) apply(r *Result, start time.Time) {
 	defer m.mu.Unlock()
 	r.ExitCode = m.exitCode
 	r.TimedOut = m.timedOut
+	r.SandboxDenial = m.denial
 	r.Duration = max(time.Since(start)-m.gateWait, time.Nanosecond)
 }
 

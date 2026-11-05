@@ -130,6 +130,7 @@ CLI 可用 `-config FILE -session-dir DIR` 指定配置与存储目录；省略�
 - `timed_out`：命令因超时被杀死时为 `true`。
 - `duration_ms`：工具自身的耗时（毫秒，向上取整），不含等待用户审批的时间；工具没有运行时不带。
 - `trajectory.child.tool_end` 同样带这三个可选字段。
+- `sandbox_denial`：只出现在 `tool.result` 事件里（会话历史不带）。`bash`/`Bash` 命令在 OS 沙箱中失败、且输出能看出是沙箱拦截时给出 `{kind,path,suggested_root}`：`kind` 为 `write`（写工作区可写根之外）、`protected`（工作区内受保护的 git 配置、hooks 或代理设置）、`masked`（被隐藏的凭据目录）或 `network`（本次运行未开网络）；`path` 是被拒绝的路径（绝对路径、已解析符号链接，`network` 不带）；`suggested_root` 只在 `write` 且命令文本本身写出了该路径时给出，是客户端可以提议用户加入可写根的目录，绝不会是包含家目录、凭据目录的目录或系统顶层目录。后端不据此授予任何权限。同一说明以一行 `[sandbox] ...` 追加在模型看到的工具结果文本末尾。
 
 `permission.requested` 对 `write`/`edit`/`Write`/`Edit` 带可选的 `preview:{path,diff,new_file,truncated}`，让客户端在用户决定前显示将要写入的改动。`diff` 与编辑结果里的 diff 块格式相同（每行 `<行号> <标记> <文本>`，标记为空格、`-` 或 `+`），最多 200 行、32 KiB；文件或新内容超过 2 MiB 时只给 `truncated:true` 不给 `diff`；二进制文件、注定失败的编辑（找不到 `old_string`）和其他工具不带 `preview`。`redact_tool_content=true` 的轨迹去掉 `preview`。旧客户端忽略这些字段。
 

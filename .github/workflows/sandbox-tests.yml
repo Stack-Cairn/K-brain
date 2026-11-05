@@ -1,0 +1,109 @@
+name: Sandbox tests
+
+on:
+  pull_request:
+    paths:
+      - 'internal/sandbox/**'
+      - 'internal/backend/run_sandbox*.go'
+      - 'internal/tools/bashrun/**'
+      - 'internal/tools/result_meta.go'
+      - 'internal/tools/sandbox_denial_test.go'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/sandbox-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'internal/sandbox/**'
+      - 'internal/backend/run_sandbox*.go'
+      - 'internal/tools/bashrun/**'
+      - 'internal/tools/result_meta.go'
+      - 'internal/tools/sandbox_denial_test.go'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/sandbox-tests.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  sandbox:
+    name: Sandbox (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux-amd64
+          - os: ubuntu-24.04-arm
+            target: linux-arm64
+          - os: macos-15
+            target: darwin-arm64
+          - os: windows-latest
+            target: windows-amd64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Vet for every sandbox target
+        shell: bash
+        run: |
+          go vet ./internal/sandbox/...
+          GOOS=linux GOARCH=amd64 go vet ./internal/sandbox/...
+          GOOS=linux GOARCH=arm64 go vet ./internal/sandbox/...
+          GOOS=darwin go vet ./internal/sandbox/...
+          GOOS=windows go build ./...
+      - name: Linux kernel and Landlock
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          uname -a
+          cat /sys/kernel/security/lsm || true
+          command -v bwrap || echo "bwrap is not installed"
+      # Without a usable bubblewrap the probe falls back to Landlock, so the
+      # generic live tests exercise that path too. KBRAIN_REQUIRE_LANDLOCK turns
+      # a skipped Landlock test into a failure.
+      - name: Linux tests on the Landlock fallback
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          KBRAIN_REQUIRE_LANDLOCK: '1'
+          KBRAIN_EXPECT_SANDBOX_MECHANISM: landlock
+        run: |
+          # Hide a preinstalled bubblewrap so the fallback is what runs.
+          hidden=$(which -a bwrap || true)
+          for b in $hidden; do sudo mv "$b" "$b.hidden"; done
+          set +e
+          go test ./internal/sandbox/... -count=1 -v
+          status=$?
+          go test ./internal/tools/ -run '^TestShellToolsExplainSandboxDenials$' -count=1 -v || status=1
+          for b in $hidden; do sudo mv "$b.hidden" "$b"; done
+          exit $status
+      - name: Linux tests with bubblewrap
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          KBRAIN_REQUIRE_LANDLOCK: '1'
+          KBRAIN_EXPECT_SANDBOX_MECHANISM: bubblewrap
+        run: |
+          command -v bwrap >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq bubblewrap; }
+          # Ubuntu restricts unprivileged user namespaces through AppArmor.
+          if sysctl kernel.apparmor_restrict_unprivileged_userns >/dev/null 2>&1; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+          go test ./internal/sandbox/... ./internal/tools/bashrun/... -count=1 -v
+          go test ./internal/tools/ -run '^TestShellToolsExplainSandboxDenials$' -count=1 -v
+          go test ./internal/backend/ -run 'Sandbox|Health' -count=1
+      - name: macOS tests
+        if: runner.os == 'macOS'
+        run: |
+          go test ./internal/sandbox/... ./internal/tools/bashrun/... -count=1 -v
+          go test ./internal/tools/ -run '^TestShellToolsExplainSandboxDenials$' -count=1 -v
+          go test ./internal/backend/ -run 'Sandbox|Health' -count=1
+      - name: Windows tests
+        if: runner.os == 'Windows'
+        run: go test ./internal/sandbox/... -count=1 -v
