@@ -915,7 +915,7 @@ func grantWindowStation(station, accountSID string) error {
 // session that the secondary logon service added to stage two's desktop (the
 // user's), so that the command, which shares the logon session, cannot open
 // it and send input to the user's windows.
-func withdrawDesktopGrant(logon, userSID string) error {
+func withdrawDesktopGrant(temp, logon, userSID string) error {
 	h, _, callErr := procGetThreadDesktop.Call(uintptr(windows.GetCurrentThreadId()))
 	if h == 0 {
 		return fmt.Errorf("stage two's desktop: %w", callErr)
@@ -933,6 +933,17 @@ func withdrawDesktopGrant(logon, userSID string) error {
 	d, err := readObjectDACL(windows.Handle(desk), windows.SE_WINDOW_OBJECT)
 	if err != nil {
 		return err
+	}
+	if sd, err := windows.GetSecurityInfo(windows.Handle(desk), windows.SE_WINDOW_OBJECT, windows.DACL_SECURITY_INFORMATION); err == nil {
+		stageTrace(temp, "2", "desktop %s logon %s user %s: %s", name, logon, userSID, sd.String())
+	}
+	if ws, _, _ := procGetProcessWindowStation.Call(); ws != 0 {
+		if sd, err := windows.GetSecurityInfo(windows.Handle(ws), windows.SE_WINDOW_OBJECT, windows.DACL_SECURITY_INFORMATION); err == nil {
+			stageTrace(temp, "2", "window station: %s", sd.String())
+		}
+	}
+	if os.Getenv("K_BRAIN_SANDBOX_WITHDRAW") == "" {
+		return nil
 	}
 	if d.null || !d.remove(func(a rawACE) bool { sid := a.sid(); return sid == logon || sid == userSID }) {
 		return nil
@@ -985,7 +996,7 @@ func userStage() (uint32, error) {
 		return 0, err
 	}
 	if spec.Desktop != "" {
-		if err := withdrawDesktopGrant(logon, userSID); err != nil {
+		if err := withdrawDesktopGrant(temp, logon, userSID); err != nil {
 			return 0, err
 		}
 	}
