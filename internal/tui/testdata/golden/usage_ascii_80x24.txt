@@ -1,0 +1,24 @@
++- Usage ----------------------------------------------------------------------+
+| Context   ######-------------- 28%  37.5k / 131.1k                           |
+| Session   in 57.3k (36.0k cached) - out 2.9k                                 |
+| Cache     36.0k read - 62% of input                                          |
+| Cost      not priced for this route                                          |
+| Last call in 24.1k (20.0k cached) - out 410                                  |
+|                                                                              |
+| By model                                                                     |
+|   kimi-k3-fast @ inference                                                   |
+|     in 48.2k (36.0k cached) - out 2.1k                                       |
+|   subagent glm-5.2-fast @ inference                                          |
+|     in 9.1k - out 730                                                        |
+|                                                                              |
+| Esc close                                                                    |
++------------------------------------------------------------------------------+
+
+
+
+
+
+
+--------------------------------------------------------------------------------
+  > Ask k-brain anything...  / commands - Shift+Tab mode - Ctrl+P menu
+   Always allow                       28% ctx - 60.2k tok - kimi-k3-fast - * off

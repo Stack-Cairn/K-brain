@@ -1,0 +1,24 @@
+[90m+[0m[90m-[0m [1mUsage[0m [90m------------------------------[0m[90m+[0m
+[90m|[0m [90mContext   [0m[92m#[0m[90m---[0m 28%  37.5k / 131.1k   [90m|[0m
+[90m|[0m [90mSession[0m                              [90m|[0m
+[90m|[0m   in 57.3k (36.0k cached) - out 2.9k [90m|[0m
+[90m|[0m [90mCache     [0m36.0k read - 62% of input  [90m|[0m
+[90m|[0m [90mCost      [0m[90mnot priced for this route[0m  [90m|[0m
+[90m|[0m [90mLast call[0m                            [90m|[0m
+[90m|[0m   in 24.1k (20.0k cached) - out 410  [90m|[0m
+[90m|[0m                                      [90m|[0m
+[90m|[0m [90mBy model[0m                             [90m|[0m
+[90m|[0m   [37mkimi-k3-fast @ inference[0m           [90m|[0m
+[90m|[0m     in 48.2k - out 2.1k              [90m|[0m
+[90m|[0m   [37msubagent glm-5.2-fast @ inference[0m  [90m|[0m
+[90m|[0m     in 9.1k - out 730                [90m|[0m
+[90m|[0m                                      [90m|[0m
+[90m|[0m [37mEsc close[0m                            [90m|[0m
+[90m+[0m[90m--------------------------------------[0m[90m+[0m
+
+
+
+
+[90m----------------------------------------[0m
+  [1;96m> [0m[7mA[0m[90msk k-brain anything...  / commands [0m
+   [90m28% ctx - 60.2k tok - [0m[37mkimi-k3-fast[0m[90m...[0m[1;96m[0m

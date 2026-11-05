@@ -28,7 +28,7 @@
 [1;38;2;47;95;168m◌[0m [1mRead[0m  [38;2;58;63;70mcmd/kn/status.go[0m                                                                                                [0m
 [38;2;104;110;118m◇ Grep  asJSON[0m                                                                                                    [38;2;104;110;118mqueued[0m
 
-  [38;2;47;95;168m⠋[0m [38;2;47;95;168mReading cmd/kn/status.go  3.0s[0m                                                               [38;2;104;110;118m0:12 · Esc to interrupt[0m
+  [38;2;47;95;168m⠋[0m [38;2;47;95;168mReading cmd/kn/status.go  3.0s[0m                                                         [38;2;104;110;118m0:12 · ⇣48 · Esc to interrupt[0m
 
 
 

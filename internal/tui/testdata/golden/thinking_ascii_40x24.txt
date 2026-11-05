@@ -18,7 +18,7 @@
   That needs the diff base.
   Which CI already has
 
-  | thinking...         Esc to interrupt
+  | Thinking...         Esc to interrupt
 ----------------------------------------
   > busy - type to queue (sent when the
    Normal           kimi-k3-fast - * off

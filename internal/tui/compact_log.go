@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Stack-Cairn/K-brain/internal/agent"
 	"github.com/Stack-Cairn/K-brain/internal/config"
@@ -45,10 +46,24 @@ func (m *model) compactResultLine(msg compactMsg) string {
 	if u := msg.info.Usage; u.PromptTokens > 0 || u.CompletionTokens > 0 {
 		b.WriteString(" (" + fmtUsage(u) + ")")
 	}
+	b.WriteString(m.compactDelta(msg))
 	if msg.preserved {
 		b.WriteString(" · raw history preserved")
 	}
 	return dimStyle.Render(b.String())
+}
+
+// compactDelta is the " · 48.8k → 27.1k tok · 21s" part of a compaction's
+// result: the context before and after, and how long it took.
+func (m *model) compactDelta(msg compactMsg) string {
+	var s string
+	if len(msg.before) > 0 && len(msg.after) > 0 {
+		s = " · " + fmtTok(agent.EstimateTokens(msg.before)) + " → " + fmtTok(agent.EstimateTokens(msg.after)) + " tok"
+	}
+	if m.st != nil && m.st.compactTook >= time.Second {
+		s += " · " + fmtSpan(m.st.compactTook)
+	}
+	return chromeGlyphs(s)
 }
 
 func (m *model) compactCost(info agent.CompactInfo) (float64, bool) {

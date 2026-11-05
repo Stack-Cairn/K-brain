@@ -40,6 +40,9 @@ func (m *model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.surfaceOpen() {
 		return m.surfaceKey(msg)
 	}
+	if r, cmd, ok := m.usageKey(msg); ok {
+		return r, cmd
+	}
 
 	if r, cmd, ok := m.transcriptKey(msg); ok {
 		return r, cmd

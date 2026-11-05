@@ -118,9 +118,11 @@ func (m *model) onTurnDone(msg turnDoneMsg) (tea.Model, tea.Cmd) {
 
 	canceled := errors.Is(msg.err, context.Canceled)
 	if msg.err != nil && !canceled {
-		m.append(errStyle.Render("error: " + msg.err.Error()))
+		m.appendTurnError(msg.err)
 	} else if canceled {
 		m.append(dimStyle.Render("(interrupted — any running tool calls will be recorded as interrupted; k-brain can retry them next turn)"))
+	} else {
+		m.appendTurnSummary()
 	}
 	m.persist()
 	m.maybeTitle()

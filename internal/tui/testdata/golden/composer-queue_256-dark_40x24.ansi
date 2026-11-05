@@ -14,7 +14,7 @@
                                         
   Then run the package tests.           
 
-  [38;5;80m⠋[0m [38;5;80mthinking…[0m    [38;5;245m0:07 · Esc to interrupt[0m
+  [38;5;80m⠋[0m [38;5;80mWriting…[0m                  [38;5;245m0:07 · Esc[0m
 [38;5;245mqueued (2) · Enter send now[0m
 [1;38;5;79m ❯ [0m[38;5;245m1 [0mthen run the linter
 [1;38;5;79;48;5;236m → 2 and update the changelog with a li…[0m

@@ -1,0 +1,24 @@
+[1m▌[0m[1m❯[0m run the tests                                                                [0m
+                                                                                
+[1m▌[0m [1mAuthentication failed · 401[0m                                                   [0m
+[1m▌[0m Incorrect API key provided: sk-…abcd.                                         [0m
+[1m▌[0m [2mCheck the provider's API key in config.json, then send again.[0m                 [0m
+                                                                                
+[1m▌[0m [1mRate limited · 429[0m                                                            [0m
+[1m▌[0m Rate limit reached for requests per minute.                                   [0m
+[1m▌[0m [2mWait a moment and send again, or switch with /model.[0m                          [0m
+                                                                                
+[1m▌[0m [1mContext window full · 400[0m                                                     [0m
+[1m▌[0m This model's maximum context length is 131072 tokens.                         [0m
+[1m▌[0m [2mRun /compact or /new-context, then send again.[0m                                [0m
+                                                                                
+[1m▌[0m [1mNetwork error[0m                                                                 [0m
+[1m▌[0m post https://api.example.com/v1/chat/completions: dial tcp: connection refused[0m
+[1m▌[0m [2mCheck the connection and the provider's base URL, then send again.[0m            [0m
+                                                                                
+[1m▌[0m [1mProvider error · 503[0m                                                          [0m
+[1m▌[0m upstream connect error                                                        [0m
+[1m▌[0m [2mSend again in a moment, or switch with /model.[0m                                [0m
+────────────────────────────────────────────────────────────────────────────────
+  [1m❯ [0m[7mA[0m[2msk k-brain anything…  / commands · Shift+Tab mode · Ctrl+P menu[0m            [0m
+  [1;7m[Always allow][0m                                            kimi-k3-fast[2m · [0m[1m✦ off[0m

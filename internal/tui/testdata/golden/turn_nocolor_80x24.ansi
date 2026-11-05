@@ -18,7 +18,7 @@
 [1m◌[0m [1mRead[0m  cmd/kn/status.go                                                        [0m
 [2m◇ Grep  asJSON[0m                                                            [2mqueued[0m
 
-  ⠋ Reading cmd/kn/status.go  3.0s                       [2m0:12 · Esc to interrupt[0m
+  ⠋ Reading cmd/kn/status.go  3.0s                 [2m0:12 · ⇣48 · Esc to interrupt[0m
 ────────────────────────────────────────────────────────────────────────────────
   [1m❯ [0m[7mb[0m[2musy — type to queue (sent when the turn ends)[0m                              [0m
   [1;7m[Always allow][0m                                            kimi-k3-fast[2m · [0m[1m✦ off[0m

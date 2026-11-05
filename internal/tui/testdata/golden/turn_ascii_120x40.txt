@@ -29,7 +29,7 @@ x Bash  go vet ./...                                                            
 ~ Read  cmd/kn/status.go
 o Grep  asJSON                                                                                                    queued
 
-  | Reading cmd/kn/status.go  3.0s                                                               0:12 - Esc to interrupt
+  | Reading cmd/kn/status.go  3.0s                                                         0:12 - v48 - Esc to interrupt
 
 
 

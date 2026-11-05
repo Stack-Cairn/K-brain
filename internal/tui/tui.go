@@ -277,6 +277,7 @@ type model struct {
 	cmp *composerState   // composer: undo, kill ring, chips, stash, history search, queue editing
 	app *appSurfaceState // app surfaces: cheatsheet, settings, extensions, memory (picker_view.go)
 	tv  *toolViewState   // tool views and the plan pane (toolview.go, todo_pane.go)
+	st  *statusState     // status row, footer, notifications (status_state.go)
 }
 
 type initialPromptMsg struct{}
@@ -416,7 +417,7 @@ func Run(cfg *config.Config, modelName, provName, sysPrompt, resumeID string, ca
 	tmuxEnableExtendedKeys()
 	m.startupReport()
 
-	opts := []tea.ProgramOption{tea.WithAltScreen()}
+	opts := []tea.ProgramOption{tea.WithAltScreen(), tea.WithReportFocus()}
 
 	fmt.Fprint(os.Stdout, "\x1b[9999;1H")
 
@@ -439,6 +440,7 @@ func Run(cfg *config.Config, modelName, provName, sysPrompt, resumeID string, ca
 	p := tea.NewProgram(m, opts...)
 	m.prog = p
 	m.wireProgram()
+	m.startStatus(os.Stdout)
 
 	m.irunner = newInteractiveRunner(p)
 	tools.InteractiveBash = m.irunner
@@ -448,6 +450,7 @@ func Run(cfg *config.Config, modelName, provName, sysPrompt, resumeID string, ca
 
 	tuiRunning = true
 	_, err = p.Run()
+	m.stopStatus()
 	m.endSession("exit")
 	m.cancelGoalFromContext()
 	tuiRunning = false
@@ -882,12 +885,16 @@ func cwd() string {
 	return "?"
 }
 
-func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *model) Update(msg tea.Msg) (_ tea.Model, statusCmd tea.Cmd) {
 	defer m.layout()
+	defer func() { statusCmd = m.statusAfter(statusCmd) }()
 
 	if vp, ok := msg.(viewProbe); ok {
 		vp.fn(m)
 		return m, nil
+	}
+	if c, ok := m.statusBefore(msg); ok {
+		return m, c
 	}
 	if r, cmd, ok := m.surfaceMsg(msg); ok {
 		return r, cmd

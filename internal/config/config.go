@@ -184,6 +184,32 @@ type Config struct {
 	Hooks      map[string][]Hook `json:"hooks,omitempty"`
 
 	RulesCompat RulesCompatConfig `json:"rulesCompat,omitzero"`
+
+	// Notifications and StatusLine are terminal UI settings.
+	Notifications NotificationsConfig `json:"notifications,omitzero"`
+	StatusLine    StatusLineConfig    `json:"statusLine,omitzero"`
+}
+
+// NotificationsConfig controls desktop notifications and the window title.
+//
+//	desktop: "auto" (default: notify while the terminal reports it is
+//	         unfocused, once it has proved it reports focus), "on", "off",
+//	         or a fixed route: "osc9", "osc777", "bel"
+//	title:   set the terminal title to the session (default true)
+type NotificationsConfig struct {
+	Desktop string `json:"desktop,omitempty"`
+	Title   *bool  `json:"title,omitempty"`
+}
+
+// StatusLineConfig runs a command whose first output line is shown in the
+// terminal UI's footer. The command gets the session as JSON on stdin. Off
+// while Command is empty.
+type StatusLineConfig struct {
+	Command string `json:"command,omitempty"`
+	// IntervalMs is the shortest gap between runs (default 2000, at least 500).
+	IntervalMs int `json:"intervalMs,omitempty"`
+	// TimeoutMs bounds one run (default 1000).
+	TimeoutMs int `json:"timeoutMs,omitempty"`
 }
 
 // RulesCompatConfig toggles discovery of instruction files written for other agent

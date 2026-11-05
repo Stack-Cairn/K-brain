@@ -116,6 +116,7 @@ var chromeSectionList = []chromeSection{
 	// The plan pane above the composer (todo_pane.go).
 	{"todo", (*model).todoPaneRows},
 	{"transcriptBar", (*model).transcriptBarRows},
+	{"usage", (*model).usageCardRows},
 }
 
 func (m *model) chromeSections() []chromeSection { return chromeSectionList }
@@ -334,6 +335,7 @@ func (m *model) viewBody() string {
 		b.WriteString("\n" + m.askView() + "\n")
 	}
 	b.WriteString(m.todoPaneSection())
+	b.WriteString(m.usageCardBlock())
 	if m.busy {
 		b.WriteString("\n" + m.busyRow() + "\n")
 	}

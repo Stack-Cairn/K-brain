@@ -29,7 +29,7 @@
 [1;36m~[0m [1mRead[0m  [37mcmd/kn/status.go[0m                                                                                                [0m
 [90mo Grep  asJSON[0m                                                                                                    [90mqueued[0m
 
-  [36m|[0m [36mReading cmd/kn/status.go  3.0s[0m                                                               [90m0:12 - Esc to interrupt[0m
+  [36m|[0m [36mReading cmd/kn/status.go  3.0s[0m                                                         [90m0:12 - v48 - Esc to interrupt[0m
 
 
 

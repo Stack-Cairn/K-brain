@@ -4,9 +4,13 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+
+	schedule "github.com/Stack-Cairn/K-brain/internal/scheduler"
+	"github.com/Stack-Cairn/K-brain/internal/session"
 )
 
 // chromeIndent is the left gutter the composer and the info rows share, so the
@@ -146,12 +150,21 @@ func (m *model) statusLeft() string {
 	if m.transientNotice != "" {
 		return dimStyle.Render(ansi.Truncate(m.transientNotice, max(m.width/2, 16), "…"))
 	}
+	if line := m.statusLineText(); line != "" {
+		return dimStyle.Render(line)
+	}
 	left := m.git.render()
 	if m.goal != "" {
 		if left != "" {
 			left += "  "
 		}
 		left += dimStyle.Render("◎ " + truncLine(m.goal, 32))
+	}
+	if bg := m.backgroundCell(); bg != "" {
+		if left != "" {
+			left += "  "
+		}
+		left += bg
 	}
 	return left
 }
@@ -161,7 +174,7 @@ func (m *model) statusLeft() string {
 func (m *model) footerStats() string {
 	var parts []string
 	if m.agent != nil && m.agent.ContextLimit > 0 {
-		parts = append(parts, fmt.Sprintf(m.tr("%d%% ctx"), m.agent.ContextTokens()*100/m.agent.ContextLimit))
+		parts = append(parts, m.contextCell())
 	}
 	if cost, ok := m.sessionCost(); ok && cost > 0 {
 		parts = append(parts, fmtCost(cost))
@@ -178,6 +191,45 @@ func (m *model) footerStats() string {
 	return strings.Join(parts, " · ")
 }
 
+// contextBarCells is how many cells the footer's context bar spans.
+const contextBarCells = 6
+
+// contextCell is the footer's context readout: a bar and the percentage on
+// a wide footer, the percentage alone when the footer is tight.
+func (m *model) contextCell() string {
+	pct := contextPercent(m.agent.ContextTokens(), m.agent.ContextLimit)
+	label := fmt.Sprintf(m.tr("%d%% ctx"), pct)
+	if m.width < 90 {
+		return label
+	}
+	return contextBar(pct, contextBarCells) + " " + label
+}
+
+func contextPercent(tokens, limit int) int {
+	if limit <= 0 {
+		return 0
+	}
+	return min(max(tokens*100/limit, 0), 999)
+}
+
+// contextBar draws pct as cells filled cells: state.ok up to 70%, then
+// state.warn, then state.error from 90%. The glyphs carry the level when
+// colour is off.
+func contextBar(pct, cells int) string {
+	filled := min((pct*cells+50)/100, cells)
+	if pct > 0 && filled == 0 {
+		filled = 1
+	}
+	tone := okStyle
+	switch {
+	case pct >= 90:
+		tone = errStyle
+	case pct >= 70:
+		tone = warnStyle
+	}
+	return tone.Render(strings.Repeat(glyphs.BarFull, filled)) + chromeRuleStyle.Render(strings.Repeat(glyphs.BarEmpty, cells-filled))
+}
+
 func shortCWD() string {
 	dir := cwd()
 	if home, err := os.UserHomeDir(); err == nil && strings.HasPrefix(dir, home) {
@@ -188,4 +240,96 @@ func shortCWD() string {
 		return "…/" + strings.Join(parts[len(parts)-3:], "/")
 	}
 	return dir
+}
+
+// scheduleCache is the soonest scheduled wakeup of this session, re-read from
+// the store every few seconds rather than on every frame.
+type scheduleCache struct {
+	read  time.Time
+	sid   string
+	next  time.Time
+	count int
+}
+
+const scheduleCacheTTL = 2 * time.Second
+
+func (c *scheduleCache) refresh(m *model, now time.Time) {
+	if m.store == nil || m.sessionID == "" {
+		*c = scheduleCache{}
+		return
+	}
+	if c.sid == m.sessionID && now.Sub(c.read) < scheduleCacheTTL {
+		return
+	}
+	c.read, c.sid, c.next, c.count = now, m.sessionID, time.Time{}, 0
+	for _, sc := range m.store.Schedules(m.sessionID) {
+		next, ok := scheduleNext(sc)
+		if !ok {
+			continue
+		}
+		c.count++
+		if c.next.IsZero() || next.Before(c.next) {
+			c.next = next
+		}
+	}
+}
+
+// scheduleNext is when a schedule fires next, the same slot fireDueSchedules
+// works from; false once a one-shot has fired.
+func scheduleNext(sc session.Schedule) (time.Time, bool) {
+	s, err := schedule.Parse(sc.Schedule)
+	if err != nil {
+		return time.Time{}, false
+	}
+	if sc.LastFire.IsZero() {
+		return sc.Anchor, true
+	}
+	return s.NextAfter(sc.Anchor, sc.LastFire)
+}
+
+// fmtUntil is a short countdown: 45s, 2m, 1h05m, 3d.
+func fmtUntil(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", max(int(d.Seconds()), 0))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh%02dm", int(d.Hours()), int(d.Minutes())%60)
+	}
+	return fmt.Sprintf("%dd", int(d.Hours()/24))
+}
+
+// scheduleNextNote is the "next in 2m" tail of a /schedule list entry.
+func (m *model) scheduleNextNote(sc session.Schedule) string {
+	next, ok := scheduleNext(sc)
+	if !ok {
+		return ""
+	}
+	if d := next.Sub(m.nowFn()); d > 0 {
+		return dimStyle.Render(" · " + m.tr("next in") + " " + fmtUntil(d))
+	}
+	return dimStyle.Render(" · " + m.tr("due now"))
+}
+
+// backgroundCell is the footer's note on work that will wake the session:
+// background waits still polling and the next scheduled wakeup.
+func (m *model) backgroundCell() string {
+	var parts []string
+	if m.agent != nil {
+		if n := m.agent.Waits().Active(); n > 0 {
+			parts = append(parts, fmt.Sprintf("%d %s", n, plural(n, m.tr("wait"), m.tr("waits"))))
+		}
+	}
+	if c := m.status().sched; c.count > 0 {
+		if d := c.next.Sub(m.nowFn()); d > 0 {
+			parts = append(parts, m.tr("next in")+" "+fmtUntil(d))
+		} else {
+			parts = append(parts, m.tr("due now"))
+		}
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return dimStyle.Render(chromeGlyphs("◐ " + strings.Join(parts, " · ")))
 }

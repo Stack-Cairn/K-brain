@@ -15,7 +15,7 @@
                                         
   Then run the package tests.           
 
-  ⠋ thinking…    [2m0:07 · Esc to interrupt[0m
+  ⠋ Writing…                  [2m0:07 · Esc[0m
 [2mqueued (2) · Enter send now[0m
 [1m ❯ [0m[2m1 [0mthen run the linter
 [1;7m → 2 and update the changelog with a li…[0m

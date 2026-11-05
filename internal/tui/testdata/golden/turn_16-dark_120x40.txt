@@ -29,7 +29,7 @@
 ◌ Read  cmd/kn/status.go
 ◇ Grep  asJSON                                                                                                    queued
 
-  ⠋ Reading cmd/kn/status.go  3.0s                                                               0:12 · Esc to interrupt
+  ⠋ Reading cmd/kn/status.go  3.0s                                                         0:12 · ⇣48 · Esc to interrupt
 
 
 

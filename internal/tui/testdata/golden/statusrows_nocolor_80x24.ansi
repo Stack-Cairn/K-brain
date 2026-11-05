@@ -1,0 +1,18 @@
+# preparing
+  ⠋ Preparing…[2m  42s[0m                                      [2m0:42 · Esc to interrupt[0m
+# waiting
+  ⠋ Waiting for the model…[2m  2s[0m                           [2m0:44 · Esc to interrupt[0m
+# thinking
+  ⠋ Thinking…[2m  4s[0m                                 [2m0:46 · ⇣225 · Esc to interrupt[0m
+# writing
+  ⠋ Writing…                                     [2m0:42 · ⇣3.1k · Esc to interrupt[0m
+# tool
+  ⠋ Running go test ./internal/tui/...  3.2s             [2m0:45 · Esc to interrupt[0m
+# retrying
+  [1m![0m [1mRetrying in 4s (3/8) · overloaded 529[0m                [2m0:42 · Esc to interrupt[0m
+# compacting
+  ⠋ Compacting context…[2m  9s[0m                              [2m0:51 · Esc to interrupt[0m
+# approval
+  [1m◇[0m [1mWaiting for your approval[0m                                               [2m0:42[0m
+# interrupt
+  ⠋ Preparing…[2m  42s[0m                                [2m0:42 · Esc again to interrupt[0m

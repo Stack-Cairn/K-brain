@@ -1,0 +1,24 @@
+[1;38;2;185;75;77m▌[0m [38;2;58;63;70mminute.[0m                               [0m
+[1;38;2;185;75;77m▌[0m [38;2;92;97;105mWait a moment and send again, or[0m      [0m
+[1;38;2;185;75;77m▌[0m [38;2;92;97;105mswitch with /model.[0m                   [0m
+                                        
+[1;38;2;185;75;77m▌[0m [1;38;2;185;75;77mContext window full · 400[0m             [0m
+[1;38;2;185;75;77m▌[0m [38;2;58;63;70mThis model's maximum context length is[0m
+[1;38;2;185;75;77m▌[0m [38;2;58;63;70m131072 tokens.[0m                        [0m
+[1;38;2;185;75;77m▌[0m [38;2;92;97;105mRun /compact or /new-context, then[0m    [0m
+[1;38;2;185;75;77m▌[0m [38;2;92;97;105msend again.[0m                           [0m
+                                        
+[1;38;2;185;75;77m▌[0m [1;38;2;185;75;77mNetwork error[0m                         [0m
+[1;38;2;185;75;77m▌[0m [38;2;58;63;70mpost[0m                                  [0m
+[1;38;2;185;75;77m▌[0m [38;2;58;63;70mhttps://api.example.com/v1/chat/comple[0m
+[1;38;2;185;75;77m▌[0m [38;2;58;63;70mtions: dial tcp: connection refused[0m   [0m
+[1;38;2;185;75;77m▌[0m [38;2;92;97;105mCheck the connection and the[0m          [0m
+[1;38;2;185;75;77m▌[0m [38;2;92;97;105mprovider's base URL, then send again.[0m [0m
+                                        
+[1;38;2;185;75;77m▌[0m [1;38;2;185;75;77mProvider error · 503[0m                  [0m
+[1;38;2;185;75;77m▌[0m [38;2;58;63;70mupstream connect error[0m                [0m
+[1;38;2;185;75;77m▌[0m [38;2;92;97;105mSend again in a moment, or switch with[0m
+[1;38;2;185;75;77m▌[0m [38;2;92;97;105m/model.[0m                               [0m
+[38;2;213;218;222m────────────────────────────────────────[0m
+  [1;38;2;21;127;104m❯ [0m[7mA[0m[38;2;104;110;118msk k-brain anything…  / commands ·[0m [0m
+  [48;2;185;75;77m [0m[1;38;2;255;255;255;48;2;185;75;77mAlways allow[0m[48;2;185;75;77m [0m    [38;2;58;63;70mkimi-k3-fast[0m[38;2;104;110;118m · [0m[1;38;2;21;127;104m✦ off[0m
