@@ -1,0 +1,24 @@
+[96m❯[0m [1mSettings[0m                         [37m1/14[0m
+  [96m/[0m [37mtype to filter[0m
+[90m────────────────────────────────────────[0m
+  [90mDisplay[0m
+[1;96m❯ Theme          colour scheme fo… auto[0m
+  Language       [37minterface language[0m  [37men[0m
+  Thinking tok…  [37mshow model reason…[0m [37moff[0m
+  Mouse capture  [37mwheel scroll and c…[0m [37mon[0m
+  Ancient mode   [37mclassical vertica…[0m [37moff[0m
+  Browser driv…  [37mautomation engine…[0m [37mrod[0m
+
+  [90mAgent[0m
+  Model          [37m[0m [37mkimi-k3-fast@inference[0m
+  Reasoning ef…  [37mhow hard the mode…[0m [37moff[0m
+  Permission m…  [37mwhat too…[0m [37mAlways allow[0m
+  Subagent mod…  [37mmodel s…[0m [37mcurrent model[0m
+[37m  ↓ 4 more[0m
+[90m────────────────────────────────────────[0m
+  [1mTheme[0m  [96mauto[0m
+  [37mcolour scheme for the transcript and[0m
+  [37mchrome[0m
+  [90m←/→ change · Enter next · /theme[0m
+[90m────────────────────────────────────────[0m
+  [37m↑/↓ select · ←/→ change · Enter toggl…[0m

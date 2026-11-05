@@ -119,6 +119,7 @@ var keymap = []keyBinding{
 	{"alt+down", keyQueue, "queueMove", ""},
 	{"shift+down", keyQueue, "queueMove", ""},
 	{"esc", keyQueue, "queueDeselect", ""},
+	{"f2", keyGlobal, "settings", ""},
 }
 
 // keymapHelp is /help's key section: every hint in keymap order, translated

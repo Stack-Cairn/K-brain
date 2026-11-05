@@ -1,0 +1,24 @@
+> Keyboard shortcuts                                                       1/54
+  [Keys]  Commands
+  / type to filter
+--------------------------------------------------------------------------------
+  Anywhere
+> Shift+Tab                   cycle the permission mode
+  Ctrl+K                      clear the conversation
+  Ctrl+T                      focus the subagent dock
+  Ctrl+O                      show or hide thinking tokens
+  Ctrl+E                      expand the last tool result
+  Ctrl+G                      edit the draft in an external editor
+  Ctrl+V                      paste an image
+  PgUp / PgDn                 scroll the transcript
+  Ctrl+C Ctrl+C               quit
+  Ctrl+P                      open the command palette
+  F2                          open settings
+
+  Down 43 more
+--------------------------------------------------------------------------------
+  Shift+Tab  cycle the permission mode
+  Shift+Tab - cycle Normal / Plan / Auto review / Always allow
+  context: Anywhere
+--------------------------------------------------------------------------------
+  Tab switch tab - Up/Down select - type to filter - Esc close

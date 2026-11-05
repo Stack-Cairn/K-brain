@@ -1,0 +1,24 @@
+[96m>[0m [1mResume session[0m                                                            [37m1/3[0m
+  [96m/[0m [37mtype to filter - searches titles and message text[0m
+[90m--------------------------------------------------------------------------------[0m
+[1;96m> refactor the session store so pages loa...  (current) - 2h ago - kimi-k3-fast[0m
+  fix flaky TempDir cleanup on Linux CI                   [37m1d ago - glm-5.2-fast[0m
+  why does the gateway drop websocket upgrades behind...  [37m3d ago - kimi-k3-fast[0m
+
+
+
+
+
+
+
+
+
+
+
+[90m--------------------------------------------------------------------------------[0m
+  [90ma1b2c3d4 - kimi-k3-fast@inference - /home/dev/src/acme/kn[0m
+  [1;96m> [0mmake ListPage load lazily and keep the cursor stable
+  [1;95m* [0mDone. ListPage now returns a cursor; the picker loads the next page on
+    scroll.
+[90m--------------------------------------------------------------------------------[0m
+  [37mUp/Down select - Enter resume - Ctrl+D delete - Esc cancel[0m

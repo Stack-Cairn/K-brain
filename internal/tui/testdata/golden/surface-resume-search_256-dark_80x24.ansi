@@ -1,0 +1,24 @@
+[38;5;79m❯[0m [1mResume session[0m                                                            [38;5;247m1/1[0m
+  [38;5;79m/[0m kube[38;5;245m▏[0m
+[38;5;238m────────────────────────────────────────────────────────────────────────────────[0m
+[1;38;5;79;48;5;236m❯ fix flaky TempDir cleanup on Linux CI      text match · 1d ago · glm-5.2-fast[0m
+
+
+
+
+
+
+
+
+
+
+
+
+
+[38;5;238m────────────────────────────────────────────────────────────────────────────────[0m
+  [38;5;245me5f6a7b8 · glm-5.2-fast@inference · /home/dev/src/acme/kn · #ci[0m
+  [38;5;79massistant: …the kubernetes job mounts the TempDir as a volume[0m
+  [1;38;5;79m❯ [0mthe TempDir cleanup flakes on Linux
+  [1;38;5;141m● [0mThe watcher still holds the directory open; I close it in t.Cleanup now.
+[38;5;238m────────────────────────────────────────────────────────────────────────────────[0m
+  [38;5;247m↑/↓ select · Enter resume · Ctrl+D delete · Esc cancel[0m

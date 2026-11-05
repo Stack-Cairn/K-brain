@@ -1,0 +1,24 @@
+[1m❯[0m [1mResume session[0m                                                            [2m1/3[0m
+  [1m/[0m [2mtype to filter · searches titles and message text[0m
+────────────────────────────────────────────────────────────────────────────────
+[1;7m❯ refactor the session store so pages load …  (current) · 2h ago · kimi-k3-fast[0m
+  fix flaky TempDir cleanup on Linux CI                   [2m1d ago · glm-5.2-fast[0m
+  why does the gateway drop websocket upgrades behind t…  [2m3d ago · kimi-k3-fast[0m
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+  [2ma1b2c3d4 · kimi-k3-fast@inference · /home/dev/src/acme/kn[0m
+  [1m❯ [0mmake ListPage load lazily and keep the cursor stable
+  [1m● [0mDone. ListPage now returns a cursor; the picker loads the next page on
+    scroll.
+────────────────────────────────────────────────────────────────────────────────
+  [2m↑/↓ select · Enter resume · Ctrl+D delete · Esc cancel[0m

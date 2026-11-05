@@ -255,7 +255,7 @@ func (m *model) View() string {
 		m.effortY = m.viewTop + m.effortRow
 	}
 
-	if m.iactive != nil || m.height == 0 || m.palette != nil || m.picker != nil || m.mpicker != nil || m.taskVP != nil {
+	if m.iactive != nil || m.height == 0 || m.palette != nil || m.picker != nil || m.mpicker != nil || m.taskVP != nil || m.surfaceOpen() {
 		m.inputTop = -1
 		m.inputLines = nil
 	} else {
@@ -293,6 +293,10 @@ func (m *model) viewBody() string {
 
 	if m.mpicker != nil {
 		b.WriteString(m.modelPickerView())
+		return b.String()
+	}
+	if m.surfaceOpen() {
+		b.WriteString(m.surfaceView())
 		return b.String()
 	}
 	if m.taskVP != nil {

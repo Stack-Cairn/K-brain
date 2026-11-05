@@ -1,0 +1,24 @@
+[96m❯[0m [1mExtensions[0m                        [37m1/2[0m
+  [1;96m[MCP][0m [90m Skills [0m [90m Hooks [0m [90m Plugins [0m
+  [96m/[0m [37mtype to filter[0m
+[90m────────────────────────────────────────[0m
+[1;96m❯ docs    docs-mcp --stdio     disabled[0m
+  [90missues[0m  [90mhttps://mcp.example…[0m [90mdisabled[0m
+
+
+
+
+
+
+
+
+
+
+
+
+
+[90m────────────────────────────────────────[0m
+  [1mdocs[0m  [37mdisabled[0m
+  [37mcommand: docs-mcp --stdio[0m
+[90m────────────────────────────────────────[0m
+  [37mTab switch tab · ↑/↓ select · Enter e…[0m

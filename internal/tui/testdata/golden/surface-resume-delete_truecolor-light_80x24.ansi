@@ -1,0 +1,24 @@
+[38;2;21;127;104m❯[0m [1mResume session[0m                                                            [38;2;92;97;105m2/3[0m
+  [38;2;21;127;104m/[0m [38;2;92;97;105mtype to filter · searches titles and message text[0m
+[38;2;213;218;222m────────────────────────────────────────────────────────────────────────────────[0m
+  refactor the session store so pages load …  [38;2;92;97;105m(current) · 2h ago · kimi-k3-fast[0m
+[1;38;2;21;127;104;48;2;232;236;240m❯ fix flaky TempDir cleanup on Linux CI                   1d ago · glm-5.2-fast[0m
+  why does the gateway drop websocket upgrades behind t…  [38;2;92;97;105m3d ago · kimi-k3-fast[0m
+
+
+
+
+
+
+
+
+
+
+
+
+[38;2;213;218;222m────────────────────────────────────────────────────────────────────────────────[0m
+  [38;2;104;110;118me5f6a7b8 · glm-5.2-fast@inference · /home/dev/src/acme/kn · #ci[0m
+  [1;38;2;21;127;104m❯ [0mthe TempDir cleanup flakes on Linux
+  [1;38;2;125;63;158m● [0mThe watcher still holds the directory open; I close it in t.Cleanup now.
+[38;2;213;218;222m────────────────────────────────────────────────────────────────────────────────[0m
+  [1;38;2;168;116;26mdelete session "fix flaky TempDir cleanup on Linux CI"? y to confirm, any oth…[0m

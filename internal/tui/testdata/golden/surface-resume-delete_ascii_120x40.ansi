@@ -1,0 +1,40 @@
+[96m>[0m [1mResume session[0m                                                                                                    [37m2/3[0m
+  [96m/[0m [37mtype to filter - searches titles and message text[0m
+[90m------------------------------------------------------------------------------------------------------------------------[0m
+  refactor the session store so pages load lazily                                     [37m(current) - 2h ago - kimi-k3-fast[0m
+[1;96m> fix flaky TempDir cleanup on Linux CI                                                           1d ago - glm-5.2-fast[0m
+  why does the gateway drop websocket upgrades behind the proxy?                                  [37m3d ago - kimi-k3-fast[0m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[90m------------------------------------------------------------------------------------------------------------------------[0m
+  [90me5f6a7b8 - glm-5.2-fast@inference - /home/dev/src/acme/kn - #ci[0m
+  [1;96m> [0mthe TempDir cleanup flakes on Linux
+  [1;95m* [0mThe watcher still holds the directory open; I close it in t.Cleanup now.
+[90m------------------------------------------------------------------------------------------------------------------------[0m
+  [1;93mdelete session "fix flaky TempDir cleanup on Linux CI"? y to confirm, any other key cancels[0m

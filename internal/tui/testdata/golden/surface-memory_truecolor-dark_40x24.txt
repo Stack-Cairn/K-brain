@@ -1,0 +1,24 @@
+❯ Memory                            1/3
+  / type to filter
+────────────────────────────────────────
+  installation
+❯ 1.  prefers pnpm over npm in this m…
+  2.  the staging cluster is in e… done
+  3.  run `make lint` before every co…
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────
+  prefers pnpm over npm in this
+  monorepo
+  open — Enter marks it done
+  installation · ~/.k-brain/memory.md
+────────────────────────────────────────
+  ↑/↓ select · Enter mark done · Esc cl…

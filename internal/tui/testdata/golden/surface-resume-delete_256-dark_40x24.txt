@@ -1,0 +1,24 @@
+❯ Resume session                    2/3
+  / type to filter · searches titles an…
+────────────────────────────────────────
+  refactor the ses…  (current) · 2h ago
+❯ fix flaky TempDir cleanup on…  1d ago
+  why does the gateway drop we…  3d ago
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────
+  e5f6a7b8 · glm-5.2-fast@inference · /…
+  ❯ the TempDir cleanup flakes on
+    Linux
+  ● The watcher still holds the
+    directory open; I close it in
+────────────────────────────────────────
+  delete session "fix flaky TempDir cle…

@@ -25,6 +25,8 @@ func busyCmd(text string) bool {
 		return true
 	case "/goal":
 		return len(fields) == 1 || fields[1] == "clear" || fields[1] == "rounds"
+	case "/settings", "/extensions", "/memory":
+		return true
 	}
 	return false
 }
@@ -186,16 +188,7 @@ func (m *model) command(text string) (tea.Model, tea.Cmd) {
 		m.append(m.tasksView())
 		return m, nil
 	case "/theme":
-		if len(fields) > 1 {
-			switch fields[1] {
-			case "light", "dark", "auto":
-				m.setTheme(fields[1])
-			default:
-				m.append(errStyle.Render("usage: /theme light|dark|auto"))
-			}
-		} else {
-			m.openPaletteOn("theme")
-		}
+		m.themeCommand(fields[1:])
 		return m, nil
 	case "/mouse":
 		m.mouseOn = !m.mouseOn
@@ -325,7 +318,11 @@ func (m *model) command(text string) (tea.Model, tea.Cmd) {
 	case "/language":
 		m.languageCommand(fields[1:])
 	case "/help":
-		m.append(dimStyle.Render(helpTextFor(m.language())))
+		m.helpCommand(fields[1:])
+	case "/settings":
+		m.settingsCommand(fields[1:])
+	case "/extensions":
+		m.extensionsCommand(fields[1:])
 	case "/auth":
 		m.append(errStyle.Render("auth was removed; configure baseUrl and apiKey in ~/.liveagent/config.json"))
 	case "/model", "/model-for-session":

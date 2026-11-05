@@ -133,6 +133,10 @@ func TestRewindFailurePreservesConversationAndDraft(t *testing.T) {
 	m.input.SetValue("my draft")
 	m.openRewind()
 	m.rewindKey(tea.KeyMsg{Type: tea.KeyEnter})
+	if m.rew == nil || !m.rew.choosing {
+		t.Fatal("a turn with a snapshot should ask what to rewind")
+	}
+	m.rewindKey(tea.KeyMsg{Type: tea.KeyEnter})
 	if !reflect.DeepEqual(m.agent.Messages, before) || len(m.future) != 0 {
 		t.Fatal("failed workspace restore changed conversation")
 	}

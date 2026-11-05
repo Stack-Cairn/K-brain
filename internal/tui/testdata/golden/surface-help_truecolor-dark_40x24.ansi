@@ -1,0 +1,24 @@
+[38;2;47;191;160m❯[0m [1mKeyboard shortcuts[0m               [38;2;154;160;170m1/54[0m
+  [1;38;2;47;191;160m[Keys][0m [38;2;134;139;149m Commands [0m
+  [38;2;47;191;160m/[0m [38;2;154;160;170mtype to filter[0m
+[38;2;58;64;72m────────────────────────────────────────[0m
+  [38;2;134;139;149mAnywhere[0m
+[1;38;2;47;191;160;48;2;38;43;52m❯ Shift+Tab      cycle the permission… [0m
+  Ctrl+K         [38;2;200;204;211mclear the conversati…[0m[38;2;154;160;170m[0m
+  Ctrl+T         [38;2;200;204;211mfocus the subagent d…[0m[38;2;154;160;170m[0m
+  Ctrl+O         [38;2;200;204;211mshow or hide thinkin…[0m[38;2;154;160;170m[0m
+  Ctrl+E         [38;2;200;204;211mexpand the last tool…[0m[38;2;154;160;170m[0m
+  Ctrl+G         [38;2;200;204;211medit the draft in an…[0m[38;2;154;160;170m[0m
+  Ctrl+V         [38;2;200;204;211mpaste an image[0m[38;2;154;160;170m[0m
+  PgUp / PgDn    [38;2;200;204;211mscroll the transcript[0m[38;2;154;160;170m[0m
+  Ctrl+C Ctrl+C  [38;2;200;204;211mquit[0m[38;2;154;160;170m[0m
+  Ctrl+P         [38;2;200;204;211mopen the command pal…[0m[38;2;154;160;170m[0m
+  F2             [38;2;200;204;211mopen settings[0m[38;2;154;160;170m[0m
+[38;2;154;160;170m  ↓ 43 more[0m
+[38;2;58;64;72m────────────────────────────────────────[0m
+  [1mShift+Tab[0m  [38;2;200;204;211mcycle the permission mode[0m
+  [38;2;154;160;170mShift+Tab — cycle Normal / Plan /[0m
+  [38;2;154;160;170mAuto review / Always allow[0m
+  [38;2;134;139;149mcontext: Anywhere[0m
+[38;2;58;64;72m────────────────────────────────────────[0m
+  [38;2;154;160;170mTab switch tab · ↑/↓ select · type to…[0m

@@ -37,6 +37,9 @@ func (m *model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.mpicker != nil {
 		return m.modelPickerKey(msg)
 	}
+	if m.surfaceOpen() {
+		return m.surfaceKey(msg)
+	}
 
 	if r, cmd, ok := m.composerPreKey(msg); ok {
 		return r, cmd
@@ -44,6 +47,9 @@ func (m *model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	if m.taskVP != nil {
 		return m.taskViewKey(msg)
+	}
+	if msg.String() == "f2" {
+		return m, m.openSettings()
 	}
 
 	if r, cmd, ok := m.composerPasteKey(msg); ok {

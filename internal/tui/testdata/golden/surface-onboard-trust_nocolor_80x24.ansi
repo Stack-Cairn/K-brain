@@ -1,0 +1,23 @@
+
+
+
+
+[1m╭[0m[1m─[0m Do you trust the files in this folder? [1m─────────────────────────────────────[0m[1m╮[0m
+[1m│[0m [1m/home/dev/src/acme/kn[0m                                                        [1m│[0m
+[1m│[0m                                                                              [1m│[0m
+[1m│[0m k-brain may read files in this folder. Reading untrusted files may lead k-   [1m│[0m
+[1m│[0m brain to behave in unexpected ways.                                          [1m│[0m
+[1m│[0m                                                                              [1m│[0m
+[1m│[0m With your permission k-brain may execute files in this folder. Executing     [1m│[0m
+[1m│[0m untrusted code is unsafe.                                                    [1m│[0m
+[1m│[0m                                                                              [1m│[0m
+[1m│[0m [1;7m❯ 1  Yes, I trust this folder [0m                                               [1m│[0m
+[1m│[0m   2  No, exit                                                                [1m│[0m
+[1m│[0m                                                                              [1m│[0m
+[1m│[0m [2m↑/↓ select · Enter confirm · Esc exit[0m                                        [1m│[0m
+[1m╰[0m[1m──────────────────────────────────────────────────────────────────────────────[0m[1m╯[0m
+ [2mstep 2 of 3[0m
+
+
+
+

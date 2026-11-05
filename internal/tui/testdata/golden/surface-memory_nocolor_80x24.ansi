@@ -1,0 +1,24 @@
+[1m❯[0m [1mMemory[0m                                                                    [2m1/3[0m
+  [1m/[0m [2mtype to filter[0m
+────────────────────────────────────────────────────────────────────────────────
+  [2minstallation[0m
+[1;7m❯ 1.  prefers pnpm over npm in this monorepo                                   [0m
+  [2m2.[0m  [2mthe staging cluster is in eu-west-1[0m                                  [2mdone[0m
+  3.  run `make lint` before every commit; CI rejects unformatted Go[2m[0m
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+  prefers pnpm over npm in this monorepo
+  [2mopen — Enter marks it done[0m
+  [2minstallation · ~/.k-brain/memory.md[0m
+────────────────────────────────────────────────────────────────────────────────
+  [2m↑/↓ select · Enter mark done · Esc close[0m

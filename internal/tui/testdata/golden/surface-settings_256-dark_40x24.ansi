@@ -1,0 +1,24 @@
+[38;5;79m❯[0m [1mSettings[0m                         [38;5;247m1/14[0m
+  [38;5;79m/[0m [38;5;247mtype to filter[0m
+[38;5;238m────────────────────────────────────────[0m
+  [38;5;245mDisplay[0m
+[1;38;5;79;48;5;236m❯ Theme          colour scheme fo… auto[0m
+  Language       [38;5;252minterface language[0m  [38;5;247men[0m
+  Thinking tok…  [38;5;252mshow model reason…[0m [38;5;247moff[0m
+  Mouse capture  [38;5;252mwheel scroll and c…[0m [38;5;247mon[0m
+  Ancient mode   [38;5;252mclassical vertica…[0m [38;5;247moff[0m
+  Browser driv…  [38;5;252mautomation engine…[0m [38;5;247mrod[0m
+
+  [38;5;245mAgent[0m
+  Model          [38;5;252m[0m [38;5;247mkimi-k3-fast@inference[0m
+  Reasoning ef…  [38;5;252mhow hard the mode…[0m [38;5;247moff[0m
+  Permission m…  [38;5;252mwhat too…[0m [38;5;247mAlways allow[0m
+  Subagent mod…  [38;5;252mmodel s…[0m [38;5;247mcurrent model[0m
+[38;5;247m  ↓ 4 more[0m
+[38;5;238m────────────────────────────────────────[0m
+  [1mTheme[0m  [38;5;79mauto[0m
+  [38;5;252mcolour scheme for the transcript and[0m
+  [38;5;252mchrome[0m
+  [38;5;245m←/→ change · Enter next · /theme[0m
+[38;5;238m────────────────────────────────────────[0m
+  [38;5;247m↑/↓ select · ←/→ change · Enter toggl…[0m

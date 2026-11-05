@@ -69,11 +69,13 @@ var registry = []registryEntry{
 	{Name: "/subagents", Args: "[id]", Hint: "subagent dock / live view (alias /tasks)", Keybind: "ctrl+t", Category: "Session"},
 	{Name: "/status", Hint: "show session details (alias: /session-info)", Category: "Session"},
 	{Name: "/system", Hint: "edit the system prompt in system.md", Category: "Agent"},
-	{Name: "/theme", Args: "[light|dark|auto]", Hint: "color scheme", Category: "Display"},
+	{Name: "/theme", Args: "[auto|light|dark|mono]", Hint: "color scheme", Category: "Display"},
 	{Name: "/title", Args: "[title]", Hint: "retitle this session (alias: /rename)", Category: "Session"},
 	{Name: "/undo", Hint: "rewind the conversation to an earlier turn", Category: "Session"},
 	{Name: "/view-plan", Hint: "show the current model-managed plan (alias: /plan)", Category: "Session"},
 	{Name: "!cmd", Hint: "run a shell command; output joins the conversation", Category: "App"},
+	{Name: "/settings", Args: "[filter]", Hint: "browse and change settings", Keybind: "f2", Category: "App"},
+	{Name: "/extensions", Args: "[mcp|skills|hooks|plugins]", Hint: "MCP servers, skills, hooks and plugins", Category: "App"},
 }
 
 func sortEntries(es []registryEntry) {

@@ -1,0 +1,23 @@
+
+
+[38;5;79m╭[0m[38;5;79m─[0m Do you trust the files in this fo… [38;5;79m─[0m[38;5;79m╮[0m
+[38;5;79m│[0m [1m/home/dev/src/acme/kn[0m                [38;5;79m│[0m
+[38;5;79m│[0m                                      [38;5;79m│[0m
+[38;5;79m│[0m k-brain may read files in this       [38;5;79m│[0m
+[38;5;79m│[0m folder. Reading untrusted files may  [38;5;79m│[0m
+[38;5;79m│[0m lead k-brain to behave in unexpected [38;5;79m│[0m
+[38;5;79m│[0m ways.                                [38;5;79m│[0m
+[38;5;79m│[0m                                      [38;5;79m│[0m
+[38;5;79m│[0m With your permission k-brain may     [38;5;79m│[0m
+[38;5;79m│[0m execute files in this folder.        [38;5;79m│[0m
+[38;5;79m│[0m Executing untrusted code is unsafe.  [38;5;79m│[0m
+[38;5;79m│[0m                                      [38;5;79m│[0m
+[38;5;79m│[0m [1;38;5;79;48;5;236m❯ 1  Yes, I trust this folder [0m       [38;5;79m│[0m
+[38;5;79m│[0m   2  No, exit                        [38;5;79m│[0m
+[38;5;79m│[0m                                      [38;5;79m│[0m
+[38;5;79m│[0m [38;5;247m↑/↓ select · Enter confirm · Esc     [38;5;79m│[0m
+[38;5;79m│[0m exit[0m                                 [38;5;79m│[0m
+[38;5;79m╰[0m[38;5;79m──────────────────────────────────────[0m[38;5;79m╯[0m
+ [38;5;247mstep 2 of 3[0m
+
+
