@@ -5,6 +5,7 @@ package sandbox
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"net"
 	"os"
@@ -329,6 +330,17 @@ func TestWindowsSandboxUserAdminCycle(t *testing.T) {
 			out, ok := helper(t, tc.p, "user")
 			if !ok || !strings.Contains(out, "SID="+tc.sid) {
 				t.Fatalf("network=%v command did not run as %s: %s", tc.p.Network, tc.sid, out)
+			}
+		}
+	})
+
+	t.Run("NamedObjects", func(t *testing.T) {
+		var session uint32
+		_ = windows.ProcessIdToSessionId(windows.GetCurrentProcessId(), &session)
+		t.Logf("session namespace %d: %s", session, sessionNamespaceSDDL(session))
+		for _, p := range []*Policy{online, offline} {
+			if out, ok := helper(t, p, "mutex", fmt.Sprintf(`Local\kbrain-sandbox-test-%v`, p.Network)); !ok {
+				t.Errorf("network=%v command cannot create a named object in its session: %s", p.Network, out)
 			}
 		}
 	})
@@ -691,4 +703,30 @@ func diagnoseSandboxUser(t *testing.T) {
 	}
 	sessions, _ := exec.Command("query", "session").CombinedOutput()
 	t.Logf("diagnosis: sessions:\n%s", sessions)
+}
+
+var procNtOpenDirectoryObject = windows.NewLazySystemDLL("ntdll.dll").NewProc("NtOpenDirectoryObject")
+
+// sessionNamespaceSDDL describes the DACL and label of the session's
+// BaseNamedObjects directory.
+func sessionNamespaceSDDL(session uint32) string {
+	path := `\BaseNamedObjects`
+	if session != 0 {
+		path = fmt.Sprintf(`\Sessions\%d\BaseNamedObjects`, session)
+	}
+	name, err := windows.NewNTUnicodeString(path)
+	if err != nil {
+		return err.Error()
+	}
+	oa := windows.OBJECT_ATTRIBUTES{Length: uint32(unsafe.Sizeof(windows.OBJECT_ATTRIBUTES{})), ObjectName: name}
+	var h windows.Handle
+	if r, _, _ := procNtOpenDirectoryObject.Call(uintptr(unsafe.Pointer(&h)), windows.READ_CONTROL, uintptr(unsafe.Pointer(&oa))); r != 0 {
+		return fmt.Sprintf("open %s: %#x", path, r)
+	}
+	defer windows.CloseHandle(h)
+	sd, err := windows.GetSecurityInfo(h, windows.SE_KERNEL_OBJECT, windows.DACL_SECURITY_INFORMATION|windows.LABEL_SECURITY_INFORMATION)
+	if err != nil {
+		return err.Error()
+	}
+	return path + " " + sd.String()
 }

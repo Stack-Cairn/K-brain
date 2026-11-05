@@ -141,6 +141,15 @@ func runHelper(args []string) error {
 		}
 		procCloseDesktop.Call(desk)
 		return nil
+	case "mutex":
+		// Creates a named mutex in the session's namespace.
+		name, _ := windows.UTF16PtrFromString(args[1])
+		h, err := windows.CreateMutex(nil, false, name)
+		if err != nil {
+			return err
+		}
+		windows.CloseHandle(h)
+		return nil
 	case "user":
 		u, err := windows.GetCurrentProcessToken().GetTokenUser()
 		if err != nil {
