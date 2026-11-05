@@ -46,6 +46,7 @@ func runSandboxCapability() healthRunSandboxV1 {
 		Platform:       c.Platform,
 		NetworkControl: c.NetworkControl,
 		ReadMasking:    c.ReadMasking,
+		PathProtection: c.PathProtection,
 		Modes:          []string{"workspace"},
 		Reason:         c.Reason,
 	}

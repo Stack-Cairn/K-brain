@@ -3,7 +3,6 @@ package sandbox
 import (
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -19,6 +18,9 @@ type Capability struct {
 	Platform       string `json:"platform"`
 	NetworkControl bool   `json:"network_control"`
 	ReadMasking    bool   `json:"read_masking"`
+	// PathProtection reports whether the protected workspace paths (git hooks
+	// and config, agent settings) stay read-only inside a writable root.
+	PathProtection bool   `json:"path_protection"`
 	Reason         string `json:"reason,omitempty"`
 }
 
@@ -47,27 +49,10 @@ func probePlatform() Capability {
 			c.Reason = fmt.Sprintf("%s is unavailable: %s", sandboxExecPath, firstLine(out, err))
 			return c
 		}
-		c.Supported, c.NetworkControl, c.ReadMasking = true, true, true
+		c.Supported, c.NetworkControl, c.ReadMasking, c.PathProtection = true, true, true, true
 		return c
 	case "linux":
-		c := Capability{Mechanism: "bubblewrap", Platform: "linux"}
-		bwrap := resolveBwrap(os.Getenv("PATH"), "")
-		if bwrap == "" {
-			c.Reason = "bubblewrap (bwrap) is not installed; install it, e.g. `apt install bubblewrap`"
-			return c
-		}
-		base := []string{"--die-with-parent", "--unshare-pid", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc"}
-		if out, err := exec.CommandContext(ctx, bwrap, append(append(base, "--unshare-net"), "--", "/bin/true")...).CombinedOutput(); err == nil {
-			c.Supported, c.NetworkControl, c.ReadMasking = true, true, true
-			return c
-		} else if _, plainErr := exec.CommandContext(ctx, bwrap, append(base, "--", "/bin/true")...).CombinedOutput(); plainErr == nil {
-			c.Supported, c.ReadMasking = true, true
-			c.Reason = "bubblewrap cannot create a network namespace here: " + firstLine(out, err)
-			return c
-		} else {
-			c.Reason = "bubblewrap cannot start: " + firstLine(out, err)
-			return c
-		}
+		return probeLinux(ctx)
 	case "windows":
 		return Capability{Mechanism: "none", Platform: "windows", Reason: "per-run sandboxing is not available on native Windows; run K-brain inside WSL2 or use per-call confirmation"}
 	default:
