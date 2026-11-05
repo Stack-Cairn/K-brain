@@ -219,8 +219,9 @@ func TestBwrapArgsPinProtectedAncestors(t *testing.T) {
 	joined := strings.Join(args, " ")
 	dotGit := filepath.Join(root, ".git")
 	pin := strings.Index(joined, "--bind "+dotGit+" "+dotGit+" ")
-	hooks := strings.Index(joined, "--ro-bind "+dotGit+"/hooks "+dotGit+"/hooks")
-	config := strings.Index(joined, "--ro-bind "+dotGit+"/config "+dotGit+"/config")
+	hooksDir, configFile := filepath.Join(dotGit, "hooks"), filepath.Join(dotGit, "config")
+	hooks := strings.Index(joined, "--ro-bind "+hooksDir+" "+hooksDir)
+	config := strings.Index(joined, "--ro-bind "+configFile+" "+configFile)
 	if pin < 0 || hooks < pin || config < pin {
 		t.Fatalf("bwrap args do not pin .git before protecting it: %s", joined)
 	}
