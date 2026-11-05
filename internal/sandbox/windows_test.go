@@ -601,6 +601,40 @@ func TestWindowsWorkspaceInsideMask(t *testing.T) {
 	}
 }
 
+// TestWindowsDenialHints feeds the explanation real outputs of confined
+// commands.
+func TestWindowsDenialHints(t *testing.T) {
+	isolateState(t)
+	root, masked, outside := workspace(t), workspace(t), workspace(t)
+	key := filepath.Join(masked, "key")
+	if err := os.MkdirAll(filepath.Join(root, ".git", "hooks"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(key, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p := workspacePolicy(root)
+	p.Masked = []string{masked}
+	for _, tc := range []struct {
+		args []string
+		kind string
+	}{
+		{[]string{"read", key}, "masked"},
+		{[]string{"write", filepath.Join(outside, "x.txt")}, "write"},
+		{[]string{"write", filepath.Join(root, ".git", "hooks", "pre-commit")}, "protected"},
+	} {
+		out, ok := helper(t, p, tc.args...)
+		if ok {
+			t.Fatalf("%v succeeded", tc.args)
+		}
+		code := 3
+		d := p.ExplainFailure(strings.Join(tc.args, " "), root, out, &code)
+		if d == nil || d.Kind != tc.kind {
+			t.Fatalf("%v: output %q explained as %+v, want %s", tc.args, out, d, tc.kind)
+		}
+	}
+}
+
 func TestWindowsLabelsAreIdempotent(t *testing.T) {
 	isolateState(t)
 	root := workspace(t)
