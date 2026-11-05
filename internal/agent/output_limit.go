@@ -44,5 +44,5 @@ func outputLimitReminder(msg ai.Message) ai.Message {
 		text = outputLimitToolCallText
 	}
 	now := time.Now()
-	return ai.Message{Role: "user", Content: WrapReminder(text), SentAt: &now}
+	return ai.Message{Role: "user", Content: WrapReminder(text), Origin: ai.OriginBackground, SentAt: &now}
 }

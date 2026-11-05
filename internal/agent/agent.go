@@ -633,9 +633,9 @@ func (a *Agent) turnPending(ctx context.Context, input string, parts []ai.Conten
 	if memoryOffAuthored(ctx) && !isMemoryOffMessage(userMessage) {
 		userMessage.PromptSnapshots = append(userMessage.PromptSnapshots, MemoryOffSnapshot())
 	}
-	// The snapshot belongs to this turn only; subagents, workflow agents and background
-	// tasks started by its tools inherit ctx and must not receive it.
-	ctx = withoutTurnSnapshot(ctx)
+	// The snapshot and the notice mark belong to this turn only; subagents, workflow
+	// agents and background tasks started by its tools inherit ctx and must not get them.
+	ctx = withoutBackgroundNotice(withoutTurnSnapshot(ctx))
 	if resumeID != "" {
 		userMessage.ID = resumeID
 	}
@@ -690,7 +690,7 @@ func (a *Agent) turnPending(ctx context.Context, input string, parts []ai.Conten
 			if quotesOff && a.MemoryEnabled() {
 				snapshots = append(snapshots, MemoryOffSnapshot())
 			}
-			message := ai.Message{Role: "user", Content: notice, SentAt: &now, PromptContext: a.todoContext(), PromptSnapshots: snapshots}
+			message := ai.Message{Role: "user", Content: notice, Origin: ai.OriginBackground, SentAt: &now, PromptContext: a.todoContext(), PromptSnapshots: snapshots}
 			a.msgsMu.Lock()
 			a.Messages = append(a.Messages, message)
 			a.msgsMu.Unlock()

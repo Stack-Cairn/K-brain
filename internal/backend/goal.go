@@ -138,6 +138,22 @@ func goalRoundPrompt(goal string, round, max int) string {
 	return fmt.Sprintf("[goal %d/%d] %s", round, max, goal)
 }
 
+type goalRoundKey struct{}
+
+// withGoalRound marks the run of a goal continuation round. The runtime writes its
+// prompt, so like a wake run its user message carries ai.OriginBackground and is not
+// authored: clients show it as a notice, and prompt recall leaves it out.
+func withGoalRound(ctx context.Context) context.Context {
+	return context.WithValue(ctx, goalRoundKey{}, true)
+}
+
+// runtimePromptRun reports a run whose prompt the runtime wrote: a wake run or a
+// goal continuation round.
+func runtimePromptRun(ctx context.Context) bool {
+	round, _ := ctx.Value(goalRoundKey{}).(bool)
+	return round || isWakeRun(ctx)
+}
+
 func (s *Server) handleGoal(w http.ResponseWriter, r *http.Request, id string) {
 	rt, err := s.loadRuntimeByID(id)
 	if err != nil {
@@ -504,7 +520,7 @@ func (s *Server) continueGoal(rt *runtimeSession, runID string, previous protoco
 		}
 		// Rounds repeat the goal text as the user message; text written while memory was
 		// off stays out of extraction.
-		roundCtx := context.Background()
+		roundCtx := withGoalRound(context.Background())
 		if memoryOff {
 			roundCtx = agent.WithMemoryOffAuthored(roundCtx)
 		}
