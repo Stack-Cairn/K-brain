@@ -57,6 +57,16 @@ func backgroundNotice(ctx context.Context) bool {
 	return notice
 }
 
+// withoutBackgroundNotice drops the mark once the turn's user message carries it, so
+// subagents and background tasks started by the turn's tools write their own prompts
+// as ordinary messages.
+func withoutBackgroundNotice(ctx context.Context) context.Context {
+	if !backgroundNotice(ctx) {
+		return ctx
+	}
+	return context.WithValue(ctx, backgroundNoticeKey{}, false)
+}
+
 func WithUserMessageID(ctx context.Context, id string) context.Context {
 	return context.WithValue(ctx, userMessageIDKey{}, id)
 }

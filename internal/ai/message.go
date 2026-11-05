@@ -42,7 +42,9 @@ type Message struct {
 
 // OriginBackground marks a notice the runtime delivered on its own as a user-role
 // message: a wait result, a managed process exit, a background subagent or workflow
-// report. Clients show it as a notice rather than as something the user typed.
+// report, a goal continuation round, the new-context notice or the output-limit
+// continuation reminder. Clients show it as a notice rather than as something the
+// user typed.
 const OriginBackground = "background"
 
 // PromptSnapshot records the source and rendered value of backend-owned context.

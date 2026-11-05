@@ -161,8 +161,9 @@ type Message struct {
 	StopReason   string         `json:"stop_reason,omitempty"`
 	CreatedAt    *time.Time     `json:"created_at,omitempty"`
 	// Origin is "background" on a user-role notice the runtime delivered on its
-	// own (a wait result, a process exit, a background task report); it is absent
-	// on messages the user wrote.
+	// own (a wait result, a process exit, a background task report, a goal
+	// continuation round, the new-context notice, the output-limit continuation
+	// reminder); it is absent on messages the user wrote.
 	Origin string `json:"origin,omitempty"`
 }
 

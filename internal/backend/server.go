@@ -1542,7 +1542,7 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, end func(),
 		_, err = rt.agent.ContinueUser(ctx, in.ResumeMessageID, ev)
 	} else {
 		turnCtx := ctx
-		if isWakeRun(ctx) {
+		if runtimePromptRun(ctx) {
 			turnCtx = agent.WithBackgroundNotice(ctx)
 		}
 		_, err = rt.agent.TurnParts(turnCtx, converted.Content, converted.Parts, ev)

@@ -160,7 +160,7 @@ func (s *Server) startCanonicalRunWith(ctx context.Context, rt *runtimeSession, 
 	if in.TurnID != "" {
 		user.ID = in.TurnID
 	}
-	if isWakeRun(ctx) && in.ResumeMessageID == "" {
+	if runtimePromptRun(ctx) && in.ResumeMessageID == "" {
 		user.Origin = ai.OriginBackground
 	}
 	rollback := func() {}
