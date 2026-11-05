@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"sync"
@@ -15,6 +17,7 @@ import (
 
 	"github.com/Stack-Cairn/K-brain/internal/config"
 	"github.com/Stack-Cairn/K-brain/internal/imaging"
+	"github.com/Stack-Cairn/K-brain/internal/netproxy"
 )
 
 func imageTestScope() imaging.Scope { return imaging.Scope{OwnerID: "local", BackendID: "local"} }
@@ -477,6 +480,14 @@ func TestImageProviderResolvedSnapshotAndRevocation(t *testing.T) {
 	}
 	if resolved.BaseURL != cfg.Providers["image-provider"].BaseURL || !resolved.UseSystemProxy || resolved.CustomHeaders["X-Private"] != "resolved-!fake-header" || calls != 2 {
 		t.Fatal("provider network/secret binding lost")
+	}
+	// The desktop app's proxy reaches the backend only through netproxy, as it does for chat.
+	got, ok := resolved.HTTPClient.Transport.(*http.Transport)
+	if !ok || reflect.ValueOf(got.Proxy).Pointer() != reflect.ValueOf(netproxy.ConnectionTransport(true).Proxy).Pointer() {
+		t.Fatal("image traffic bypasses the app proxy")
+	}
+	if got == netproxy.Transport(true) {
+		t.Fatal("closing a connection's idle sockets must not touch the shared chat transport")
 	}
 	if _, err := json.Marshal(resolved.ResolvedConnection); err == nil {
 		t.Fatal("embedded private connection serialized")

@@ -22,16 +22,21 @@ const (
 	CodeNoImageOutput        = "IMAGE_NO_IMAGE_OUTPUT"
 	CodeResultUnknown        = "IMAGE_RESULT_UNKNOWN"
 	CodeTooLarge             = "IMAGE_TOO_LARGE"
+	// CodeOutputSaveFailed means the provider produced an image that was then lost: the
+	// download or local save failed, so the request has very likely been billed.
+	CodeOutputSaveFailed = "IMAGE_OUTPUT_SAVE_FAILED"
 )
 
 var ErrUnsupported = errors.New(CodeUnsupportedOperation)
 
 type ImageError struct {
-	Code      string        `json:"code"`
-	Message   string        `json:"message"`
-	RequestID string        `json:"requestId"`
-	Retryable bool          `json:"retryable"`
-	Details   *ErrorDetails `json:"details,omitempty"`
+	Code      string `json:"code"`
+	Message   string `json:"message"`
+	RequestID string `json:"requestId"`
+	Retryable bool   `json:"retryable"`
+	// Reason is an optional, sanitized, length-bounded hint about what went wrong.
+	Reason  string        `json:"reason,omitempty"`
+	Details *ErrorDetails `json:"details,omitempty"`
 }
 
 // ErrorDetails is a whitelist. Raw upstream bodies, headers and causes are excluded.
@@ -68,7 +73,7 @@ func PublicError(e *ImageError) *ImageError {
 	if errorMessage(code) == "Image operation failed" {
 		code = CodeUnavailable
 	}
-	v := &ImageError{Code: code, Message: errorMessage(code), RequestID: e.RequestID, Retryable: e.Retryable}
+	v := &ImageError{Code: code, Message: errorMessage(code), RequestID: e.RequestID, Retryable: e.Retryable, Reason: SafeReason(e.Reason)}
 	if e.Details != nil {
 		d := e.Details
 		v.Details = &ErrorDetails{ParameterKey: d.ParameterKey, ConnectionID: d.ConnectionID, TargetID: d.TargetID, ExpectedRevision: cloneUint(d.ExpectedRevision), ActualRevision: cloneUint(d.ActualRevision), FirstAvailableSeq: cloneUint(d.FirstAvailableSeq), LastEventSeq: cloneUint(d.LastEventSeq)}
@@ -112,6 +117,8 @@ func errorMessage(code string) string {
 		return "Image exceeds the upload size limit"
 	case CodeResultUnknown:
 		return "Image execution result is unknown"
+	case CodeOutputSaveFailed:
+		return "Generated image could not be saved"
 	default:
 		return "Image operation failed"
 	}
@@ -131,6 +138,8 @@ type AdapterError struct {
 	Delivery   Delivery      `json:"delivery"`
 	RetryAfter time.Duration `json:"-"`
 	Cause      error         `json:"-"`
+	// Reason is sanitized by PublicError before it leaves the process.
+	Reason string `json:"-"`
 }
 
 func (e *AdapterError) Error() string {

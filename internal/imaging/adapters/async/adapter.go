@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -70,12 +71,17 @@ func newTransport(o Options, defaultBase string) (transport, error) {
 func failure(code string, d imaging.Delivery) error {
 	return &imaging.AdapterError{Code: code, Delivery: d}
 }
+func failureReason(code string, d imaging.Delivery, reason string) error {
+	return &imaging.AdapterError{Code: code, Delivery: d, Reason: reason}
+}
 func resultError(handle string, err error) (imaging.RemoteResult, error) {
 	state := "failed"
 	e, ok := err.(*imaging.AdapterError)
 	code := imaging.CodeUnavailable
+	reason := ""
 	if ok {
 		code = e.Code
+		reason = e.Reason
 		if e.Delivery == imaging.DeliveryUncertain {
 			state = "unknown"
 		}
@@ -83,7 +89,7 @@ func resultError(handle string, err error) (imaging.RemoteResult, error) {
 	if handle != "" {
 		state = "unknown"
 	}
-	return imaging.RemoteResult{State: state, Handle: handle, ErrorCode: code}, err
+	return imaging.RemoteResult{State: state, Handle: handle, ErrorCode: code, ErrorReason: reason}, err
 }
 func unknown(handle string, code string) imaging.RemoteResult {
 	return imaging.RemoteResult{State: "unknown", Handle: handle, ErrorCode: code}
@@ -110,7 +116,11 @@ func (t *transport) do(req *http.Request, dst any) error {
 	}
 	resp, err := t.client.Do(req)
 	if err != nil {
-		return failure(imaging.CodeResultUnknown, imaging.DeliveryUncertain)
+		reason := "no response from the provider"
+		if why := imaging.TransportReason(err); why != "" {
+			reason += ": " + why
+		}
+		return failureReason(imaging.CodeResultUnknown, imaging.DeliveryUncertain, reason)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -125,7 +135,7 @@ func (t *transport) do(req *http.Request, dst any) error {
 		case 429:
 			code, d = imaging.CodeRateLimited, imaging.DeliveryRejected
 		}
-		return failure(code, d)
+		return failureReason(code, d, "provider returned HTTP "+strconv.Itoa(resp.StatusCode))
 	}
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResponse+1))
 	if err != nil || len(raw) > maxResponse {

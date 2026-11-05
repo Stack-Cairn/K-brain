@@ -176,6 +176,22 @@ func Transport(useProxy bool) http.RoundTripper {
 	return transports.direct
 }
 
+// ConnectionTransport returns a private copy of the toggle's transport for a caller that
+// manages its own idle connections. It follows the same per-request proxy selection.
+func ConnectionTransport(useProxy bool) *http.Transport {
+	build()
+	if useProxy {
+		return transports.proxied.Clone()
+	}
+	return transports.direct.Clone()
+}
+
+// ProxyFor reports the proxy a toggled-on provider would use for target, nil meaning a
+// direct connection. It fails rather than falling back while the app proxy is invalid.
+func ProxyFor(target *url.URL) (*url.URL, error) {
+	return proxyForRequest(&http.Request{URL: target})
+}
+
 type ctxKey struct{}
 
 // WithProvider marks ctx with the provider's proxy toggle for clients that

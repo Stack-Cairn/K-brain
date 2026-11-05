@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -339,10 +340,10 @@ func (q *Scheduler) execute(ctx context.Context, w engineWork) (executeErr error
 		now := s.clock.Now()
 		if !ex.Deadline.IsZero() && !now.Before(ex.Deadline) {
 			i.Status = JobResultUnknown
-			i.Error = &ImageError{Code: CodeResultUnknown}
+			i.Error = &ImageError{Code: CodeResultUnknown, Reason: "job deadline passed before the provider reported a result"}
 			if len(x.Attempts) == 0 {
 				i.Status = JobFailed
-				i.Error = &ImageError{Code: CodeUnavailable}
+				i.Error = &ImageError{Code: CodeUnavailable, Reason: "job deadline passed before any attempt started"}
 			}
 			aggregateJob(&j, ex)
 			return s.writeJob(tx, &j, jobEvent(j.Status))
@@ -366,6 +367,7 @@ func (q *Scheduler) execute(ctx context.Context, w engineWork) (executeErr error
 			x.Attempts = append(x.Attempts, ImageAttempt{AttemptNo: len(x.Attempts) + 1, StartedAt: now, SubmissionState: "submitting"})
 			i.AttemptCount = len(x.Attempts)
 			i.Status = JobRunning
+			i.Error = nil // the last attempt's reason says nothing about this one
 			j.Status = JobRunning
 		}
 		ex.Items[id] = x
@@ -405,7 +407,7 @@ func (q *Scheduler) execute(ctx context.Context, w engineWork) (executeErr error
 		a, err = s.options.AdapterResolver(call, w.scope, w.job.TargetSnapshot)
 	}
 	if err != nil {
-		return q.finish(ctx, w, RemoteResult{}, &AdapterError{Code: safeEngineError(err).Code, Delivery: DeliveryRejected, Cause: err})
+		return q.finish(ctx, w, RemoteResult{}, &AdapterError{Code: safeEngineError(err).Code, Delivery: DeliveryRejected, Cause: err, Reason: "image connection could not be prepared"})
 	}
 	x := w.execution.Items[id]
 	var result RemoteResult
@@ -442,7 +444,7 @@ func (q *Scheduler) execute(ctx context.Context, w engineWork) (executeErr error
 				asset, err = s.options.InputResolver.ResolveAsset(w.scope, input.AssetID)
 			}
 			if err != nil {
-				return q.finish(ctx, w, RemoteResult{}, &AdapterError{Code: safeEngineError(err).Code, Delivery: DeliveryRejected, Cause: err})
+				return q.finish(ctx, w, RemoteResult{}, &AdapterError{Code: safeEngineError(err).Code, Delivery: DeliveryRejected, Cause: err, Reason: "input image could not be loaded"})
 			}
 			inputs = append(inputs, asset)
 		}
@@ -451,6 +453,12 @@ func (q *Scheduler) execute(ctx context.Context, w engineWork) (executeErr error
 	// Shutdown leaves the durable submitting/pending record for reconciliation.
 	if ctx.Err() != nil && err != nil {
 		return nil
+	}
+	// The worker is alive, so a finished call context means the submit timer fired. The
+	// transport reports that as a plain cancellation, which would read as if someone cancelled.
+	var timedOut *AdapterError
+	if err != nil && call.Err() != nil && errors.As(err, &timedOut) && timedOut.Delivery == DeliveryUncertain && timedOut.Code == CodeResultUnknown {
+		timedOut.Reason = "provider did not respond within " + strconv.Itoa(int(duration.Seconds())) + " seconds"
 	}
 	return q.finish(ctx, w, result, err)
 }
@@ -562,7 +570,8 @@ func (q *Scheduler) finish(ctx context.Context, w engineWork, result RemoteResul
 				if err == nil {
 					break
 				}
-				if errors.Is(err, ErrUnsupported) || ctx.Err() != nil {
+				var spent downloadBudgetSpent
+				if errors.Is(err, ErrUnsupported) || ctx.Err() != nil || errors.As(err, &spent) {
 					break
 				}
 				if attempt < 2 {
@@ -573,7 +582,15 @@ func (q *Scheduler) finish(ctx context.Context, w engineWork, result RemoteResul
 			}
 			if err != nil || asset.ID == "" {
 				saveFailed = true
-				saveError = safeEngineError(err)
+				// The one failure with a remedy for the user stays, whichever output came last.
+				if saveError != nil && slowDirectDownload(saveError) {
+					continue
+				}
+				saveError = outputSaveError(err)
+				// The deadline ends a download through a plain cancel; nobody cancelled it.
+				if !slowDirectDownload(saveError) && !w.execution.Deadline.IsZero() && !s.clock.Now().Before(w.execution.Deadline) {
+					saveError.Reason = "job deadline passed while saving the generated image"
+				}
 				continue
 			}
 			asset.JobID = w.job.ID
@@ -678,8 +695,13 @@ func (q *Scheduler) finish(ctx context.Context, w engineWork, result RemoteResul
 				if item.Error.Code == CodeAuthRequired || item.Error.Code == CodeForbidden {
 					item.Status = JobResultUnknown
 				} else if errors.Is(callErr, ErrUnsupported) || x.QueryFailures >= 5 {
+					// An unsupported lookup says nothing about the provider; a failed one does.
+					fallback := "provider status could not be confirmed"
+					if !errors.Is(callErr, ErrUnsupported) && item.Error.Reason != "" {
+						fallback = item.Error.Reason
+					}
 					item.Status = JobResultUnknown
-					item.Error = &ImageError{Code: CodeResultUnknown}
+					item.Error = &ImageError{Code: CodeResultUnknown, Reason: lastAttemptReason(x, fallback)}
 				} else {
 					hint := time.Duration(0)
 					if isAdapter {
@@ -695,7 +717,7 @@ func (q *Scheduler) finish(ctx context.Context, w engineWork, result RemoteResul
 			case "pending":
 				if x.ProviderHandle == "" {
 					item.Status = JobResultUnknown
-					item.Error = &ImageError{Code: CodeResultUnknown}
+					item.Error = &ImageError{Code: CodeResultUnknown, Reason: "provider gave no task handle to look up"}
 				} else {
 					item.Status = JobRunning
 					d := s.backoff(1, 0)
@@ -716,17 +738,25 @@ func (q *Scheduler) finish(ctx context.Context, w engineWork, result RemoteResul
 					}
 				} else {
 					item.Status = JobFailed
-					item.Error = &ImageError{Code: CodeNoImageOutput}
+					item.Error = &ImageError{Code: CodeNoImageOutput, Reason: "provider reported success but returned no image"}
 					if saveFailed {
 						item.Error = saveError
 					}
 				}
 			case "failed":
 				item.Status = JobFailed
-				item.Error = PublicError(&ImageError{Code: result.ErrorCode})
+				item.Error = PublicError(&ImageError{Code: result.ErrorCode, Reason: result.ErrorReason})
+			case "unknown":
+				// Adapters report this on purpose when a provider cannot say how a task ended.
+				item.Status = JobResultUnknown
+				reason := result.ErrorReason
+				if reason == "" {
+					reason = lastAttemptReason(x, "provider could not confirm the result")
+				}
+				item.Error = &ImageError{Code: CodeResultUnknown, Reason: reason}
 			default:
 				item.Status = JobResultUnknown
-				item.Error = &ImageError{Code: CodeResultUnknown}
+				item.Error = &ImageError{Code: CodeResultUnknown, Reason: "provider returned an unrecognised state"}
 			}
 		}
 		if saved > 0 && item.Status == JobFailed {

@@ -84,6 +84,9 @@ func imageJSON(w http.ResponseWriter, r *http.Request, status int, fields map[st
 	_, _ = w.Write(append(raw, '\n'))
 }
 func imageFailure(w http.ResponseWriter, r *http.Request, status int, code, message string, retryable bool, details *imaging.ErrorDetails) {
+	imageFailureReason(w, r, status, code, message, retryable, details, "")
+}
+func imageFailureReason(w http.ResponseWriter, r *http.Request, status int, code, message string, retryable bool, details *imaging.ErrorDetails, reason string) {
 	id, _ := r.Context().Value(imageRequestIDKey{}).(string)
 	// Use a wire struct to preserve HTTP-only codes without exposing error causes.
 	imageJSON(w, r, status, map[string]any{"error": struct {
@@ -91,16 +94,19 @@ func imageFailure(w http.ResponseWriter, r *http.Request, status int, code, mess
 		Message   string                `json:"message"`
 		Retryable bool                  `json:"retryable"`
 		RequestID string                `json:"requestId"`
+		Reason    string                `json:"reason,omitempty"`
 		Details   *imaging.ErrorDetails `json:"details,omitempty"`
-	}{code, message, retryable, id, details}})
+	}{code, message, retryable, id, imaging.SafeReason(reason), details}})
 }
 func imageHTTPError(w http.ResponseWriter, r *http.Request, err error) {
 	code := imaging.CodeUnavailable
 	var details *imaging.ErrorDetails
+	var reason string
 	var ie *imaging.ImageError
 	var tooLarge *http.MaxBytesError
 	if errors.As(err, &ie) {
 		code = ie.Code
+		reason = ie.Reason
 		if code == imaging.CodeEventGap {
 			details = ie.Details
 		}
@@ -127,6 +133,10 @@ func imageHTTPError(w http.ResponseWriter, r *http.Request, err error) {
 		status = http.StatusRequestEntityTooLarge
 	case imaging.CodeRateLimited:
 		status = http.StatusTooManyRequests
+	case imaging.CodeNoImageOutput, imaging.CodeResultUnknown, imaging.CodeOutputSaveFailed:
+		// The provider answered, or may have, but this request has no result to return.
+		// Keep the code so clients can tell it apart from a module that is down.
+		status = http.StatusBadGateway
 	default:
 		code = imaging.CodeUnavailable
 	}
@@ -134,7 +144,7 @@ func imageHTTPError(w http.ResponseWriter, r *http.Request, err error) {
 	if code == imaging.CodeProjectBusy {
 		message = "Image project has active jobs"
 	}
-	imageFailure(w, r, status, code, message, status == 503 || status == 429, details)
+	imageFailureReason(w, r, status, code, message, status == 503 || status == 429, details, reason)
 }
 func imageMethod(w http.ResponseWriter, r *http.Request, methods ...string) bool {
 	for _, method := range methods {

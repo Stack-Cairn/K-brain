@@ -21,6 +21,7 @@ import (
 
 	"github.com/Stack-Cairn/K-brain/internal/config"
 	"github.com/Stack-Cairn/K-brain/internal/imaging"
+	"github.com/Stack-Cairn/K-brain/internal/netproxy"
 )
 
 // ImageDependencyChecker is called under SettingsStore.mu. The job service must
@@ -571,11 +572,9 @@ func (m *ImageSettingsManager) ResolveImageConnection(ctx context.Context, scope
 	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Scheme != "https" && u.Scheme != "http") {
 		return ResolvedImageConnection{}, imageError(imaging.CodeInvalidInput)
 	}
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	if !b.UseSystemProxy {
-		transport.Proxy = nil
-	}
-	client := &http.Client{Transport: transport, Timeout: 180 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	// netproxy carries the app proxy LiveAgent passes at spawn. A cloned default transport only
+	// reads HTTPS_PROXY, so a desktop app's image traffic would silently connect directly.
+	client := &http.Client{Transport: netproxy.ConnectionTransport(b.UseSystemProxy), Timeout: 180 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	return ResolvedImageConnection{ResolvedConnection: imaging.ResolvedConnection{HTTPClient: client, SecretResolver: resolver, NetworkProfile: imaging.NetworkProfile{AllowedHosts: []string{u.Hostname()}}}, BaseURL: b.BaseURL, AuthKind: b.AuthKind, SecretRefs: maps.Clone(b.SecretRefs), CustomHeaders: maps.Clone(b.CustomHeaders), UseSystemProxy: b.UseSystemProxy}, nil
 }
 

@@ -23,12 +23,15 @@ type RemoteResult struct {
 	Usage         *Usage         `json:"-"`
 	NextPollAfter time.Duration  `json:"-"`
 	ErrorCode     string         `json:"-"`
+	ErrorReason   string         `json:"-"`
 }
 type OutputSource struct {
 	Kind string `json:"-"` // bytes | url
 	MIME string `json:"-"`
 	Data []byte `json:"-"`
 	URL  string `json:"-"`
+	// UseProxy fetches URL through the app proxy, as the connection's own requests go.
+	UseProxy bool `json:"-"`
 }
 type ExecuteRequest struct {
 	ItemID        string           `json:"-"`

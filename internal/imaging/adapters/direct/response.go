@@ -40,7 +40,7 @@ func unknown() (imaging.RemoteResult, error) {
 	return failed(failure(imaging.CodeResultUnknown, imaging.DeliveryUncertain))
 }
 func noImage() (imaging.RemoteResult, error) {
-	return imaging.RemoteResult{State: "failed", ErrorCode: imaging.CodeNoImageOutput}, nil
+	return imaging.RemoteResult{State: "failed", ErrorCode: imaging.CodeNoImageOutput, ErrorReason: "provider response contained no image"}, nil
 }
 
 func (a *Adapter) response(ctx context.Context, b []byte, providerTarget bool) (imaging.RemoteResult, error) {
