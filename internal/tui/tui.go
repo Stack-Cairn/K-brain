@@ -234,6 +234,11 @@ type model struct {
 	selDragX int
 	selDragY int
 
+	// transientNotice briefly replaces the footer's status cell, e.g. after a
+	// copy; noticeGeneration lets a newer notice outlive an older one's timer.
+	transientNotice  string
+	noticeGeneration uint64
+
 	inputBodyOff int
 	// composerTop is where the composer's top rule sits, which is one row above
 	// inputBodyOff. Padding goes here so the frame stays whole.
@@ -1652,6 +1657,13 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.selEdgeScroll()
 
 	case tea.KeyMsg:
+		if msg.Type == tea.KeyCtrlC && m.sel != nil && m.sel.done && !m.busy {
+			// With a finished selection, Ctrl+C copies it again instead of
+			// arming quit; the next Ctrl+C behaves as usual.
+			cmd := m.copySelection()
+			m.sel = nil
+			return m, cmd
+		}
 		m.sel = nil
 		return m.key(msg)
 
@@ -2101,6 +2113,15 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.escClr = false
 		return m, nil
 
+	case copyDoneMsg:
+		return m, m.showNotice(m.copyNotice(msg))
+
+	case noticeExpiredMsg:
+		if uint64(msg) == m.noticeGeneration {
+			m.transientNotice = ""
+		}
+		return m, nil
+
 	case taskUpdateMsg:
 
 		if m.taskVP != nil {
@@ -2218,6 +2239,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.insertNewline()
 		}
 
+		if m.sel != nil && m.sel.done && isSuperC(s.String()) {
+			return m, m.copySelection()
+		}
 		if k, ok := csiUKey(s.String()); ok {
 			m.sel = nil
 			return m.key(k)
@@ -4263,6 +4287,9 @@ func (m *model) syncInputPlaceholder() {
 // statusLeft is the left half of the info row after the mode chip: the git
 // readout, then the goal. The working directory lives in the banner instead.
 func (m *model) statusLeft() string {
+	if m.transientNotice != "" {
+		return dimStyle.Render(ansi.Truncate(m.transientNotice, max(m.width/2, 16), "…"))
+	}
 	left := m.git.render()
 	if m.goal != "" {
 		if left != "" {

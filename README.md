@@ -197,6 +197,8 @@ Previewing or switching models keeps the active session, todos, queued guidance,
 
 Use `Ctrl+P` for the command palette, `Ctrl+J` for a newline, `Esc` to interrupt the current task, and `PgUp/PgDn` to scroll. Launch with `kn -cautious` to request confirmation before commands or file writes.
 
+To copy part of the conversation, drag across it with the mouse: the text is copied when you release, and the footer confirms it. While the highlight is showing, `Ctrl+C` (or `Cmd+C` in terminals that support the kitty keyboard protocol) copies it again. Copies use the local clipboard; over SSH, or when no clipboard tool is installed, they go to your terminal as an OSC 52 sequence, which also works through tmux once `set -g set-clipboard on` is set. Set `K_BRAIN_CLIPBOARD_NO_OSC52=1` if your terminal prints OSC 52 instead of handling it. `/mouse` turns mouse capture off to use the terminal's own selection instead.
+
 <details>
 <summary>Markdown prompt templates</summary>
 

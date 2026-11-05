@@ -197,6 +197,8 @@ TUI 使用当前终端的全屏界面，输入区固定在底部。首轮对话�
 
 `Ctrl+P` 打开命令面板，`Ctrl+J` 换行，`Esc` 中断当前任务，`PgUp/PgDn` 滚动消息。使用 `kn -cautious` 启动时，执行命令或写文件前会请求确认。
 
+要复制对话内容，用鼠标拖动选中即可，松开时自动复制，底部状态栏会提示。高亮还在时，按 `Ctrl+C`（支持 kitty 键盘协议的终端也可以按 `Cmd+C`）可再次复制。复制优先使用本机剪贴板；通过 SSH 连接或本机没有剪贴板工具时，会以 OSC 52 序列发给终端，在 tmux 中需先设置 `set -g set-clipboard on`。如果终端把 OSC 52 当成文字显示出来，可设置 `K_BRAIN_CLIPBOARD_NO_OSC52=1` 关闭。用 `/mouse` 关闭鼠标捕获后，可改用终端自带的选择复制。
+
 <details>
 <summary>Markdown 提示词模板</summary>
 

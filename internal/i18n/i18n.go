@@ -34,12 +34,15 @@ func Text(language, text string) string {
 }
 
 var chinese = map[string]string{
-	"subagents": "子代理",
-	"running":   "运行中",
-	"replying":  "回复中",
-	"done":      "已完成",
-	"error":     "失败",
-	"cancelled": "已取消",
+	"Copied %d characters":                         "已复制 %d 个字符",
+	"Sent %d characters to the terminal clipboard": "已通过终端剪贴板发送 %d 个字符",
+	"Copy failed: %s":                              "复制失败：%s",
+	"subagents":                                    "子代理",
+	"running":                                      "运行中",
+	"replying":                                     "回复中",
+	"done":                                         "已完成",
+	"error":                                        "失败",
+	"cancelled":                                    "已取消",
 	"Ctrl+T Input · ↑/↓ Select · Space Preview · Enter Open":  "Ctrl+T 输入 · ↑/↓ 选择 · Space 预览 · Enter 打开",
 	"Ctrl+T Input · ↑/↓ Select · Space Collapse · Enter Open": "Ctrl+T 输入 · ↑/↓ 选择 · Space 收起 · Enter 打开",
 	"   ↑ %d More · ↓ %d More · Ctrl+T Browse":                "   ↑ 另有 %d 项 · ↓ 另有 %d 项 · Ctrl+T 浏览",
@@ -219,12 +222,15 @@ var chinese = map[string]string{
 }
 
 var traditionalChinese = map[string]string{
-	"subagents": "子代理",
-	"running":   "執行中",
-	"replying":  "回覆中",
-	"done":      "已完成",
-	"error":     "失敗",
-	"cancelled": "已取消",
+	"Copied %d characters":                         "已複製 %d 個字元",
+	"Sent %d characters to the terminal clipboard": "已透過終端剪貼簿傳送 %d 個字元",
+	"Copy failed: %s":                              "複製失敗：%s",
+	"subagents":                                    "子代理",
+	"running":                                      "執行中",
+	"replying":                                     "回覆中",
+	"done":                                         "已完成",
+	"error":                                        "失敗",
+	"cancelled":                                    "已取消",
 	"Ctrl+T Input · ↑/↓ Select · Space Preview · Enter Open":  "Ctrl+T 輸入 · ↑/↓ 選擇 · Space 預覽 · Enter 開啟",
 	"Ctrl+T Input · ↑/↓ Select · Space Collapse · Enter Open": "Ctrl+T 輸入 · ↑/↓ 選擇 · Space 收起 · Enter 開啟",
 	"   ↑ %d More · ↓ %d More · Ctrl+T Browse":                "   ↑ 另有 %d 項 · ↓ 另有 %d 項 · Ctrl+T 瀏覽",
