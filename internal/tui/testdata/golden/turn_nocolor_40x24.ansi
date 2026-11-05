@@ -1,6 +1,6 @@
-        alse, "verbose")[0m                [0m
-[2m  42  [0m+     asJSON := flags.Bool("json",[0m
-         false, "print JSON")           
+[2m  42  [0m+     asJSON :=                   [0m
+        flags.Bool("json", false,       
+        "print JSON")                   
 [2m◆[0m [1mBash[0m  go test ./cmd/kn/         ✓[2m 2.4s[0m
 [2m  └ [0mok      github.com/acme/kn/cmd/kn   [0m
     2.1s                                

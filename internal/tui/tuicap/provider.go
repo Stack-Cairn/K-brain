@@ -18,7 +18,19 @@ import (
 type Reply struct {
 	Chunks []string
 	Delay  time.Duration
+	// ToolCalls, when set, follow the chunks: the reply then ends asking kn
+	// to run them (finish_reason "tool_calls"), and kn's next request
+	// carries their results.
+	ToolCalls []ToolCall
 }
+
+// ToolCall is one function call a scripted reply makes. Args is its JSON.
+type ToolCall struct {
+	ID, Name, Args string
+}
+
+// Calls is a reply that only calls tools.
+func Calls(calls ...ToolCall) Reply { return Reply{ToolCalls: calls} }
 
 // Text is a reply streamed in one chunk.
 func Text(s string) Reply { return Reply{Chunks: []string{s}} }
@@ -116,7 +128,31 @@ func (p *Provider) serve(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		}
 	}
-	fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n")
+	finish := "stop"
+	for i, c := range reply.ToolCalls {
+		var d struct {
+			Choices [1]struct {
+				Delta struct {
+					ToolCalls [1]struct {
+						Index    int    `json:"index"`
+						ID       string `json:"id"`
+						Type     string `json:"type"`
+						Function struct {
+							Name      string `json:"name"`
+							Arguments string `json:"arguments"`
+						} `json:"function"`
+					} `json:"tool_calls"`
+				} `json:"delta"`
+			} `json:"choices"`
+		}
+		tc := &d.Choices[0].Delta.ToolCalls[0]
+		tc.Index, tc.ID, tc.Type = i, c.ID, "function"
+		tc.Function.Name, tc.Function.Arguments = c.Name, c.Args
+		data, _ := json.Marshal(d)
+		fmt.Fprintf(w, "data: %s\n\n", data)
+		finish = "tool_calls"
+	}
+	fmt.Fprintf(w, "data: {\"choices\":[{\"delta\":{},\"finish_reason\":%q}]}\n\n", finish)
 	fmt.Fprint(w, "data: [DONE]\n\n")
 }
 

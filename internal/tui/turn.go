@@ -198,6 +198,7 @@ func (m *model) submitTurnAs(text string, authored, notice bool) (tea.Model, tea
 					ev.Err, ev.Delay.Round(time.Millisecond), ev.Attempt+1, ev.Max)))
 			},
 		}
+		m.toolViewEvents(&events, send)
 		var final string
 		var err error
 		switch {

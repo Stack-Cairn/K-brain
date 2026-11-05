@@ -1,0 +1,33 @@
+== ok ==
+* Bash  go test ./internal/tui/   v 2.4s
+  ` ok
+    github.com/acme/kn/internal/tui
+    2.1s
+== exit ==
+x Bash  make lint          exit 2 - 2.8s
+  ` lint: warning 1
+    lint: warning 2
+    ... +7 lines - ctrl+e
+    lint: warning 10
+    lint: warning 11
+    make: *** [lint] Error 2
+== timed-out ==
+x Bash  sleep 100 && echo done
+                       timed out - 30.0s
+  ` waiting for the lock
+== cancelled ==
+x Bash  npm install     cancelled - 0.4s
+  ` added 12 packages
+== interrupted ==
+x Bash  go build ./...
+                      interrupted - 1.5s
+== running ==
+~ Bash  go test -race ./...           4s
+  | === RUN   TestOne
+  | === RUN   TestTwo
+== no-output ==
+* Bash  true                      v 0.0s
+  ` (no output)
+== process ==
+* Process  npm run dev            v 0.2s
+  ` started web (pid 4242)

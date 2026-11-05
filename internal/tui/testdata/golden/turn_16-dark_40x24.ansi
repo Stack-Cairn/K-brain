@@ -1,6 +1,6 @@
-        alse, "verbose")[0m                [0m
-[90m  42  [0m[92m+[0m [92m    asJSON := flags.Bool("json",[0m
-[92m         false, "print JSON")[0m           [0m
+[90m  42  [0m[92m+[0m [92m    asJSON := [0m                  [0m
+        [92mflags.Bool("json", false, [0m      [0m
+        [92m"print JSON")[0m                   [0m
 [90m◆[0m [1mBash[0m  [37mgo test ./cmd/kn/[0m         [92m✓[0m[90m 2.4s[0m
 [90m  └ [0m[37mok      github.com/acme/kn/cmd/kn[0m   [0m
 [37m    2.1s[0m                                [0m

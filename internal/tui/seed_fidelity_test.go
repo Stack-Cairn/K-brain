@@ -87,7 +87,7 @@ func TestSeedRebuildsToolBlocks(t *testing.T) {
 	}
 
 	view := blockRows(m)
-	for _, s := range []string{"2.4s", "failed · 1.1s", "pkg    2.1s", "unused"} {
+	for _, s := range []string{"2.4s", "exit 1 · 1.1s", "timed out", "pkg    2.1s", "unused"} {
 		if !strings.Contains(view, s) {
 			t.Errorf("resumed transcript is missing %q:\n%s", s, view)
 		}

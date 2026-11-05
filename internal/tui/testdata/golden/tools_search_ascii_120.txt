@@ -1,0 +1,13 @@
+== grep ==
+* Grep  asJSON in cmd                                                                                             v 0.0s
+  ` 2 matches
+== glob ==
+* Glob  **/*_test.go                                                                                              v 0.0s
+  ` 9 files
+== group ==
+* Read 2 files, searched 1 pattern                                                                                v 0.0s
+  ` status.go, main.go, asJSON
+== group-expanded ==
+* Read 1 file, searched 1 pattern                                                                                 v 0.0s
+  * Read  cmd/kn/status.go                                                                               12 lines - 0.0s
+  * Glob  *.md                                                                                            2 files - 0.0s

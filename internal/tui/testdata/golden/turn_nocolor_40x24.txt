@@ -1,6 +1,6 @@
-        alse, "verbose")
-  42  +     asJSON := flags.Bool("json",
-         false, "print JSON")
+  42  +     asJSON :=
+        flags.Bool("json", false,
+        "print JSON")
 ◆ Bash  go test ./cmd/kn/         ✓ 2.4s
   └ ok      github.com/acme/kn/cmd/kn
     2.1s

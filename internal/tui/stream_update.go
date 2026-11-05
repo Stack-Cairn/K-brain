@@ -112,6 +112,7 @@ func (m *model) onTurnDone(msg turnDoneMsg) (tea.Model, tea.Cmd) {
 	m.flushThink()
 	m.flushCurrent()
 	m.clearQueuedTools()
+	m.settleRunningTools()
 	m.busy = false
 	if m.memoryPending != nil {
 		m.applyMemorySwitch(*m.memoryPending)
@@ -173,6 +174,9 @@ func (m *model) onTurnDone(msg turnDoneMsg) (tea.Model, tea.Cmd) {
 // onToolCall adds or refreshes the queued row of a tool call the model has
 // announced but not started.
 func (m *model) onToolCall(msg toolCallMsg) (tea.Model, tea.Cmd) {
+	if hiddenToolCall(msg.name) {
+		return m, nil
+	}
 	m.flushThink()
 	m.flushCurrent()
 	row := dimStyle.Render("⋯ " + msg.name + m.batchSuffix(msg.name, msg.id) + " " + queuedSubject(msg.name, msg.args))
@@ -199,6 +203,9 @@ func (m *model) onToolCall(msg toolCallMsg) (tea.Model, tea.Cmd) {
 
 // onToolStart turns a queued row into a running one, in place.
 func (m *model) onToolStart(msg toolStartMsg) (tea.Model, tea.Cmd) {
+	if hiddenToolCall(msg.name) {
+		return m, nil
+	}
 	m.flushThink()
 	m.flushCurrent()
 
@@ -234,7 +241,11 @@ func (m *model) onToolStart(msg toolStartMsg) (tea.Model, tea.Cmd) {
 		m.blocks = append(m.blocks, run)
 	}
 	m.refreshVP()
-	return m, nil
+	if msg.name == "subagent" {
+		return m, nil
+	}
+	toolTimer.start(msg.id)
+	return m, m.ensureToolTick()
 }
 
 // onToolOutput shows the last lines of a running tool's output.
@@ -255,6 +266,16 @@ func (m *model) onToolOutput(msg toolOutputMsg) (tea.Model, tea.Cmd) {
 
 // onToolEnd closes the running row and inserts the result block under it.
 func (m *model) onToolEnd(msg toolEndMsg) (tea.Model, tea.Cmd) {
+	if hiddenToolCall(msg.name) {
+		if !toolResultFailed(msg.result) {
+			return m, nil
+		}
+		// A plan the agent could not record is worth seeing: its call shows
+		// with the error, as any failed call does.
+		m.flushThink()
+		m.flushCurrent()
+		m.blocks = append(m.blocks, block{kind: blockToolRun, text: toolHeaderRow(msg.name, "", true), toolID: msg.id, toolName: msg.name, toolFailed: true})
+	}
 	hdr := -1
 	for i := len(m.blocks) - 1; i >= 0; i-- {
 		b := &m.blocks[i]
@@ -281,6 +302,9 @@ func (m *model) onToolEnd(msg toolEndMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 	}
+	if hdr >= 0 && result.kind == blockTool {
+		linkToolResult(&m.blocks[hdr], &result)
+	}
 	if hdr >= 0 && hdr+1 < len(m.blocks) {
 		m.blocks = append(m.blocks[:hdr+1], append([]block{result}, m.blocks[hdr+1:]...)...)
 
@@ -297,6 +321,9 @@ func (m *model) onToolEnd(msg toolEndMsg) (tea.Model, tea.Cmd) {
 		m.refreshSubagentRows()
 		m.refreshVP()
 		return m, m.ensureSubTick()
+	}
+	if groupableTool(msg.name) {
+		m.groupTrailingTools()
 	}
 	m.refreshVP()
 	return m, nil

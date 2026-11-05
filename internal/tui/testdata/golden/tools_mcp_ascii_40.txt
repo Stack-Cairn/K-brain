@@ -1,0 +1,18 @@
+== ok ==
+* github:search_issues  is:open
+  label:tui                       v 0.9s
+  ` # 1
+    # 2
+    # 3
+    # 4
+    # 5
+    # 6
+    # 7
+    # 8
+    # 9
+    # 10
+    ... +4 lines - ctrl+e
+== failed ==
+x docs:lookup  id=42       failed - 0.1s
+  ` Error: MCP server docs is not
+    connected

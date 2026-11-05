@@ -1,0 +1,12 @@
+== web-fetch ==
+◆ Fetch  pkg.go.dev/github.com/charmbracelet/bubbletea                                                            ✓ 0.6s
+  └ 1220 chars
+== hosted-search ==
+◆ Web search  "bubbletea viewport"                                                                           ✓ 5 sources
+  └ Bubbles: TUI components — github.com
+    viewport package — pkg.go.dev
+    example.com
+    ⋯ +2 sources · ctrl+e
+== hosted-search-failed ==
+✗ Web search  "kn release notes"                                                                                  failed
+  └ search quota exceeded

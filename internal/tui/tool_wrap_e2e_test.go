@@ -71,11 +71,15 @@ func TestToolResultFullyVisibleWhenExpanded(t *testing.T) {
 	m = tm.(*model)
 
 	joined := strings.Join(m.viewportPlain(), "\n")
-	if !strings.Contains(joined, glyphs.Fold+" +9 lines") {
+	// A command's output folds in the middle: its first and last rows stay.
+	if !strings.Contains(joined, glyphs.Fold+" +7 lines") {
 		t.Fatalf("collapsed view should announce hidden lines, got:\n%s", joined)
 	}
-	if strings.Contains(joined, "output row "+strings.Repeat("x", 12)) {
-		t.Fatal("collapsed view must not show the last row")
+	if strings.Contains(joined, "output row "+strings.Repeat("x", 6)+"\n") {
+		t.Fatal("collapsed view must not show the middle rows")
+	}
+	if !strings.Contains(joined, "output row "+strings.Repeat("x", 12)) {
+		t.Fatal("collapsed view should keep the last row")
 	}
 
 	tm, _ = m.key(tea.KeyMsg{Type: tea.KeyCtrlE})
