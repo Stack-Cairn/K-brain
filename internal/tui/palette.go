@@ -364,6 +364,33 @@ func (m *model) paletteItems() []paletteItem {
 			},
 		},
 		{
+			title: "Settings", category: "App",
+			dynDesc: func(m *model) string { return slashHint(m, "/settings") },
+			dynHint: func(m *model) string { return "/settings · F2" },
+			run: func(m *model) (tea.Model, tea.Cmd) {
+				m.palette = nil
+				return m.command("/settings")
+			},
+		},
+		{
+			title: "Extensions", category: "App",
+			dynDesc: func(m *model) string { return slashHint(m, "/extensions") },
+			dynHint: func(m *model) string { return "/extensions" },
+			run: func(m *model) (tea.Model, tea.Cmd) {
+				m.palette = nil
+				return m.command("/extensions")
+			},
+		},
+		{
+			title: "Memory", category: "Session",
+			dynDesc: func(m *model) string { return slashHint(m, "/memory") },
+			dynHint: func(m *model) string { return "/memory" },
+			run: func(m *model) (tea.Model, tea.Cmd) {
+				m.palette = nil
+				return m.command("/memory")
+			},
+		},
+		{
 			title: "Quit", category: "App",
 			dynDesc: func(m *model) string { return "exit k-brain" },
 			dynHint: func(m *model) string { return "/quit · " + palHintQuit },

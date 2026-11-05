@@ -1,0 +1,40 @@
+> Settings                                                                                                         1/14
+  / type to filter
+------------------------------------------------------------------------------------------------------------------------
+  Display
+> Theme             colour scheme for the transcript and chrome                                                    auto
+  Language          interface language                                                                               en
+  Thinking tokens   show model reasoning in the transcript                                                          off
+  Mouse capture     wheel scroll and click-to-copy inside kn                                                         on
+  Ancient mode      classical vertical layout for replies                                                           off
+  Browser driver    automation engine that drives Chrome                                                            rod
+
+  Agent
+  Model             model and route for new turns                                                kimi-k3-fast@inference
+  Reasoning effort  how hard the model thinks before answering                                                      off
+  Permission mode   what tools may do without asking                                                       Always allow
+  Subagent model    model subagents run on                                                                current model
+
+  Session
+  Compaction model  model that summarises long conversations                                           default (model1)
+  Compaction level  auto-compact at this share of the context window                                                50%
+  Goal rounds       rounds a /goal may run before it stops                                                          100
+  Privacy gateway   mask secrets in requests, restore them in replies                                               off
+
+
+
+
+
+
+
+
+
+
+
+
+------------------------------------------------------------------------------------------------------------------------
+  Theme  auto
+  colour scheme for the transcript and chrome
+  <-/-> change - Enter next - /theme
+------------------------------------------------------------------------------------------------------------------------
+  Up/Down select - <-/-> change - Enter toggle or open - Esc close

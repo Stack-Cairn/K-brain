@@ -1,0 +1,24 @@
+
+  glm-5.2-fast — choose a route and context window
+     inference     128k ctx    https://x
+   → long          1M ctx      https://long.example.com/v1
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ↑/↓ Select · Enter Switch · Esc Back

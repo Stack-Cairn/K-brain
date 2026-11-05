@@ -1,0 +1,24 @@
+[1m❯[0m [1mSettings[0m                                                                 [2m1/14[0m
+  [1m/[0m [2mtype to filter[0m
+────────────────────────────────────────────────────────────────────────────────
+  [2mDisplay[0m
+[1;7m❯ Theme             colour scheme for the transcript and chrome            auto[0m
+  Language          interface language                                       [2men[0m
+  Thinking tokens   show model reasoning in the transcript                  [2moff[0m
+  Mouse capture     wheel scroll and click-to-copy inside kn                 [2mon[0m
+  Ancient mode      classical vertical layout for replies                   [2moff[0m
+  Browser driver    automation engine that drives Chrome                    [2mrod[0m
+
+  [2mAgent[0m
+  Model             model and route for new turns        [2mkimi-k3-fast@inference[0m
+  Reasoning effort  how hard the model thinks before answering              [2moff[0m
+  Permission mode   what tools may do without asking               [2mAlways allow[0m
+  Subagent model    model subagents run on                        [2mcurrent model[0m
+
+[2m  ↓ 4 more[0m
+────────────────────────────────────────────────────────────────────────────────
+  [1mTheme[0m  [1mauto[0m
+  colour scheme for the transcript and chrome
+  [2m←/→ change · Enter next · /theme[0m
+────────────────────────────────────────────────────────────────────────────────
+  [2m↑/↓ select · ←/→ change · Enter toggle or open · Esc close[0m

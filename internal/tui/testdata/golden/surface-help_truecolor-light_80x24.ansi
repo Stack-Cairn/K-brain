@@ -1,0 +1,24 @@
+[38;2;21;127;104m❯[0m [1mKeyboard shortcuts[0m                                                       [38;2;92;97;105m1/38[0m
+  [1;38;2;21;127;104m[Keys][0m [38;2;104;110;118m Commands [0m
+  [38;2;21;127;104m/[0m [38;2;92;97;105mtype to filter[0m
+[38;2;213;218;222m────────────────────────────────────────────────────────────────────────────────[0m
+  [38;2;104;110;118mAnywhere[0m
+[1;38;2;21;127;104;48;2;232;236;240m❯ Shift+Tab                   cycle the permission mode                        [0m
+  Ctrl+K                      [38;2;58;63;70mclear the conversation[0m[38;2;92;97;105m[0m
+  Ctrl+T                      [38;2;58;63;70mfocus the subagent dock[0m[38;2;92;97;105m[0m
+  Ctrl+O                      [38;2;58;63;70mshow or hide thinking tokens[0m[38;2;92;97;105m[0m
+  Ctrl+E                      [38;2;58;63;70mexpand the last tool result[0m[38;2;92;97;105m[0m
+  Ctrl+G                      [38;2;58;63;70medit the draft in an external editor[0m[38;2;92;97;105m[0m
+  Ctrl+V                      [38;2;58;63;70mpaste an image[0m[38;2;92;97;105m[0m
+  PgUp / PgDn                 [38;2;58;63;70mscroll the transcript[0m[38;2;92;97;105m[0m
+  Ctrl+C Ctrl+C               [38;2;58;63;70mquit[0m[38;2;92;97;105m[0m
+  Ctrl+P                      [38;2;58;63;70mopen the command palette[0m[38;2;92;97;105m[0m
+  F2                          [38;2;58;63;70mopen settings[0m[38;2;92;97;105m[0m
+
+[38;2;92;97;105m  ↓ 27 more[0m
+[38;2;213;218;222m────────────────────────────────────────────────────────────────────────────────[0m
+  [1mShift+Tab[0m  [38;2;58;63;70mcycle the permission mode[0m
+  [38;2;92;97;105mShift+Tab — cycle Normal / Plan / Auto review / Always allow[0m
+  [38;2;104;110;118mcontext: Anywhere[0m
+[38;2;213;218;222m────────────────────────────────────────────────────────────────────────────────[0m
+  [38;2;92;97;105mTab switch tab · ↑/↓ select · type to filter · Esc close[0m

@@ -1,0 +1,24 @@
+
+
+
+
++- Do you trust the files in this folder? -------------------------------------+
+| /home/dev/src/acme/kn                                                        |
+|                                                                              |
+| k-brain may read files in this folder. Reading untrusted files may lead k-   |
+| brain to behave in unexpected ways.                                          |
+|                                                                              |
+| With your permission k-brain may execute files in this folder. Executing     |
+| untrusted code is unsafe.                                                    |
+|                                                                              |
+| > 1  Yes, I trust this folder                                                |
+|   2  No, exit                                                                |
+|                                                                              |
+| Up/Down select - Enter confirm - Esc exit                                    |
++------------------------------------------------------------------------------+
+ step 2 of 3
+
+
+
+
+

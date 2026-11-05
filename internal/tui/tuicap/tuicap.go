@@ -58,6 +58,9 @@ type Options struct {
 	Config map[string]any
 	// Timeout bounds every WaitFor; default 10s.
 	Timeout time.Duration
+	// Untrusted leaves the working directory untrusted, so kn starts on the
+	// trust question.
+	Untrusted bool
 }
 
 // Session is one running kn.
@@ -111,13 +114,22 @@ func Start(t testing.TB, opts Options) *Session {
 	provider := NewProvider(opts.Replies)
 	t.Cleanup(provider.Close)
 	writeConfig(t, kbHome, provider.URL, opts.Config)
-	trust(t, kbHome, dir)
+	if !opts.Untrusted {
+		trust(t, kbHome, dir)
+	}
 
 	// The clipboard never leaves the session: kn finds these stubs before the
-	// real tools on PATH and they write to a file instead.
+	// real tools on PATH and they write to (and read back from) a file instead.
 	clip := filepath.Join(root, "clipboard.txt")
-	for _, name := range []string{"pbcopy", "wl-copy", "xclip", "xsel"} {
-		stub := "#!/bin/sh\ncat > " + strconv.Quote(clip) + "\n"
+	copyStub := "#!/bin/sh\ncat > " + strconv.Quote(clip) + "\n"
+	pasteStub := "#!/bin/sh\ncat " + strconv.Quote(clip) + " 2>/dev/null\n"
+	// xclip and xsel copy and paste with the same binary; -o/--output pastes.
+	dualStub := "#!/bin/sh\nfor a in \"$@\"; do case \"$a\" in -o|--output) cat " + strconv.Quote(clip) + " 2>/dev/null; exit 0;; esac; done\ncat > " + strconv.Quote(clip) + "\n"
+	for name, stub := range map[string]string{
+		"pbcopy": copyStub, "wl-copy": copyStub,
+		"pbpaste": pasteStub, "wl-paste": pasteStub,
+		"xclip": dualStub, "xsel": dualStub,
+	} {
 		if err := os.WriteFile(filepath.Join(stubs, name), []byte(stub), 0o755); err != nil {
 			t.Fatal(err)
 		}

@@ -1,0 +1,24 @@
+[38;2;47;191;160m❯[0m [1mResume session[0m                    [38;2;154;160;170m2/3[0m
+  [38;2;47;191;160m/[0m [38;2;154;160;170mtype to filter · searches titles an…[0m
+[38;2;58;64;72m────────────────────────────────────────[0m
+  refactor the ses…  [38;2;154;160;170m(current) · 2h ago[0m
+[1;38;2;47;191;160;48;2;38;43;52m❯ fix flaky TempDir cleanup on…  1d ago[0m
+  why does the gateway drop we…  [38;2;154;160;170m3d ago[0m
+
+
+
+
+
+
+
+
+
+
+[38;2;58;64;72m────────────────────────────────────────[0m
+  [38;2;134;139;149me5f6a7b8 · glm-5.2-fast@inference · /…[0m
+  [1;38;2;47;191;160m❯ [0mthe TempDir cleanup flakes on
+    Linux
+  [1;38;2;177;140;255m● [0mThe watcher still holds the
+    directory open; I close it in
+[38;2;58;64;72m────────────────────────────────────────[0m
+  [1;38;2;217;163;65mdelete session "fix flaky TempDir cle…[0m

@@ -1,0 +1,24 @@
+[96m>[0m [1mResume session[0m                    [37m2/3[0m
+  [96m/[0m [37mtype to filter - searches titles ...[0m
+[90m----------------------------------------[0m
+  refactor the s...  [37m(current) - 2h ago[0m
+[1;96m> fix flaky TempDir cleanup ...  1d ago[0m
+  why does the gateway drop ...  [37m3d ago[0m
+
+
+
+
+
+
+
+
+
+
+[90m----------------------------------------[0m
+  [90me5f6a7b8 - glm-5.2-fast@inference -...[0m
+  [1;96m> [0mthe TempDir cleanup flakes on
+    Linux
+  [1;95m* [0mThe watcher still holds the
+    directory open; I close it in
+[90m----------------------------------------[0m
+  [1;93mdelete session "fix flaky TempDir c...[0m

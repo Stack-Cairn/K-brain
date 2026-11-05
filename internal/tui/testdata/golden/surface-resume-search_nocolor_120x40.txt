@@ -1,0 +1,40 @@
+❯ Resume session                                                                                                    1/1
+  / kube▏
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ fix flaky TempDir cleanup on Linux CI                                              text match · 1d ago · glm-5.2-fast
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  e5f6a7b8 · glm-5.2-fast@inference · /home/dev/src/acme/kn · #ci
+  assistant: …the kubernetes job mounts the TempDir as a volume
+  ❯ the TempDir cleanup flakes on Linux
+  ● The watcher still holds the directory open; I close it in t.Cleanup now.
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ↑/↓ select · Enter resume · Ctrl+D delete · Esc cancel

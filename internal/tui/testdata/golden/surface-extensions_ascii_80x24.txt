@@ -1,0 +1,24 @@
+> Extensions                                                                1/2
+  [MCP]  Skills   Hooks   Plugins
+  / type to filter
+--------------------------------------------------------------------------------
+> docs    docs-mcp --stdio                                             disabled
+  issues  https://mcp.example.com/issues                               disabled
+
+
+
+
+
+
+
+
+
+
+
+
+
+--------------------------------------------------------------------------------
+  docs  disabled
+  command: docs-mcp --stdio
+--------------------------------------------------------------------------------
+  Tab switch tab - Up/Down select - Enter enable/disable - Ctrl+R reconnect -...

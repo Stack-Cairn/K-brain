@@ -41,14 +41,27 @@ func (m *model) mcpCommand(fields []string) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) mcpSetEnabled(name string, enabled bool) {
-	if m.mcpMgr == nil {
-		m.append(errStyle.Render("no MCP server named " + name))
+	if err := m.mcpPersistEnabled(name, enabled); err != nil {
+		m.append(errStyle.Render(err.Error()))
 		return
+	}
+	state := "disabled"
+	if enabled {
+		state = "enabled"
+	}
+	m.append(dimStyle.Render(fmt.Sprintf("mcp server %s: %s (persisted)", name, state)))
+	m.append(m.mcpStatusView())
+}
+
+// mcpPersistEnabled saves a server's enabled flag and starts or stops it,
+// without writing to the transcript.
+func (m *model) mcpPersistEnabled(name string, enabled bool) error {
+	if m.mcpMgr == nil {
+		return fmt.Errorf("no MCP server named %s", name)
 	}
 	live, ok := m.mcpMgr.Config(name)
 	if !ok {
-		m.append(errStyle.Render("no MCP server named " + name))
-		return
+		return fmt.Errorf("no MCP server named %s", name)
 	}
 	entry := config.MCPServer{
 		Command: live.Command, Env: live.Env, Cwd: live.Cwd,
@@ -67,8 +80,7 @@ func (m *model) mcpSetEnabled(name string, enabled bool) {
 	}
 	next.MCPServers[name] = entry
 	if err := next.Save(); err != nil {
-		m.append(errStyle.Render("config save failed: " + err.Error()))
-		return
+		return fmt.Errorf("config save failed: %w", err)
 	}
 	if m.cfg == nil {
 		m.cfg = &next
@@ -80,12 +92,7 @@ func (m *model) mcpSetEnabled(name string, enabled bool) {
 	} else {
 		m.mcpMgr.Disable(name)
 	}
-	state := "disabled"
-	if enabled {
-		state = "enabled"
-	}
-	m.append(dimStyle.Render(fmt.Sprintf("mcp server %s: %s (persisted)", name, state)))
-	m.append(m.mcpStatusView())
+	return nil
 }
 
 func (m *model) mcpOnChange() func() {

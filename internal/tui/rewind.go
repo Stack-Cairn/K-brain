@@ -23,6 +23,33 @@ type rewindState struct {
 	entries []rewindEntry
 	sel     int
 	savedVP int
+	// choosing is set while the "what to rewind" choice is open for the
+	// selected entry; choice is the highlighted option.
+	choosing bool
+	choice   int
+}
+
+// rewindMode says what a rewind restores.
+type rewindMode int
+
+const (
+	// rewindBoth rewinds the conversation and restores the workspace snapshot.
+	rewindBoth rewindMode = iota
+	// rewindConversation rewinds the conversation and leaves files alone.
+	rewindConversation
+	// rewindCode restores the files and keeps the conversation.
+	rewindCode
+)
+
+// rewindModes are the choice's options, in order.
+var rewindModes = []struct {
+	mode  rewindMode
+	label string
+	desc  string
+}{
+	{rewindBoth, "Conversation and code", "rewind the conversation and restore files from the snapshot"},
+	{rewindConversation, "Conversation only", "rewind the conversation, keep files as they are"},
+	{rewindCode, "Code only", "restore files from the snapshot, keep the conversation"},
 }
 
 type escArmMsg struct{}
@@ -133,6 +160,10 @@ func (m *model) openRewind() {
 func (m *model) rewindKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	r := m.rew
 	sel := func() rewindEntry { return r.entries[r.sel] }
+	if r.choosing {
+		m.rewindChoiceKey(msg)
+		return m, nil
+	}
 	switch msg.Type {
 	case tea.KeyEsc:
 		m.vp.SetYOffset(r.savedVP)
@@ -145,13 +176,11 @@ func (m *model) rewindKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.scrollToMsg(sel().cut)
 	case tea.KeyEnter:
 		e := sel()
-		text, ok := m.applyRewind(e.cut)
-		m.rew = nil
-		if ok && !e.future {
-			m.input.SetValue(text)
-			m.input.CursorEnd()
-			m.growInput()
+		if _, ok := m.rewindSnapshot(e.cut); ok && !e.future {
+			r.choosing, r.choice = true, 0
+			return m, nil
 		}
+		m.finishRewind(e, rewindBoth)
 	case tea.KeyRunes:
 		if string(msg.Runes) == "f" {
 			e := sel()
@@ -163,7 +192,71 @@ func (m *model) rewindKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// rewindChoiceKey drives the "what to rewind" choice: ↑/↓ or 1-3 pick,
+// Enter applies, Esc goes back to the list.
+func (m *model) rewindChoiceKey(msg tea.KeyMsg) {
+	r := m.rew
+	switch msg.Type {
+	case tea.KeyEsc:
+		r.choosing = false
+	case tea.KeyUp:
+		r.choice = max(r.choice-1, 0)
+	case tea.KeyDown:
+		r.choice = min(r.choice+1, len(rewindModes)-1)
+	case tea.KeyEnter:
+		m.finishRewind(r.entries[r.sel], rewindModes[r.choice].mode)
+	case tea.KeyRunes:
+		if s := string(msg.Runes); len(s) == 1 && s[0] >= '1' && int(s[0]-'1') < len(rewindModes) {
+			m.finishRewind(r.entries[r.sel], rewindModes[s[0]-'1'].mode)
+		}
+	}
+}
+
+// finishRewind applies the chosen rewind and closes the browser; a rewind
+// that moved the conversation back puts the rewound prompt in the composer.
+func (m *model) finishRewind(e rewindEntry, mode rewindMode) {
+	text, ok := m.applyRewindMode(e.cut, mode)
+	m.rew = nil
+	if ok && !e.future && mode != rewindCode {
+		m.input.SetValue(text)
+		m.input.CursorEnd()
+		m.growInput()
+	}
+}
+
+// rewindSnapshot is the workspace snapshot a rewind to cut would restore:
+// the earliest one taken at or after the cut's turn boundary.
+func (m *model) rewindSnapshot(cut int) (string, bool) {
+	base := len(m.agent.Messages)
+	cut = max(cut, 1)
+	if cut >= base || len(m.snapshots) == 0 {
+		return "", false
+	}
+	boundary := cut
+	if m.history != nil {
+		b, err := m.history.Boundary(cut)
+		if err != nil {
+			return "", false
+		}
+		boundary = b
+	}
+	best, bestIdx := "", -1
+	for idx, ref := range m.snapshots {
+		if idx >= boundary && (bestIdx == -1 || idx < bestIdx) {
+			best, bestIdx = ref, idx
+		}
+	}
+	return best, best != ""
+}
+
 func (m *model) applyRewind(cut int) (string, bool) {
+	return m.applyRewindMode(cut, rewindBoth)
+}
+
+// applyRewindMode rewinds to cut. rewindBoth is the full rewind;
+// rewindConversation skips the workspace restore; rewindCode restores the
+// workspace and leaves the conversation and its snapshots as they are.
+func (m *model) applyRewindMode(cut int, mode rewindMode) (string, bool) {
 	if m.busy {
 		m.append(dimStyle.Render("(busy — rewind after this turn)"))
 		return "", false
@@ -187,6 +280,20 @@ func (m *model) applyRewind(cut int) (string, bool) {
 		}
 	}
 	restored := 0
+	if mode == rewindCode {
+		best, ok := m.rewindSnapshot(cut)
+		if !ok || cut >= base {
+			m.append(dimStyle.Render("(no workspace snapshot for this turn — nothing to restore)"))
+			return "", false
+		}
+		n, err := restoreWorkspace(best)
+		if err != nil {
+			m.append(errStyle.Render("workspace rewind failed: " + err.Error()))
+			return "", false
+		}
+		m.append(dimStyle.Render(fmt.Sprintf("⟲ workspace rewound — %d file(s) restored; conversation kept", n)))
+		return "", true
+	}
 	switch {
 	case cut > base:
 		m.agent.Messages = append(m.agent.Messages, m.future[:cut-base]...)
@@ -198,7 +305,7 @@ func (m *model) applyRewind(cut int) (string, bool) {
 				best, bestIdx = ref, idx
 			}
 		}
-		if best != "" {
+		if best != "" && mode == rewindBoth {
 			var err error
 			restored, err = restoreWorkspace(best)
 			if err != nil {
@@ -209,7 +316,7 @@ func (m *model) applyRewind(cut int) (string, bool) {
 		if m.store != nil && m.sessionID != "" {
 			if err := m.store.TruncateHistory(m.sessionID, m.history, cut); err != nil {
 				note := "session save failed: "
-				if best != "" {
+				if best != "" && mode == rewindBoth {
 					note = "workspace restored, but session save failed; conversation and snapshot retained for retry: "
 				}
 				m.append(errStyle.Render(note + err.Error()))
@@ -268,6 +375,9 @@ func (m *model) rebuildTranscript() {
 
 func (m *model) rewindView() string {
 	r := m.rew
+	if r.choosing {
+		return m.rewindChoiceView()
+	}
 	const maxRows = 8
 
 	start := max(0, min(r.sel-maxRows/2, len(r.entries)-maxRows))
@@ -350,3 +460,21 @@ func rewindWhen(t *time.Time) string {
 }
 
 func (m *model) discardFuture() { m.future = nil }
+
+// rewindChoiceView is the "what to rewind" card for the selected entry.
+func (m *model) rewindChoiceView() string {
+	r := m.rew
+	w := cardWidth(m.width)
+	e := r.entries[r.sel]
+	head := m.tr("rewind to") + " " + truncLine(e.text, 60)
+	if e.when != nil {
+		head += " · " + rewindWhen(e.when)
+	}
+	rows := []string{textSecondaryStyle.Render(chromeGlyphs(head)), ""}
+	for i, opt := range rewindModes {
+		label := m.tr(opt.label) + "  " + textMutedStyle.Render(m.tr(opt.desc))
+		rows = append(rows, cardOption(i == r.choice, strconv.Itoa(i+1), chromeGlyphs(label), w))
+	}
+	rows = append(rows, "", textHintStyle.Render(chromeGlyphs(m.tr("↑/↓ select · 1-3 pick · Enter apply · Esc back"))))
+	return renderCard(tokAccent, m.tr("Rewind"), rows, w)
+}

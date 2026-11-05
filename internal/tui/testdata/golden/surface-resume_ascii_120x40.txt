@@ -1,0 +1,40 @@
+> Resume session                                                                                                    1/3
+  / type to filter - searches titles and message text
+------------------------------------------------------------------------------------------------------------------------
+> refactor the session store so pages load lazily                                     (current) - 2h ago - kimi-k3-fast
+  fix flaky TempDir cleanup on Linux CI                                                           1d ago - glm-5.2-fast
+  why does the gateway drop websocket upgrades behind the proxy?                                  3d ago - kimi-k3-fast
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+------------------------------------------------------------------------------------------------------------------------
+  a1b2c3d4 - kimi-k3-fast@inference - /home/dev/src/acme/kn
+  > make ListPage load lazily and keep the cursor stable
+  * Done. ListPage now returns a cursor; the picker loads the next page on scroll.
+------------------------------------------------------------------------------------------------------------------------
+  Up/Down select - Enter resume - Ctrl+D delete - Esc cancel

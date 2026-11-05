@@ -1,0 +1,24 @@
+❯ Settings                         1/14
+  / type to filter
+────────────────────────────────────────
+  Display
+❯ Theme          colour scheme fo… auto
+  Language       interface language  en
+  Thinking tok…  show model reason… off
+  Mouse capture  wheel scroll and c… on
+  Ancient mode   classical vertica… off
+  Browser driv…  automation engine… rod
+
+  Agent
+  Model           kimi-k3-fast@inference
+  Reasoning ef…  how hard the mode… off
+  Permission m…  what too… Always allow
+  Subagent mod…  model s… current model
+  ↓ 4 more
+────────────────────────────────────────
+  Theme  auto
+  colour scheme for the transcript and
+  chrome
+  ←/→ change · Enter next · /theme
+────────────────────────────────────────
+  ↑/↓ select · ←/→ change · Enter toggl…

@@ -1,0 +1,40 @@
+> Memory                                                                                                            1/3
+  / type to filter
+------------------------------------------------------------------------------------------------------------------------
+  installation
+> 1.  prefers pnpm over npm in this monorepo
+  2.  the staging cluster is in eu-west-1                                                                          done
+  3.  run `make lint` before every commit; CI rejects unformatted Go
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+------------------------------------------------------------------------------------------------------------------------
+  prefers pnpm over npm in this monorepo
+  open - Enter marks it done
+  installation - ~/.k-brain/memory.md
+------------------------------------------------------------------------------------------------------------------------
+  Up/Down select - Enter mark done - Esc close

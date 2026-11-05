@@ -2,6 +2,7 @@ package tui
 
 import (
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -285,4 +286,19 @@ func (m *model) applyColorEnv() {
 	}
 	setASCIIGlyphs(wantASCII(os.Getenv))
 	setMonoMode(wantMono(os.Getenv, theme), stdoutIsTTY())
+}
+
+// themeCommand is /theme [auto|light|dark|mono]: a name applies that theme
+// the way the settings panel does, a bare /theme opens the panel.
+func (m *model) themeCommand(args []string) {
+	if len(args) == 0 {
+		m.openPaletteOn("theme")
+		return
+	}
+	name := strings.ToLower(args[0])
+	if len(args) != 1 || !slices.Contains(themeNames, name) {
+		m.append(errStyle.Render("usage: /theme " + strings.Join(themeNames, "|")))
+		return
+	}
+	m.pickTheme(name)
 }

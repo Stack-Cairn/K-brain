@@ -1,0 +1,24 @@
+[96m❯[0m [1mResume session[0m                    [37m1/1[0m
+  [96m/[0m kube[90m▏[0m
+[90m────────────────────────────────────────[0m
+[1;96m❯ fix flaky TempD…  text match · 1d ago[0m
+
+
+
+
+
+
+
+
+
+
+
+
+[90m────────────────────────────────────────[0m
+  [90me5f6a7b8 · glm-5.2-fast@inference · /…[0m
+  [96massistant: …the kubernetes job mo…[0m
+  [1;96m❯ [0mthe TempDir cleanup flakes on
+    Linux
+  [1;95m● [0mThe watcher still holds the
+[90m────────────────────────────────────────[0m
+  [37m↑/↓ select · Enter resume · Ctrl+D de…[0m

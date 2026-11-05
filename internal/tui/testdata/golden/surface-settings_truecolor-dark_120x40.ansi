@@ -1,0 +1,40 @@
+[38;2;47;191;160m❯[0m [1mSettings[0m                                                                                                         [38;2;154;160;170m1/14[0m
+  [38;2;47;191;160m/[0m [38;2;154;160;170mtype to filter[0m
+[38;2;58;64;72m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  [38;2;134;139;149mDisplay[0m
+[1;38;2;47;191;160;48;2;38;43;52m❯ Theme             colour scheme for the transcript and chrome                                                    auto[0m
+  Language          [38;2;200;204;211minterface language[0m                                                                               [38;2;154;160;170men[0m
+  Thinking tokens   [38;2;200;204;211mshow model reasoning in the transcript[0m                                                          [38;2;154;160;170moff[0m
+  Mouse capture     [38;2;200;204;211mwheel scroll and click-to-copy inside kn[0m                                                         [38;2;154;160;170mon[0m
+  Ancient mode      [38;2;200;204;211mclassical vertical layout for replies[0m                                                           [38;2;154;160;170moff[0m
+  Browser driver    [38;2;200;204;211mautomation engine that drives Chrome[0m                                                            [38;2;154;160;170mrod[0m
+
+  [38;2;134;139;149mAgent[0m
+  Model             [38;2;200;204;211mmodel and route for new turns[0m                                                [38;2;154;160;170mkimi-k3-fast@inference[0m
+  Reasoning effort  [38;2;200;204;211mhow hard the model thinks before answering[0m                                                      [38;2;154;160;170moff[0m
+  Permission mode   [38;2;200;204;211mwhat tools may do without asking[0m                                                       [38;2;154;160;170mAlways allow[0m
+  Subagent model    [38;2;200;204;211mmodel subagents run on[0m                                                                [38;2;154;160;170mcurrent model[0m
+
+  [38;2;134;139;149mSession[0m
+  Compaction model  [38;2;200;204;211mmodel that summarises long conversations[0m                                           [38;2;154;160;170mdefault (model1)[0m
+  Compaction level  [38;2;200;204;211mauto-compact at this share of the context window[0m                                                [38;2;154;160;170m50%[0m
+  [38;2;134;139;149mGoal rounds     [0m  [38;2;134;139;149mrounds a /goal may run before it stops[0m                                                          [38;2;134;139;149m100[0m
+  Privacy gateway   [38;2;200;204;211mmask secrets in requests, restore them in replies[0m                                               [38;2;154;160;170moff[0m
+
+
+
+
+
+
+
+
+
+
+
+
+[38;2;58;64;72m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  [1mTheme[0m  [38;2;47;191;160mauto[0m
+  [38;2;200;204;211mcolour scheme for the transcript and chrome[0m
+  [38;2;134;139;149m←/→ change · Enter next · /theme[0m
+[38;2;58;64;72m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  [38;2;154;160;170m↑/↓ select · ←/→ change · Enter toggle or open · Esc close[0m

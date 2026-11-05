@@ -92,13 +92,25 @@ func (m *model) copyCommand(arg string) tea.Cmd {
 			}
 			return noticeMsg("Reply saved to " + path)
 		}
-		route, err := clipboardFor().copyText(text)
-		if err != nil {
-			return noticeMsg("/copy: " + err.Error() + "; use /copy [N] <file> instead")
-		}
-		if route == copyOSC52 {
-			return noticeMsg("Reply sent to the terminal clipboard (OSC 52)")
-		}
-		return noticeMsg("Reply copied to clipboard")
+		return noticeMsg(copyReportNotice(clipboardFor().deliver(text)))
+	}
+}
+
+// copyReportNotice says what /copy achieved: confirmed, unconfirmed or
+// failed, and where the backup copy is when one was written.
+func copyReportNotice(r copyReport) string {
+	switch {
+	case r.err != nil && r.backup != "":
+		return "/copy: " + r.err.Error() + "; the reply is saved in " + r.backup
+	case r.err != nil:
+		return "/copy: " + r.err.Error() + "; use /copy [N] <file> instead"
+	case r.route == copyOSC52 && r.backup != "":
+		return "Reply sent to the terminal clipboard (OSC 52, unconfirmed); backup in " + r.backup
+	case r.route == copyOSC52:
+		return "Reply sent to the terminal clipboard (OSC 52, unconfirmed)"
+	case r.verified:
+		return "Reply copied to clipboard (verified)"
+	default:
+		return "Reply copied to clipboard"
 	}
 }

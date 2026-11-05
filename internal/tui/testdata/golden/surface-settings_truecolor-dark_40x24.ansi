@@ -1,0 +1,24 @@
+[38;2;47;191;160m❯[0m [1mSettings[0m                         [38;2;154;160;170m1/14[0m
+  [38;2;47;191;160m/[0m [38;2;154;160;170mtype to filter[0m
+[38;2;58;64;72m────────────────────────────────────────[0m
+  [38;2;134;139;149mDisplay[0m
+[1;38;2;47;191;160;48;2;38;43;52m❯ Theme          colour scheme fo… auto[0m
+  Language       [38;2;200;204;211minterface language[0m  [38;2;154;160;170men[0m
+  Thinking tok…  [38;2;200;204;211mshow model reason…[0m [38;2;154;160;170moff[0m
+  Mouse capture  [38;2;200;204;211mwheel scroll and c…[0m [38;2;154;160;170mon[0m
+  Ancient mode   [38;2;200;204;211mclassical vertica…[0m [38;2;154;160;170moff[0m
+  Browser driv…  [38;2;200;204;211mautomation engine…[0m [38;2;154;160;170mrod[0m
+
+  [38;2;134;139;149mAgent[0m
+  Model          [38;2;200;204;211m[0m [38;2;154;160;170mkimi-k3-fast@inference[0m
+  Reasoning ef…  [38;2;200;204;211mhow hard the mode…[0m [38;2;154;160;170moff[0m
+  Permission m…  [38;2;200;204;211mwhat too…[0m [38;2;154;160;170mAlways allow[0m
+  Subagent mod…  [38;2;200;204;211mmodel s…[0m [38;2;154;160;170mcurrent model[0m
+[38;2;154;160;170m  ↓ 4 more[0m
+[38;2;58;64;72m────────────────────────────────────────[0m
+  [1mTheme[0m  [38;2;47;191;160mauto[0m
+  [38;2;200;204;211mcolour scheme for the transcript and[0m
+  [38;2;200;204;211mchrome[0m
+  [38;2;134;139;149m←/→ change · Enter next · /theme[0m
+[38;2;58;64;72m────────────────────────────────────────[0m
+  [38;2;154;160;170m↑/↓ select · ←/→ change · Enter toggl…[0m

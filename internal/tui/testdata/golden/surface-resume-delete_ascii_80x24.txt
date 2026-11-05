@@ -1,0 +1,24 @@
+> Resume session                                                            2/3
+  / type to filter - searches titles and message text
+--------------------------------------------------------------------------------
+  refactor the session store so pages loa...  (current) - 2h ago - kimi-k3-fast
+> fix flaky TempDir cleanup on Linux CI                   1d ago - glm-5.2-fast
+  why does the gateway drop websocket upgrades behind...  3d ago - kimi-k3-fast
+
+
+
+
+
+
+
+
+
+
+
+
+--------------------------------------------------------------------------------
+  e5f6a7b8 - glm-5.2-fast@inference - /home/dev/src/acme/kn - #ci
+  > the TempDir cleanup flakes on Linux
+  * The watcher still holds the directory open; I close it in t.Cleanup now.
+--------------------------------------------------------------------------------
+  delete session "fix flaky TempDir cleanup on Linux CI"? y to confirm, any o...

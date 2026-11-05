@@ -1,0 +1,40 @@
+[38;2;21;127;104m❯[0m [1mResume session[0m                                                                                                    [38;2;92;97;105m1/3[0m
+  [38;2;21;127;104m/[0m [38;2;92;97;105mtype to filter · searches titles and message text[0m
+[38;2;213;218;222m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[1;38;2;21;127;104;48;2;232;236;240m❯ refactor the session store so pages load lazily                                     (current) · 2h ago · kimi-k3-fast[0m
+  fix flaky TempDir cleanup on Linux CI                                                           [38;2;92;97;105m1d ago · glm-5.2-fast[0m
+  why does the gateway drop websocket upgrades behind the proxy?                                  [38;2;92;97;105m3d ago · kimi-k3-fast[0m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[38;2;213;218;222m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  [38;2;104;110;118ma1b2c3d4 · kimi-k3-fast@inference · /home/dev/src/acme/kn[0m
+  [1;38;2;21;127;104m❯ [0mmake ListPage load lazily and keep the cursor stable
+  [1;38;2;125;63;158m● [0mDone. ListPage now returns a cursor; the picker loads the next page on scroll.
+[38;2;213;218;222m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  [38;2;92;97;105m↑/↓ select · Enter resume · Ctrl+D delete · Esc cancel[0m

@@ -1,0 +1,24 @@
+╭─ Rewind ─────────────────────────────╮
+│ rewind to refactor the session store │
+│ so pages load lazily                 │
+│                                      │
+│   1  Conversation and code  rewind   │
+│      the conversation and restore    │
+│      files from the snapshot         │
+│   2  Conversation only  rewind the   │
+│      conversation, keep files as     │
+│      they are                        │
+│ ❯ 3  Code only  restore files from   │
+│      the snapshot, keep the          │
+│      conversation                    │
+│                                      │
+│ ↑/↓ select · 1-3 pick · Enter apply  │
+│ · Esc back                           │
+╰──────────────────────────────────────╯
+
+
+
+
+────────────────────────────────────────
+  ❯ Ask k-brain anything…  / commands ·
+  [Always allow]    kimi-k3-fast · ✦ off

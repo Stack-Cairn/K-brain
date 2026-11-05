@@ -1,0 +1,24 @@
+❯ Resume session                    1/3
+  / type to filter · searches titles an…
+────────────────────────────────────────
+❯ refactor the ses…  (current) · 2h ago
+  fix flaky TempDir cleanup on…  1d ago
+  why does the gateway drop we…  3d ago
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────
+  a1b2c3d4 · kimi-k3-fast@inference · /…
+  ❯ make ListPage load lazily and keep
+    the cursor stable
+  ● Done. ListPage now returns a
+    cursor; the picker loads the next
+────────────────────────────────────────
+  ↑/↓ select · Enter resume · Ctrl+D de…

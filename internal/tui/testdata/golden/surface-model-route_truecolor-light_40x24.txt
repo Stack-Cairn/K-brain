@@ -1,0 +1,24 @@
+
+  glm-5.2-fast — choose a route and con…
+     inference     128k ctx    https://x
+   → long          1M ctx      https://…
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ↑/↓ Select · Enter Switch · Esc Back

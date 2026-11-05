@@ -275,6 +275,7 @@ type model struct {
 	// model, so branches for different areas merge without conflicts.
 	tx  *transcriptState // transcript engine (transcript.go)
 	cmp *composerState   // composer: undo, kill ring, chips, stash, history search, queue editing
+	app *appSurfaceState
 }
 
 type initialPromptMsg struct{}
@@ -288,16 +289,10 @@ func Run(cfg *config.Config, modelName, provName, sysPrompt, resumeID string, ca
 
 	stdinR := bufio.NewReader(os.Stdin)
 
-	if ok, err := checkTrust(stdinR); err != nil {
+	if ok, err := onboard(cfg, firstRun, stdinR); err != nil {
 		return "", err
 	} else if !ok {
 		return "", errors.New("folder not trusted")
-	}
-
-	if firstRun {
-		if err := setupWizard(cfg, stdinR); err != nil {
-			return "", err
-		}
 	}
 
 	ag, mn, pn, err := buildAgent(cfg, modelName, provName, sysPrompt)
@@ -892,6 +887,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if vp, ok := msg.(viewProbe); ok {
 		vp.fn(m)
 		return m, nil
+	}
+	if r, cmd, ok := m.surfaceMsg(msg); ok {
+		return r, cmd
 	}
 	switch msg := msg.(type) {
 	case initialPromptMsg:

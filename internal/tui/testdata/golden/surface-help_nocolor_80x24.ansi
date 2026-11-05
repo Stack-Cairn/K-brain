@@ -1,0 +1,24 @@
+[1m❯[0m [1mKeyboard shortcuts[0m                                                       [2m1/38[0m
+  [1m[Keys][0m [2m Commands [0m
+  [1m/[0m [2mtype to filter[0m
+────────────────────────────────────────────────────────────────────────────────
+  [2mAnywhere[0m
+[1;7m❯ Shift+Tab                   cycle the permission mode                        [0m
+  Ctrl+K                      clear the conversation[2m[0m
+  Ctrl+T                      focus the subagent dock[2m[0m
+  Ctrl+O                      show or hide thinking tokens[2m[0m
+  Ctrl+E                      expand the last tool result[2m[0m
+  Ctrl+G                      edit the draft in an external editor[2m[0m
+  Ctrl+V                      paste an image[2m[0m
+  PgUp / PgDn                 scroll the transcript[2m[0m
+  Ctrl+C Ctrl+C               quit[2m[0m
+  Ctrl+P                      open the command palette[2m[0m
+  F2                          open settings[2m[0m
+
+[2m  ↓ 27 more[0m
+────────────────────────────────────────────────────────────────────────────────
+  [1mShift+Tab[0m  cycle the permission mode
+  [2mShift+Tab — cycle Normal / Plan / Auto review / Always allow[0m
+  [2mcontext: Anywhere[0m
+────────────────────────────────────────────────────────────────────────────────
+  [2mTab switch tab · ↑/↓ select · type to filter · Esc close[0m
