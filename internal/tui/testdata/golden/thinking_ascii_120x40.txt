@@ -19,7 +19,7 @@
   That needs the diff base.
   Which CI already has
 
-  | thinking...                                                                                         Esc to interrupt
+  | Thinking...                                                                                   v73 - Esc to interrupt
 
 
 

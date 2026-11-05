@@ -18,7 +18,7 @@
 [3;90m  That needs the diff base.[0m                                                     [0m
 [3;90m  Which CI already has[0m                                                          [0m
 
-  [36m|[0m [36mthinking...[0m                                                 [90mEsc to interrupt[0m
+  [36m|[0m [36mThinking...[0m                                           [90mv73 - Esc to interrupt[0m
 [90m--------------------------------------------------------------------------------[0m
   [1;96m> [0m[7mb[0m[90musy - type to queue (sent when the turn ends)[0m                              [0m
   [100m [0m[1;37;100mNormal[0m[100m [0m                                                  [37mkimi-k3-fast[0m[90m - [0m[1;96m* off[0m
