@@ -434,6 +434,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, s.health())
 		return
 	}
+	if r.URL.Path == "/v1/sandbox/setup" {
+		s.handleSandboxSetup(w, r)
+		return
+	}
 	if r.Method == http.MethodGet && r.URL.Path == "/v1/models" {
 		s.handleModels(w)
 		return

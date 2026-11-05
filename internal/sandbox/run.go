@@ -22,10 +22,16 @@ type Capability struct {
 	// and config, agent settings) stay read-only inside a writable root.
 	PathProtection bool   `json:"path_protection"`
 	Reason         string `json:"reason,omitempty"`
+	// SetupAvailable is true where an elevated setup can be run (`kn sandbox
+	// setup`, Windows only) and SetupHint tells a client what it changes; the
+	// hint is empty once the setup is active and healthy.
+	SetupAvailable bool   `json:"setup_available"`
+	SetupHint      string `json:"setup_hint"`
 }
 
 var (
-	probeOnce sync.Once
+	probeMu   sync.Mutex
+	probeDone bool
 	probed    Capability
 	// probeFunc is replaced in tests.
 	probeFunc = probePlatform
@@ -35,8 +41,20 @@ var (
 // confined command, so a binary that exists but cannot start (no user
 // namespaces in a container) reports unsupported instead of failing later.
 func Probe() Capability {
-	probeOnce.Do(func() { probed = probeFunc() })
+	probeMu.Lock()
+	defer probeMu.Unlock()
+	if !probeDone {
+		probed, probeDone = probeFunc(), true
+	}
 	return probed
+}
+
+// Reprobe forgets the probed capability, so the next Probe checks again (after
+// the sandbox setup changed).
+func Reprobe() {
+	probeMu.Lock()
+	probeDone = false
+	probeMu.Unlock()
 }
 
 func probePlatform() Capability {

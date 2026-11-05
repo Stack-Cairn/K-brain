@@ -54,6 +54,7 @@ VITE_KBRAIN_TOKEN=<backend-token>
 | --- | --- | --- |
 | GET | `/v1/health` | 健康状态与协议版本 |
 | GET | `/v1/models` | 当前后端模型路由目录 |
+| POST | `/v1/sandbox/setup` | 在 Windows 上通过 UAC 安装或修复沙箱账户（`sandbox-user`），返回 setup 状态与新的 `run_sandbox`；`capabilities.sandbox_setup` 表示支持 |
 | GET / PUT | `/v1/settings` | 读取脱敏配置 / 原子持久化供应商、模型与默认选择 |
 | GET / PUT | `/v1/mcp` | 读取脱敏 MCP 配置 / 原子持久化并 reload stdio/http servers |
 | POST | `/v1/mcp/reload` | 从 K-brain-owned MCP 配置重建 live manager |
@@ -153,6 +154,21 @@ CLI 可用 `-config FILE -session-dir DIR` 指定配置与存储目录；省略�
 这些事件不改变会话历史，旧客户端按未知事件忽略。父运行结束后仍在运行的后台子代理不会出现在主 SSE 中（主流在没有活动运行时关闭），客户端用 `/subagents/{task}/events` 跟随：它先重放 `after_seq` 之后属于该子代理的事件（`subagent.*` 与 `trajectory.child.*`），再持续推送，子代理结束并发出终态事件后关闭。
 
 `/subagents` 与 `/subagents/{task}` 从事件日志和已保存的后台任务折叠得到，重载或后端重启后仍可读取；重启前仍在运行、此后没有终态的子代理报 `cancelled`。已结束的后台子代理返回其保存的完整对话（去掉 system/developer 消息），其他情况由事件重建：首条为子代理收到的提示，随后是 assistant 文本/思考与工具调用、工具结果。轨迹接口带 `redact_tool_content=true` 时，子代理文本与工具内容一样替换为 `[redacted]`。
+
+### Windows 沙箱 setup（`capabilities.sandbox_setup: 1`）
+
+`capabilities.run_sandbox` 增加两个字段：`setup_available`（本机可以安装沙箱账户，只在 Windows 上为 true）和 `setup_hint`（给用户看的一句英文；setup 未安装时说明它能带来断网和工作区隔离，已安装但自检失败时说明问题并建议重新运行；正常工作时为空）。`mechanism` 为 `sandbox-user` 时命令以专用沙箱账户运行，`network_control` 为 true；仍为 `low-integrity` 时断网请求照旧被拒绝。细节见 [沙箱](user-guide/09-sandbox.md) 的 Windows 部分。
+
+客户端在 `sandbox_setup == 1`、`run_sandbox.setup_available` 为 true 且 `network_control` 为 false 时可以提供"设置断网沙箱"操作，旁边显示 `setup_hint`。操作调用 `POST /v1/sandbox/setup`（无请求体，需要后端令牌，与其他接口相同）：后端在运行它的用户桌面上弹出 UAC 管理员确认，等待用户选择（最多 10 分钟；客户端断开不会取消已批准的 setup），完成后重新自检。响应为 `{version,status,run_sandbox,error?,code?}`，`status` 与 `kn sandbox status --json` 相同（`installed`、`active`、`mechanism`、`network_control`、`accounts`、`groups`、`problem`、`hint` 等）：
+
+- `200`：setup 已完成，`run_sandbox` 是新的能力；
+- `403`，`code: "declined"`：用户拒绝或关闭了 UAC 提示，本机没有任何改动；
+- `409`，`code: "busy"`：另一个 setup 正在进行；
+- `501`，`code: "unsupported"`：不是 Windows；
+- `500`，`code: "failed"`：setup 失败，`error` 给出原因（可能已部分安装，重新运行会修复，`kn sandbox uninstall` 会清除）；
+- `405`：不是 POST。
+
+除 `501` 外，每次调用都会让 `/v1/health` 的 `capabilityRevision` 加一，客户端据此重新读取能力。卸载只能由用户在终端里运行 `kn sandbox uninstall`，后端不提供卸载接口。
 
 ### 记住的权限规则（`capabilities.permission_rules: 1`、`readonly_auto_allow: 1`）
 

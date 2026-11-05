@@ -5,6 +5,8 @@ on:
     paths:
       - 'internal/sandbox/**'
       - 'internal/backend/run_sandbox*.go'
+      - 'internal/backend/sandbox_setup*.go'
+      - 'cmd/kn/sandbox*.go'
       - 'internal/tools/bashrun/**'
       - 'internal/process/**'
       - 'internal/tools/result_meta.go'
@@ -17,6 +19,8 @@ on:
     paths:
       - 'internal/sandbox/**'
       - 'internal/backend/run_sandbox*.go'
+      - 'internal/backend/sandbox_setup*.go'
+      - 'cmd/kn/sandbox*.go'
       - 'internal/tools/bashrun/**'
       - 'internal/process/**'
       - 'internal/tools/result_meta.go'
@@ -45,7 +49,7 @@ jobs:
           - os: windows-latest
             target: windows-amd64
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - name: Preserve committed LF on Windows
         if: runner.os == 'Windows'
@@ -118,3 +122,30 @@ jobs:
       - name: Windows sandboxed shell commands
         if: runner.os == 'Windows'
         run: go test ./internal/tools/bashrun/ ./internal/process/ -count=1 -v -run "Sandbox|Process"
+      - name: Windows backend and CLI
+        if: runner.os == 'Windows'
+        run: |
+          go test ./internal/backend/ -run 'Sandbox|Health' -count=1
+          go test ./cmd/kn/ -run 'SandboxCLI' -count=1 -v
+      # GitHub's Windows runners are elevated, so the sandbox-user cycle runs
+      # for real: setup, confined runs, uninstall. The test accounts use the
+      # KBrainTst- prefix and a temporary data directory. The step fails if
+      # the test was skipped.
+      - name: Windows sandbox-user administrator cycle
+        if: runner.os == 'Windows'
+        shell: bash
+        env:
+          KBRAIN_WINDOWS_ADMIN_TESTS: '1'
+        run: |
+          set -o pipefail
+          go test ./internal/sandbox/ -run '^(TestWindowsSandboxUserAdminCycle|TestWindowsCapability)$' -count=1 -v 2>&1 | tee "$RUNNER_TEMP/admin-cycle.log"
+          grep -q -- '--- PASS: TestWindowsSandboxUserAdminCycle' "$RUNNER_TEMP/admin-cycle.log"
+      - name: Windows leftovers after uninstall
+        if: always() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $users = @(Get-LocalUser | Where-Object Name -like 'KBrainTst-*')
+          $groups = @(Get-LocalGroup | Where-Object Name -like 'KBrainTst-*')
+          $filters = @(netsh wfp show filters file=- | Select-String 'K-brain')
+          "users: $($users.Count) groups: $($groups.Count) filters: $($filters.Count)"
+          if ($users.Count -or $groups.Count -or $filters.Count) { $users; $groups; $filters; exit 1 }

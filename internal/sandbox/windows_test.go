@@ -10,6 +10,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,6 +18,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
@@ -43,6 +45,11 @@ func TestWindowsSandboxHelper(t *testing.T) {
 	fmt.Println("OK")
 	os.Exit(0)
 }
+
+var (
+	procOpenDesktopW     = moduser32.NewProc("OpenDesktopW")
+	procGetThreadDesktop = moduser32.NewProc("GetThreadDesktop")
+)
 
 func runHelper(args []string) error {
 	if len(args) == 0 {
@@ -95,6 +102,17 @@ func runHelper(args []string) error {
 		}
 		windows.CloseHandle(h)
 		return nil
+	case "readprocess":
+		pid, err := strconv.Atoi(args[1])
+		if err != nil {
+			return err
+		}
+		h, err := windows.OpenProcess(windows.PROCESS_VM_READ|windows.PROCESS_QUERY_INFORMATION, false, uint32(pid))
+		if err != nil {
+			return err
+		}
+		windows.CloseHandle(h)
+		return nil
 	case "setdacl":
 		sd, err := windows.GetNamedSecurityInfo(args[1], windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION)
 		if err != nil {
@@ -111,6 +129,45 @@ func runHelper(args []string) error {
 			return err
 		}
 		return windows.SetNamedSecurityInfo(args[1], windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION, nil, nil, acl, nil)
+	case "dial":
+		conn, err := net.DialTimeout("tcp", args[1], 5*time.Second)
+		if err == nil {
+			conn.Close()
+		}
+		return err
+	case "env":
+		for _, key := range args[1:] {
+			fmt.Printf("%s=%s\n", key, os.Getenv(key))
+		}
+		return nil
+	case "desktop":
+		// Prints the command's desktop and opens the named one.
+		h, _, _ := procGetThreadDesktop.Call(uintptr(windows.GetCurrentThreadId()))
+		own, _ := userObjectName(h)
+		fmt.Println("DESKTOP=" + own)
+		name, _ := windows.UTF16PtrFromString(args[1])
+		desk, _, callErr := procOpenDesktopW.Call(uintptr(unsafe.Pointer(name)), 0, 0, 0x0001|0x0040|0x0100) // read objects, enumerate, switch
+		if desk == 0 {
+			return callErr
+		}
+		procCloseDesktop.Call(desk)
+		return nil
+	case "mutex":
+		// Creates a named mutex in the session's namespace.
+		name, _ := windows.UTF16PtrFromString(args[1])
+		h, err := windows.CreateMutex(nil, false, name)
+		if err != nil {
+			return err
+		}
+		windows.CloseHandle(h)
+		return nil
+	case "user":
+		u, err := windows.GetCurrentProcessToken().GetTokenUser()
+		if err != nil {
+			return err
+		}
+		fmt.Println("SID=" + u.User.Sid.String())
+		return nil
 	case "regwrite":
 		key, _, err := registry.CreateKey(registry.CURRENT_USER, args[1], registry.SET_VALUE)
 		if err != nil {
@@ -190,6 +247,7 @@ func exists(path string) bool {
 }
 
 func TestWindowsCapability(t *testing.T) {
+	isolateState(t) // no sandbox-user setup: the low-integrity fallback
 	c := probeWindows()
 	if !c.Supported {
 		t.Fatalf("native sandbox unsupported: %s", c.Reason)
@@ -205,11 +263,14 @@ func TestWindowsCapability(t *testing.T) {
 	if err := json.Unmarshal(data, &fields); err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]any{"supported": true, "mechanism": "low-integrity", "platform": "windows", "network_control": false, "read_masking": true, "path_protection": true}
+	want := map[string]any{"supported": true, "mechanism": "low-integrity", "platform": "windows", "network_control": false, "read_masking": true, "path_protection": true, "setup_available": true}
 	for key, value := range want {
 		if fields[key] != value {
 			t.Fatalf("capability JSON %s = %v, want %v (%s)", key, fields[key], value, data)
 		}
+	}
+	if hint, _ := fields["setup_hint"].(string); !strings.Contains(hint, "kn sandbox setup") {
+		t.Fatalf("capability JSON setup_hint = %q", hint)
 	}
 	t.Logf("capability: %s", data)
 }

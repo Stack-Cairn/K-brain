@@ -121,6 +121,15 @@
       "firstRelease": "v0.107.19",
       "evidenceCommit": "pending",
       "missing": "Keep subagents as plain tool rows: no live transcript, no /subagents endpoints and no stop button; subagent payloads lack parent_tool_call_id."
+    },
+    {
+      "name": "sandbox_setup",
+      "type": "integer",
+      "compare": "eq",
+      "value": 1,
+      "firstRelease": "v0.107.21",
+      "evidenceCommit": "pending",
+      "missing": "Hide the sandbox setup action: run_sandbox has no setup_available or setup_hint and POST /v1/sandbox/setup does not exist; point Windows users at `kn sandbox setup` instead."
     }
   ]
 }

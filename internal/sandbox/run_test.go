@@ -9,7 +9,6 @@ import (
 	"runtime"
 	"slices"
 	"strings"
-	"sync"
 	"testing"
 )
 
@@ -17,10 +16,10 @@ func withProbe(t *testing.T, c Capability) {
 	t.Helper()
 	oldFunc := probeFunc
 	probeFunc = func() Capability { return c }
-	probeOnce = sync.Once{}
+	Reprobe()
 	t.Cleanup(func() {
 		probeFunc = oldFunc
-		probeOnce = sync.Once{}
+		Reprobe()
 	})
 }
 
@@ -211,8 +210,8 @@ func confinedRun(t *testing.T, p *Policy, script string) (string, error) {
 
 func liveSandbox(t *testing.T) Capability {
 	t.Helper()
-	probeOnce = sync.Once{}
-	t.Cleanup(func() { probeOnce = sync.Once{} })
+	Reprobe()
+	t.Cleanup(Reprobe)
 	c := Probe()
 	if !c.Supported || !c.NetworkControl {
 		t.Skipf("platform sandbox unavailable: %s", c.Reason)

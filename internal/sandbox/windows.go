@@ -41,13 +41,30 @@ import (
 const windowsMechanism = "low-integrity"
 
 // windowsLimitations is reported with a supported capability.
-const windowsLimitations = "the native Windows sandbox cannot block network access, and other low-integrity processes can write directories once used as sandbox workspaces; run K-brain inside WSL2 for an offline sandbox"
+const windowsLimitations = "without `kn sandbox setup` (administrator approval required) the native Windows sandbox cannot block network access, and other low-integrity processes can write directories once used as sandbox workspaces; run the setup, or run K-brain inside WSL2"
 
 // windowsNoReadMasking replaces windowsLimitations when the probe finds that a
 // no-read-up label does not hide a file from a low-integrity process.
-const windowsNoReadMasking = "the native Windows sandbox cannot block network access or hide credential directories from reads here, and other low-integrity processes can write directories once used as sandbox workspaces; run K-brain inside WSL2 for an offline sandbox"
+const windowsNoReadMasking = "without `kn sandbox setup` (administrator approval required) the native Windows sandbox cannot block network access or hide credential directories from reads here, and other low-integrity processes can write directories once used as sandbox workspaces; run the setup, or run K-brain inside WSL2"
 
 func probeWindows() Capability {
+	forgetSandboxState()
+	err := probeSandboxUser()
+	if err == nil {
+		setSandboxUserProblem("")
+		return sandboxUserCapability()
+	}
+	c := probeLowIntegrityCapability()
+	c.SetupAvailable = true
+	c.SetupHint = setupHint
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		setSandboxUserProblem(err.Error())
+		c.SetupHint = repairHint(err.Error())
+	}
+	return c
+}
+
+func probeLowIntegrityCapability() Capability {
 	c := Capability{Mechanism: windowsMechanism, Platform: "windows"}
 	masking, err := probeLowIntegrity()
 	if err != nil {
@@ -123,15 +140,22 @@ func probeLowIntegrity() (readMasking bool, err error) {
 // this binary as the launcher (windows_launch.go), which starts the real
 // command at low integrity in a job object.
 func (p *Policy) wrapWindows(ctx context.Context, cmd *exec.Cmd, root string) (*exec.Cmd, error) {
-	switch strings.ToLower(strings.TrimSpace(p.Backend)) {
-	case "", "auto", windowsMechanism:
+	switch backend := strings.ToLower(strings.TrimSpace(p.Backend)); backend {
+	case "", "auto", MechanismSandboxUser:
+		if Probe().Mechanism == MechanismSandboxUser {
+			return p.wrapSandboxUser(ctx, cmd, root)
+		}
+		if backend == MechanismSandboxUser {
+			return nil, errors.New("sandbox backend sandbox-user needs `kn sandbox setup` (administrator approval required); run it, or use backend auto")
+		}
+	case windowsMechanism:
 	case "wsl", "bwrap", "bubblewrap":
 		return nil, fmt.Errorf("sandbox backend %q cannot confine native Windows programs; run K-brain inside WSL2 instead, or use backend auto", p.Backend)
 	default:
 		return nil, fmt.Errorf("unsupported Windows sandbox backend %q; use auto", p.Backend)
 	}
 	if !p.Network {
-		return nil, errors.New("the native Windows sandbox cannot block network access; allow network for the sandbox or run K-brain inside WSL2")
+		return nil, errors.New(offlineUnavailable)
 	}
 	if cmd.Err != nil {
 		return nil, cmd.Err
