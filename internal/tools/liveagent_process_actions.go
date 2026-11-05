@@ -102,13 +102,19 @@ func liveagentProcessWait(ctx context.Context, manager *liveagentProcessManager,
 	if err != nil {
 		return "", err
 	}
+	return liveagentProcessWaitOn(ctx, manager, p, a)
+}
+
+// liveagentProcessWaitOn waits on p and reports what the wait saw.
+func liveagentProcessWaitOn(ctx context.Context, manager *liveagentProcessManager, p *liveagentProcess, a map[string]any) (string, error) {
 	yield, maxBytes := liveagentProcessWaitBounds(a)
 	cursor := int64(laInt(a, "cursor", 0))
-	out, next, truncated, bytes, timedOut, err := manager.wait(ctx, p, cursor, yield, maxBytes)
+	// The snapshot is taken as the wait stops watching: a later exit is the exit
+	// notice's to report, so the result never shows one the notice repeats.
+	out, next, truncated, bytes, timedOut, snap, err := manager.wait(ctx, p, cursor, yield, maxBytes)
 	if err != nil {
 		return "", err
 	}
-	snap := p.snapshot()
 	reportProcess(ctx, snap)
 	return liveagentProcessText("wait", snap, out, next, bytes, truncated, timedOut), nil
 }

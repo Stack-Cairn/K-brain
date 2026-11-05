@@ -290,7 +290,7 @@ func TestBackgroundSubagentParentToolCallAndTranscript(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	t.Cleanup(func() { _ = store.Close() })
 	fixture := newSubagentWorkflowFixture(t, "success")
 	_, server := newSubagentWorkflowServer(t, store, t.TempDir(), fixture.client)
 	defer server.Close()
@@ -409,7 +409,7 @@ func TestSubagentListEndsStaleRunning(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	t.Cleanup(func() { _ = store.Close() })
 	fixture := newSubagentWorkflowFixture(t, "success")
 	backend, server := newSubagentWorkflowServer(t, store, t.TempDir(), fixture.client)
 	defer server.Close()

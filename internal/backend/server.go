@@ -113,6 +113,51 @@ type Server struct {
 	snapshots           map[string]sessionHTTPSnapshot
 	snapshotBuilders    int
 	snapshotBuildCancel context.CancelFunc
+	// background tracks the server's own goroutines that are not runs (wake
+	// dispatch, deferred event writes); Close waits for them.
+	background goGroup
+}
+
+// goGroup runs goroutines and waits for them. Unlike sync.WaitGroup it may start
+// a goroutine while Wait blocks, as background work finishing during Close does.
+type goGroup struct {
+	mu   sync.Mutex
+	n    int
+	idle chan struct{}
+}
+
+func (g *goGroup) Go(fn func()) {
+	g.mu.Lock()
+	if g.n == 0 {
+		g.idle = make(chan struct{})
+	}
+	g.n++
+	g.mu.Unlock()
+	go func() {
+		defer func() {
+			g.mu.Lock()
+			g.n--
+			if g.n == 0 {
+				close(g.idle)
+			}
+			g.mu.Unlock()
+		}()
+		fn()
+	}()
+}
+
+// Wait returns once no goroutine of the group runs, including ones started meanwhile.
+func (g *goGroup) Wait() {
+	for {
+		g.mu.Lock()
+		if g.n == 0 {
+			g.mu.Unlock()
+			return
+		}
+		idle := g.idle
+		g.mu.Unlock()
+		<-idle
+	}
 }
 
 type runRecord struct {
@@ -294,6 +339,10 @@ func (s *Server) Close() error {
 		if rt.cancel != nil {
 			rt.cancel()
 		}
+		// Background subagents outlive their turn, not the backend.
+		if rt.agent != nil {
+			rt.agent.Tasks().CancelRunning()
+		}
 		rt.mu.Unlock()
 	}
 	if s.organizerCancel != nil {
@@ -314,6 +363,20 @@ func (s *Server) Close() error {
 	for _, rt := range runtimes {
 		// Runs persist history, checkpoints and terminal events after cancellation.
 		rt.runWorkers.Wait()
+		// So do background subagents (their record, journal events and report);
+		// one a run started before it ended is cancelled here.
+		rt.mu.Lock()
+		ag := rt.agent
+		rt.mu.Unlock()
+		if ag != nil {
+			ag.Tasks().CancelRunning()
+			ag.Tasks().Wait()
+		}
+	}
+	// Reports delivered above may still be dispatching or journaling a checkpoint
+	// restore; nothing they start runs now, and none may reopen a closed journal.
+	s.background.Wait()
+	for _, rt := range runtimes {
 		rt.mu.Lock()
 		memoryRuntime := rt.memoryRuntime
 		rt.memoryRuntime = nil
@@ -1131,9 +1194,15 @@ func (s *Server) wireTasks(rt *runtimeSession, ag *agent.Agent) {
 			// A subagent cancelled by the delete must not write the session back.
 			return
 		}
+		if task.Status == agent.TaskCancelled && s.shuttingDown.Load() {
+			// Cancelled by Close: keep it stored as running so the next start reports
+			// it interrupted, as after any exit, but journal the text it produced.
+			rt.flushSubagent(task.ID)
+			return
+		}
 		if task.Status != agent.TaskRunning {
 			// A settled child task may be all that kept pending notices waiting.
-			defer func() { go s.kickWakes(rt) }()
+			defer s.background.Go(func() { s.kickWakes(rt) })
 		}
 		model, provider, _ := strings.Cut(task.SubModel, " @ ")
 		stored := session.Task{Model: model, Provider: provider, ID: task.ID, Description: task.Description, Prompt: task.Prompt, Status: string(task.Status), Report: task.Report, StartedAt: task.StartedAt, EndedAt: task.EndedAt, ParentToolCallID: task.ParentToolCallID}

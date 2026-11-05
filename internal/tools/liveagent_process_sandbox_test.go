@@ -19,7 +19,7 @@ func TestLiveAgentProcessStartWithIDSandboxPolicyInheritedByIsolatedContext(t *t
 				Root:    root,
 			})
 			manager := newLiveAgentProcessManager()
-			if _, err := manager.startWithID(ctx, "test", "printf should-not-run", root, "", time.Second, isolated, !isolated); err == nil {
+			if _, err := manager.startWithID(ctx, "test", "printf should-not-run", root, "", time.Second, isolated, !isolated, false); err == nil {
 				t.Fatal("startWithID bypassed the inherited sandbox policy")
 			} else if !strings.Contains(err.Error(), "sandbox") && !strings.Contains(err.Error(), "backend") {
 				t.Fatalf("unexpected sandbox error: %v", err)

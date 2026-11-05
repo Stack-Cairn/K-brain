@@ -122,3 +122,46 @@ func TestTaskSlugPreservesDigits(t *testing.T) {
 		t.Fatalf("task slug = %q", got)
 	}
 }
+
+// Wait covers a background task's whole goroutine: a settled status alone (what
+// Done and Get report) still leaves OnRecord and the report notice to run, which
+// write on behalf of the session. Shutdown waits on that before its files go away.
+func TestTaskRegistryWaitCoversRecordAndReport(t *testing.T) {
+	a := New(ai.New("http://unused", "k"), "m", 100, "sys")
+	a.Tasks().Wait() // nothing started: returns at once
+
+	srv := textServer(t, func(int, ai.Request) string { return "report-body" })
+	defer srv.Close()
+	a = New(ai.New(srv.URL, "k"), "m", 100, "sys")
+	recording := make(chan struct{})
+	release := make(chan struct{})
+	a.Tasks().OnRecord = func(_ string, task *BackgroundTask) {
+		if task.Status != TaskRunning {
+			close(recording)
+			<-release
+		}
+	}
+	a.StartBackground("probe", "do the thing", SubModel{})
+	<-recording
+
+	waited := make(chan struct{})
+	go func() {
+		a.Tasks().Wait()
+		close(waited)
+	}()
+	select {
+	case <-waited:
+		t.Fatal("Wait returned while OnRecord was still running")
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(release)
+	select {
+	case <-waited:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Wait did not return after the task finished")
+	}
+	// The report is delivered before Wait returns: no polling needed.
+	if pending := a.drainPending(); len(pending) != 1 || pending[0].text == "" || !pending[0].notice {
+		t.Fatalf("report after Wait = %+v", pending)
+	}
+}

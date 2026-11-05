@@ -74,7 +74,7 @@ func TestServerBackgroundSubagentWorkflowAndRestore(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer store2.Close()
+			t.Cleanup(func() { _ = store2.Close() })
 			backend2, server2 := newSubagentWorkflowServer(t, store2, eventDir, fixture.client)
 			defer func() {
 				server2.Close()
@@ -213,7 +213,14 @@ func newSubagentWorkflowServer(t *testing.T, store *session.Store, eventDir stri
 	if err != nil {
 		t.Fatal(err)
 	}
-	return backend, httptest.NewServer(backend)
+	server := httptest.NewServer(backend)
+	// Registered after the caller's store and directories, so it runs before
+	// them: background subagents finish writing before either goes away.
+	t.Cleanup(func() {
+		server.Close()
+		_ = backend.Close()
+	})
+	return backend, server
 }
 
 func readSubagentWorkflowEvents(t *testing.T, base, sessionID string) []protocol.Event {

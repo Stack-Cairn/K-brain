@@ -3,9 +3,7 @@ package browser
 import (
 	"context"
 	"fmt"
-	"net"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -40,28 +38,14 @@ func TestExtensionRealChrome(t *testing.T) {
 	}
 
 	url := testPage(t)
-	prof := t.TempDir()
-	portLn, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	port := portLn.Addr().(*net.TCPAddr).Port
-	portLn.Close()
-
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, bin,
-		fmt.Sprintf("--remote-debugging-port=%d", port),
-		"--user-data-dir="+prof,
+	startTestChrome(t, bin, t.TempDir(),
 		"--load-extension="+dir,
 		"--disable-extensions-except="+dir,
 		"--no-first-run", "--no-default-browser-check",
 		"--app="+url+"/set-cookie",
 	)
-	if err := cmd.Start(); err != nil {
-		t.Fatalf("launch chrome: %v", err)
-	}
-	defer cmd.Process.Kill()
 
 	if err := rel.WaitAttached(ctx); err != nil {
 		for _, l := range rel.SWLogs() {

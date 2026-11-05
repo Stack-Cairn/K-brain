@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -204,21 +203,7 @@ func TestE2ELiveAttach(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
-	portLn, _ := net.Listen("tcp", "127.0.0.1:0")
-	port := portLn.Addr().(*net.TCPAddr).Port
-	portLn.Close()
-	profile := t.TempDir()
-	cmd := exec.Command(bin,
-		fmt.Sprintf("--remote-debugging-port=%d", port),
-		"--user-data-dir="+profile,
-		"--no-first-run", "--no-default-browser-check", "--headless=new",
-		"about:blank",
-	)
-	cmd.Stderr = nil
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
-	defer cmd.Process.Kill()
+	port := startTestChrome(t, bin, t.TempDir(), "--no-first-run", "--no-default-browser-check", "--headless=new", "about:blank")
 
 	t.Setenv("K_BRAIN_CDP_URL", fmt.Sprintf("http://127.0.0.1:%d", port))
 	deadline := time.Now().Add(30 * time.Second)

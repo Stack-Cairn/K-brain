@@ -26,7 +26,18 @@ var alwaysBlockedNets = []netip.Prefix{
 	netip.MustParsePrefix("fd00:ec2::254/128"),
 }
 
+// ipResolver resolves host names; tests pass one that needs no network.
+type ipResolver interface {
+	LookupIP(ctx context.Context, network, host string) ([]net.IP, error)
+}
+
+// CheckURL blocks cloud-metadata endpoints, resolving host names to catch ones
+// that point at them; a name that does not resolve is blocked.
 func CheckURL(ctx context.Context, rawURL string) error {
+	return checkURL(ctx, net.DefaultResolver, rawURL)
+}
+
+func checkURL(ctx context.Context, resolver ipResolver, rawURL string) error {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return fmt.Errorf("unparseable URL: %w", err)
@@ -44,7 +55,6 @@ func CheckURL(ctx context.Context, rawURL string) error {
 		}
 		return nil
 	}
-	resolver := &net.Resolver{}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	ips, err := resolver.LookupIP(ctx, "ip", host)
@@ -88,7 +98,13 @@ func isPrivate(addr netip.Addr) bool {
 
 var AllowPrivateURLs = false
 
+// CheckPrivateURL blocks private and internal addresses unless AllowPrivateURLs
+// is set, resolving host names like CheckURL.
 func CheckPrivateURL(ctx context.Context, rawURL string) error {
+	return checkPrivateURL(ctx, net.DefaultResolver, rawURL)
+}
+
+func checkPrivateURL(ctx context.Context, resolver ipResolver, rawURL string) error {
 	if AllowPrivateURLs {
 		return nil
 	}
@@ -108,7 +124,7 @@ func CheckPrivateURL(ctx context.Context, rawURL string) error {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	ips, err := (&net.Resolver{}).LookupIP(ctx, "ip", host)
+	ips, err := resolver.LookupIP(ctx, "ip", host)
 	if err != nil {
 		return fmt.Errorf("blocked: DNS resolution for %s failed (%w) — fail-closed", host, err)
 	}
