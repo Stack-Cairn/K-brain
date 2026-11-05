@@ -337,6 +337,9 @@ func TestWindowsSandboxUserAdminCycle(t *testing.T) {
 				t.Errorf("network=%v command is not confined to a private desktop or opened %q: %s", p.Network, own, out)
 			}
 		}
+		if t.Failed() {
+			diagnoseSandboxUser(t)
+		}
 	})
 
 	t.Run("OnlineRun", func(t *testing.T) {
