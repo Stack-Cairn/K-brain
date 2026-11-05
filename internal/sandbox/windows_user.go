@@ -694,7 +694,13 @@ func userLaunch(encoded string) (uint32, error) {
 	for _, h := range stdio {
 		_ = windows.SetHandleInformation(h, windows.HANDLE_FLAG_INHERIT, windows.HANDLE_FLAG_INHERIT)
 	}
-	desktop, closeDesktop, err := privateDesktop(account.SID)
+	// The offline command's restricted token passes the second access
+	// check through the offline group, which is one of its restricting SIDs.
+	grantees := []string{account.SID}
+	if spec.Offline {
+		grantees = append(grantees, st.OfflineGroup.SID)
+	}
+	desktop, closeDesktop, err := privateDesktop(grantees)
 	if err != nil {
 		return 0, err
 	}
@@ -737,11 +743,15 @@ func userLaunch(encoded string) (uint32, error) {
 	if err != nil {
 		return 0, err
 	}
+	// Stage two needs no console: it talks through the handles given here.
+	// Without DETACHED_PROCESS the secondary logon service opens a console
+	// for it, and its console host does not come up on the sandbox desktop.
 	var pi windows.ProcessInformation
+	flags := uint32(windows.CREATE_SUSPENDED | windows.CREATE_UNICODE_ENVIRONMENT | windows.CREATE_DEFAULT_ERROR_MODE | windows.DETACHED_PROCESS)
 	r, _, callErr := procCreateProcessWithLogonW.Call(
 		uintptr(unsafe.Pointer(user)), uintptr(unsafe.Pointer(domain)), uintptr(unsafe.Pointer(pw)), logonWithNoProfile,
 		uintptr(unsafe.Pointer(app)), uintptr(unsafe.Pointer(&cmdLine[0])),
-		windows.CREATE_SUSPENDED|windows.CREATE_UNICODE_ENVIRONMENT, uintptr(unsafe.Pointer(&block[0])),
+		uintptr(flags), uintptr(unsafe.Pointer(&block[0])),
 		uintptr(unsafe.Pointer(dir)), uintptr(unsafe.Pointer(&si)), uintptr(unsafe.Pointer(&pi)))
 	if r == 0 {
 		stageTrace(spec.Temp, "1", "logon failed: %v", callErr)
@@ -820,10 +830,11 @@ func gitSafeDirectoryEnv(env []string, dirs []string) []string {
 // privateDesktop creates a desktop of its own for the command on the
 // interactive window station, so that the sandbox account (which runs at
 // the user's integrity level) cannot send input to the user's windows. It
-// grants the account the access to the window station that a process needs
-// to start. On other window stations (services, CI) the account inherits the
+// grants the grantees (the account, and the offline group for the restricted
+// token) the desktop and the access to the window station that a process
+// needs to start. On other window stations (services, CI) the account inherits the
 // launcher's desktop, which the secondary logon service grants it.
-func privateDesktop(accountSID string) (string, func(), error) {
+func privateDesktop(grantees []string) (string, func(), error) {
 	noop := func() {}
 	winsta, _, callErr := procGetProcessWindowStation.Call()
 	if winsta == 0 {
@@ -836,14 +847,20 @@ func privateDesktop(accountSID string) (string, func(), error) {
 	if !strings.EqualFold(station, "WinSta0") {
 		return "", noop, nil
 	}
-	if err := grantWindowStation(station, accountSID); err != nil {
-		return "", noop, fmt.Errorf("let the sandbox account use the window station: %w", err)
+	for _, sid := range grantees {
+		if err := grantWindowStation(station, sid); err != nil {
+			return "", noop, fmt.Errorf("let the sandbox account use the window station: %w", err)
+		}
 	}
 	userSID, err := currentUserSID()
 	if err != nil {
 		return "", noop, err
 	}
-	sd, err := windows.SecurityDescriptorFromString(fmt.Sprintf("D:P(A;;GA;;;SY)(A;;GA;;;%s)(A;;GA;;;%s)", userSID, accountSID))
+	sddl := fmt.Sprintf("D:P(A;;GA;;;SY)(A;;GA;;;%s)", userSID)
+	for _, sid := range grantees {
+		sddl += fmt.Sprintf("(A;;GA;;;%s)", sid)
+	}
+	sd, err := windows.SecurityDescriptorFromString(sddl)
 	if err != nil {
 		return "", noop, err
 	}

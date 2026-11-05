@@ -630,6 +630,8 @@ func diagnoseSandboxUser(t *testing.T) {
 				list, _ := exec.Command("tasklist", "/v", "/fo", "csv", "/fi", "USERNAME eq "+user).CombinedOutput()
 				t.Logf("diagnosis: network=%v processes of %s after 8s:\n%s", network, user, list)
 			}
+			list, _ := exec.Command("tasklist", "/v", "/fo", "csv", "/fi", "IMAGENAME eq conhost.exe").CombinedOutput()
+			t.Logf("diagnosis: network=%v console hosts after 8s:\n%s", network, list)
 			err := <-done
 			t.Logf("diagnosis: network=%v ended: %v", network, err)
 		}
