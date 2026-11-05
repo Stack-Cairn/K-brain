@@ -125,13 +125,27 @@ func TestWindowsACLTreeRoundTrip(t *testing.T) {
 	}
 	for _, path := range []string{filepath.Join(root, "sub"), filepath.Join(root, "sub", "dir"), file} {
 		if !slices.ContainsFunc(daclOf(t, path).aces, func(a rawACE) bool {
-			return a.sid() == sid && a.flags()&aceInherited != 0 && a.mask() == fileModify
+			return a.sid() == sid && a.flags()&aceInheritOnly == 0 && a.mask() == fileModify
 		}) {
-			t.Fatalf("%s lacks the inherited entry: %s (top %s)", path, sddl(path), sddl(root))
+			t.Fatalf("%s lacks the grant: %s (top %s)", path, sddl(path), sddl(root))
 		}
 	}
 	if left := sandboxACEsUnder(t, root, ours); len(left) == 0 {
 		t.Fatal("no entries found after the grant")
+	}
+	// A protected path below the root is denied throughout, also where the
+	// grant gave a non-inheriting descendant explicit entries.
+	deny, err := grantTarget(accessDeniedACEType, fileWriteRights, false, true, n.readerSID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := applyTree(filepath.Join(root, "sub"), deny, aclWalkDeny, ours, false); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{filepath.Join(root, "sub"), filepath.Join(root, "sub", "dir"), file} {
+		if !slices.ContainsFunc(daclOf(t, path).aces, func(a rawACE) bool { return a.sid() == n.readerSID() && a.typ() == accessDeniedACEType }) {
+			t.Fatalf("%s lacks the deny entry: %s", path, sddl(path))
+		}
 	}
 	if err := removeTree(root, ours); err != nil {
 		t.Fatal(err)

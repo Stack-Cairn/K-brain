@@ -195,6 +195,10 @@ type aclTarget struct {
 	explicit       []rawACE
 	inheritedDirs  []rawACE
 	inheritedFiles []rawACE
+	// interiorDirs and interiorFiles are explicit entries with the full mask
+	// for descendants whose DACL does not inherit (protected).
+	interiorDirs  []rawACE
+	interiorFiles []rawACE
 }
 
 // grantTarget builds the entries for sids with mask on a tree. The top gets
@@ -204,14 +208,20 @@ type aclTarget struct {
 func grantTarget(typ byte, mask uint32, noDeleteTop, dir bool, sids ...string) (aclTarget, error) {
 	var t aclTarget
 	for _, sid := range sids {
+		file, err := newACE(typ, 0, mask, sid)
+		if err != nil {
+			return t, err
+		}
 		if !dir {
-			ace, err := newACE(typ, 0, mask, sid)
-			if err != nil {
-				return t, err
-			}
-			t.explicit = append(t.explicit, ace)
+			t.explicit = append(t.explicit, file)
 			continue
 		}
+		interior, err := newACE(typ, aceObjectInherit|aceContainerInherit, mask, sid)
+		if err != nil {
+			return t, err
+		}
+		t.interiorDirs = append(t.interiorDirs, interior)
+		t.interiorFiles = append(t.interiorFiles, file)
 		top := mask
 		if noDeleteTop {
 			top = mask &^ windows.DELETE
@@ -254,13 +264,11 @@ type aclWalk int
 
 const (
 	// aclWalkGrant (writable roots, readable tools) skips files with more
-	// than one hard link (the other names may lie outside the tree) and
-	// descendants that do not inherit; failures leave the descendant
-	// inaccessible, which fails closed.
+	// than one hard link (the other names may lie outside the tree);
+	// failures leave the descendant inaccessible, which fails closed.
 	aclWalkGrant aclWalk = iota
-	// aclWalkDeny (protected and masked paths) gives a descendant that does
-	// not inherit an explicit entry; every failure is an error, since a
-	// descendant left alone stays writable or readable.
+	// aclWalkDeny (protected and masked paths): every failure is an error,
+	// since a descendant left alone stays writable or readable.
 	aclWalkDeny
 )
 
@@ -322,11 +330,13 @@ func applyTree(top string, t aclTarget, walk aclWalk, ours func(rawACE) bool, fo
 	if !info.IsDir() {
 		return nil
 	}
-	// A descendant with an explicit allow entry of the sandbox is the top of
-	// another target (a nested root, a workspace inside a masked directory):
-	// its subtree is left to that target.
+	// A descendant with the explicit entry of a writable root's top (allow
+	// without DELETE) is the top of another target (a nested root, a
+	// workspace inside a masked directory): its subtree is left to that
+	// target. Explicit entries of protected descendants carry the full mask
+	// and are no boundary.
 	boundary := func(a rawACE) bool {
-		return a.flags()&aceInherited == 0 && a.typ() == accessAllowedACEType && ours(a)
+		return a.flags()&(aceInherited|aceInheritOnly) == 0 && a.typ() == accessAllowedACEType && a.mask() == fileModifyNoDel && ours(a)
 	}
 	return filepath.WalkDir(top, func(path string, entry fs.DirEntry, walkErr error) error {
 		if path == top {
@@ -370,13 +380,16 @@ func applyTree(top string, t aclTarget, walk aclWalk, ours func(rawACE) bool, fo
 		if slices.ContainsFunc(d.aces, boundary) {
 			return skip(nil)
 		}
+		// A descendant that does not inherit (its owner, or the tool that
+		// created it, cut inheritance) gets explicit entries: a writable root
+		// stays writable and a masked tree hidden throughout.
 		var add []rawACE
 		protected := d.control&seDACLProtected != 0
 		switch {
-		case protected && walk == aclWalkGrant:
-			return skip(nil)
+		case protected && dir:
+			add = t.interiorDirs
 		case protected:
-			add = t.explicit
+			add = t.interiorFiles
 		case dir:
 			add = t.inheritedDirs
 		default:
