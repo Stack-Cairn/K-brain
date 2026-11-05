@@ -1,0 +1,24 @@
+[1m▌[0m[1m❯[0m add a --json flag to `kn status`                                             [0m
+
+[1m╭[0m[1m─[0m [1m![0m [1mApply this edit?[0m [1m─────────────────────────────────────────────────────────[0m[1m╮[0m
+[1m│[0m [1mcmd/kn/status.go[0m  +10 [1m−10[0m                                                    [1m│[0m
+[1m│[0m [2m  48  [0m      line 1 stays                                                     [1m│[0m
+[1m│[0m [2m  49  [0m      line 2 stays                                                     [1m│[0m
+[1m│[0m [2m  50  [0m      line 3 stays                                                     [1m│[0m
+[1m│[0m [2m  51  [0m[1m-[0m [1m    verbose := flags.Bool("v1", false, "verbose")[0m                    [1m│[0m
+[1m│[0m [2m  51  [0m+     asJSON1 := flags.Bool("json1", false, "print JSON")              [1m│[0m
+[1m│[0m [2m  52  [0m[1m-[0m [1m    verbose := flags.Bool("v2", false, "verbose")[0m                    [1m│[0m
+[1m│[0m [2m⋯ 1-7 / 14 · PgUp/PgDn[0m                                                       [1m│[0m
+[1m│[0m [1;7m❯ 1  Yes, once[2m (a)[0m [0m                                                          [1m│[0m
+[1m│[0m   2  Yes, always allow Edit(cmd/kn/**)[2m (A)[0m                                   [1m│[0m
+[1m│[0m      [2mthis file[0m[2m · [0m[1m[folder][0m[2m · [0m[2mproject[0m[2m · kept for this project[0m                  [1m│[0m
+[1m│[0m   3  No, and tell the agent why[2m (r)[0m                                          [1m│[0m
+[1m│[0m [2m1-3 or a/A/r · Tab scope · ctrl+e expand · Esc reject[0m                        [1m│[0m
+[1m╰[0m[1m──────────────────────────────────────────────────────────────────────────────[0m[1m╯[0m
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+  [1m❯ [0m[7mA[0m[2msk k-brain anything…  / commands · Shift+Tab mode · Ctrl+P menu[0m            [0m
+  [Normal]                                                  kimi-k3-fast[2m · [0m[1m✦ off[0m

@@ -1,0 +1,24 @@
+|> add a --json flag to `kn status`
+
++- ? Question -------------------------+
+| Which output format should --json    |
+| use?                                 |
+|                                      |
+| > 1  One object per line             |
+|      streams well                    |
+|   2  A single array                  |
+|   3  type your own answer            |
+|                                      |
+| Up/Down or 1-9 select - Enter picks  |
+| Esc dismisses                        |
++--------------------------------------+
+
+
+
+
+
+
+
+----------------------------------------
+  > Ask k-brain anything...  / commands
+   Always allow     kimi-k3-fast - * off

@@ -1,0 +1,40 @@
+▌❯ add a --json flag to `kn status`
+
+╭─ ! Apply this edit? ─────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ cmd/kn/status.go  +10 −10                                                                                            │
+│   48        line 1 stays                                                                                             │
+│   49        line 2 stays                                                                                             │
+│   50        line 3 stays                                                                                             │
+│   51  -     verbose := flags.Bool("v1", false, "verbose")                                                            │
+│   51  +     asJSON1 := flags.Bool("json1", false, "print JSON")                                                      │
+│   52  -     verbose := flags.Bool("v2", false, "verbose")                                                            │
+│   52  +     asJSON2 := flags.Bool("json2", false, "print JSON")                                                      │
+│   53  -     verbose := flags.Bool("v3", false, "verbose")                                                            │
+│   53  +     asJSON3 := flags.Bool("json3", false, "print JSON")                                                      │
+│   54  -     verbose := flags.Bool("v4", false, "verbose")                                                            │
+│   54  +     asJSON4 := flags.Bool("json4", false, "print JSON")                                                      │
+│   55  -     verbose := flags.Bool("v5", false, "verbose")                                                            │
+│     ⋯ +11 lines · ctrl+e                                                                                             │
+│                                                                                                                      │
+│ Normal mode confirms commands and file changes                                                                       │
+│                                                                                                                      │
+│ ❯ 1  Yes, once (a)                                                                                                   │
+│   2  Yes, always allow Edit(cmd/kn/**) (A)                                                                           │
+│      this file · folder · project · kept for this project                                                            │
+│   3  No, and tell the agent why (r)                                                                                  │
+│                                                                                                                      │
+│ ↑↓ select · 1-3 or a/A/r · Tab scope · ctrl+e expand · Esc reject                                                    │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ❯ Ask k-brain anything…  / commands · Shift+Tab mode · Ctrl+P menu
+   Normal                                                                                           kimi-k3-fast · ✦ off

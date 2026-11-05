@@ -1,0 +1,24 @@
+[1m▌[0m[1m❯[0m add a --json flag to `kn status`     [0m
+
+[1m╭[0m[1m─[0m [1m![0m [1mRun this command?[0m [1m────────────────[0m[1m╮[0m
+[1m│[0m   set -euo pipefail                  [1m│[0m
+[1m│[0m   for pkg in $(go list               [1m│[0m
+[1m│[0m   ./internal/... | grep -v           [1m│[0m
+[1m│[0m   /vendor/); do                      [1m│[0m
+[1m│[0m [2m⋯ 1-4 / 38 · PgUp/PgDn[0m               [1m│[0m
+[1m│[0m Run the race tests for every         [1m│[0m
+[1m│[0m internal package                     [1m│[0m
+[1m│[0m [1;7m❯ 1  Yes, once[2m (a)[0m [0m                  [1m│[0m
+[1m│[0m   2  Yes, always allow[2m (A)[0m           [1m│[0m
+[1m│[0m [2m     always allow is not available[0m   [1m│[0m
+[1m│[0m [2m     for this action; it allows once[0m [1m│[0m
+[1m│[0m   3  No, and tell the agent why[2m (r)[0m  [1m│[0m
+[1m│[0m [2m1-3 or a/A/r · Esc reject[0m            [1m│[0m
+[1m╰[0m[1m──────────────────────────────────────[0m[1m╯[0m
+
+
+
+
+────────────────────────────────────────
+  [1m❯ [0m[7mA[0m[2msk k-brain anything…  / commands ·[0m [0m
+  [Normal]          kimi-k3-fast[2m · [0m[1m✦ off[0m

@@ -1,0 +1,24 @@
+|> add a --json flag to `kn status`
+
++- * Plan ready for review ----------------------------------------------------+
+|   1 Add --json to kn status                                                  |
+|   2                                                                          |
+|   3 1. Add a `--json` flag next to the existing ones in cmd/kn/status.go.    |
+| > 4 2. Encode Status with encoding/json, one object per call.                |
+|     ` keep the old text output as the default                                |
+|   5 3. Cover both outputs in status_test.go.                                 |
+|   6 4. Run go test ./cmd/kn/ and go vet ./...                                |
+|                                                                              |
+| > 1  Yes, approve the plan and switch to Always allow                        |
+|   2  No, request changes                                                     |
+|      1 line comment is sent with the changes                                 |
+|                                                                              |
+| Up/Down line - c comment - 1 approve - 2 request changes - Esc close         |
++------------------------------------------------------------------------------+
+
+
+
+
+--------------------------------------------------------------------------------
+  > Ask k-brain anything...  / commands - Shift+Tab mode - Ctrl+P menu
+   Plan  read-only                                          kimi-k3-fast - * off

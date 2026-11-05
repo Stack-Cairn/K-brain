@@ -1,0 +1,24 @@
+[1;96m|[0m[1;96m>[0m add a --json flag to `kn status`     [0m
+
+[96m+[0m[96m-[0m [1;96m?[0m [1mQuestion[0m [96m-------------------------[0m[96m+[0m
+[96m|[0m [1mWhich output format should --json[0m    [96m|[0m
+[96m|[0m [1muse?[0m                                 [96m|[0m
+[96m|[0m                                      [96m|[0m
+[96m|[0m [1;96m> 1  One object per line[0m             [96m|[0m
+[96m|[0m [37m     streams well[0m                    [96m|[0m
+[96m|[0m   2  A single array                  [96m|[0m
+[96m|[0m   3  [90mtype your own answer[0m            [96m|[0m
+[96m|[0m                                      [96m|[0m
+[96m|[0m [37mUp/Down or 1-9 select - Enter picks  [96m|[0m
+[96m|[0m Esc dismisses[0m                        [96m|[0m
+[96m+[0m[96m--------------------------------------[0m[96m+[0m
+
+
+
+
+
+
+
+[90m----------------------------------------[0m
+  [1;96m> [0m[7mA[0m[90msk k-brain anything...  / commands [0m
+  [101m [0m[1;30;101mAlways allow[0m[101m [0m    [37mkimi-k3-fast[0m[90m - [0m[1;96m* off[0m

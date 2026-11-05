@@ -61,7 +61,7 @@ func TestPlanModeAsksBeforeWebFetch(t *testing.T) {
 		t.Fatal("plan mode should ask before a fetch")
 	}
 	view := ansi.Strip(m.permView())
-	if !strings.Contains(view, "Fetch this URL?") || !strings.Contains(view, "https://example.com/docs") || !strings.Contains(view, "always allows: WebFetch(domain:example.com)") {
+	if !strings.Contains(view, "Fetch this URL?") || !strings.Contains(view, "https://example.com/docs") || !strings.Contains(view, "Yes, always allow WebFetch(domain:example.com)") {
 		t.Errorf("dialog:\n%s", view)
 	}
 }

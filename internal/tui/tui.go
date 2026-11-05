@@ -278,6 +278,8 @@ type model struct {
 	app *appSurfaceState // app surfaces: cheatsheet, settings, extensions, memory (picker_view.go)
 	tv  *toolViewState   // tool views and the plan pane (toolview.go, todo_pane.go)
 	st  *statusState     // status row, footer, notifications (status_state.go)
+
+	cards *cardState // interactive cards: plan review (plan_view.go)
 }
 
 type initialPromptMsg struct{}
@@ -985,13 +987,17 @@ func (m *model) Update(msg tea.Msg) (_ tea.Model, statusCmd tea.Cmd) {
 		return m, nil
 
 	case askRequest:
-		m.askDialog = &askDialog{req: msg.req, reply: msg.reply, picked: map[int]bool{}}
+		m.openAsk(msg)
 		return m, nil
 
 	case askClose:
 		if m.askDialog != nil && m.askDialog.reply == msg.reply {
 			m.askDialog = nil
 		}
+		return m, nil
+
+	case planRequest, planClose:
+		m.planMsg(msg)
 		return m, nil
 
 	case selScrollTick:

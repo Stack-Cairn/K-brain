@@ -117,6 +117,8 @@ var chromeSectionList = []chromeSection{
 	{"todo", (*model).todoPaneRows},
 	{"transcriptBar", (*model).transcriptBarRows},
 	{"usage", (*model).usageCardRows},
+	// The plan review card (plan_view.go).
+	{"plan", (*model).planRows},
 }
 
 func (m *model) chromeSections() []chromeSection { return chromeSectionList }
@@ -334,6 +336,7 @@ func (m *model) viewBody() string {
 	if m.askDialog != nil {
 		b.WriteString("\n" + m.askView() + "\n")
 	}
+	b.WriteString(m.planSection())
 	b.WriteString(m.todoPaneSection())
 	b.WriteString(m.usageCardBlock())
 	if m.busy {

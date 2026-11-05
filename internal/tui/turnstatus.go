@@ -42,6 +42,8 @@ func (m *model) busyLeft() string {
 		return warnStyle.Bold(true).Render(glyphs.ToolQueued) + " " + warnStyle.Render(m.tr("Waiting for your approval"))
 	case m.askDialog != nil:
 		return accentFgStyle.Bold(true).Render(glyphs.ToolQueued) + " " + accentFgStyle.Render(m.tr("Waiting for your answer"))
+	case m.planOpen():
+		return m.planWaiting()
 	case st.retry != nil:
 		return warnStyle.Bold(true).Render(glyphs.Warn) + " " + warnStyle.Render(st.retry.label(m, now))
 	case st.compacting:
@@ -116,7 +118,7 @@ func (m *model) busyRights() []string {
 		hint, short = "bash (interactive) — type to respond · Ctrl+C Ctrl+C to cancel", "Ctrl+C Ctrl+C"
 	case m.interrupt1:
 		hint, short = strings.TrimPrefix(m.tr(" · Esc again to interrupt"), " · "), "Esc"
-	case m.permDialog != nil || m.askDialog != nil:
+	case m.permDialog != nil || m.askDialog != nil || m.planOpen():
 		hint, short = "", ""
 	}
 	clock := strings.TrimSpace(m.busyStats())

@@ -13,16 +13,16 @@
 
 [93m╭[0m[93m─[0m [1;93m![0m [1mRun this command?[0m [93m────────────────────────────────────────────────────────────────────────────────────────────────[0m[93m╮[0m
 [93m│[0m   go build -o bin/kn ./cmd/kn                                                                                        [93m│[0m
-[93m│[0m [90malways allows: Bash(go build:*)[0m                                                                                      [93m│[0m
+[93m│[0m                                                                                                                      [93m│[0m
+[93m│[0m [90mNormal mode confirms commands and file changes[0m                                                                       [93m│[0m
 [93m│[0m                                                                                                                      [93m│[0m
 [93m│[0m [1;96m❯ 1  Yes, once[37m (a)[0m[0m                                                                                                   [93m│[0m
-[93m│[0m   2  Yes, always allow[37m (A)[0m                                                                                           [93m│[0m
+[93m│[0m   2  Yes, always allow Bash(go build:*)[37m (A)[0m                                                                          [93m│[0m
+[93m│[0m      [90mexact[0m[37m · [0m[1;96mprefix[0m[37m · [0m[90mprogram[0m[90m · kept for every project[0m                                                               [93m│[0m
 [93m│[0m   3  No, and tell the agent why[37m (r)[0m                                                                                  [93m│[0m
 [93m│[0m                                                                                                                      [93m│[0m
-[93m│[0m [37m↑↓ select · 1-3 or a/A/r · Esc reject[0m                                                                                [93m│[0m
+[93m│[0m [37m↑↓ select · 1-3 or a/A/r · Tab scope · Esc reject[0m                                                                    [93m│[0m
 [93m╰[0m[93m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m[93m╯[0m
-
-
 
 
 
