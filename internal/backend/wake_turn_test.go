@@ -63,7 +63,7 @@ func (c *handoffClient) Stream(ctx context.Context, request ai.Request, onText, 
 	return ai.Message{Role: "assistant", Content: text, StopReason: ai.StopReasonStop}, ai.Usage{}, nil
 }
 
-func newHandoffServer(t *testing.T, client *handoffClient) (string, *runtimeSession) {
+func newHandoffServer(t *testing.T, client ai.Client) (string, *runtimeSession) {
 	t.Helper()
 	if runtime.GOOS == "windows" {
 		t.Skip("uses POSIX shell commands")

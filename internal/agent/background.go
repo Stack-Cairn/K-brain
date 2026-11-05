@@ -267,7 +267,11 @@ func (a *Agent) RegisterBackgroundContext(parent context.Context, description, p
 	if a.SandboxPolicy != nil && sandbox.FromContext(base) == nil {
 		base = sandbox.WithPolicy(base, a.SandboxPolicy)
 	}
-	taskCtx, cancel := context.WithCancel(base)
+	// The task reports after the turn that started it has ended, which is the point
+	// of a background subagent; stopping that turn still cancels it.
+	outlive, release := tools.OutliveTurn(base)
+	taskCtx, cancelTask := context.WithCancel(outlive)
+	cancel := func() { cancelTask(); release() }
 	sub := a.newSubContext(base, o)
 
 	scope := a.SessionIDValue()
