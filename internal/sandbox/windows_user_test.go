@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 	"unsafe"
@@ -342,9 +343,31 @@ func TestWindowsSandboxUserAdminCycle(t *testing.T) {
 		if dacl, err := tokenDefaultDACL(windows.GetCurrentProcessToken()); err == nil {
 			t.Logf("default DACL of the test process: %s", dacl)
 		}
+		// Creating objects in the session namespace takes the logon SID,
+		// which the command's token keeps deny-only (documented limitation).
 		for _, p := range []*Policy{online, offline} {
-			if out, ok := helper(t, p, "mutex", fmt.Sprintf(`Local\kbrain-sandbox-test-%v`, p.Network)); !ok {
-				t.Errorf("network=%v command cannot create a named object in its session: %s", p.Network, out)
+			out, ok := helper(t, p, "mutex", fmt.Sprintf(`Local\kbrain-sandbox-test-%v`, p.Network))
+			t.Logf("network=%v command creating a named object in its session (documented limitation): ok=%v %s", p.Network, ok, out)
+		}
+	})
+
+	t.Run("UserProcesses", func(t *testing.T) {
+		// A process of the user at medium integrity whose security is that
+		// of a standard user's processes, which grants the logon SID read
+		// and execute (the test runs elevated: integrity and its own
+		// default DACL alone would keep the commands out).
+		victim, err := mediumProcess(exec.Command(cmdExe(), "/d", "/c", "ping -n 60 127.0.0.1 >nul"))
+		if err != nil {
+			t.Fatalf("start a medium-integrity process: %v", err)
+		}
+		defer func() { _ = victim.Process.Kill(); _ = victim.Wait() }()
+		pid := strconv.Itoa(victim.Process.Pid)
+		for _, p := range []*Policy{online, offline} {
+			if out, ok := helper(t, p, "readprocess", pid); ok {
+				t.Errorf("network=%v command opened a process of the user for reading: %s", p.Network, out)
+			}
+			if out, ok := helper(t, p, "openprocess", pid); ok {
+				t.Errorf("network=%v command opened a process of the user for writing: %s", p.Network, out)
 			}
 		}
 	})
@@ -768,4 +791,55 @@ func tokenDefaultDACL(token windows.Token) (string, error) {
 		return "", err
 	}
 	return sd.String(), nil
+}
+
+// mediumProcess starts cmd with a copy of the test's token at medium
+// integrity.
+func mediumProcess(cmd *exec.Cmd) (*exec.Cmd, error) {
+	var self windows.Token
+	if err := windows.OpenProcessToken(windows.CurrentProcess(), windows.TOKEN_DUPLICATE|windows.TOKEN_QUERY|windows.TOKEN_ASSIGN_PRIMARY|windows.TOKEN_ADJUST_DEFAULT, &self); err != nil {
+		return nil, err
+	}
+	defer self.Close()
+	var token windows.Token
+	if err := windows.DuplicateTokenEx(self, windows.MAXIMUM_ALLOWED, nil, windows.SecurityImpersonation, windows.TokenPrimary, &token); err != nil {
+		return nil, err
+	}
+	sid, err := windows.CreateWellKnownSid(windows.WinMediumLabelSid)
+	if err != nil {
+		token.Close()
+		return nil, err
+	}
+	user, err := self.GetTokenUser()
+	if err != nil {
+		token.Close()
+		return nil, err
+	}
+	logon, err := logonSID(self)
+	if err != nil {
+		token.Close()
+		return nil, err
+	}
+	sd, err := windows.SecurityDescriptorFromString("D:(A;;GA;;;SY)(A;;GA;;;" + user.User.Sid.String() + ")(A;;GRGX;;;" + logon + ")")
+	if err != nil {
+		token.Close()
+		return nil, err
+	}
+	dacl, _, err := sd.DACL()
+	if err == nil {
+		err = setDefaultDACL(token, dacl)
+	}
+	if err != nil {
+		token.Close()
+		return nil, err
+	}
+	label := windows.Tokenmandatorylabel{Label: windows.SIDAndAttributes{Sid: sid, Attributes: windows.SE_GROUP_INTEGRITY}}
+	if err := windows.SetTokenInformation(token, windows.TokenIntegrityLevel, (*byte)(unsafe.Pointer(&label)), label.Size()); err != nil {
+		token.Close()
+		return nil, err
+	}
+	cmd.SysProcAttr = &syscall.SysProcAttr{Token: syscall.Token(token)}
+	err = cmd.Start()
+	token.Close()
+	return cmd, err
 }
