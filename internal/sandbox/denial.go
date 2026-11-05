@@ -93,7 +93,7 @@ func (p *Policy) ExplainFailure(command, dir, output string, exitCode *int) *Den
 	writable, _ := resolveAll(root, p.Writable)
 	masked, _ := resolveAll(root, p.Masked)
 	protected, _ := resolveAll(root, append(append([]string(nil), p.ReadOnly...), p.Protected...))
-	grants := append(append([]string{root}, writable...), tempDirs([]string{homeDir()})...)
+	grants := append(append([]string{root}, writable...), commandTempDirs(root)...)
 	network := false
 	for _, line := range strings.Split(output, "\n") {
 		lower := strings.ToLower(line)

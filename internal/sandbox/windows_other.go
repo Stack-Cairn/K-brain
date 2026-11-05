@@ -20,3 +20,6 @@ func (p *Policy) wrapWindows(context.Context, *exec.Cmd, string) (*exec.Cmd, err
 }
 
 func checkPlatformRoot(string) error { return nil }
+
+// commandTempDirs are the temporary directories a confined command may write.
+func commandTempDirs(string) []string { return tempDirs([]string{homeDir()}) }

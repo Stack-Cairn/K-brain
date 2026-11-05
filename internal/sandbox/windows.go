@@ -317,14 +317,23 @@ func checkMaskable(path string) error {
 	return nil
 }
 
+// fencedTempPath is where fencedTemp puts the temporary directory of root.
+func fencedTempPath(root string) string {
+	sum := sha256.Sum256([]byte(strings.ToLower(filepath.Clean(root))))
+	return filepath.Join(os.TempDir(), "k-brain-sandbox", hex.EncodeToString(sum[:6]))
+}
+
+// commandTempDirs are the temporary directories a confined command may write:
+// only the fenced one, not the system temp directory.
+func commandTempDirs(root string) []string { return []string{fencedTempPath(root)} }
+
 // fencedTemp is the run's temporary directory: one per workspace under the
 // user's temp directory, labelled low. Its parent is created by K-brain and
 // stays medium, so a sandboxed command cannot replace the directory with a
 // link to somewhere else.
 func fencedTemp(root string) (string, error) {
-	sum := sha256.Sum256([]byte(strings.ToLower(filepath.Clean(root))))
-	parent := filepath.Join(os.TempDir(), "k-brain-sandbox")
-	dir := filepath.Join(parent, hex.EncodeToString(sum[:6]))
+	dir := fencedTempPath(root)
+	parent := filepath.Dir(dir)
 	for _, path := range []string{parent, dir} {
 		if err := os.Mkdir(path, 0o700); err != nil && !errors.Is(err, fs.ErrExist) {
 			return "", err
