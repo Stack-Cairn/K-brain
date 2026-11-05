@@ -100,14 +100,18 @@ func (m *liveagentProcessManager) CloseAll() {
 }
 
 func (m *liveagentProcessManager) start(ctx context.Context, command, cwd, label string, timeout time.Duration, isolated bool) (*liveagentProcess, error) {
-	return m.startWithID(ctx, "mp", command, cwd, label, timeout, isolated)
+	return m.startWithID(ctx, "mp", command, cwd, label, timeout, isolated, true)
 }
 
 func (m *liveagentProcessManager) startBashSession(ctx context.Context, command, cwd string, timeout time.Duration) (*liveagentProcess, error) {
-	return m.startWithID(ctx, "bash", command, cwd, "", timeout, false)
+	return m.startWithID(ctx, "bash", command, cwd, "", timeout, false, false)
 }
 
-func (m *liveagentProcessManager) startWithID(ctx context.Context, prefix, command, cwd, label string, timeout time.Duration, isolated bool) (*liveagentProcess, error) {
+// startWithID starts a process bound to ctx. An isolated process is bound to
+// nothing and survives CloseAll; outliveTurn keeps a process running when its
+// turn ends on its own (the run is over), so it can still report its exit, while
+// stopping the turn still stops it.
+func (m *liveagentProcessManager) startWithID(ctx context.Context, prefix, command, cwd, label string, timeout time.Duration, isolated, outliveTurn bool) (_ *liveagentProcess, err error) {
 	if strings.TrimSpace(command) == "" {
 		return nil, errors.New("command is required")
 	}
@@ -119,10 +123,17 @@ func (m *liveagentProcessManager) startWithID(ctx context.Context, prefix, comma
 		return nil, fmt.Errorf("create process log: %w", err)
 	}
 	policy := sandbox.FromContext(ctx)
-	commandContext := ctx
+	commandContext, release := ctx, context.CancelFunc(func() {})
 	if isolated {
 		commandContext = bashrun.WithShell(sandbox.WithPolicy(context.Background(), policy), bashrun.ResolveShell(ctx, ""))
+	} else if outliveTurn {
+		commandContext, release = OutliveTurn(ctx)
 	}
+	defer func() {
+		if err != nil {
+			release()
+		}
+	}()
 	cmd, err := liveagentShellCommand(commandContext, command)
 	if err != nil {
 		_ = log.Close()
@@ -162,7 +173,10 @@ func (m *liveagentProcessManager) startWithID(ctx context.Context, prefix, comma
 	}
 	p.pid = cmd.Process.Pid
 	m.processes[p.id] = p
-	go m.reap(commandContext, p, timeout)
+	go func() {
+		defer release()
+		m.reap(commandContext, p, timeout)
+	}()
 	return p, nil
 }
 

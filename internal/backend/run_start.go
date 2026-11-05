@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Stack-Cairn/K-brain/internal/protocol"
+	"github.com/Stack-Cairn/K-brain/internal/tools"
 )
 
 const errSessionBusy = "session already has a running turn"
@@ -169,7 +170,10 @@ func (s *Server) startCanonicalRunWith(ctx context.Context, rt *runtimeSession, 
 		}
 	}
 	runID := newRunID()
-	runCtx, cancel := context.WithCancel(ctx)
+	// Stopping the run cancels with context.Canceled; the run's own end cancels
+	// with tools.ErrTurnEnded, which background work the turn started outlives.
+	runCtx, cancelRun := context.WithCancelCause(ctx)
+	cancel := func() { cancelRun(context.Canceled) }
 	rt.runID, rt.runDone, rt.cancel = runID, false, cancel
 	rt.checkpoint = newCheckpointCapture(s.eventDir, rt.id, runID, in.TurnID)
 	abort := func(err error) (protocol.RunAccepted, int, error) {
@@ -198,7 +202,7 @@ func (s *Server) startCanonicalRunWith(ctx context.Context, rt *runtimeSession, 
 	go func() {
 		defer rt.runWorkers.Done()
 		defer s.releaseRuntime(rt)
-		s.executeRun(rt, runCtx, runID, in, options, runPolicy)
+		s.executeRun(rt, runCtx, func() { cancelRun(tools.ErrTurnEnded) }, runID, in, options, runPolicy)
 		// The next goal round starts only after executeRun has marked this run done.
 		s.continueGoal(rt, runID, in)
 		rt.mu.Lock()
