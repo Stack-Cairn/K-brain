@@ -150,8 +150,11 @@ type Agent struct {
 	pending          []pendingSteer
 	compacted        bool
 	contextRequested atomic.Bool
-	contextNoticeMu  sync.Mutex
-	contextNotice    string
+	// planRevise is set when the user asked for changes to a plan submitted
+	// with ExitPlanMode, so the turn goes on to revise it (plan_review.go).
+	planRevise      atomic.Bool
+	contextNoticeMu sync.Mutex
+	contextNotice   string
 	// contextNoticeOff: the notice quotes a user message written while memory was off.
 	contextNoticeOff bool
 	running          atomic.Bool
@@ -420,7 +423,7 @@ func New(client ai.Client, model string, maxTokens int, systemPrompt string, opt
 			a.Tools = append(a.Tools, tools.ComputerExec())
 		}
 	}
-	sessionTools := []tools.Tool{tools.QuestionTool(), taskTool(a), taskSteerTool(a)}
+	sessionTools := []tools.Tool{tools.QuestionTool(), exitPlanTool(a), taskTool(a), taskSteerTool(a)}
 	sessionTools = append(sessionTools, taskControlTools(a)...)
 	sessionTools = append(sessionTools, newContextTool(a))
 	if a.experimentalEnabled(FeatureWorkflows) {
@@ -792,8 +795,9 @@ func (a *Agent) turnPending(ctx context.Context, input string, parts []ai.Conten
 			if ctx.Err() != nil {
 				return "", ctx.Err()
 			}
+			revise := a.planRevise.Swap(false)
 			for i, call := range msg.ToolCalls {
-				if a.PlanMode() && call.Function.Name == "ExitPlanMode" && !results[i].Failed {
+				if a.PlanMode() && call.Function.Name == "ExitPlanMode" && !results[i].Failed && !revise {
 					return results[i].Text, nil
 				}
 			}

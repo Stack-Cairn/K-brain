@@ -26,6 +26,9 @@ func planToolAllowed(name string) bool {
 func (a *Agent) modeTools(all []tools.Tool) []tools.Tool {
 	out := make([]tools.Tool, 0, len(all))
 	for _, tool := range all {
+		if tool.Def.Function.Name == exitPlanModeName && !a.offersPlanReview() {
+			continue
+		}
 		if planToolAllowed(tool.Def.Function.Name) {
 			out = append(out, tool)
 			continue
