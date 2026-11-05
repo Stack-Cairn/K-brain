@@ -48,7 +48,14 @@ Landlock 只能"允许"不能"屏蔽"，因此有几处弱于 bubblewrap，并�
 - `mode` 目前只有 `workspace`（省略即 `workspace`）；`network: false` 断网。
 - 可写范围是运行的 `write` 工作区根（`workspace_roots` 中 access 为 `write` 的目录）加临时目录。
 - 以下目录对命令不可读写：`~/.ssh`、`~/.aws`、`~/.gnupg`、`~/.config/gh`，以及 K-brain 自己的数据目录（配置/API key、会话、记忆、权限规则）。工作区本身位于这些目录内时，工作区仍可用，但其外的部分保持隐藏；工作区**包含**这些目录（例如把家目录当工作区）时运行会被拒绝。
-- 即使在可写根里，`.liveagent/`、`.k-brain/` 和 `.git/hooks/` 也只读：这些文件下次会话会被自动信任。
+- 即使在可写根里（每个 `write` 工作区根都适用），以下路径也只读：这些文件下次会话或用户自己运行 git 时会被自动信任。
+  - `.liveagent/`、`.k-brain/`；
+  - `.git/hooks/`、`.git/config`、`.git/config.worktree`；`.git` 是文件（链接工作树、子模块）时还包括该文件本身，以及它指向的 git 目录中的 hooks 与配置；
+  - `core.hooksPath` 指向的目录（读取仓库配置、其 `include`/`includeIf` 文件和全局 `~/.gitconfig`），以及这些被 include 的配置文件。
+
+  因此在沙箱里 `git remote add`、`git config` 等修改仓库配置的命令会失败；提交、分支、拉取等正常操作不受影响。
+- 防绕过：不能通过重命名上级目录（如 `mv .git .git2` 后新建 `.git`）或硬链接改写保护路径；保护路径若经由符号链接到达（Linux），或保护文件已有其他硬链接，运行会被拒绝。`core.hooksPath` 指向工作区本身或其上级时同样拒绝。macOS 上尚不存在的保护路径也不能被创建；Linux（bubblewrap）只能保护已存在的路径。
+- 可启动沙箱外进程的 unix 套接字对命令不可用：容器引擎（docker/podman/containerd）、D-Bus 系统与会话总线、systemd 管理器；WSL 下还会隐藏 `/run/WSL`（Windows 互操作）。macOS 上联网模式下拒绝连接容器引擎套接字（断网时本来就禁止）。`SSH_AUTH_SOCK` 等凭据代理套接字不受影响。
 - 全局配置已开启沙箱时，按次请求只能收紧：网络只要任一方关闭就关闭，配置的可写/只读路径不变，并额外加上上面的屏蔽与只读规则。
 - 平台无法隔离时（Linux 上 bubblewrap 与 Landlock 都不可用、Windows 上无法以低完整性级别启动命令），请求 `400` 拒绝并给出原因，**不会**退回到不隔离运行。只要求断网而平台不能隔离网络时同样拒绝（Windows 原生始终如此）。
 - `/v1/health` 的 `capabilities.run_sandbox` 报告 `supported`、`mechanism`、`platform`、`network_control`、`read_masking`、`path_protection`、`modes` 和 `reason`（不可用的原因，或可用但有局限时的说明）。`mechanism` 为 `bubblewrap`、`landlock`、`seatbelt` 或 `low-integrity`。客户端应仅在 `supported` 为 true 时提供沙箱选项，仅在 `network_control` 也为 true 时提供断网选项；`read_masking` 或 `path_protection` 为 false 时应提示用户凭据目录可读、保护路径可写。

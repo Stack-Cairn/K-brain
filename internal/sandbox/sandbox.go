@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 )
 
@@ -120,7 +121,8 @@ func (p *Policy) bwrapArgs(root, dir string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	for _, path := range append([]string{root}, writable...) {
+	grants := append([]string{root}, writable...)
+	for _, path := range grants {
 		args = append(args, "--bind", path, path)
 	}
 	masked, err := resolveAll(root, p.Masked)
@@ -138,16 +140,35 @@ func (p *Policy) bwrapArgs(root, dir string) ([]string, error) {
 	if rebind {
 		args = append(args, "--bind", root, root)
 	}
-	readOnly, err := resolveAll(root, append(append([]string(nil), p.ReadOnly...), p.Protected...))
+	protected, err := p.protect(root, grants, true)
 	if err != nil {
 		return nil, err
 	}
-	for _, path := range readOnly {
+	// A mount point cannot be renamed (EBUSY), so binding each directory
+	// between a grant and a protected path onto itself keeps a command from
+	// moving the protected path away and creating its own in its place.
+	for _, dir := range protected.ancestors {
+		args = append(args, "--bind", dir, dir)
+	}
+	readOnly, err := resolveAll(root, p.ReadOnly)
+	if err != nil {
+		return nil, err
+	}
+	for _, path := range appendNew(readOnly, protected.resolved...) {
 		// bubblewrap cannot bind a missing source; a path that does not exist
 		// yet is left to the root's write grant.
 		if _, statErr := os.Lstat(path); statErr == nil {
 			args = append(args, "--ro-bind", path, path)
 		}
+	}
+	// Binding an empty file over a socket makes connect fail.
+	for _, socket := range existingSockets(runtimeSockets("linux")) {
+		if !slices.ContainsFunc(masked, func(dir string) bool { return encloses(dir, socket) }) {
+			args = append(args, "--ro-bind", "/dev/null", socket)
+		}
+	}
+	if isDir(wslInteropDir) {
+		args = append(args, "--tmpfs", wslInteropDir)
 	}
 	return append(args, "--chdir", dir), nil
 }
@@ -189,7 +210,7 @@ func (p *Policy) seatbeltProfile(root string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	readOnly, err := resolveAll(root, append(append([]string(nil), p.ReadOnly...), p.Protected...))
+	readOnly, err := resolveAll(root, p.ReadOnly)
 	if err != nil {
 		return "", err
 	}
@@ -197,6 +218,13 @@ func (p *Policy) seatbeltProfile(root string) (string, error) {
 	// Masks are denied after the grants, so only the home directory has to stay
 	// out of the temporary grants.
 	grants = append(grants, tempDirs([]string{homeDir()})...)
+	protected, err := p.protect(root, grants, false)
+	if err != nil {
+		return "", err
+	}
+	// Seatbelt checks the resolved path, so a symlinked protected path is
+	// denied under both spellings: the link itself and its target.
+	readOnly = appendNew(readOnly, protected.paths...)
 	var b strings.Builder
 	b.WriteString("(version 1)\n(allow default)\n(deny file-write*)\n")
 	fmt.Fprintf(&b, "(allow file-write* %s)\n", subpaths(grants))
@@ -207,12 +235,55 @@ func (p *Policy) seatbeltProfile(root string) (string, error) {
 		fmt.Fprintf(&b, "(allow file-read* file-write* %s)\n", subpaths([]string{root}))
 	}
 	if len(readOnly) > 0 {
-		fmt.Fprintf(&b, "(deny file-write* %s)\n", subpaths(readOnly))
+		// file-link: a hard link elsewhere would be a writable second name.
+		fmt.Fprintf(&b, "(deny file-write* file-link %s)\n", subpaths(readOnly))
+	}
+	if ancestors := protectedAncestors(protected.paths, grants); len(ancestors) > 0 {
+		// Renaming a directory above a protected path would carry it to a
+		// writable name and let a replacement take its place.
+		fmt.Fprintf(&b, "(deny file-write-unlink %s)\n", literals(ancestors))
 	}
 	if !p.Network {
 		b.WriteString("(deny network*)\n")
+	} else {
+		var sockets []string
+		for _, socket := range runtimeSockets("darwin") {
+			if resolved, err := canonicalPath(socket); err == nil {
+				sockets = appendNew(sockets, resolved)
+			}
+		}
+		if len(sockets) > 0 {
+			parts := make([]string, len(sockets))
+			for i, socket := range sockets {
+				parts[i] = `(remote unix-socket (path-literal "` + profilePath(socket) + `"))`
+			}
+			fmt.Fprintf(&b, "(deny network-outbound %s)\n", strings.Join(parts, " "))
+		}
 	}
 	return b.String(), nil
+}
+
+// protectedAncestors lists the directories above a protected path that a
+// command could rename: those whose parent is writable. That includes the
+// workspace itself when a temporary directory holds it.
+func protectedAncestors(paths, grants []string) []string {
+	var out []string
+	for _, path := range paths {
+		for dir := filepath.Dir(path); filepath.Dir(dir) != dir; dir = filepath.Dir(dir) {
+			if enclosingGrant(grants, filepath.Dir(dir)) != "" {
+				out = appendNew(out, dir)
+			}
+		}
+	}
+	return out
+}
+
+func literals(paths []string) string {
+	parts := make([]string, len(paths))
+	for i, path := range paths {
+		parts[i] = `(literal "` + profilePath(path) + `")`
+	}
+	return strings.Join(parts, " ")
 }
 
 func subpaths(paths []string) string {

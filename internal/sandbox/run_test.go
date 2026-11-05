@@ -135,7 +135,7 @@ func TestSeatbeltProfileOrdersMasksBeforeRootAndReadOnly(t *testing.T) {
 	}
 	mask := strings.Index(profile, `(deny file-read* file-write* (subpath "/m/secret"))`)
 	reallow := strings.LastIndex(profile, `(allow file-read* file-write* (subpath "`+root+`"))`)
-	protect := strings.Index(profile, `(deny file-write* (subpath "`+filepath.Join(root, ".liveagent")+`"))`)
+	protect := strings.Index(profile, `(deny file-write* file-link (subpath "`+filepath.Join(root, ".liveagent")+`"))`)
 	network := strings.Index(profile, "(deny network*)")
 	if mask < 0 || reallow < mask || protect < reallow || network < protect {
 		t.Fatalf("profile rules out of order:\n%s", profile)
