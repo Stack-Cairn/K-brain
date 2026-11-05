@@ -18,7 +18,7 @@ x Bash  go vet ./...       failed - 1.1s
 ~ Read  cmd/kn/status.go
 o Grep  asJSON                    queued
 
-  | Reading c... 0:12 - Esc to interrupt
+  | Reading cmd/kn/status.... 0:12 - Esc
 ----------------------------------------
   > busy - type to queue (sent when the
    Always allow     kimi-k3-fast - * off

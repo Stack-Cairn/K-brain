@@ -56,6 +56,9 @@ func renderBlock(b block, width int) string {
 // then the cause — and a warning leads with the plain "!" in the warning
 // colour (the emoji-style ⚠ is two cells wide in some terminals).
 func renderNotice(text string, width int) (string, bool) {
+	if out, ok := renderErrorBanner(text, width); ok {
+		return out, true
+	}
 	if strings.Contains(text, "\n") {
 		return "", false
 	}

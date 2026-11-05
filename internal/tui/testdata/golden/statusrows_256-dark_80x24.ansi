@@ -1,0 +1,18 @@
+# preparing
+  [38;5;80m⠋[0m [38;5;80mPreparing…[0m[38;5;245m  42s[0m                                      [38;5;245m0:42 · Esc to interrupt[0m
+# waiting
+  [38;5;80m⠋[0m [38;5;80mWaiting for the model…[0m[38;5;245m  2s[0m                           [38;5;245m0:44 · Esc to interrupt[0m
+# thinking
+  [38;5;80m⠋[0m [38;5;80mThinking…[0m[38;5;245m  4s[0m                                 [38;5;245m0:46 · ⇣225 · Esc to interrupt[0m
+# writing
+  [38;5;80m⠋[0m [38;5;80mWriting…[0m                                     [38;5;245m0:42 · ⇣3.1k · Esc to interrupt[0m
+# tool
+  [38;5;80m⠋[0m [38;5;80mRunning go test ./internal/tui/...  3.2s[0m             [38;5;245m0:45 · Esc to interrupt[0m
+# retrying
+  [1;38;5;179m![0m [38;5;179mRetrying in 4s (3/8) · overloaded 529[0m                [38;5;245m0:42 · Esc to interrupt[0m
+# compacting
+  [38;5;80m⠋[0m [38;5;80mCompacting context…[0m[38;5;245m  9s[0m                              [38;5;245m0:51 · Esc to interrupt[0m
+# approval
+  [1;38;5;179m◇[0m [38;5;179mWaiting for your approval[0m                                               [38;5;245m0:42[0m
+# interrupt
+  [38;5;80m⠋[0m [38;5;80mPreparing…[0m[38;5;245m  42s[0m                                [38;5;245m0:42 · Esc again to interrupt[0m

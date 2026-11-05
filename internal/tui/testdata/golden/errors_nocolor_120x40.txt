@@ -1,0 +1,40 @@
+▌❯ run the tests
+
+▌ Authentication failed · 401
+▌ Incorrect API key provided: sk-…abcd.
+▌ Check the provider's API key in config.json, then send again.
+
+▌ Rate limited · 429
+▌ Rate limit reached for requests per minute.
+▌ Wait a moment and send again, or switch with /model.
+
+▌ Context window full · 400
+▌ This model's maximum context length is 131072 tokens.
+▌ Run /compact or /new-context, then send again.
+
+▌ Network error
+▌ post https://api.example.com/v1/chat/completions: dial tcp: connection refused
+▌ Check the connection and the provider's base URL, then send again.
+
+▌ Provider error · 503
+▌ upstream connect error
+▌ Send again in a moment, or switch with /model.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ❯ Ask k-brain anything…  / commands · Shift+Tab mode · Ctrl+P menu
+  [Always allow]                                                                                    kimi-k3-fast · ✦ off

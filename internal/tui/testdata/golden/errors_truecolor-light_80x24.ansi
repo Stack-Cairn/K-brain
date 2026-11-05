@@ -1,0 +1,24 @@
+[1;38;2;21;127;104;48;2;243;245;247m▌[0m[1;38;2;21;127;104;48;2;243;245;247m❯[0m[48;2;243;245;247m [0m[48;2;243;245;247mrun the tests[0m[48;2;243;245;247m                                                                [0m
+                                                                                
+[1;38;2;185;75;77m▌[0m [1;38;2;185;75;77mAuthentication failed · 401[0m                                                   [0m
+[1;38;2;185;75;77m▌[0m [38;2;58;63;70mIncorrect API key provided: sk-…abcd.[0m                                         [0m
+[1;38;2;185;75;77m▌[0m [38;2;92;97;105mCheck the provider's API key in config.json, then send again.[0m                 [0m
+                                                                                
+[1;38;2;185;75;77m▌[0m [1;38;2;185;75;77mRate limited · 429[0m                                                            [0m
+[1;38;2;185;75;77m▌[0m [38;2;58;63;70mRate limit reached for requests per minute.[0m                                   [0m
+[1;38;2;185;75;77m▌[0m [38;2;92;97;105mWait a moment and send again, or switch with /model.[0m                          [0m
+                                                                                
+[1;38;2;185;75;77m▌[0m [1;38;2;185;75;77mContext window full · 400[0m                                                     [0m
+[1;38;2;185;75;77m▌[0m [38;2;58;63;70mThis model's maximum context length is 131072 tokens.[0m                         [0m
+[1;38;2;185;75;77m▌[0m [38;2;92;97;105mRun /compact or /new-context, then send again.[0m                                [0m
+                                                                                
+[1;38;2;185;75;77m▌[0m [1;38;2;185;75;77mNetwork error[0m                                                                 [0m
+[1;38;2;185;75;77m▌[0m [38;2;58;63;70mpost https://api.example.com/v1/chat/completions: dial tcp: connection refused[0m
+[1;38;2;185;75;77m▌[0m [38;2;92;97;105mCheck the connection and the provider's base URL, then send again.[0m            [0m
+                                                                                
+[1;38;2;185;75;77m▌[0m [1;38;2;185;75;77mProvider error · 503[0m                                                          [0m
+[1;38;2;185;75;77m▌[0m [38;2;58;63;70mupstream connect error[0m                                                        [0m
+[1;38;2;185;75;77m▌[0m [38;2;92;97;105mSend again in a moment, or switch with /model.[0m                                [0m
+[38;2;213;218;222m────────────────────────────────────────────────────────────────────────────────[0m
+  [1;38;2;21;127;104m❯ [0m[7mA[0m[38;2;104;110;118msk k-brain anything…  / commands · Shift+Tab mode · Ctrl+P menu[0m            [0m
+  [48;2;185;75;77m [0m[1;38;2;255;255;255;48;2;185;75;77mAlways allow[0m[48;2;185;75;77m [0m                                            [38;2;58;63;70mkimi-k3-fast[0m[38;2;104;110;118m · [0m[1;38;2;21;127;104m✦ off[0m

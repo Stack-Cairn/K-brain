@@ -1,0 +1,24 @@
+[1m▌[0m minute.                               [0m
+[1m▌[0m [2mWait a moment and send again, or[0m      [0m
+[1m▌[0m [2mswitch with /model.[0m                   [0m
+                                        
+[1m▌[0m [1mContext window full · 400[0m             [0m
+[1m▌[0m This model's maximum context length is[0m
+[1m▌[0m 131072 tokens.                        [0m
+[1m▌[0m [2mRun /compact or /new-context, then[0m    [0m
+[1m▌[0m [2msend again.[0m                           [0m
+                                        
+[1m▌[0m [1mNetwork error[0m                         [0m
+[1m▌[0m post                                  [0m
+[1m▌[0m https://api.example.com/v1/chat/comple[0m
+[1m▌[0m tions: dial tcp: connection refused   [0m
+[1m▌[0m [2mCheck the connection and the[0m          [0m
+[1m▌[0m [2mprovider's base URL, then send again.[0m [0m
+                                        
+[1m▌[0m [1mProvider error · 503[0m                  [0m
+[1m▌[0m upstream connect error                [0m
+[1m▌[0m [2mSend again in a moment, or switch with[0m
+[1m▌[0m [2m/model.[0m                               [0m
+────────────────────────────────────────
+  [1m❯ [0m[7mA[0m[2msk k-brain anything…  / commands ·[0m [0m
+  [1;7m[Always allow][0m    kimi-k3-fast[2m · [0m[1m✦ off[0m

@@ -1,0 +1,18 @@
+# preparing
+  [36m⠋[0m [36mPreparing…[0m[90m  42s[0m           [90m0:42 · Esc[0m
+# waiting
+  [36m⠋[0m [36mWaiting for the model…[0m[90m  …[0m [90m0:44 · Esc[0m
+# thinking
+  [36m⠋[0m [36mThinking…[0m[90m  4s[0m             [90m0:46 · Esc[0m
+# writing
+  [36m⠋[0m [36mWriting…[0m                  [90m0:42 · Esc[0m
+# tool
+  [36m⠋[0m [36mRunning go test ./intern…[0m [90m0:45 · Esc[0m
+# retrying
+  [1;93m![0m [93mRetrying in 4s (3/8) · o…[0m [90m0:42 · Esc[0m
+# compacting
+  [36m⠋[0m [36mCompacting context…[0m[90m  9s[0m   [90m0:51 · Esc[0m
+# approval
+  [1;93m◇[0m [93mWaiting for your approval[0m       [90m0:42[0m
+# interrupt
+  [36m⠋[0m [36mPreparing…[0m[90m  42s[0m           [90m0:42 · Esc[0m

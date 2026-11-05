@@ -1,0 +1,24 @@
+╭─ [1mUsage[0m ──────────────────────────────╮
+│ [2mContext   [0m▰▱▱▱ 28%  37.5k / 131.1k   │
+│ [2mSession[0m                              │
+│   in 57.3k (36.0k cached) · out 2.9k │
+│ [2mCache     [0m36.0k read · 62% of input  │
+│ [2mCost      [0m[2mnot priced for this route[0m  │
+│ [2mLast call[0m                            │
+│   in 24.1k (20.0k cached) · out 410  │
+│                                      │
+│ [2mBy model[0m                             │
+│   kimi-k3-fast @ inference           │
+│     in 48.2k · out 2.1k              │
+│   subagent glm-5.2-fast @ inference  │
+│     in 9.1k · out 730                │
+│                                      │
+│ [2mEsc close[0m                            │
+╰──────────────────────────────────────╯
+
+
+
+
+────────────────────────────────────────
+  [1m❯ [0m[7mA[0m[2msk k-brain anything…  / commands ·[0m [0m
+   [2m28% ctx · 60.2k tok · [0mkimi-k3-fast[2m ·…[0m[1m[0m

@@ -192,13 +192,9 @@ func (m *model) submitTurnAs(text string, authored, notice bool) (tea.Model, tea
 				turnAt = -1
 			},
 			OnUsage: func(u ai.Usage) { send(usageMsg(u)) },
-
-			OnRetry: func(ev ai.RetryEvent) {
-				send(noticeMsg(fmt.Sprintf("⚠ request failed (%s) — retrying in %s (attempt %d/%d)",
-					ev.Err, ev.Delay.Round(time.Millisecond), ev.Attempt+1, ev.Max)))
-			},
 		}
 		m.toolViewEvents(&events, send)
+		events = statusEvents(events, send)
 		var final string
 		var err error
 		switch {

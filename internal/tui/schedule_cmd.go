@@ -126,6 +126,7 @@ func (m *model) scheduleList() {
 		if s, err := schedule.Parse(sc.Schedule); err == nil && !s.At.IsZero() && !sc.LastFire.IsZero() {
 			line += dimStyle.Render(" (fired)")
 		}
+		line += m.scheduleNextNote(sc)
 		b.WriteString(line)
 	}
 	m.append(b.String())

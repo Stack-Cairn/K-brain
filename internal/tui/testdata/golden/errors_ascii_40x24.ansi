@@ -1,0 +1,24 @@
+[1;91m|[0m [37mminute.[0m                               [0m
+[1;91m|[0m [37mWait a moment and send again, or[0m      [0m
+[1;91m|[0m [37mswitch with /model.[0m                   [0m
+                                        
+[1;91m|[0m [1;91mContext window full - 400[0m             [0m
+[1;91m|[0m [37mThis model's maximum context length is[0m
+[1;91m|[0m [37m131072 tokens.[0m                        [0m
+[1;91m|[0m [37mRun /compact or /new-context, then[0m    [0m
+[1;91m|[0m [37msend again.[0m                           [0m
+                                        
+[1;91m|[0m [1;91mNetwork error[0m                         [0m
+[1;91m|[0m [37mpost[0m                                  [0m
+[1;91m|[0m [37mhttps://api.example.com/v1/chat/comple[0m
+[1;91m|[0m [37mtions: dial tcp: connection refused[0m   [0m
+[1;91m|[0m [37mCheck the connection and the[0m          [0m
+[1;91m|[0m [37mprovider's base URL, then send again.[0m [0m
+                                        
+[1;91m|[0m [1;91mProvider error - 503[0m                  [0m
+[1;91m|[0m [37mupstream connect error[0m                [0m
+[1;91m|[0m [37mSend again in a moment, or switch with[0m
+[1;91m|[0m [37m/model.[0m                               [0m
+[90m----------------------------------------[0m
+  [1;96m> [0m[7mA[0m[90msk k-brain anything...  / commands [0m
+  [101m [0m[1;30;101mAlways allow[0m[101m [0m    [37mkimi-k3-fast[0m[90m - [0m[1;96m* off[0m

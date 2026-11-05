@@ -21,6 +21,8 @@ func busyCmd(text string) bool {
 	switch fields[0] {
 	case "/permissions", "/language", "/editor", "/copy", "/diff", "/prompts", "/help", "/theme", "/mouse", "/effort", "/subagents", "/tasks", "/subagent", "/cd", "/pwd", "/report", "/export", "/import", "/fork", "/forks", "/context", "/context-doctor", "/doctor", "/info", "/mcps", "/mcp", "/plugins", "/new", "/new-context", "/new_context", "/plan", "/session-info", "/status", "/title", "/undo", "/rewind", "/view-plan", "/privacy", "/ancient":
 		return true
+	case "/usage":
+		return true
 	case "/auth":
 		return true
 	case "/goal":
@@ -104,6 +106,7 @@ func (m *model) command(text string) (tea.Model, tea.Cmd) {
 		}
 		m.prepareHistory()
 		m.busy = true
+		m.markCompacting()
 		before := m.agent.MessagesSnapshot()
 		took := len(before)
 		m.append(dimStyle.Render(fmt.Sprintf("◎ compacting %d msgs (est. %s) with %s…",
@@ -139,6 +142,7 @@ func (m *model) command(text string) (tea.Model, tea.Cmd) {
 		}
 		m.prepareHistory()
 		m.busy = true
+		m.markCompacting()
 		p := m.prog
 		ag := m.agent
 		ctx, cancel := context.WithCancel(context.Background())
@@ -360,6 +364,8 @@ func (m *model) command(text string) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.switchModel(resolved, prov, persist)
+	case "/usage":
+		return m.usageCommand(fields[1:])
 	default:
 		if !m.expandPromptCommand(text) {
 			m.append(errStyle.Render("unknown command " + fields[0]))

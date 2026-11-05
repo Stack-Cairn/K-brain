@@ -1,0 +1,18 @@
+# preparing
+  ⠋ Preparing…  42s           0:42 · Esc
+# waiting
+  ⠋ Waiting for the model…  … 0:44 · Esc
+# thinking
+  ⠋ Thinking…  4s             0:46 · Esc
+# writing
+  ⠋ Writing…                  0:42 · Esc
+# tool
+  ⠋ Running go test ./intern… 0:45 · Esc
+# retrying
+  ! Retrying in 4s (3/8) · o… 0:42 · Esc
+# compacting
+  ⠋ Compacting context…  9s   0:51 · Esc
+# approval
+  ◇ Waiting for your approval       0:42
+# interrupt
+  ⠋ Preparing…  42s           0:42 · Esc

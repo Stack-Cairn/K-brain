@@ -1,0 +1,40 @@
+[1;38;5;79;48;5;235m▌[0m[1;38;5;79;48;5;235m❯[0m[48;5;235m [0m[48;5;235mrun the tests[0m[48;5;235m                                                                                                        [0m
+                                                                                                                        
+[1;38;5;167m▌[0m [1;38;5;167mAuthentication failed · 401[0m                                                                                           [0m
+[1;38;5;167m▌[0m [38;5;252mIncorrect API key provided: sk-…abcd.[0m                                                                                 [0m
+[1;38;5;167m▌[0m [38;5;247mCheck the provider's API key in config.json, then send again.[0m                                                         [0m
+                                                                                                                        
+[1;38;5;167m▌[0m [1;38;5;167mRate limited · 429[0m                                                                                                    [0m
+[1;38;5;167m▌[0m [38;5;252mRate limit reached for requests per minute.[0m                                                                           [0m
+[1;38;5;167m▌[0m [38;5;247mWait a moment and send again, or switch with /model.[0m                                                                  [0m
+                                                                                                                        
+[1;38;5;167m▌[0m [1;38;5;167mContext window full · 400[0m                                                                                             [0m
+[1;38;5;167m▌[0m [38;5;252mThis model's maximum context length is 131072 tokens.[0m                                                                 [0m
+[1;38;5;167m▌[0m [38;5;247mRun /compact or /new-context, then send again.[0m                                                                        [0m
+                                                                                                                        
+[1;38;5;167m▌[0m [1;38;5;167mNetwork error[0m                                                                                                         [0m
+[1;38;5;167m▌[0m [38;5;252mpost https://api.example.com/v1/chat/completions: dial tcp: connection refused[0m                                        [0m
+[1;38;5;167m▌[0m [38;5;247mCheck the connection and the provider's base URL, then send again.[0m                                                    [0m
+                                                                                                                        
+[1;38;5;167m▌[0m [1;38;5;167mProvider error · 503[0m                                                                                                  [0m
+[1;38;5;167m▌[0m [38;5;252mupstream connect error[0m                                                                                                [0m
+[1;38;5;167m▌[0m [38;5;247mSend again in a moment, or switch with /model.[0m                                                                        [0m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  [1;38;5;79m❯ [0m[7mA[0m[38;5;245msk k-brain anything…  / commands · Shift+Tab mode · Ctrl+P menu[0m                                                    [0m
+  [48;5;167m [0m[1;38;5;234;48;5;167mAlways allow[0m[48;5;167m [0m                                                                                    [38;5;252mkimi-k3-fast[0m[38;5;245m · [0m[1;38;5;79m✦ off[0m
