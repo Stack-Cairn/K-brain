@@ -170,11 +170,6 @@ func (m *model) seedTranscript(msgs []ai.Message, base int) {
 	m.refreshVP()
 }
 
-// thinkingBlock is a reasoning run as appendThink leaves it once streamed.
-func thinkingBlock(text string) block {
-	return block{kind: blockText, think: true, text: thinkingStyle.Render("◌ " + strings.ReplaceAll(text, "\n", "\n  "))}
-}
-
 // seededToolHeader is a finished tool call's header row, rebuilt from the
 // call as history recorded it.
 func seededToolHeader(tc ai.ToolCall) block {
@@ -243,6 +238,8 @@ const (
 	blockToolQueued
 	blockUser
 	blockBanner
+	// blockThinking is a reasoning run (thinking.go).
+	blockThinking
 )
 
 // blockKindSpec is how one kind of block draws and behaves. See the package
@@ -296,8 +293,8 @@ type block struct {
 	subID   string
 	subLine bool
 
-	// think marks a thinking paragraph that later reasoning lines extend.
-	think bool
+	// thought is a thinking block's timing (thinking.go).
+	thought *thinkMeta
 
 	// y0 and y1 are the block's first and last transcript rows as of the
 	// last refreshVP; -1 while the block is hidden.
@@ -614,29 +611,6 @@ func indentLines(s string, n int) string {
 	return strings.Join(lines, "\n")
 }
 
-// appendThink grows one thinking block per reasoning run instead of a block
-// per streamed line, so the transcript shows it as a single quiet paragraph.
-func (m *model) appendThink(s string) {
-	body := strings.ReplaceAll(s, "\n", "\n  ")
-	if m.inThink {
-		if n := len(m.blocks); n > 0 && m.blocks[n-1].think {
-			last := &m.blocks[n-1]
-			last.text += "\n" + thinkingStyle.Render("  "+body)
-			last.stale = true
-			m.keepFollow()
-			m.refreshVP()
-			return
-		}
-		body = "  " + body
-	} else {
-		body = "◌ " + body
-		m.inThink = true
-	}
-	m.keepFollow()
-	m.blocks = append(m.blocks, block{kind: blockText, text: thinkingStyle.Render(body), think: true})
-	m.refreshVP()
-}
-
 func (m *model) toggleThinking() {
 	m.setThinking(!m.showThinking)
 	m.append(dimStyle.Render("◌ thinking tokens: " + onOff(m.showThinking)))
@@ -654,23 +628,9 @@ func (m *model) setThinking(on bool) {
 	}
 }
 
-func (m *model) flushThink() {
-
-	cur := strings.TrimRight(m.curThink, " \n")
-	m.curThink = ""
-	if cur != "" {
-		m.appendThink(cur)
-	}
-	m.inThink = false
-}
-
-func (m *model) thinkView() string {
-	s := m.curThink
-	if !m.inThink {
-		s = "◌ " + s
-	}
-	return thinkingStyle.Render(wrap(s, m.width))
-}
+// thinkView is the live area's thinking: none, since the line still
+// arriving shows in its thinking block (thinking.go).
+func (m *model) thinkView() string { return "" }
 
 func (m *model) flushCurrent() {
 	cur := strings.TrimRight(m.current, " \n")
@@ -726,13 +686,7 @@ func (m *model) currentViewCapped() string {
 	return streamTail(m.currentView(), liveCap)
 }
 
-func (m *model) thinkViewCapped() string {
-	liveCap := m.streamCap(m.fixedChrome())
-	if liveCap == 0 {
-		return ""
-	}
-	return streamTail(m.thinkView(), liveCap)
-}
+func (m *model) thinkViewCapped() string { return m.thinkView() }
 
 // bannerOnly reports whether the startup card is the whole transcript, which is
 // when the card is centred vertically rather than pinned to the top.

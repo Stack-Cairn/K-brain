@@ -1,0 +1,24 @@
+                                        
+[3;90m~ Thought for 3s - 2 lines[0m              [0m
+                                        
+[1;95m* [0mCoverage runs [1mtwice[0m.[0m                  [0m
+                                        
+[1;96m|[0m[1;96m>[0m Can we skip one?                     [0m
+                                        
+[3;90m~ Thought for 12s - 2 lines[0m             [0m
+[3;90m  Dropping the plain run keeps coverage.[0m
+[3;90m  CI reads only the coverage report.[0m    [0m
+                                        
+[1;95m* [0mYes: drop the plain run.              [0m
+                                        
+[1;96m|[0m[1;96m>[0m And the lint step?                   [0m
+                                        
+[3;90m~ Thinking...[0m                           [0m
+[3;90m  It could run on changed ones.[0m         [0m
+[3;90m  That needs the diff base.[0m             [0m
+[3;90m  Which CI already has[0m                  [0m
+
+  [36m|[0m [36mthinking...[0m         [90mEsc to interrupt[0m
+[90m----------------------------------------[0m
+  [1;96m> [0m[7mb[0m[90musy - type to queue (sent when the[0m [0m
+  [100m [0m[1;37;100mNormal[0m[100m [0m          [37mkimi-k3-fast[0m[90m - [0m[1;96m* off[0m

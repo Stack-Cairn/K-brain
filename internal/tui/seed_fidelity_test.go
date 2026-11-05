@@ -125,11 +125,15 @@ func TestSeedRebuildsThinking(t *testing.T) {
 	m.Update(mkWinSize(100, 30))
 	m.showThinking = true
 	m.seedTranscript(msgs, 1)
-	if len(m.blocks) != 3 || !m.blocks[1].think || m.blocks[2].kind != blockAssistant {
+	if len(m.blocks) != 3 || m.blocks[1].kind != blockThinking || m.blocks[2].kind != blockAssistant {
 		t.Fatalf("thinking block missing or out of order:\n%s", blockRows(m))
 	}
+	if got := ansi.Strip(m.blocks[1].render(100)); got != "◌ Thought · 2 lines" {
+		t.Fatalf("restored thinking = %q, want it folded", got)
+	}
+	m.blocks[1].toggle()
 	if got := ansi.Strip(m.blocks[1].render(100)); !strings.Contains(got, "first I check the logs") || !strings.Contains(got, "then the config") {
-		t.Fatalf("thinking text = %q", got)
+		t.Fatalf("expanded thinking = %q", got)
 	}
 	if m.msgBlock[2] != 2 {
 		t.Fatalf("msgBlock of the reply = %d, want 2", m.msgBlock[2])
@@ -140,7 +144,7 @@ func TestSeedRebuildsThinking(t *testing.T) {
 	m.showThinking = false
 	m.seedTranscript(msgs, 1)
 	for _, b := range m.blocks {
-		if b.think {
+		if b.kind == blockThinking {
 			t.Fatalf("thinking shown while thinking is off:\n%s", blockRows(m))
 		}
 	}
