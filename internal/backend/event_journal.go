@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"sort"
 
@@ -22,6 +23,11 @@ import (
 // this many events before the first one it returns.
 const journalMarkInterval = 256
 
+// keepJournalHandle is off on Windows: there a file opened by os.OpenFile cannot be
+// removed or renamed while it is open, and the journal may be replaced or removed
+// during a run. Windows keeps opening the journal for every event.
+const keepJournalHandle = runtime.GOOS != "windows"
+
 // journalMark records that the journal events before offset all have a seq <= seq and
 // the events from offset on all have a seq > seq.
 type journalMark struct{ seq, offset int64 }
@@ -34,7 +40,7 @@ func (rt *runtimeSession) journalFile(dir string) string {
 // does so only while a run streams, so a delta costs one write instead of an open,
 // a write and a close; the handle is closed when the run ends.
 func (rt *runtimeSession) keepJournalOpenLocked() bool {
-	return rt.cancel != nil && !rt.runDone && !rt.closing && !rt.deleted
+	return keepJournalHandle && rt.cancel != nil && !rt.runDone && !rt.closing && !rt.deleted
 }
 
 func (rt *runtimeSession) closeJournalLocked() {

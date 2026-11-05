@@ -61,6 +61,9 @@ func assertContiguous(t *testing.T, events []protocol.Event, first, last int64) 
 }
 
 func TestJournalHandleKeptOnlyWhileRunStreams(t *testing.T) {
+	if !keepJournalHandle {
+		t.Skip("the journal is reopened for every event on this platform")
+	}
 	idle := journalTestRuntime(t, false)
 	publishDeltas(t, idle, 3)
 	if idle.journal != nil {
