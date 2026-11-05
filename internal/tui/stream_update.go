@@ -34,14 +34,8 @@ func (m *model) onText(msg textMsg) (tea.Model, tea.Cmd) {
 // onThink does the same for reasoning text while thinking is shown.
 func (m *model) onThink(msg thinkMsg) (tea.Model, tea.Cmd) {
 	if m.showThinking {
-
 		m.flushCurrent()
-		m.curThink += string(msg)
-		if i := strings.LastIndexByte(m.curThink, '\n'); i >= 0 {
-			done := m.curThink[:i]
-			m.curThink = m.curThink[i+1:]
-			m.appendThink(done)
-		}
+		m.streamThink(string(msg))
 	}
 	return m, nil
 }

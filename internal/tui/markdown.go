@@ -14,7 +14,16 @@ import (
 	"github.com/muesli/termenv"
 )
 
+// renderMarkdown draws s unit by unit (mdstream.go), the way a streaming
+// reply is drawn.
 func renderMarkdown(s string, width int) string {
+	return strings.Join(markdownRows(nil, s, width), "\n")
+}
+
+// renderMarkdownWhole draws s as one document, its fenced code blocks cut
+// out for renderCodeBlock. A reply with a reference link definition is drawn
+// this way, since the definition may serve a link in any unit.
+func renderMarkdownWhole(s string, width int) string {
 	if strings.TrimSpace(s) == "" {
 		return s
 	}
@@ -100,46 +109,72 @@ func splitFences(s string) []mdSegment {
 // colour (16 colours, mono) the band would vanish, so the fences stay instead.
 // Long lines wrap inside the band rather than spilling past it.
 func renderCodeBlock(code, lang string, width int) string {
-	const margin, pad = 2, 2
-	inner := max(width-margin-pad, 4)
-	band := backgroundsActive()
-	base := lipgloss.NewStyle()
-	if band {
-		base = codeBandStyle
+	cb := newCodeBand(lang, width)
+	out := append([]string{cb.head()}, cb.body(code)...)
+	if foot := cb.foot(); foot != "" {
+		out = append(out, foot)
 	}
-	lines := highlightLines(code, codeLexer(lang, ""), base)
-	lead := strings.Repeat(" ", margin)
+	return strings.Join(out, "\n")
+}
+
+// codeBand draws a fenced block in parts: the head row, the rows of some
+// code, and the closing row, so an open fence can be drawn a group of lines
+// at a time.
+type codeBand struct {
+	lang         string
+	width, inner int
+	band         bool
+	base         lipgloss.Style
+}
+
+const codeMargin, codePad = 2, 2
+
+func newCodeBand(lang string, width int) codeBand {
+	cb := codeBand{lang: lang, width: width, inner: max(width-codeMargin-codePad, 4), band: backgroundsActive()}
+	if cb.band {
+		cb.base = codeBandStyle
+	}
+	return cb
+}
+
+func (cb codeBand) head() string {
+	lead := strings.Repeat(" ", codeMargin)
+	if !cb.band {
+		return lead + textMutedStyle.Render("```"+cb.lang)
+	}
+	label := ""
+	if cb.lang != "" {
+		label = ansi.Truncate(cb.lang, max(cb.inner-1, 1), "")
+	}
+	gap := max(cb.width-codeMargin-lipgloss.Width(label)-1, 0)
+	return lead + cb.base.Render(strings.Repeat(" ", gap)) + withBG(textMutedStyle, cb.base).Render(label+" ")
+}
+
+func (cb codeBand) body(code string) []string {
+	lead := strings.Repeat(" ", codeMargin)
 	var out []string
-	fill := func(s string) string {
-		gap := max(width-margin-lipgloss.Width(s), 0)
-		return lead + s + base.Render(strings.Repeat(" ", gap))
-	}
-	if band {
-		label := ""
-		if lang != "" {
-			label = ansi.Truncate(lang, max(inner-1, 1), "")
-		}
-		gap := max(width-margin-lipgloss.Width(label)-1, 0)
-		out = append(out, lead+base.Render(strings.Repeat(" ", gap))+withBG(textMutedStyle, base).Render(label+" "))
-	} else {
-		out = append(out, lead+textMutedStyle.Render("```"+lang))
-	}
-	for _, l := range lines {
-		for _, piece := range strings.Split(ansi.Hardwrap(l, inner, true), "\n") {
-			row := base.Render(strings.Repeat(" ", pad)) + piece
-			if band {
-				out = append(out, fill(row))
+	for _, l := range highlightLines(code, codeLexer(cb.lang, ""), cb.base) {
+		for _, piece := range strings.Split(ansi.Hardwrap(l, cb.inner, true), "\n") {
+			row := cb.base.Render(strings.Repeat(" ", codePad)) + piece
+			if cb.band {
+				gap := max(cb.width-codeMargin-lipgloss.Width(row), 0)
+				out = append(out, lead+row+cb.base.Render(strings.Repeat(" ", gap)))
 			} else {
 				out = append(out, strings.TrimRight(lead+row, " "))
 			}
 		}
 	}
-	// The band ends with the code: a blank band row would be dropped as an
-	// empty line by the transcript's indenting anyway.
-	if !band {
-		out = append(out, lead+textMutedStyle.Render("```"))
+	return out
+}
+
+// foot is the closing fence row, drawn only without a band. The band ends
+// with the code: a blank band row would be dropped as an empty line by the
+// transcript's indenting anyway.
+func (cb codeBand) foot() string {
+	if cb.band {
+		return ""
 	}
-	return strings.Join(out, "\n")
+	return strings.Repeat(" ", codeMargin) + textMutedStyle.Render("```")
 }
 
 // withBG lays a foreground style over a base's background.
@@ -301,6 +336,7 @@ func unregisterChromaStyle() {
 func invalidateMDRenderer() {
 	mdMu.Lock()
 	mdRendererC, mdAtWidth = nil, 0
+	mdGen++
 	mdMu.Unlock()
 }
 

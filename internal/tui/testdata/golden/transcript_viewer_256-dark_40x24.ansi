@@ -1,0 +1,24 @@
+[1;38;5;79m┃ tool output[0m[38;5;245m · 14 lines[0m             [38;5;245mall[0m
+[38;5;245m  └ [0m[38;5;252mcache.go:10: key := [7mwidth[27m + 0[0m
+    [38;5;252mcache.go:11: key := [7mwidth[27m + 1[0m
+    [38;5;252mcache.go:12: key := [7mwidth[27m + 2[0m
+    [38;5;252mcache.go:13: key := [7mwidth[27m + 3[0m
+    [38;5;252mcache.go:14: key := [7mwidth[27m + 4[0m
+    [38;5;252mcache.go:15: key := [7mwidth[27m + 5[0m
+    [38;5;252mcache.go:16: key := [7mwidth[27m + 6[0m
+    [38;5;252mcache.go:17: key := [7mwidth[27m + 7[0m
+    [38;5;252mcache.go:18: key := [7mwidth[27m + 8[0m
+    [38;5;252mcache.go:19: key := [7mwidth[27m + 9[0m
+    [38;5;252mcache.go:20: key := [7mwidth[27m + 10[0m
+    [38;5;252mcache.go:21: key := [7mwidth[27m + 11[0m
+    [38;5;252mcache.go:99: // the stale entry is
+    dropped here[0m
+
+
+
+
+
+
+
+
+[1;38;5;79m"width"[0m[38;5;245m 1/12[0m  [38;5;245mn/N next/previous · j/k s…[0m

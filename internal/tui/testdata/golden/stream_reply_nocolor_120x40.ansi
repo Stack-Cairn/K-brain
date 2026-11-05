@@ -1,0 +1,40 @@
+[1m● [0m[1m[0m[1m[0m[1m## [0m[1mPlan[0m                                                                                                               [0m
+                                                                                                                        
+  The cache is keyed by [1mwidth[0m, so a resize drops it. See `cache.go` and ]8;;https://example.com/docs[4;1mthe docs[0m]8;;.[0m                                       [0m
+                                                                                                                        
+  • first item                                                                                                          
+  • second item                                                                                                         
+  • a loose third item                                                                                                  
+                                                                                                                        
+  1. step one                                                                                                           
+  2. step twowith an indented continuation paragraph.                                                                   
+                                                                                                                        
+  [2m```go[0m                                                                                                                 [0m
+    func f() {                                                                                                          
+        x := 1                                                                                                          
+                                                                                                                        
+        return x                                                                                                        
+    }                                                                                                                   
+  [2m```[0m                                                                                                                   [0m
+                                                                                                                        
+  │ a quote line                                                                                                        
+  │ another line                                                                                                        
+                                                                                                                        
+   key                                                    │ value                                                       
+  ────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────      
+   a                                                      │ 1                                                           
+   b                                                      │ 2                                                           
+                                                                                                                        
+  --------                                                                                                              
+                                                                                                                        
+  Final paragraph with a long sentence that wraps across the narrow widths the golden test uses.                        
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  [1m❯ [0m[7mA[0m[2msk k-brain anything…  / commands · Shift+Tab mode · Ctrl+P menu[0m                                                    [0m
+  [Normal]                                                                                          kimi-k3-fast[2m · [0m[1m✦ off[0m

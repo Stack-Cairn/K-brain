@@ -25,6 +25,8 @@ var helpContexts = []struct {
 	{keyMenu, "Completion menu"},
 	{keyDock, "Subagent dock (Ctrl+T)"},
 	{keyTaskView, "Subagent view"},
+	{keyTranscript, "Transcript focus (Alt+↑)"},
+	{keyViewer, "Block viewer"},
 }
 
 // helpActionDesc describes keymap actions whose rows carry no hint, or whose
@@ -84,6 +86,29 @@ var helpActionDesc = map[string]string{
 	"queueEdit":       "edit the queued message",
 	"queueMove":       "move the queued message",
 	"queueDeselect":   "deselect the queued message",
+	"focusTranscript": "focus the transcript, a block at a time",
+	"focusNext":       "next block",
+	"focusPrev":       "previous block",
+	"focusFirst":      "first block",
+	"focusLast":       "last block",
+	"fold":            "fold the block",
+	"unfold":          "open the block",
+	"toggleFold":      "fold or open the block",
+	"foldAll":         "fold or open every tool output and thinking run",
+	"view":            "open the block full screen",
+	"find":            "search the transcript",
+	"findOlder":       "previous match, up the transcript",
+	"findNewer":       "next match, down the transcript",
+	"findEdit":        "edit the search query",
+	"blur":            "back to the composer",
+	"viewerClose":     "back to the transcript",
+	"viewerScroll":    "scroll a row",
+	"viewerPage":      "scroll a page",
+	"viewerTop":       "jump to the top",
+	"viewerEnd":       "jump to the end",
+	"viewerFind":      "search the block",
+	"viewerFindNext":  "next match",
+	"viewerFindPrev":  "previous match",
 }
 
 // helpKeyLabel overrides the generated key label of a (context, action)

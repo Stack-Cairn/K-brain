@@ -22,6 +22,8 @@ type Reply struct {
 	// to run them (finish_reason "tool_calls"), and kn's next request
 	// carries their results.
 	ToolCalls []ToolCall
+	// Reasoning chunks stream first, as reasoning_content deltas.
+	Reasoning []string
 }
 
 // ToolCall is one function call a scripted reply makes. Args is its JSON.
@@ -114,6 +116,20 @@ func (p *Provider) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
 	flusher, _ := w.(http.Flusher)
+	for _, chunk := range reply.Reasoning {
+		content, _ := json.Marshal(chunk)
+		fmt.Fprintf(w, "data: {\"choices\":[{\"delta\":{\"reasoning_content\":%s}}]}\n\n", content)
+		if flusher != nil {
+			flusher.Flush()
+		}
+		if reply.Delay > 0 {
+			select {
+			case <-time.After(reply.Delay):
+			case <-r.Context().Done():
+				return
+			}
+		}
+	}
 	for i, chunk := range reply.Chunks {
 		if i > 0 && reply.Delay > 0 {
 			select {

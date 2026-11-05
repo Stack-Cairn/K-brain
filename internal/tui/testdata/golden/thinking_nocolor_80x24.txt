@@ -1,0 +1,24 @@
+
+◌ Thought for 3s · 2 lines
+
+● Coverage runs twice.
+
+▌❯ Can we skip one?
+
+◌ Thought for 12s · 2 lines
+  Dropping the plain run keeps coverage.
+  CI reads only the coverage report.
+
+● Yes: drop the plain run.
+
+▌❯ And the lint step?
+
+◌ Thinking…
+  It could run on changed ones.
+  That needs the diff base.
+  Which CI already has
+
+  ⠋ thinking…                                                   Esc to interrupt
+────────────────────────────────────────────────────────────────────────────────
+  ❯ busy — type to queue (sent when the turn ends)
+  [Normal]                                                  kimi-k3-fast · ✦ off

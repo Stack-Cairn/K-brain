@@ -30,6 +30,11 @@ package tui
 //		})
 //	}
 //
+// A toggle keeps b.expanded true exactly while the block shows its open
+// form: the transcript's fold keys (transcript_focus.go) read it to fold or
+// open every block at once. A kind without a toggle still folds from the
+// keyboard: b.folded cuts it to its first row and a count of the rest.
+//
 // Kind-specific data rides on the block: the generic tool fields (toolID,
 // toolName, toolArgs, toolRunning, toolFailed, live, expanded) and run, how a
 // finished tool call ran (exit status, duration, cancellation).
@@ -170,11 +175,6 @@ func (m *model) seedTranscript(msgs []ai.Message, base int) {
 	m.refreshVP()
 }
 
-// thinkingBlock is a reasoning run as appendThink leaves it once streamed.
-func thinkingBlock(text string) block {
-	return block{kind: blockText, think: true, text: thinkingStyle.Render("◌ " + strings.ReplaceAll(text, "\n", "\n  "))}
-}
-
 // seededToolHeader is a finished tool call's header row, rebuilt from the
 // call as history recorded it.
 func seededToolHeader(tc ai.ToolCall) block {
@@ -243,6 +243,8 @@ const (
 	blockToolQueued
 	blockUser
 	blockBanner
+	// blockThinking is a reasoning run (thinking.go).
+	blockThinking
 )
 
 // blockKindSpec is how one kind of block draws and behaves. See the package
@@ -296,8 +298,8 @@ type block struct {
 	subID   string
 	subLine bool
 
-	// think marks a thinking paragraph that later reasoning lines extend.
-	think bool
+	// thought is a thinking block's timing (thinking.go).
+	thought *thinkMeta
 
 	// y0 and y1 are the block's first and last transcript rows as of the
 	// last refreshVP; -1 while the block is hidden.
@@ -309,16 +311,20 @@ type block struct {
 	// it on first sight.
 	uid uint64
 
-	// The render cache: rendered and its rows, valid for width and ancient
+	// The render cache: the block's rows, valid for width and ancient
 	// unless stale.
-	rendered string
-	rows     []string
-	lines    int
-	width    int
-	stale    bool
-	ancient  bool
+	rows    []string
+	lines   int
+	width   int
+	stale   bool
+	ancient bool
 	// plain is rows without escapes, built on demand for selection.
 	plain []string
+	// md keeps a reply's frozen markdown units across appends (mdstream.go).
+	md *mdCache
+	// folded cuts a kind without a toggle of its own to its first row
+	// (transcript_focus.go).
+	folded bool
 }
 
 // invalidate drops the block's render cache; call it after changing
@@ -332,26 +338,36 @@ func (b *block) renderAt(width int) string {
 	return b.renderAtMode(width, false)
 }
 
-// linesAt is the block's rows at width, from the cache when it is valid.
-func (b *block) linesAt(width int, ancient bool) []string {
-	b.renderAtMode(width, ancient)
-	return b.rows
+// renderAtMode is the block drawn at width, as one string.
+func (b *block) renderAtMode(width int, ancient bool) string {
+	return strings.Join(b.linesAt(width, ancient), "\n")
 }
 
-func (b *block) renderAtMode(width int, ancient bool) string {
+// linesAt is the block's rows at width, from the cache when it is valid. A
+// reply streaming in redraws only its last markdown unit.
+func (b *block) linesAt(width int, ancient bool) []string {
 	if !b.stale && b.width == width && b.ancient == ancient && b.rows != nil {
-		return b.rendered
+		return b.rows
 	}
-	if ancient && (b.kind == blockAssistant || b.kind == blockUser) {
-		b.rendered = accentStyle.Render(renderAncientText(ansi.Strip(b.render(width)), width))
-	} else {
-		b.rendered = b.render(width)
+	_, custom := blockKinds[b.kind]
+	switch {
+	case ancient && (b.kind == blockAssistant || b.kind == blockUser):
+		b.rows = splitRows(accentStyle.Render(renderAncientText(ansi.Strip(b.render(width)), width)))
+	case b.kind == blockAssistant && !custom:
+		if b.md == nil {
+			b.md = &mdCache{}
+		}
+		b.rows = assistantRows(b.md, b.text, width)
+	default:
+		b.rows = splitRows(b.render(width))
 	}
-	b.rows = splitRows(b.rendered)
+	if b.folded {
+		b.rows = foldedRows(b.rows)
+	}
 	b.lines = len(b.rows)
 	b.plain = nil
 	b.width, b.ancient, b.stale = width, ancient, false
-	return b.rendered
+	return b.rows
 }
 
 // plainRow is row r of the block without escapes or trailing blanks.
@@ -386,6 +402,11 @@ func (b block) render(width int) string {
 
 // toggle folds or unfolds the block and reports whether its kind folds.
 func (b *block) toggle() bool {
+	if b.folded {
+		b.folded = false
+		b.invalidate()
+		return true
+	}
 	spec, ok := blockKinds[b.kind]
 	if !ok || spec.toggle == nil || !spec.toggle(b) {
 		return false
@@ -425,6 +446,10 @@ func (m *model) appendRaw(kind blockKind, text string) {
 type transcriptState struct {
 	ix  txIndex
 	seq uint64
+	// focus is set while the transcript has the keyboard, viewer while a
+	// block is open full screen (transcript_focus.go, blockviewer.go).
+	focus  *txFocus
+	viewer *blockViewer
 }
 
 // txs is the transcript state, created on first use (models built directly
@@ -567,7 +592,7 @@ func (m *model) viewportView() string {
 		s = m.highlightSelection(s)
 	}
 
-	lines := strings.Split(s, "\n")
+	lines := m.markFocus(strings.Split(s, "\n"))
 	m.vpLead = 0
 
 	// Keep exactly the transcript rows the viewport is showing and drop only the
@@ -606,29 +631,6 @@ func indentLines(s string, n int) string {
 	return strings.Join(lines, "\n")
 }
 
-// appendThink grows one thinking block per reasoning run instead of a block
-// per streamed line, so the transcript shows it as a single quiet paragraph.
-func (m *model) appendThink(s string) {
-	body := strings.ReplaceAll(s, "\n", "\n  ")
-	if m.inThink {
-		if n := len(m.blocks); n > 0 && m.blocks[n-1].think {
-			last := &m.blocks[n-1]
-			last.text += "\n" + thinkingStyle.Render("  "+body)
-			last.stale = true
-			m.keepFollow()
-			m.refreshVP()
-			return
-		}
-		body = "  " + body
-	} else {
-		body = "◌ " + body
-		m.inThink = true
-	}
-	m.keepFollow()
-	m.blocks = append(m.blocks, block{kind: blockText, text: thinkingStyle.Render(body), think: true})
-	m.refreshVP()
-}
-
 func (m *model) toggleThinking() {
 	m.setThinking(!m.showThinking)
 	m.append(dimStyle.Render("◌ thinking tokens: " + onOff(m.showThinking)))
@@ -646,23 +648,9 @@ func (m *model) setThinking(on bool) {
 	}
 }
 
-func (m *model) flushThink() {
-
-	cur := strings.TrimRight(m.curThink, " \n")
-	m.curThink = ""
-	if cur != "" {
-		m.appendThink(cur)
-	}
-	m.inThink = false
-}
-
-func (m *model) thinkView() string {
-	s := m.curThink
-	if !m.inThink {
-		s = "◌ " + s
-	}
-	return thinkingStyle.Render(wrap(s, m.width))
-}
+// thinkView is the live area's thinking: none, since the line still
+// arriving shows in its thinking block (thinking.go).
+func (m *model) thinkView() string { return "" }
 
 func (m *model) flushCurrent() {
 	cur := strings.TrimRight(m.current, " \n")
@@ -718,13 +706,7 @@ func (m *model) currentViewCapped() string {
 	return streamTail(m.currentView(), liveCap)
 }
 
-func (m *model) thinkViewCapped() string {
-	liveCap := m.streamCap(m.fixedChrome())
-	if liveCap == 0 {
-		return ""
-	}
-	return streamTail(m.thinkView(), liveCap)
-}
+func (m *model) thinkViewCapped() string { return m.thinkView() }
 
 // bannerOnly reports whether the startup card is the whole transcript, which is
 // when the card is centred vertically rather than pinned to the top.

@@ -1,0 +1,24 @@
+    func f() {
+        x := 1
+
+        return x
+    }
+  ```
+
+  │ a quote line
+  │ another line
+
+   key            │ value
+  ────────────────┼───────────────
+   a              │ 1
+   b              │ 2
+
+  --------
+
+  Final paragraph with a long
+  sentence that wraps across the
+  narrow widths the golden test
+  uses.
+────────────────────────────────────────
+  ❯ Ask k-brain anything…  / commands ·
+   Normal           kimi-k3-fast · ✦ off

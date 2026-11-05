@@ -1,0 +1,40 @@
+[1;95m● [0m[1m[0m[1m[0m[1mPlan[0m                                                                                                                  [0m
+                                                                                                                        
+  The cache is keyed by [1mwidth[0m, so a resize drops it. See `cache.go` and ]8;;https://example.com/docs[36;4;1mthe docs[0m]8;;.[0m                                       [0m
+                                                                                                                        
+  • first item                                                                                                          
+  • second item                                                                                                         
+  • a loose third item                                                                                                  
+                                                                                                                        
+  1. step one                                                                                                           
+  2. step twowith an indented continuation paragraph.                                                                   
+                                                                                                                        
+  [90m```go[0m                                                                                                                 [0m
+    [95mfunc[0m [96mf[0m() {                                                                                                          [0m
+        x := [93m1[0m                                                                                                          [0m
+                                                                                                                        
+        [95mreturn[0m x                                                                                                        [0m
+    }                                                                                                                   
+  [90m```[0m                                                                                                                   [0m
+                                                                                                                        
+[90m[0m[90m[0m  │ [90ma quote[0m[90m line[0m                                                                                                        [0m
+[0m[90m[0m[90m[0m  │ [90manother[0m[90m line[0m                                                                                                        [0m
+                                                                                                                        
+   key                                                    │ value                                                       
+  ────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────      
+   a                                                      │ 1                                                           
+   b                                                      │ 2                                                           
+                                                                                                                        
+[0m  [90m--------[0m                                                                                                              [0m
+                                                                                                                        
+  Final paragraph with a long sentence that wraps across the narrow widths the golden test uses.                        
+
+
+
+
+
+
+
+[90m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  [1;96m❯ [0m[7mA[0m[90msk k-brain anything…  / commands · Shift+Tab mode · Ctrl+P menu[0m                                                    [0m
+  [100m [0m[1;37;100mNormal[0m[100m [0m                                                                                          [37mkimi-k3-fast[0m[90m · [0m[1;96m✦ off[0m

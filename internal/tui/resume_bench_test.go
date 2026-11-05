@@ -84,8 +84,13 @@ func benchReplyLines(n int) []string {
 // BenchmarkStreamReply2000Lines streams one 2,000-line reply a line at a
 // time, the way the coalesced stream delivers it, rendering a frame after
 // every delta as bubbletea does.
-func BenchmarkStreamReply2000Lines(b *testing.B) {
-	lines := benchReplyLines(2000)
+// Per line it should cost about the same as BenchmarkStreamReply500Lines.
+func BenchmarkStreamReply2000Lines(b *testing.B) { benchStreamReply(b, 2000) }
+
+func BenchmarkStreamReply500Lines(b *testing.B) { benchStreamReply(b, 500) }
+
+func benchStreamReply(b *testing.B, n int) {
+	lines := benchReplyLines(n)
 	b.ReportAllocs()
 	for b.Loop() {
 		m := compactCmdModel()

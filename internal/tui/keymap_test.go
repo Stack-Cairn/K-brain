@@ -40,6 +40,8 @@ var legacyHelpKeys = []string{
 	"Ctrl+R — search prompt history (Tab: all directories)",
 	"Ctrl+S — stash the draft, or restore it on an empty composer",
 	"with a queued message selected: Enter sends it now, Ctrl+E edits, Alt+↑/↓ moves",
+	"Alt+↑ — focus the transcript: j/k select a block, h/l fold / open, e toggle, E fold all, v view, / find, Esc back",
+	"in the block viewer: j/k scroll, Space/PgDn page, g/G top / end, / find, n/N next / previous, Esc back",
 }
 
 func TestKeymapHelpUnchanged(t *testing.T) {
@@ -59,7 +61,7 @@ func TestKeymapHelpUnchanged(t *testing.T) {
 }
 
 func TestKeymapRowsWellFormed(t *testing.T) {
-	known := []keyContext{keyGlobal, keyComposer, keyBusy, keyIdle, keyQueue, keyMenu, keyDock, keyTaskView}
+	known := []keyContext{keyGlobal, keyComposer, keyBusy, keyIdle, keyQueue, keyMenu, keyDock, keyTaskView, keyTranscript, keyViewer}
 	seen := map[string]bool{}
 	for _, b := range keymap {
 		if b.key == "" || b.action == "" {
@@ -78,11 +80,13 @@ func TestKeymapRowsWellFormed(t *testing.T) {
 
 // keyDispatchers are the functions that implement each context's keys.
 var keyDispatchers = map[keyContext][]string{
-	keyTaskView: {"taskViewKey"},
+	keyTaskView:   {"taskViewKey"},
+	keyTranscript: {"transcriptFocusKey", "findTypingKey"},
+	keyViewer:     {"blockViewerKey"},
 }
 
 func init() {
-	main := []string{"key", "composerPreKey", "composerPasteKey", "composerKey"}
+	main := []string{"key", "transcriptKey", "composerPreKey", "composerPasteKey", "composerKey"}
 	for _, c := range []keyContext{keyGlobal, keyComposer, keyBusy, keyIdle, keyQueue, keyMenu, keyDock} {
 		keyDispatchers[c] = main
 	}

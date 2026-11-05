@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 func TestThinkingAndResponseScrollFullyOnSmallTerminal(t *testing.T) {
@@ -80,10 +81,11 @@ func TestFrameFitsWhileReasoningStreams(t *testing.T) {
 		t.Errorf("streaming frame height %d exceeds terminal height %d", h, m.height)
 	}
 
+	// The run folded to its summary when the response began.
 	m.vp.GotoTop()
 	top := m.viewportView()
-	if !strings.Contains(top, "reasoning trace") {
-		t.Errorf("top of transcript doesn't show reasoning:\n%s", top)
+	if !strings.Contains(top, "Thought for") || !strings.Contains(top, "30 lines") {
+		t.Errorf("top of transcript doesn't show the folded reasoning:\n%s", top)
 	}
 }
 
@@ -129,12 +131,16 @@ func TestFrameHeightDuringLongInflightResponse(t *testing.T) {
 	})
 }
 
+// Scrolled back while reasoning streams, the window stays put when the
+// response begins and the run folds to its summary.
 func TestScrollPositionStableWhileResponseStreams(t *testing.T) {
 	m := compactCmdModel()
 	m.showThinking = true
 	m.busy = true
 	m.Update(mkWinSize(80, 12))
-
+	for i := range 20 {
+		m.append("earlier line " + string(rune('a'+i)))
+	}
 	for i := range 10 {
 		um, _ := m.Update(thinkMsg("reasoning line " + string(rune('0'+i)) + "\n"))
 		m = um.(*model)
@@ -143,8 +149,8 @@ func TestScrollPositionStableWhileResponseStreams(t *testing.T) {
 	m.vp.GotoTop()
 	m.follow = false
 	before := m.viewportView()
-	if !strings.Contains(before, "reasoning line 0") {
-		t.Fatalf("setup: top should show first reasoning line:\n%s", before)
+	if !strings.Contains(before, "earlier line a") {
+		t.Fatalf("setup: top should show the first line:\n%s", before)
 	}
 
 	um, _ := m.Update(textMsg("response begins\n"))
@@ -155,8 +161,11 @@ func TestScrollPositionStableWhileResponseStreams(t *testing.T) {
 	if m.follow {
 		t.Error("streamed response re-engaged follow mode while scrolled up")
 	}
-	if !strings.Contains(after, "reasoning line 0") {
+	if after != before {
 		t.Errorf("response streaming shifted the scrolled view:\nbefore:\n%s\nafter:\n%s", before, after)
+	}
+	if b := m.blocks[len(m.blocks)-2]; b.kind != blockThinking || !strings.Contains(ansi.Strip(b.render(80)), "Thought for") {
+		t.Errorf("the reasoning run did not fold when the response began: %+v", b)
 	}
 }
 

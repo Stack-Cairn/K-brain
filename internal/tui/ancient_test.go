@@ -83,7 +83,7 @@ func TestAncientModeUsesVerticalLayoutForInputAndBlocks(t *testing.T) {
 		verticalLines[i] = strings.TrimSpace(verticalLines[i])
 	}
 	if !strings.Contains(strings.Join(verticalLines, "\n"), "天\n地") {
-		t.Fatalf("assistant output is not vertical: %q", m.blocks[0].rendered)
+		t.Fatalf("assistant output is not vertical: %q", m.blocks[0].rows)
 	}
 	out := ansi.Strip(m.View())
 	if !strings.Contains(out, "输") || !strings.Contains(out, "入") {
