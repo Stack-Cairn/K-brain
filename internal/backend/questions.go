@@ -60,6 +60,7 @@ func (s *Server) wireQuestions(rt *runtimeSession, ag *agent.Agent) {
 		if result == nil {
 			return "", err
 		}
+		tools.ReportQuestionAnswers(ctx, result.Answers)
 		encoded, encodeErr := json.Marshal(result)
 		return string(encoded), errors.Join(err, encodeErr)
 	}
@@ -116,6 +117,17 @@ func normalizeQuestions(input []protocol.Question) ([]protocol.Question, error) 
 	return out, nil
 }
 
+// validateQuestionAnswers checks a client's answers against the questions
+// asked and returns them in question order, ready to record. An answer is one
+// of:
+//   - selected_label: one of the question's option labels;
+//   - selected_label with custom: the user's own words (at most 2000 characters);
+//   - selected_labels: the chosen options, each exactly one of the question's
+//     labels and none twice; exactly one on a single-select question. They are
+//     kept in option order and selected_label, which must be left empty, is
+//     filled with them joined by ", " for readers that predate selected_labels;
+//   - selected_labels with custom (multi-select questions only): the chosen
+//     options plus the user's own words in selected_label.
 func validateQuestionAnswers(questions []protocol.Question, input []protocol.QuestionAnswer) ([]protocol.QuestionAnswer, error) {
 	if len(input) != len(questions) {
 		return nil, errors.New("one answer is required for every question")
@@ -123,7 +135,7 @@ func validateQuestionAnswers(questions []protocol.Question, input []protocol.Que
 	byID := map[string]protocol.QuestionAnswer{}
 	for _, a := range input {
 		a.QuestionID, a.SelectedLabel = strings.TrimSpace(a.QuestionID), strings.TrimSpace(a.SelectedLabel)
-		if a.QuestionID == "" || a.SelectedLabel == "" {
+		if a.QuestionID == "" || (a.SelectedLabel == "" && len(a.SelectedLabels) == 0) {
 			return nil, errors.New("question IDs and answers cannot be empty")
 		}
 		if _, exists := byID[a.QuestionID]; exists {
@@ -140,19 +152,80 @@ func validateQuestionAnswers(questions []protocol.Question, input []protocol.Que
 		if !exists {
 			return nil, errors.New("answer question ID does not match request")
 		}
-		listed := false
-		for _, option := range q.Options {
-			if option.Label == a.SelectedLabel {
-				listed = true
+		if len(a.SelectedLabels) > 0 {
+			labels, err := selectedOptions(q, a.SelectedLabels)
+			if err != nil {
+				return nil, err
 			}
-		}
-		if !a.Custom && !listed {
-			return nil, errors.New("answer must be a listed option or explicitly custom")
+			switch {
+			case !q.Multiple && (len(labels) != 1 || a.Custom):
+				return nil, fmt.Errorf("question %q is single-select: selected_labels must hold exactly one label, without custom", q.ID)
+			case a.Custom && a.SelectedLabel == "":
+				return nil, fmt.Errorf("question %q: custom with selected_labels needs the user's text in selected_label", q.ID)
+			case !a.Custom && a.SelectedLabel != "":
+				return nil, fmt.Errorf("question %q: selected_label must be empty when selected_labels is sent without custom", q.ID)
+			case !a.Custom:
+				a.SelectedLabel = strings.Join(labels, ", ")
+			}
+			a.SelectedLabels = labels
+		} else {
+			a.SelectedLabels = nil
+			listed := false
+			for _, option := range q.Options {
+				if option.Label == a.SelectedLabel {
+					listed = true
+				}
+			}
+			if !a.Custom && !listed {
+				return nil, errors.New("answer must be a listed option or explicitly custom")
+			}
 		}
 		a.Prompt = q.Prompt
 		answers[i] = a
 	}
 	return answers, nil
+}
+
+// selectedOptions checks that every label names one of q's options exactly,
+// none twice, and returns them in option order.
+func selectedOptions(q protocol.Question, labels []string) ([]string, error) {
+	chosen := make(map[string]bool, len(labels))
+	for _, label := range labels {
+		listed := false
+		for _, option := range q.Options {
+			if option.Label == label {
+				listed = true
+				break
+			}
+		}
+		if !listed {
+			return nil, fmt.Errorf("question %q: selected_labels has %q, which is not one of its option labels", q.ID, label)
+		}
+		if chosen[label] {
+			return nil, fmt.Errorf("question %q: selected_labels has %q twice", q.ID, label)
+		}
+		chosen[label] = true
+	}
+	out := make([]string, 0, len(labels))
+	for _, option := range q.Options {
+		if chosen[option.Label] {
+			out = append(out, option.Label)
+		}
+	}
+	return out, nil
+}
+
+// askAnswer is a recorded answer as the question tools present it to the model.
+func askAnswer(a protocol.QuestionAnswer) tools.AskAnswer {
+	switch {
+	case len(a.SelectedLabels) > 0 && a.Custom:
+		return tools.AskAnswer{Labels: a.SelectedLabels, Custom: a.SelectedLabel}
+	case len(a.SelectedLabels) > 0:
+		return tools.AskAnswer{Labels: a.SelectedLabels}
+	case a.Custom:
+		return tools.AskAnswer{Custom: a.SelectedLabel}
+	}
+	return tools.AskAnswer{Labels: []string{a.SelectedLabel}}
 }
 
 // rt.mu protects registration, settlement, and journal publication together.
@@ -191,10 +264,7 @@ func (rt *runtimeSession) settleQuestionLocked(waiter *questionWaiter, answers [
 	default:
 		result.Text = "The user answered every question. Their selections are final — proceed accordingly:"
 		for i, a := range answers {
-			result.Text += fmt.Sprintf("\n%d. %s\n   → %s", i+1, a.Prompt, a.SelectedLabel)
-			if a.Custom {
-				result.Text += " (user-typed answer via Other, not a listed option)"
-			}
+			result.Text += fmt.Sprintf("\n%d. %s\n   → %s", i+1, a.Prompt, askAnswer(a).Text())
 		}
 	}
 	if err := rt.publishEventLocked(result.RunID, protocol.EventQuestionResolved, result); err != nil {

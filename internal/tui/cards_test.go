@@ -224,8 +224,9 @@ func TestMultiQuestionTabsAndOtherAnswers(t *testing.T) {
 	m.askKey(keyRunes("2"))
 	m.askKey(ck(tea.KeyEnter))
 	got := <-reply
-	if want := []string{"Array", "name, duration", "after review"}; !got.ok || !reflect.DeepEqual(got.answers, want) {
-		t.Fatalf("answers = %+v, want %q", got, want)
+	// The picks come back as chosen options, own words apart from them.
+	if want := []tools.AskAnswer{{Labels: []string{"Array"}}, {Labels: []string{"name", "duration"}}, {Custom: "after review"}}; !got.ok || !reflect.DeepEqual(got.answers, want) {
+		t.Fatalf("answers = %+v, want %+v", got, want)
 	}
 	if m.askDialog != nil {
 		t.Fatal("the card closes on submit")
@@ -262,8 +263,8 @@ func TestQuestionsFormWithOneQuestionAnswersAtOnce(t *testing.T) {
 	m.askKey(keyRunes("1"))
 	m.askKey(keyRunes("2"))
 	m.askKey(ck(tea.KeyEnter))
-	if got := <-reply; !got.ok || !reflect.DeepEqual(got.answers, []string{"a, b"}) {
-		t.Fatalf("one entry per question, picks joined: %+v", got)
+	if got := <-reply; !got.ok || !reflect.DeepEqual(got.answers, []tools.AskAnswer{{Labels: []string{"a", "b"}}}) {
+		t.Fatalf("one entry per question, with its picks: %+v", got)
 	}
 }
 
@@ -408,8 +409,8 @@ func TestCardsTakeTypedBurstsKeyByKey(t *testing.T) {
 	m.askKey(ck(tea.KeyEnter))
 	m.askKey(keyRunes("2"))
 	m.askKey(ck(tea.KeyEnter))
-	if got := <-reply; !reflect.DeepEqual(got.answers, []string{"Lines", "name, bio", "Next week"}) {
-		t.Fatalf("answers = %q", got.answers)
+	if got := <-reply; !reflect.DeepEqual(got.answers, []tools.AskAnswer{{Labels: []string{"Lines"}}, {Labels: []string{"name"}, Custom: "bio"}, {Labels: []string{"Next week"}}}) {
+		t.Fatalf("answers = %+v", got.answers)
 	}
 
 	m = compactCmdModel()

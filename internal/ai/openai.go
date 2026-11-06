@@ -37,6 +37,9 @@ type ToolCall struct {
 	// tools.Result.ExitCode); nil for other calls.
 	ExitStatus *int `json:"exit_status,omitempty"`
 	TimedOut   bool `json:"timed_out,omitempty"`
+	// QuestionAnswers is what the user answered a question tool call, one
+	// entry per question; for display, like the fields above.
+	QuestionAnswers []QuestionAnswer `json:"question_answers,omitempty"`
 }
 
 func stripAuthored(msgs []Message) []Message {
@@ -62,6 +65,7 @@ func stripAuthored(msgs []Message) []Message {
 				calls[j].ExitCode = 0
 				calls[j].ExitStatus = nil
 				calls[j].TimedOut = false
+				calls[j].QuestionAnswers = nil
 			}
 			out[i].ToolCalls = calls
 		}

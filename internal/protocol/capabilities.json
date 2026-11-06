@@ -130,6 +130,15 @@
       "firstRelease": "v0.107.21",
       "evidenceCommit": "pending",
       "missing": "Hide the sandbox setup action: run_sandbox has no setup_available or setup_hint and POST /v1/sandbox/setup does not exist; point Windows users at `kn sandbox setup` instead."
+    },
+    {
+      "name": "question_selected_labels",
+      "type": "integer",
+      "compare": "eq",
+      "value": 1,
+      "firstRelease": "v0.107.23",
+      "evidenceCommit": "pending",
+      "missing": "Never send selected_labels (an older backend rejects the answer with 400 for the unknown field): answer a multi-select question with its labels joined by \", \" in selected_label and custom: true, and expect no question_answers in history."
     }
   ]
 }

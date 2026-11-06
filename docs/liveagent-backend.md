@@ -84,6 +84,7 @@ VITE_KBRAIN_TOKEN=<backend-token>
 | GET | `/v1/sessions/{id}/subagents/{task}/events?after_seq=N` | 只含该子代理事件的 SSE，子代理结束后关闭 |
 | POST | `/v1/sessions/{id}/subagents/{task}/cancel` | 只停止该子代理，父运行继续；未运行返回 409，未知返回 404 |
 | POST | `/v1/sessions/{id}/permissions/{permission}` | 提交审批结果 |
+| POST | `/v1/sessions/{id}/questions/{question}` | 回答 `question.requested`；`selected_labels` 见下文，`capabilities.question_selected_labels` 表示支持 |
 | POST | `/v1/sessions/{id}/close` | 结束当前会话运行与后台子代理并保存 |
 
 列表支持 `page`、`page_size`、`cwd`、`cwd_empty`、`shared`、`pinned`，返回 `sessions`、`total_count`、`epoch` 和字符串 `revision`。`/v1/health` 的 `capabilities.session_changes: 2` 表示同时支持不可变快照、增量、pinned、workdirs、字符串游标和过期 reset；客户端必须探测完整契约后才能放宽旧轮询。
@@ -169,6 +170,39 @@ CLI 可用 `-config FILE -session-dir DIR` 指定配置与存储目录；省略�
 - `405`：不是 POST。
 
 除 `501` 外，每次调用都会让 `/v1/health` 的 `capabilityRevision` 加一，客户端据此重新读取能力。卸载只能由用户在终端里运行 `kn sandbox uninstall`，后端不提供卸载接口。
+
+### 提问的结构化多选（`capabilities.question_selected_labels: 1`）
+
+`question` 与 `AskUserQuestion` 两个工具都通过 `question.requested {question_id,tool_call_id,run_id,deadline_at,questions:[{id,header?,prompt,options:[{label,description?,recommended?}],multiple?}]}` 提问。客户端用 `POST /v1/sessions/{id}/questions/{question_id}` 回答，请求体为 `{conversation_id,run_id,question_id,answers:[...]}`，每题一个答案。答案有四种写法：
+
+| 写法 | 含义 |
+| --- | --- |
+| `{"question_id":"q1","selected_label":"SQLite"}` | 选了一个选项（原有写法） |
+| `{"question_id":"q1","selected_label":"随便","custom":true}` | 用户自己输入的答案，最多 2000 字符（原有写法） |
+| `{"question_id":"q2","selected_labels":["Docs","Search, filter"]}` | 选了这些选项（新增） |
+| `{"question_id":"q2","selected_labels":["Docs"],"selected_label":"再加个徽章","custom":true}` | 选了这些选项，另外输入了自己的答案（新增，只用于多选题） |
+
+`selected_labels` 的规则（不满足时返回 400，错误信息指出题目 id 和出错的标签，问题继续等待回答）：
+
+- 每个标签必须与该题某个选项的 `label` 完全相同（比较时不去掉空白，区分大小写），同一标签不能出现两次；空数组等于没传。
+- `multiple: true` 的题可以选一个或多个；单选题只能有一个标签，且不能同时带 `custom`。
+- 不带 `custom` 时 `selected_label` 必须省略或为空；带 `custom` 时 `selected_label` 是用户输入的文字，不能为空。
+- 后端按选项顺序保存标签，与发送顺序无关。
+
+`question.resolved` 的 `answers` 按题目顺序记录校验后的答案，每项另带 `prompt`。结构化答案带 `selected_labels`；不带 `custom` 时，`selected_label` 由后端填为这些标签用 `, ` 连接的文本，供不认识 `selected_labels` 的读者显示。读者的规则是：有 `selected_labels` 时以它为准；`custom` 为 true 时 `selected_label` 是用户输入的文字，否则是选中的选项。旧写法原样保存，不会补 `selected_labels`。同一答案重复提交返回 `{"ok":true,"duplicate":true}`，比较的是校验后的结果，所以标签顺序不同也算同一答案。
+
+```json
+{"question_id":"…","tool_call_id":"call_1","run_id":"…","kind":"ask_user_question","questions":[…],
+ "answers":[{"prompt":"Which DB?","question_id":"q1","selected_label":"SQLite"},
+            {"prompt":"Add what?","question_id":"q2","selected_label":"再加个徽章","selected_labels":["Search, filter","CI"],"custom":true}],
+ "text":"…"}
+```
+
+模型看到的结果中，选中的选项直接写标签，与单选相同；用户输入的文字仍标为 Other 输入。例如 `→ Search, filter, CI; plus 再加个徽章 (user-typed answer via Other, not a listed option)`。
+
+历史：两个工具的调用在 `/v1/sessions/{id}/history`（以及 `GET /v1/sessions/{id}`）的 `tool_calls[]` 上带 `question_answers`，内容与 `question.resolved` 的 `answers` 相同，重启后不变；`tool.result` 事件的 `tool_result` 也带这个字段。`AskUserQuestion` 的工具输出本身就是上面的 JSON；`question` 的工具输出是给模型的文本，客户端回放时应读 `question_answers`，不要拆分文本。超时或取消的提问没有 `question_answers`。在 TUI 中回答的 `question` 调用同样记录 `question_answers`（单问题形式的题目 id 为 `q1`）。
+
+旧客户端不发 `selected_labels`，行为不变。旧版后端不认识这个字段，会以 400（未知字段）拒绝，所以客户端必须先确认 `question_selected_labels == 1`；否则仍把多选标签用 `, ` 连接放进 `selected_label` 并设置 `custom: true`。
 
 ### 记住的权限规则（`capabilities.permission_rules: 1`、`readonly_auto_allow: 1`）
 
