@@ -137,3 +137,65 @@ func TestBPFAssemblerRejectsBadJumps(t *testing.T) {
 		t.Fatal("backward jump assembled")
 	}
 }
+
+func TestNotifyFilterVerdicts(t *testing.T) {
+	const (
+		allow   = seccompRetA
+		notify  = seccompRetU
+		enotsup = seccompRetE | errnoENOTSUP
+		oWronly = 0x1
+		oRdwr   = 0x2
+		oCreat  = 0x40
+		oTrunc  = 0x200
+		oTmp    = 0x400000
+		oCloexe = 0x80000
+	)
+	for goarch, arch := range seccompArches {
+		prog, err := notifyFilter(goarch)
+		if err != nil {
+			t.Fatalf("%s: %v", goarch, err)
+		}
+		fs := arch.fs
+		type tc struct {
+			name string
+			data seccompData
+			want uint32
+		}
+		cases := []tc{
+			{"socket", seccompData{nr: arch.socket, arch: arch.audit}, allow},
+			{"foreign arch openat", seccompData{nr: fs.openat, arch: 0x40000003, args: [6]uint64{0, 0, oWronly}}, allow},
+			{"openat read", seccompData{nr: fs.openat, arch: arch.audit, args: [6]uint64{0, 0, oCloexe}}, allow},
+			{"openat write", seccompData{nr: fs.openat, arch: arch.audit, args: [6]uint64{0, 0, oWronly}}, notify},
+			{"openat rdwr", seccompData{nr: fs.openat, arch: arch.audit, args: [6]uint64{0, 0, oRdwr}}, notify},
+			{"openat creat", seccompData{nr: fs.openat, arch: arch.audit, args: [6]uint64{0, 0, oCreat}}, notify},
+			{"openat read trunc", seccompData{nr: fs.openat, arch: arch.audit, args: [6]uint64{0, 0, oTrunc}}, notify},
+			{"openat tmpfile", seccompData{nr: fs.openat, arch: arch.audit, args: [6]uint64{0, 0, oTmp}}, notify},
+			// The flags sit in the third argument; a write flag elsewhere
+			// does not count.
+			{"openat flag in mode", seccompData{nr: fs.openat, arch: arch.audit, args: [6]uint64{0, 0, 0, oWronly}}, allow},
+			{"openat2", seccompData{nr: fs.openat2, arch: arch.audit}, notify},
+		}
+		for _, nr := range []uint32{fs.mkdirat, fs.mknodat, fs.unlinkat, fs.renameat, fs.renameat2, fs.linkat, fs.symlinkat, fs.truncate, fs.fchmod, fs.fchmodat, fs.fchmodat2,
+			fs.creat, fs.mkdir, fs.mknod, fs.unlink, fs.rmdir, fs.rename, fs.link, fs.symlink, fs.chmod} {
+			if nr != 0 {
+				cases = append(cases, tc{"call", seccompData{nr: nr, arch: arch.audit}, notify})
+			}
+		}
+		if fs.open != 0 {
+			cases = append(cases,
+				tc{"open read", seccompData{nr: fs.open, arch: arch.audit, args: [6]uint64{0, oCloexe}}, allow},
+				tc{"open write", seccompData{nr: fs.open, arch: arch.audit, args: [6]uint64{0, oWronly | oCreat}}, notify})
+		}
+		for _, nr := range arch.xattrSet {
+			cases = append(cases, tc{"xattr", seccompData{nr: nr, arch: arch.audit}, enotsup})
+		}
+		for _, c := range cases {
+			if got := runBPF(t, prog, c.data); got != c.want {
+				t.Errorf("%s %s (nr %d): verdict %#x, want %#x", goarch, c.name, c.data.nr, got, c.want)
+			}
+		}
+	}
+	if _, err := notifyFilter("mips"); err == nil {
+		t.Fatal("notification filter built for an unsupported architecture")
+	}
+}

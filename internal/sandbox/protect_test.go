@@ -314,9 +314,10 @@ func listenUnix(t *testing.T) string {
 
 func TestLiveSandboxProtectsRepository(t *testing.T) {
 	liveSandbox(t)
-	// Allow-list mechanisms cannot carve read-only paths out of the workspace.
-	if c := Probe(); c.Mechanism == "landlock" {
-		t.Skip("this mechanism does not keep protected paths read-only")
+	// The Landlock launcher keeps protected paths only where its supervisor
+	// can run (see supervise_linux.go).
+	if c := Probe(); !c.PathProtection {
+		t.Skip("this mechanism does not keep protected paths read-only here")
 	}
 	isolatedHome(t)
 	root := t.TempDir()
@@ -351,9 +352,9 @@ func TestLiveSandboxProtectsRepository(t *testing.T) {
 			t.Fatalf("%s: instructions changed: %q %v", name, data, err)
 		}
 	}
-	// bubblewrap can only bind what exists; Seatbelt rules also cover a
-	// protected path that does not exist yet.
-	if runtime.GOOS == "darwin" {
+	// bubblewrap can only bind what exists; Seatbelt rules and the Landlock
+	// supervisor also cover a protected path that does not exist yet.
+	if runtime.GOOS == "darwin" || Probe().Mechanism == mechanismLandlock {
 		_, _ = confinedRun(t, p, `mkdir -p .liveagent && echo evil > .liveagent/prompt.md`)
 		if _, err := os.Stat(filepath.Join(root, ".liveagent")); err == nil {
 			t.Fatal("missing protected directory created")

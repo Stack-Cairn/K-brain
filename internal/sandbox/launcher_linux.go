@@ -19,8 +19,14 @@ import (
 // seccomp restrictions survive execve, so the command and all its descendants
 // stay confined, while the calling K-brain process is left untouched.
 func init() {
-	if len(os.Args) > 0 && os.Args[0] == launcherArg0 {
+	if len(os.Args) == 0 {
+		return
+	}
+	switch os.Args[0] {
+	case launcherArg0:
 		runLauncher(os.Args[1:])
+	case launcherChildArg0:
+		runLauncherChild(os.Args[1:])
 	}
 }
 
@@ -36,6 +42,9 @@ func runLauncher(args []string) {
 	var spec launchSpec
 	if err := json.Unmarshal([]byte(args[0]), &spec); err != nil {
 		launcherFail(fmt.Errorf("bad launcher spec: %w", err))
+	}
+	if len(spec.Protect) > 0 {
+		runSupervisor(spec, args[1], args[2:])
 	}
 	if err := confineSelf(spec); err != nil {
 		launcherFail(err)

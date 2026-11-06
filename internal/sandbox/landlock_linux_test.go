@@ -60,8 +60,18 @@ func TestLiveProbeReport(t *testing.T) {
 	if want := os.Getenv("KBRAIN_EXPECT_SANDBOX_MECHANISM"); want != "" && (c.Mechanism != want || !c.Supported) {
 		t.Fatalf("probe chose %s (supported %v), want %s", c.Mechanism, c.Supported, want)
 	}
-	if c.Mechanism == mechanismLandlock && (c.ReadMasking || c.PathProtection) {
-		t.Fatal("the Landlock fallback claims read masking or path protection")
+	if c.Mechanism == mechanismLandlock {
+		if c.ReadMasking {
+			t.Fatal("the Landlock fallback claims read masking")
+		}
+		// Path protection is claimed only when the supervisor's own check
+		// passed on this kernel.
+		if protects := landlockProtection() == nil; c.PathProtection != protects {
+			t.Fatalf("the Landlock fallback reports path_protection=%v, but its check says %v", c.PathProtection, protects)
+		}
+		if os.Getenv("KBRAIN_EXPECT_PATH_PROTECTION") == "1" && !c.PathProtection {
+			t.Fatalf("the Landlock fallback does not protect paths: %s", c.Reason)
+		}
 	}
 	if _, filtered := seccompArches[runtime.GOARCH]; filtered && landlockABI() >= 1 && !c.Supported {
 		t.Fatalf("Landlock is available but the probe reports unsupported: %s", c.Reason)
