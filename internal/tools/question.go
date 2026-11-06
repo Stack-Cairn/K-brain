@@ -25,8 +25,8 @@ type AskQuestion struct {
 }
 
 // AskRequest is one question (Question, Options, Multiple) or, when
-// Questions is set, several asked together. An AskFunc answers the first form
-// with the chosen labels and the second with one entry per question, in order.
+// Questions is set, several asked together. An AskFunc answers with one
+// AskAnswer per question, in order: a single one for the first form.
 type AskRequest struct {
 	Question  string        `json:"question,omitempty"`
 	Options   []AskOption   `json:"options,omitempty"`
@@ -34,9 +34,44 @@ type AskRequest struct {
 	Questions []AskQuestion `json:"questions,omitempty"`
 }
 
+// AskAnswer is the user's answer to one question: the options they chose
+// (Labels, each one of the question's labels, in option order) and their own
+// words (Custom, typed instead of or, on a multi-select question, beside the
+// chosen options).
+type AskAnswer struct {
+	Labels []string
+	Custom string
+}
+
+// Text is the answer as the model sees it: chosen options by their labels,
+// the user's own words marked as typed rather than listed.
+func (a AskAnswer) Text() string {
+	text := strings.Join(a.Labels, ", ")
+	if custom := strings.TrimSpace(a.Custom); custom != "" {
+		typed := custom + " (user-typed answer via Other, not a listed option)"
+		if text == "" {
+			return typed
+		}
+		text += "; plus " + typed
+	}
+	return text
+}
+
+// record is the answer as question tool history keeps it (the /v1 answer shape).
+func (a AskAnswer) record(id, prompt string) ai.QuestionAnswer {
+	r := ai.QuestionAnswer{Prompt: prompt, QuestionID: id, SelectedLabel: strings.Join(a.Labels, ", ")}
+	if len(a.Labels) > 0 {
+		r.SelectedLabels = append([]string(nil), a.Labels...)
+	}
+	if custom := strings.TrimSpace(a.Custom); custom != "" {
+		r.SelectedLabel, r.Custom = custom, true
+	}
+	return r
+}
+
 type askContextKey struct{}
 type toolCallIDKey struct{}
-type AskFunc func(context.Context, AskRequest) ([]string, bool)
+type AskFunc func(context.Context, AskRequest) ([]AskAnswer, bool)
 
 func WithAsk(ctx context.Context, ask AskFunc) context.Context {
 	return context.WithValue(ctx, askContextKey{}, ask)
@@ -51,7 +86,7 @@ func ToolCallID(ctx context.Context) string {
 	return id
 }
 
-var Ask func(ctx context.Context, req AskRequest) (answers []string, ok bool)
+var Ask func(ctx context.Context, req AskRequest) (answers []AskAnswer, ok bool)
 
 // questionSchema is the question tool's input: one question (question,
 // options, multiple) or, with questions, up to four asked together. Both
@@ -138,23 +173,44 @@ func ParseAskRequest(args json.RawMessage) (AskRequest, error) {
 	return req, nil
 }
 
-// AskAnswerText is the question tool's result for answers to req. With
-// Questions, answers holds one entry per question, in order (a multi-select
-// question's labels joined by ", "); otherwise the chosen labels.
-func AskAnswerText(req AskRequest, answers []string) string {
+// AskAnswerText is the question tool's result for answers to req, one per
+// question in order (one for the single-question form).
+func AskAnswerText(req AskRequest, answers []AskAnswer) string {
 	if len(req.Questions) == 0 {
-		return "User answered \"" + req.Question + "\": " + strings.Join(answers, ", ")
+		answer := ""
+		if len(answers) > 0 {
+			answer = answers[0].Text()
+		}
+		return "User answered \"" + req.Question + "\": " + answer
 	}
 	var b strings.Builder
 	b.WriteString("The user answered:")
 	for i, q := range req.Questions {
 		answer := "(no answer)"
-		if i < len(answers) && strings.TrimSpace(answers[i]) != "" {
-			answer = answers[i]
+		if i < len(answers) {
+			if text := answers[i].Text(); strings.TrimSpace(text) != "" {
+				answer = text
+			}
 		}
 		fmt.Fprintf(&b, "\n%d. %s\n   → %s", i+1, q.Prompt, answer)
 	}
 	return b.String()
+}
+
+// askRecords is answers to req as question tool history keeps them, with the
+// question ids /v1 clients see (q1 for the single-question form).
+func askRecords(req AskRequest, answers []AskAnswer) []ai.QuestionAnswer {
+	qs := req.Questions
+	if len(qs) == 0 {
+		qs = []AskQuestion{{ID: "q1", Prompt: req.Question}}
+	}
+	out := make([]ai.QuestionAnswer, 0, len(answers))
+	for i, a := range answers {
+		if i < len(qs) {
+			out = append(out, a.record(qs[i].ID, qs[i].Prompt))
+		}
+	}
+	return out
 }
 
 func QuestionTool() Tool {
@@ -182,6 +238,7 @@ func QuestionTool() Tool {
 			if !ok {
 				return "", errors.New("the user dismissed the question")
 			}
+			ReportQuestionAnswers(ctx, askRecords(a, answers))
 			return AskAnswerText(a, answers), nil
 		},
 	}

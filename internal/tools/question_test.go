@@ -34,9 +34,9 @@ func TestQuestionToolSchemaKeepsSingleFormAndAddsQuestions(t *testing.T) {
 func TestQuestionToolSingleFormUnchanged(t *testing.T) {
 	var got AskRequest
 	out, err := runQuestion(t, `{"question":"Which DB?","options":[{"label":"Postgres"},{"label":"SQLite"}],"multiple":true}`,
-		func(_ context.Context, req AskRequest) ([]string, bool) {
+		func(_ context.Context, req AskRequest) ([]AskAnswer, bool) {
 			got = req
-			return []string{"Postgres", "SQLite"}, true
+			return []AskAnswer{{Labels: []string{"Postgres", "SQLite"}}}, true
 		})
 	if err != nil {
 		t.Fatal(err)
@@ -54,9 +54,9 @@ func TestQuestionToolAsksSeveralQuestions(t *testing.T) {
 	args := `{"questions":[
 		{"header":"Format","question":"Which output format?","options":[{"label":"JSON"},{"label":"YAML"}]},
 		{"id":"tests","prompt":"Which tests to run?","multiple":true,"options":[{"label":" unit "},{"label":"e2e","description":" slow "}]}]}`
-	out, err := runQuestion(t, args, func(_ context.Context, req AskRequest) ([]string, bool) {
+	out, err := runQuestion(t, args, func(_ context.Context, req AskRequest) ([]AskAnswer, bool) {
 		got = req
-		return []string{"JSON", "unit, e2e"}, true
+		return []AskAnswer{{Labels: []string{"JSON"}}, {Labels: []string{"unit", "e2e"}}}, true
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -79,7 +79,7 @@ func TestQuestionToolAsksSeveralQuestions(t *testing.T) {
 }
 
 func TestQuestionToolRejectsBadQuestions(t *testing.T) {
-	never := func(context.Context, AskRequest) ([]string, bool) {
+	never := func(context.Context, AskRequest) ([]AskAnswer, bool) {
 		t.Fatal("asked an invalid request")
 		return nil, false
 	}
@@ -94,5 +94,56 @@ func TestQuestionToolRejectsBadQuestions(t *testing.T) {
 		if _, err := runQuestion(t, args, never); err == nil {
 			t.Errorf("accepted %s", args)
 		}
+	}
+}
+
+// Chosen options read as their labels; the user's own words are marked as
+// typed, alone or beside chosen options.
+func TestAskAnswerText(t *testing.T) {
+	for _, tc := range []struct {
+		answer AskAnswer
+		want   string
+	}{
+		{AskAnswer{Labels: []string{"Fast"}}, "Fast"},
+		{AskAnswer{Labels: []string{"Docs", "Search, filter"}}, "Docs, Search, filter"},
+		{AskAnswer{Custom: " my words "}, "my words (user-typed answer via Other, not a listed option)"},
+		{AskAnswer{Labels: []string{"Docs"}, Custom: "and a changelog"}, "Docs; plus and a changelog (user-typed answer via Other, not a listed option)"},
+	} {
+		if got := tc.answer.Text(); got != tc.want {
+			t.Errorf("%+v.Text() = %q, want %q", tc.answer, got, tc.want)
+		}
+	}
+	req := AskRequest{Questions: []AskQuestion{{ID: "q1", Prompt: "Which?"}, {ID: "extras", Prompt: "Add what?"}}}
+	got := AskAnswerText(req, []AskAnswer{{Custom: "neither"}, {Labels: []string{"Docs", "CI"}, Custom: "a badge"}})
+	want := "The user answered:\n1. Which?\n   → neither (user-typed answer via Other, not a listed option)\n2. Add what?\n   → Docs, CI; plus a badge (user-typed answer via Other, not a listed option)"
+	if got != want {
+		t.Errorf("AskAnswerText = %q, want %q", got, want)
+	}
+}
+
+// The question tool records the answers for its history in the /v1 answer
+// shape, with the ids /v1 clients see.
+func TestQuestionToolRecordsAnswers(t *testing.T) {
+	args := `{"questions":[{"question":"Which?","options":[{"label":"a"},{"label":"b"}]},{"id":"extras","question":"Add what?","multiple":true,"options":[{"label":"Docs"},{"label":"Search, filter"},{"label":"CI"}]}]}`
+	ctx := WithAsk(context.Background(), func(context.Context, AskRequest) ([]AskAnswer, bool) {
+		return []AskAnswer{{Labels: []string{"b"}}, {Labels: []string{"Docs", "Search, filter"}, Custom: "a badge"}}, true
+	})
+	result := ExecuteResult(ctx, []Tool{QuestionTool()}, "question", json.RawMessage(args), false)
+	if result.Failed {
+		t.Fatal(result.Text)
+	}
+	got, _ := json.Marshal(result.QuestionAnswers)
+	want := `[{"prompt":"Which?","question_id":"q1","selected_label":"b","selected_labels":["b"]},{"prompt":"Add what?","question_id":"extras","selected_label":"a badge","selected_labels":["Docs","Search, filter"],"custom":true}]`
+	if string(got) != want {
+		t.Errorf("answers = %s\nwant      %s", got, want)
+	}
+
+	single := WithAsk(context.Background(), func(context.Context, AskRequest) ([]AskAnswer, bool) {
+		return []AskAnswer{{Custom: "neither"}}, true
+	})
+	result = ExecuteResult(single, []Tool{QuestionTool()}, "question", json.RawMessage(`{"question":"Which DB?","options":[{"label":"a"},{"label":"b"}]}`), false)
+	got, _ = json.Marshal(result.QuestionAnswers)
+	if want := `[{"prompt":"Which DB?","question_id":"q1","selected_label":"neither","custom":true}]`; string(got) != want {
+		t.Errorf("single-form answers = %s, want %s", got, want)
 	}
 }

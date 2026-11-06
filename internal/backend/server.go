@@ -1578,7 +1578,7 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, end func(),
 	if reviewer != nil {
 		ctx = tools.WithReview(ctx, reviewer.Hooks(gate))
 	}
-	ctx = tools.WithAsk(ctx, func(questionCtx context.Context, req tools.AskRequest) ([]string, bool) {
+	ctx = tools.WithAsk(ctx, func(questionCtx context.Context, req tools.AskRequest) ([]tools.AskAnswer, bool) {
 		if isUnattendedRun(questionCtx) {
 			return nil, false
 		}
@@ -1604,10 +1604,12 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, end func(),
 		if waitErr != nil || result == nil || result.Cancelled {
 			return nil, false
 		}
-		answers := make([]string, len(result.Answers))
+		answers := make([]tools.AskAnswer, len(result.Answers))
 		for i, answer := range result.Answers {
-			answers[i] = answer.SelectedLabel
+			answers[i] = askAnswer(answer)
 		}
+		// The question tool's history keeps the answers as question.resolved has them.
+		tools.ReportQuestionAnswers(questionCtx, result.Answers)
 		return answers, true
 	})
 	ctx = context.WithValue(ctx, questionRunKey{}, runID)
@@ -1790,7 +1792,7 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, end func(),
 
 // toolRunInfo is the display metadata of a tool result for tool.result events.
 func toolRunInfo(result tools.Result) protocol.ToolRunInfo {
-	info := protocol.ToolRunInfo{ExitCode: result.ExitCode, TimedOut: result.TimedOut, DurationMs: result.DurationMs()}
+	info := protocol.ToolRunInfo{ExitCode: result.ExitCode, TimedOut: result.TimedOut, DurationMs: result.DurationMs(), QuestionAnswers: result.QuestionAnswers}
 	if d := result.SandboxDenial; d != nil {
 		info.SandboxDenial = &protocol.SandboxDenial{Kind: d.Kind, Path: d.Path, SuggestedRoot: d.SuggestedRoot}
 	}

@@ -26,6 +26,9 @@ type healthCapabilities struct {
 	RunSandbox              healthRunSandboxV1 `json:"run_sandbox"`
 	SubagentTranscripts     int                `json:"subagent_transcripts"`
 	SandboxSetup            int                `json:"sandbox_setup"`
+	// QuestionSelectedLabels is 1 where question answers accept
+	// selected_labels and question history carries question_answers.
+	QuestionSelectedLabels int `json:"question_selected_labels"`
 }
 
 // healthRunSandboxV1 describes per-run sandboxing (options.sandbox). Clients
@@ -123,6 +126,7 @@ func (s *Server) health() healthResponse {
 			RunSandbox:              runSandboxCapability(),
 			SubagentTranscripts:     1,
 			SandboxSetup:            1,
+			QuestionSelectedLabels:  1,
 		},
 	}
 }
