@@ -55,6 +55,8 @@ func TestFsCallNumbers(t *testing.T) {
 		"fchmod":    {fs.fchmod, unix.SYS_FCHMOD},
 		"fchmodat":  {fs.fchmodat, unix.SYS_FCHMODAT},
 		"fchmodat2": {fs.fchmodat2, unix.SYS_FCHMODAT2},
+		"fchown":    {fs.fchown, unix.SYS_FCHOWN},
+		"fchownat":  {fs.fchownat, unix.SYS_FCHOWNAT},
 		"setxattr":  {arch.xattrSet[0], unix.SYS_SETXATTR},
 	}
 	for name, pair := range want {
@@ -113,7 +115,7 @@ func protectedState(t *testing.T, root string) string {
 			lines = append(lines, fmt.Sprintf("%s: %v", path, err))
 			return
 		}
-		line := fmt.Sprintf("%s: ino=%d mode=%o size=%d", path, st.Ino, st.Mode, st.Size)
+		line := fmt.Sprintf("%s: ino=%d mode=%o uid=%d gid=%d size=%d", path, st.Ino, st.Mode, st.Uid, st.Gid, st.Size)
 		switch st.Mode & unix.S_IFMT {
 		case unix.S_IFREG:
 			data, _ := os.ReadFile(path)
@@ -206,6 +208,8 @@ func TestLandlockProtectedPathsShellAttacks(t *testing.T) {
 		{"chmod hooks dir", `chmod 777 .git/hooks`},
 		{"chmod agent dir", `chmod 000 .k-brain`},
 		{"chmod config via symlink", `ln -s .git/config c2; chmod 666 c2`},
+		{"chgrp hook", "chgrp $(id -g) .git/hooks/pre-commit"},
+		{"chgrp hooks recursively", "chgrp -R $(id -g) .git/hooks"},
 		{"mkfifo in hooks", `mkfifo .git/hooks/post-checkout`},
 		{"sed -i config", `sed -i s/core/evil/ .git/config`},
 		{"cp over config", `echo evil > evil && cp evil .git/config`},
@@ -260,6 +264,7 @@ mv src/main.go main.go && mv main.go src/main.go
 mkdir build && echo o > build/out && rm -r build
 echo '#!/bin/sh' > run.sh && chmod +x run.sh && ./run.sh
 chmod 600 README.md
+chgrp "$(id -g)" README.md
 t=$(mktemp) && echo tmp > "$t" && rm "$t"
 d=$(mktemp -d) && echo x > "$d/f" && rm -r "$d"
 echo lock > .git/index.lock && mv .git/index.lock .git/index
@@ -455,6 +460,20 @@ func TestProtectAttackHelper(t *testing.T) {
 	refused("chmod hook", unix.Chmod(".git/hooks/pre-commit", 0o777))
 	refused("chmod hooksPath hook", unix.Chmod(".githooks/pre-push", 0o777))
 	refused("chmod agent prompts dir", unix.Chmod(".k-brain/prompts", 0o777))
+	gid := os.Getgid()
+	refused("chown keeping the ids on hook", unix.Chown(".git/hooks/pre-commit", -1, gid))
+	refused("lchown on agent settings", unix.Lchown(".k-brain/settings.json", -1, gid))
+	refused("fchownat on hooks dir", unix.Fchownat(unix.AT_FDCWD, ".git/hooks", -1, gid, 0))
+	if cfg, err := unix.Open(".git/config", unix.O_RDONLY|unix.O_CLOEXEC, 0); err == nil {
+		refused("fchown read fd of config", unix.Fchown(cfg, -1, gid))
+		unix.Close(cfg)
+	}
+	if err := os.WriteFile("owned", nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := unix.Chown("owned", -1, gid); err != nil {
+		t.Errorf("chown of a new root file: %v", err)
+	}
 	refused("truncate(2) config", unix.Truncate(".git/config", 0))
 	refused("truncate(2) agent settings", unix.Truncate(".k-brain/settings.json", 0))
 	refused("setxattr ACL on hook", unix.Setxattr(".git/hooks/pre-commit", "system.posix_acl_access", []byte{2, 0, 0, 0}, 0))

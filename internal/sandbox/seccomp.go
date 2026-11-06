@@ -40,7 +40,8 @@ type seccompArch struct {
 }
 
 // fsCalls are the system call numbers of the calls that create, remove,
-// rename, link, open for writing, truncate or change the mode of a path.
+// rename, link, open for writing, truncate or change the mode or owner of a
+// path.
 type fsCalls struct {
 	open, creat, openat, openat2               uint32
 	mkdir, mkdirat, mknod, mknodat             uint32
@@ -48,6 +49,7 @@ type fsCalls struct {
 	rename, renameat, renameat2                uint32
 	link, linkat, symlink, symlinkat, truncate uint32
 	chmod, fchmod, fchmodat, fchmodat2         uint32
+	chown, fchown, lchown, fchownat            uint32
 }
 
 var seccompArches = map[string]seccompArch{
@@ -55,11 +57,13 @@ var seccompArches = map[string]seccompArch{
 		fs: fsCalls{open: 2, creat: 85, openat: 257, openat2: 437, mkdir: 83, mkdirat: 258, mknod: 133, mknodat: 259,
 			unlink: 87, unlinkat: 263, rmdir: 84, rename: 82, renameat: 264, renameat2: 316,
 			link: 86, linkat: 265, symlink: 88, symlinkat: 266, truncate: 76,
-			chmod: 90, fchmod: 91, fchmodat: 268, fchmodat2: 452},
+			chmod: 90, fchmod: 91, fchmodat: 268, fchmodat2: 452,
+			chown: 92, fchown: 93, lchown: 94, fchownat: 260},
 		xattrSet: []uint32{188, 189, 190, 197, 198, 199, 463, 466}},
 	"arm64": {audit: 0xc00000b7, socket: 198, socketpair: 199, ioctl: 29, ioUringSetup: 425, ioUringEnter: 426, ioUringRegist: 427,
 		fs: fsCalls{openat: 56, openat2: 437, mkdirat: 34, mknodat: 33, unlinkat: 35, renameat: 38, renameat2: 276,
-			linkat: 37, symlinkat: 36, truncate: 45, fchmod: 52, fchmodat: 53, fchmodat2: 452},
+			linkat: 37, symlinkat: 36, truncate: 45, fchmod: 52, fchmodat: 53, fchmodat2: 452,
+			fchown: 55, fchownat: 54},
 		xattrSet: []uint32{5, 6, 7, 14, 15, 16, 463, 466}},
 }
 
@@ -215,7 +219,7 @@ func notifyFilter(goarch string) ([]bpfInstr, error) {
 	for _, nr := range []uint32{fs.creat, fs.openat2, fs.mkdir, fs.mkdirat, fs.mknod, fs.mknodat,
 		fs.unlink, fs.unlinkat, fs.rmdir, fs.rename, fs.renameat, fs.renameat2,
 		fs.link, fs.linkat, fs.symlink, fs.symlinkat, fs.truncate,
-		fs.chmod, fs.fchmod, fs.fchmodat, fs.fchmodat2} {
+		fs.chmod, fs.fchmod, fs.fchmodat, fs.fchmodat2, fs.chown, fs.fchown, fs.lchown, fs.fchownat} {
 		if nr != 0 {
 			b.jump(bpfJeqK, nr, "notify", "")
 		}

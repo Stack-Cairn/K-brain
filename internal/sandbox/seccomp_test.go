@@ -176,7 +176,8 @@ func TestNotifyFilterVerdicts(t *testing.T) {
 			{"openat2", seccompData{nr: fs.openat2, arch: arch.audit}, notify},
 		}
 		for _, nr := range []uint32{fs.mkdirat, fs.mknodat, fs.unlinkat, fs.renameat, fs.renameat2, fs.linkat, fs.symlinkat, fs.truncate, fs.fchmod, fs.fchmodat, fs.fchmodat2,
-			fs.creat, fs.mkdir, fs.mknod, fs.unlink, fs.rmdir, fs.rename, fs.link, fs.symlink, fs.chmod} {
+			fs.creat, fs.mkdir, fs.mknod, fs.unlink, fs.rmdir, fs.rename, fs.link, fs.symlink, fs.chmod,
+			fs.fchownat, fs.fchown, fs.chown, fs.lchown} {
 			if nr != 0 {
 				cases = append(cases, tc{"call", seccompData{nr: nr, arch: arch.audit}, notify})
 			}

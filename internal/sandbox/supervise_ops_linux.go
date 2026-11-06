@@ -399,13 +399,21 @@ func (s *supervisor) handle(c *call, nr uint32) reply {
 	case nr == k.truncate:
 		return c.truncate()
 	case nr == k.fchmodat2:
-		return c.chmodPath(c.fd(0), 1, uint32(c.args[2]), int(c.args[3]))
+		return c.chmodPath(c.fd(0), 1, modeChange(c.args[2]), int(c.args[3]))
 	case nr == k.fchmodat:
-		return c.chmodPath(c.fd(0), 1, uint32(c.args[2]), 0)
+		return c.chmodPath(c.fd(0), 1, modeChange(c.args[2]), 0)
 	case nr == k.chmod && k.chmod != 0:
-		return c.chmodPath(at, 0, uint32(c.args[1]), 0)
+		return c.chmodPath(at, 0, modeChange(c.args[1]), 0)
 	case nr == k.fchmod:
-		return c.chmodFD(int(c.fd(0)), uint32(c.args[1]), false)
+		return c.chmodFD(int(c.fd(0)), modeChange(c.args[1]), false)
+	case nr == k.fchownat:
+		return c.chmodPath(c.fd(0), 1, c.ownerChange(2), int(c.args[4]))
+	case nr == k.chown && k.chown != 0:
+		return c.chmodPath(at, 0, c.ownerChange(1), 0)
+	case nr == k.lchown && k.lchown != 0:
+		return c.chmodPath(at, 0, c.ownerChange(1), unix.AT_SYMLINK_NOFOLLOW)
+	case nr == k.fchown:
+		return c.chmodFD(int(c.fd(0)), c.ownerChange(1), false)
 	}
 	return continueCall
 }
@@ -761,7 +769,7 @@ func (c *call) truncate() reply {
 	return result(unix.Ftruncate(fd, int64(c.args[1])))
 }
 
-// mayChmod refuses a mode change on a protected path or beneath one. When the
+// mayChmod refuses a mode or owner change on a protected path or beneath one. When the
 // walk of the protected trees was cut short, a file's place cannot be told
 // from its descriptor, so only directories (classified by walking up) may
 // change mode.
@@ -800,10 +808,11 @@ func (c *call) procFD(path string) (int, bool) {
 	return n, err == nil && n >= 0
 }
 
-// chmodPath performs chmod, fchmodat and fchmodat2. A mode change is not a
-// Landlock right, so the call is never continued: the supervisor resolves the
-// path, refuses a protected inode and changes the mode of the inode it checked.
-func (c *call) chmodPath(dirfd int32, pathArg int, mode uint32, flags int) reply {
+// chmodPath performs chmod, fchmodat and fchmodat2, and the chown family.
+// Mode and owner changes are not Landlock rights, so the call is never
+// continued: the supervisor resolves the path, refuses a protected inode and
+// changes the inode it checked.
+func (c *call) chmodPath(dirfd int32, pathArg int, mode attrChange, flags int) reply {
 	path, err := c.str(pathArg)
 	if err != nil {
 		return result(err)
@@ -835,7 +844,7 @@ func (c *call) chmodPath(dirfd int32, pathArg int, mode uint32, flags int) reply
 	return c.chmodOpened(fd, mode)
 }
 
-func (c *call) chmodCwd(mode uint32) reply {
+func (c *call) chmodCwd(mode attrChange) reply {
 	fd, err := c.start(unix.AT_FDCWD, false)
 	if err != nil {
 		return result(err)
@@ -844,12 +853,12 @@ func (c *call) chmodCwd(mode uint32) reply {
 	return c.chmodOpened(fd, mode)
 }
 
-func (c *call) chmodOpened(fd int, mode uint32) reply {
+func (c *call) chmodOpened(fd int, change attrChange) reply {
 	var st unix.Stat_t
 	if err := unix.Fstat(fd, &st); err != nil {
 		return result(err)
 	}
-	if st.Mode&unix.S_IFMT == unix.S_IFLNK {
+	if st.Mode&unix.S_IFMT == unix.S_IFLNK && !change.chown {
 		return fail(unix.EOPNOTSUPP)
 	}
 	if !c.s.mayChmod(fd, &st) {
@@ -858,14 +867,31 @@ func (c *call) chmodOpened(fd int, mode uint32) reply {
 	if !c.valid() {
 		return fail(unix.EINTR)
 	}
-	return result(unix.Fchmodat(unix.AT_FDCWD, "/proc/self/fd/"+strconv.Itoa(fd), mode, 0))
+	if change.chown {
+		return result(unix.Fchownat(fd, "", change.uid, change.gid, unix.AT_EMPTY_PATH))
+	}
+	return result(unix.Fchmodat(unix.AT_FDCWD, "/proc/self/fd/"+strconv.Itoa(fd), change.mode, 0))
 }
 
-// chmodFD performs fchmod, and chmod through a descriptor's /proc path, on
+// attrChange is a mode change, or with chown an owner change (-1 keeps the
+// id), as chmod and chown share their path handling.
+type attrChange struct {
+	mode     uint32
+	chown    bool
+	uid, gid int
+}
+
+func modeChange(arg uint64) attrChange { return attrChange{mode: uint32(arg)} }
+
+func (c *call) ownerChange(first int) attrChange {
+	return attrChange{chown: true, uid: int(int32(uint32(c.args[first]))), gid: int(int32(uint32(c.args[first+1])))}
+}
+
+// chmodFD performs fchmod and fchown, and chmod through a descriptor's /proc path, on
 // descriptor n of the caller. The supervisor opens the descriptor's inode
 // itself and checks and changes that inode, so swapping the descriptor during
 // the call changes nothing but which unprotected file is changed.
-func (c *call) chmodFD(n int, mode uint32, viaPath bool) reply {
+func (c *call) chmodFD(n int, mode attrChange, viaPath bool) reply {
 	if !viaPath && c.fdFlags(n)&unix.O_PATH != 0 {
 		// fchmod refuses an O_PATH descriptor; chmod on its /proc path
 		// does not.
