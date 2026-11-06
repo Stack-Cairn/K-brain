@@ -24,12 +24,30 @@
 - 断网时只能创建 `AF_UNIX` 套接字（内核支持时还会禁止 TCP bind/connect 和抽象 unix 套接字）；任何时候都禁止 `AF_VSOCK`、io_uring 以及向终端注入输入的 `TIOCSTI`/`TIOCLINUX`；
 - 内核支持时（ABI 6），命令无法向沙箱外的进程发信号。
 
-Landlock 只能"允许"不能"屏蔽"，因此有几处弱于 bubblewrap，并在能力中如实报告：
+**保护路径（`path_protection`）**：Landlock 的权限沿目录树向下继承、只能授予，允许在工作区根新建文件就等于允许在 `.git/hooks/` 里新建文件，单靠 Landlock 无法保护。内核满足条件时，启动器改为两个进程：
+
+- 命令的 Landlock 域对"可写根到保护路径之间的目录"（工作区根、`.git` 等，工作区在 `/tmp` 下时也包括 `/tmp`）和保护路径本身不给任何写权限，对这些目录里的其他条目（`src/`、`node_modules/`、已有文件等）照常授予写权限，所以这些子树里的读写不受影响、不经过监督进程；
+- seccomp 过滤器把创建、删除、改名、链接、以写方式打开、截断和 chmod 路径的系统调用交给启动器的第一个进程（`SECCOMP_RET_USER_NOTIF`）。在上述目录里新建、改名、删除普通条目（如在根下新建文件、`sed -i`、git 的 `index.lock` → `index`）由它代为执行；目标是保护路径、其上级目录或尚不存在的保护路径名（如 `.liveagent`）时，系统调用交回内核，由命令自己的 Landlock 域拒绝（`Permission denied`）。监督进程只依据自己读到的参数副本做决定，并在打开的目录描述符上按单个名字操作，命令在调用过程中改写内存里的路径也无济于事；
+- chmod、chown 不属于 Landlock 权限，由监督进程代为执行，作用在保护路径（及其下任何文件）上时拒绝；设置扩展属性（含 ACL）一律返回 `ENOTSUP`。
+
+条件：Landlock ABI 3（Linux 6.2）及以上，seccomp 用户通知支持注入描述符（5.14）；Yama `ptrace_scope` 为 0 或 1（监督进程需读取命令的内存）；K-brain 本身不在另一个已安装 seccomp 监听器的沙箱中。首次探测时会实际运行一次自检，通过后 `path_protection` 才为 true，否则退回单进程启动器，保护路径可写，`path_protection` 为 false 并在 `reason` 中说明原因。
+
+保护生效时的已知限制：
+
+- 尚不存在的保护路径不能被创建（与 macOS 相同），因此在工作区根下 `git init` 新仓库会失败；
+- 在工作区根、`.git` 及运行中新建的顶层目录里，`bind()` unix 套接字会失败（已有的子目录如 `src/` 不受影响）；经符号链接写入这些目录里运行中新建的文件、经 `/proc/self/cwd` 等魔术链接在这些目录里新建文件也交回内核处理，因而会失败；
+- 时间戳（`touch -d`、`utimensat`）不受保护；扩展属性在任何位置都不能设置；
+- 保护路径下超过 5 万个条目时，为安全起见拒绝对所有普通文件 chmod/chown（目录仍可）；
+- 监督进程随命令退出；脱离进程树后仍在运行的守护进程，之后再调用上述系统调用会得到 `ENOSYS`。
+
+Landlock 只能"允许"不能"屏蔽"，因此还有几处弱于 bubblewrap，并在能力中如实报告：
 
 - 不屏蔽读取：`~/.ssh` 等凭据目录仍可读（但不可写），`read_masking` 为 false；
 - 临时目录不隔离：bubblewrap 给每条命令一个私有的 `/tmp`，Landlock 下命令直接读写主机的 `/tmp`；
-- 不保护可写根内的路径：`.git/hooks/` 等保护路径仍可写，`path_protection` 为 false；配置的 `readOnly` 路径若位于可写范围内，命令会被拒绝执行而不是静默放宽。
+- 配置的 `readOnly` 路径若位于可写范围内，命令会被拒绝执行而不是静默放宽；
 - 不隐藏运行时套接字：容器引擎、D-Bus 等路径上的 unix 套接字仍可连接（断网时也只禁止抽象套接字）。
+
+Ubuntu 23.10 及以后默认通过 AppArmor 禁止非特权用户命名空间（`kernel.apparmor_restrict_unprivileged_userns=1`），已安装的 bubblewrap 因此无法启动。探测到这一点时，`reason` 会给出两种解决办法：为 `bwrap` 添加允许 `userns` 的 AppArmor 配置文件（只放开 bubblewrap），或用 `sudo sysctl kernel.apparmor_restrict_unprivileged_userns=0` 对整机放开。
 
 启动器自身无法完成隔离时，命令不会运行，退出码为 125，stderr 以 `k-brain sandbox:` 开头。
 
@@ -57,7 +75,7 @@ Landlock 只能"允许"不能"屏蔽"，因此有几处弱于 bubblewrap，并�
   - `core.hooksPath` 指向的目录（读取仓库配置、其 `include`/`includeIf` 文件和全局 `~/.gitconfig`），以及这些被 include 的配置文件。
 
   因此在沙箱里 `git remote add`、`git config` 等修改仓库配置的命令会失败；提交、分支、拉取等正常操作不受影响。
-- 防绕过：不能通过重命名上级目录（如 `mv .git .git2` 后新建 `.git`）或硬链接改写保护路径；保护路径若经由符号链接到达（Linux），或保护文件已有其他硬链接，运行会被拒绝。`core.hooksPath` 指向工作区本身或其上级时同样拒绝。macOS 上尚不存在的保护路径也不能被创建；Linux（bubblewrap）只能保护已存在的路径。
+- 防绕过：不能通过重命名上级目录（如 `mv .git .git2` 后新建 `.git`）或硬链接改写保护路径；保护路径若经由符号链接到达（Linux），或保护文件已有其他硬链接，运行会被拒绝。`core.hooksPath` 指向工作区本身或其上级时同样拒绝。macOS 和 Linux Landlock（`path_protection` 为 true 时）上尚不存在的保护路径也不能被创建；Linux bubblewrap 只能保护已存在的路径。
 - 可启动沙箱外进程的 unix 套接字对命令不可用：容器引擎（docker/podman/containerd）、D-Bus 系统与会话总线、systemd 管理器；WSL 下还会隐藏 `/run/WSL`（Windows 互操作）。macOS 上联网模式下拒绝连接容器引擎套接字（断网时本来就禁止）。`SSH_AUTH_SOCK` 等凭据代理套接字不受影响。
 - 全局配置已开启沙箱时，按次请求只能收紧：网络只要任一方关闭就关闭，配置的可写/只读路径不变，并额外加上上面的屏蔽与只读规则。
 - 平台无法隔离时（Linux 上 bubblewrap 与 Landlock 都不可用、Windows 上无法以低完整性级别启动命令），请求 `400` 拒绝并给出原因，**不会**退回到不隔离运行。只要求断网而平台不能隔离网络时同样拒绝（Windows 原生未运行 `kn sandbox setup` 时如此，原因中会提示运行它）。

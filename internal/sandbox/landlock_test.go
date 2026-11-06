@@ -111,3 +111,28 @@ func TestWrapLinuxExplicitBubblewrapIgnoresLandlockProbe(t *testing.T) {
 		t.Fatal("explicit bwrap backend ran through the Landlock launcher")
 	}
 }
+
+func TestAppArmorUsernsHint(t *testing.T) {
+	saved := apparmorUsernsSysctl
+	t.Cleanup(func() { apparmorUsernsSysctl = saved })
+	sysctl := filepath.Join(t.TempDir(), "apparmor_restrict_unprivileged_userns")
+	apparmorUsernsSysctl = sysctl
+	if hint := apparmorUsernsHint(); hint != "" {
+		t.Fatalf("hint without the sysctl: %q", hint)
+	}
+	if err := os.WriteFile(sysctl, []byte("0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if hint := apparmorUsernsHint(); hint != "" {
+		t.Fatalf("hint with the restriction off: %q", hint)
+	}
+	if err := os.WriteFile(sysctl, []byte("1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	hint := apparmorUsernsHint()
+	for _, want := range []string{"kernel.apparmor_restrict_unprivileged_userns=1", "userns,", "/etc/apparmor.d/bwrap", "apparmor_parser -r", "sudo sysctl kernel.apparmor_restrict_unprivileged_userns=0"} {
+		if !strings.Contains(hint, want) {
+			t.Errorf("hint lacks %q: %s", want, hint)
+		}
+	}
+}

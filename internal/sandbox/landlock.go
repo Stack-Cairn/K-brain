@@ -35,6 +35,10 @@ type launchSpec struct {
 	Write []string `json:"write"`
 	// Network keeps IP sockets available; without it only AF_UNIX remains.
 	Network bool `json:"network,omitempty"`
+	// Protect lists the protected paths inside the write grants (symlinks
+	// resolved). When set, the launcher keeps them unchanged with a
+	// supervisor (see supervise_linux.go).
+	Protect []string `json:"protect,omitempty"`
 }
 
 // landlockDevices are the device nodes and directories shells and tools write
@@ -63,8 +67,9 @@ func (p *Policy) wrapLinux(ctx context.Context, cmd *exec.Cmd, root string) (*ex
 // path out of a writable tree or hide a directory from reads, so:
 //   - masked directories stay readable (the capability reports read_masking
 //     false) but are never writable;
-//   - the default protected paths stay writable inside the root (reported as
-//     path_protection false);
+//   - the protected paths are kept by the launcher's supervisor where the
+//     kernel supports it (see supervise_linux.go; reported as path_protection),
+//     and otherwise stay writable inside the root;
 //   - configured read-only paths inside a writable tree make Wrap fail, since
 //     the configuration asks for something this mechanism cannot enforce.
 func (p *Policy) wrapLandlock(ctx context.Context, cmd *exec.Cmd, root string) (*exec.Cmd, error) {
@@ -116,7 +121,15 @@ func (p *Policy) landlockSpec(root string) (launchSpec, error) {
 			}
 		}
 	}
-	return launchSpec{Write: append(grants, landlockDevices...), Network: p.Network}, nil
+	spec := launchSpec{Write: append(grants, landlockDevices...), Network: p.Network}
+	if len(p.Protected) > 0 && landlockProtection() == nil {
+		protected, err := p.protect(root, grants, true)
+		if err != nil {
+			return launchSpec{}, err
+		}
+		spec.Protect = protected.resolved
+	}
+	return spec, nil
 }
 
 // probeLinux reports bubblewrap when it can start, and otherwise the Landlock
@@ -140,6 +153,9 @@ func probeLinux(ctx context.Context) Capability {
 		}
 		why = "bubblewrap cannot start: " + firstLine(out, err)
 	}
+	if hint := apparmorUsernsHint(); hint != "" {
+		why += "; " + hint
+	}
 	landlock := probeLandlock(ctx)
 	if !landlock.Supported {
 		c.Reason = why + "; install it, e.g. `apt install bubblewrap`, or allow unprivileged user namespaces (" + landlock.Reason + ")"
@@ -147,6 +163,26 @@ func probeLinux(ctx context.Context) Capability {
 	}
 	landlock.Reason = why + "; " + landlock.Reason
 	return landlock
+}
+
+// apparmorUsernsSysctl is replaced in tests.
+var apparmorUsernsSysctl = "/proc/sys/kernel/apparmor_restrict_unprivileged_userns"
+
+// apparmorUsernsHint explains the AppArmor restriction (Ubuntu 23.10 and
+// later) that keeps bubblewrap from creating user namespaces, and how to lift
+// it for bubblewrap alone or for the whole machine.
+func apparmorUsernsHint() string {
+	data, err := os.ReadFile(apparmorUsernsSysctl)
+	if err != nil || strings.TrimSpace(string(data)) != "1" {
+		return ""
+	}
+	bwrap := resolveBwrap(os.Getenv("PATH"), "")
+	if bwrap == "" {
+		bwrap = "/usr/bin/bwrap"
+	}
+	return "AppArmor restricts unprivileged user namespaces here (kernel.apparmor_restrict_unprivileged_userns=1), so bubblewrap needs a profile that allows them: " +
+		"create /etc/apparmor.d/bwrap with `abi <abi/4.0>, include <tunables/global> profile bwrap " + bwrap + " flags=(unconfined) { userns, }` " +
+		"and run `sudo apparmor_parser -r /etc/apparmor.d/bwrap`, or lift the restriction for every program with `sudo sysctl kernel.apparmor_restrict_unprivileged_userns=0`"
 }
 
 // probeLandlock checks the kernel's Landlock ABI and runs a trivial offline
@@ -175,6 +211,11 @@ func probeLandlock(ctx context.Context) Capability {
 		return c
 	}
 	c.Supported, c.NetworkControl = true, true
-	c.Reason = fmt.Sprintf("using Landlock (ABI %d) with seccomp: writes are fenced to the workspace and offline runs get no network, but credential directories stay readable and protected workspace paths (.git hooks and config, agent settings) stay writable", abi)
+	if err := landlockProtection(); err != nil {
+		c.Reason = fmt.Sprintf("using Landlock (ABI %d) with seccomp: writes are fenced to the workspace and offline runs get no network, but credential directories stay readable and protected workspace paths (.git hooks and config, agent settings) stay writable (%v)", abi, err)
+		return c
+	}
+	c.PathProtection = true
+	c.Reason = fmt.Sprintf("using Landlock (ABI %d) with seccomp: writes are fenced to the workspace, a supervisor keeps the protected workspace paths (.git hooks and config, agent settings) unchanged and offline runs get no network, but credential directories stay readable", abi)
 	return c
 }

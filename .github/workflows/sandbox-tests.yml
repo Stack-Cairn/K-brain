@@ -75,15 +75,20 @@ jobs:
         run: |
           uname -a
           cat /sys/kernel/security/lsm || true
+          cat /proc/sys/kernel/yama/ptrace_scope || true
+          sysctl kernel.apparmor_restrict_unprivileged_userns || true
           command -v bwrap || echo "bwrap is not installed"
       # Without a usable bubblewrap the probe falls back to Landlock, so the
       # generic live tests exercise that path too. KBRAIN_REQUIRE_LANDLOCK turns
-      # a skipped Landlock test into a failure.
+      # a skipped Landlock test into a failure, and
+      # KBRAIN_EXPECT_PATH_PROTECTION a skipped protected-path test (the
+      # runners' kernels have Landlock ABI 3 or later).
       - name: Linux tests on the Landlock fallback
         if: runner.os == 'Linux'
         shell: bash
         env:
           KBRAIN_REQUIRE_LANDLOCK: '1'
+          KBRAIN_EXPECT_PATH_PROTECTION: '1'
           KBRAIN_EXPECT_SANDBOX_MECHANISM: landlock
         run: |
           # Hide a preinstalled bubblewrap so the fallback is what runs. With a
