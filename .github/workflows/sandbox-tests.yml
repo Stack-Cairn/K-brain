@@ -86,9 +86,12 @@ jobs:
           KBRAIN_REQUIRE_LANDLOCK: '1'
           KBRAIN_EXPECT_SANDBOX_MECHANISM: landlock
         run: |
-          # Hide a preinstalled bubblewrap so the fallback is what runs.
-          hidden=$(which -a bwrap || true)
+          # Hide a preinstalled bubblewrap so the fallback is what runs. With a
+          # merged /usr, /bin/bwrap and /usr/bin/bwrap are the same file, so
+          # resolve and de-duplicate before moving.
+          hidden=$({ which -a bwrap 2>/dev/null || true; } | xargs -r -n1 readlink -f | sort -u)
           for b in $hidden; do sudo mv "$b" "$b.hidden"; done
+          if command -v bwrap >/dev/null; then echo "bubblewrap still on PATH: $(command -v bwrap)"; exit 1; fi
           set +e
           go test ./internal/sandbox/... -count=1 -v
           status=$?
