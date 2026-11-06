@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"reflect"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -23,7 +24,7 @@ func TestQuestionNumberPicks(t *testing.T) {
 	m, reply := newAskModel(false)
 	m.askKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("3")})
 	got := <-reply
-	if !got.ok || len(got.answers) != 1 || got.answers[0] != "gpt-5.6-sol" {
+	if !got.ok || !reflect.DeepEqual(got.answers, []tools.AskAnswer{{Labels: []string{"gpt-5.6-sol"}}}) {
 		t.Fatalf("got %+v", got)
 	}
 	if m.askDialog != nil {
@@ -38,7 +39,7 @@ func TestQuestionCustomAndMulti(t *testing.T) {
 	m.askKey(tea.KeyMsg{Type: tea.KeyEnter})
 	m.askKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("my own")})
 	m.askKey(tea.KeyMsg{Type: tea.KeyEnter})
-	if got := <-reply; !got.ok || got.answers[0] != "my own" {
+	if got := <-reply; !got.ok || !reflect.DeepEqual(got.answers, []tools.AskAnswer{{Custom: "my own"}}) {
 		t.Fatalf("custom: got %+v", got)
 	}
 
@@ -46,7 +47,7 @@ func TestQuestionCustomAndMulti(t *testing.T) {
 	m.askKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("1")})
 	m.askKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("2")})
 	m.askKey(tea.KeyMsg{Type: tea.KeyEnter})
-	if got := <-reply; !got.ok || len(got.answers) != 2 {
+	if got := <-reply; !got.ok || !reflect.DeepEqual(got.answers, []tools.AskAnswer{{Labels: []string{"fable (Recommended)", "opus"}}}) {
 		t.Fatalf("multi: got %+v", got)
 	}
 
@@ -58,7 +59,7 @@ func TestQuestionCustomAndMulti(t *testing.T) {
 	m.askKey(tea.KeyMsg{Type: tea.KeySpace, Runes: []rune(" ")})
 	m.askKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("own")})
 	m.askKey(tea.KeyMsg{Type: tea.KeyEnter})
-	if got := <-reply; !got.ok || len(got.answers) != 2 || got.answers[1] != "my own" {
+	if got := <-reply; !got.ok || !reflect.DeepEqual(got.answers, []tools.AskAnswer{{Labels: []string{"fable (Recommended)"}, Custom: "my own"}}) {
 		t.Fatalf("multi custom: got %+v", got)
 	}
 

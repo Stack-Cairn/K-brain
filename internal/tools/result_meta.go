@@ -6,19 +6,22 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Stack-Cairn/K-brain/internal/ai"
 	"github.com/Stack-Cairn/K-brain/internal/sandbox"
 	"github.com/Stack-Cairn/K-brain/internal/tools/bashrun"
 )
 
 // callMeta collects what a running tool reports about itself beside its text:
-// the exit status of a command it ran, and the time it spent waiting for the
-// permission gate, which its duration leaves out.
+// the exit status of a command it ran, the user's answers to a question, and
+// the time it spent waiting for the permission gate, which its duration leaves
+// out.
 type callMeta struct {
 	mu       sync.Mutex
 	exitCode *int
 	timedOut bool
 	gateWait time.Duration
 	denial   *sandbox.Denial
+	answers  []ai.QuestionAnswer
 }
 
 type callMetaKey struct{}
@@ -98,6 +101,22 @@ func explainSandboxDenial(ctx context.Context, text, command, dir string, res ba
 	return text + d.Hint()
 }
 
+// ReportQuestionAnswers records the user's answers to the question the current
+// tool call asked, for the call's history. The first report wins, so an AskFunc
+// that knows the answers' exact form can record them before the question tool
+// derives its own.
+func ReportQuestionAnswers(ctx context.Context, answers []ai.QuestionAnswer) {
+	m := callMetaFrom(ctx)
+	if m == nil || answers == nil {
+		return
+	}
+	m.mu.Lock()
+	if m.answers == nil {
+		m.answers = append([]ai.QuestionAnswer{}, answers...)
+	}
+	m.mu.Unlock()
+}
+
 func (m *callMeta) addGateWait(d time.Duration) {
 	if m == nil || d <= 0 {
 		return
@@ -115,6 +134,7 @@ func (m *callMeta) apply(r *Result, start time.Time) {
 	r.ExitCode = m.exitCode
 	r.TimedOut = m.timedOut
 	r.SandboxDenial = m.denial
+	r.QuestionAnswers = m.answers
 	r.Duration = max(time.Since(start)-m.gateWait, time.Nanosecond)
 }
 

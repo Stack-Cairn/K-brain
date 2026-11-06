@@ -19,14 +19,13 @@ type askRequest struct {
 }
 
 type askAnswer struct {
-	answers []string
+	answers []tools.AskAnswer
 	ok      bool
 }
 
 // askDialog is the question card. A request in the single-question form is
-// one tab answered with the chosen labels; the questions form gets a tab per
-// question (and a Submit tab when there are several) and is answered with one
-// entry per question.
+// one tab; the questions form gets a tab per question (and a Submit tab when
+// there are several). Either is answered with one entry per question.
 type askDialog struct {
 	req     tools.AskRequest
 	reply   chan askAnswer
@@ -43,7 +42,8 @@ type askTab struct {
 	sel    int
 	picked map[int]bool
 	custom string
-	answer string // the answer once given
+	answer tools.AskAnswer // the answer once given
+	shown  string          // answer as the Submit tab shows it
 	done   bool
 }
 
@@ -64,9 +64,6 @@ func newAskDialog(req tools.AskRequest, reply chan askAnswer) *askDialog {
 	return d
 }
 
-// multi reports the questions form, answered one entry per question.
-func (d *askDialog) multi() bool { return len(d.req.Questions) > 0 }
-
 // submitTab reports whether the card has a Submit tab and it is current.
 func (d *askDialog) onSubmit() bool { return d.tab >= len(d.tabs) }
 
@@ -83,7 +80,7 @@ type askClose struct{ reply chan askAnswer }
 
 func (m *model) installAskHook() {
 	var mu sync.Mutex
-	tools.Ask = func(ctx context.Context, req tools.AskRequest) ([]string, bool) {
+	tools.Ask = func(ctx context.Context, req tools.AskRequest) ([]tools.AskAnswer, bool) {
 		if m.prog == nil {
 			return nil, false
 		}
@@ -126,16 +123,12 @@ func (m *model) askKey(msg tea.KeyMsg) bool {
 	}
 	// finish records the current question's answer and moves on: to the next
 	// open question, to Submit, or straight to the reply for a lone question.
-	finish := func(t *askTab, text string, labels []string) {
-		if !d.multi() {
-			answer(askAnswer{answers: labels, ok: true})
-			return
-		}
-		t.answer, t.done = text, true
+	finish := func(t *askTab, text string, a tools.AskAnswer) {
 		if len(d.tabs) == 1 {
-			answer(askAnswer{answers: []string{text}, ok: true})
+			answer(askAnswer{answers: []tools.AskAnswer{a}, ok: true})
 			return
 		}
+		t.answer, t.shown, t.done = a, text, true
 		d.warn = ""
 		from := d.tab
 		d.tab = len(d.tabs)
@@ -146,19 +139,22 @@ func (m *model) askKey(msg tea.KeyMsg) bool {
 			}
 		}
 	}
-	// confirm answers a multi-select question with its picks and own words.
+	// confirm answers a multi-select question with its picks, as chosen
+	// options, and the user's own words beside them.
 	confirm := func(t *askTab) {
-		var labels []string
+		var a tools.AskAnswer
 		for i, o := range t.q.Options {
 			if t.picked[i] {
-				labels = append(labels, o.Label)
+				a.Labels = append(a.Labels, o.Label)
 			}
 		}
+		shown := a.Labels
 		if c := strings.TrimSpace(t.custom); c != "" {
-			labels = append(labels, c)
+			a.Custom = c
+			shown = append(append([]string(nil), shown...), c)
 		}
-		if len(labels) > 0 {
-			finish(t, strings.Join(labels, ", "), labels)
+		if len(shown) > 0 {
+			finish(t, strings.Join(shown, ", "), a)
 		}
 	}
 	switchTab := func(delta int) {
@@ -171,7 +167,7 @@ func (m *model) askKey(msg tea.KeyMsg) bool {
 	if d.onSubmit() {
 		switch msg.Type {
 		case tea.KeyEnter:
-			out := make([]string, len(d.tabs))
+			out := make([]tools.AskAnswer, len(d.tabs))
 			for i, t := range d.tabs {
 				if !t.done {
 					d.warn = fmt.Sprintf(m.tr("question %d is not answered yet"), i+1)
@@ -202,7 +198,7 @@ func (m *model) askKey(msg tea.KeyMsg) bool {
 			t.picked[i] = !t.picked[i]
 			return
 		}
-		finish(t, t.q.Options[i].Label, []string{t.q.Options[i].Label})
+		finish(t, t.q.Options[i].Label, tools.AskAnswer{Labels: []string{t.q.Options[i].Label}})
 	}
 	if d.editing {
 		switch msg.Type {
@@ -211,7 +207,7 @@ func (m *model) askKey(msg tea.KeyMsg) bool {
 			if t.q.Multiple {
 				confirm(t)
 			} else if c := strings.TrimSpace(t.custom); c != "" {
-				finish(t, c, []string{c})
+				finish(t, c, tools.AskAnswer{Custom: c})
 			}
 		case tea.KeyEsc:
 			d.editing = false
@@ -372,7 +368,7 @@ func (m *model) askSummary(d *askDialog, inner int) []string {
 		rows = append(rows, wrapHanging(fmt.Sprintf("%d. ", i+1), t.q.Prompt, inner))
 		ans := textMutedStyle.Render(m.tr("not answered yet"))
 		if t.done {
-			ans = accentFgStyle.Render(t.answer)
+			ans = accentFgStyle.Render(t.shown)
 		}
 		rows = append(rows, wrapHanging("   "+chromeGlyphs("→")+" ", ans, inner))
 	}

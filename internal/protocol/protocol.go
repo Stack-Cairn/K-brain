@@ -210,6 +210,9 @@ type ToolRunInfo struct {
 	// stopped. Only in tool.result events; history keeps the same explanation
 	// in the output text alone.
 	SandboxDenial *SandboxDenial `json:"sandbox_denial,omitempty"`
+	// QuestionAnswers is what the user answered a question or AskUserQuestion
+	// call, one entry per question, as question.resolved reports it.
+	QuestionAnswers []QuestionAnswer `json:"question_answers,omitempty"`
 }
 
 // SandboxDenial is a hint recognized from a failed command's output. Nothing
@@ -431,12 +434,12 @@ type QuestionRequest struct {
 	Questions  []Question `json:"questions"`
 }
 
-type QuestionAnswer struct {
-	Prompt        string `json:"prompt,omitempty"`
-	QuestionID    string `json:"question_id"`
-	SelectedLabel string `json:"selected_label"`
-	Custom        bool   `json:"custom,omitempty"`
-}
+// QuestionAnswer is one answer in a question answer request, a
+// question.resolved event and a question tool call's history. A request sends
+// selected_label (an option's label, or with custom the user's own words) or,
+// where capabilities.question_selected_labels is 1, selected_labels (the chosen
+// options; with custom, selected_label adds the user's own words).
+type QuestionAnswer = ai.QuestionAnswer
 
 type QuestionAnswerRequest struct {
 	ConversationID string           `json:"conversation_id"`
@@ -857,7 +860,7 @@ func FromAIMessage(m ai.Message) Message {
 		}
 	}
 	for _, tc := range m.ToolCalls {
-		out.ToolCalls = append(out.ToolCalls, ToolCall{ID: tc.ID, Name: tc.Function.Name, Arguments: json.RawMessage(tc.Function.Arguments), ToolRunInfo: ToolRunInfo{ExitCode: tc.ExitStatus, TimedOut: tc.TimedOut, DurationMs: tc.DurationMs}})
+		out.ToolCalls = append(out.ToolCalls, ToolCall{ID: tc.ID, Name: tc.Function.Name, Arguments: json.RawMessage(tc.Function.Arguments), ToolRunInfo: ToolRunInfo{ExitCode: tc.ExitStatus, TimedOut: tc.TimedOut, DurationMs: tc.DurationMs, QuestionAnswers: tc.QuestionAnswers}})
 	}
 	return out
 }

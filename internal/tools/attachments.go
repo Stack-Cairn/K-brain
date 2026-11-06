@@ -29,6 +29,9 @@ type Result struct {
 	// SandboxDenial is set when the OS sandbox most likely caused a shell
 	// command to fail; the same explanation is appended to Text.
 	SandboxDenial *sandbox.Denial
+	// QuestionAnswers is what the user answered a question tool call, one
+	// entry per question (see ReportQuestionAnswers). Display only.
+	QuestionAnswers []ai.QuestionAnswer
 }
 
 type attachmentKey struct{}
