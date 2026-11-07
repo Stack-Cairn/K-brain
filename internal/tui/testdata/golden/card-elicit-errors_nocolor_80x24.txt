@@ -1,0 +1,24 @@
+▌❯ add a --json flag to `kn status`
+
+╭─ ? tracker asks for input ───────────────────────────────────────────────────╮
+│ receives your answers.                                                       │
+│                                                                              │
+│ Sign in to the issue tracker to file the report.                             │
+│                                                                              │
+│ ⚠ This form asks for what looks like a secret (Password). MCP servers must   │
+│   not ask for secrets: answer only if you trust tracker.                     │
+│                                                                              │
+│ ❯ User name *: a█                                                            │
+│     ! must be at least 2 characters                                          │
+│ ⋯ 2-10 / 17 · PgUp/PgDn                                                      │
+│                                                                              │
+│   Accept · Decline · Cancel                                                  │
+│ type to edit · ↑↓ fields · Enter next · Esc cancels                          │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+  ❯ Ask k-brain anything…  / commands · Shift+Tab mode · Ctrl+P menu
+  [Always allow]                                            kimi-k3-fast · ✦ off

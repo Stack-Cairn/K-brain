@@ -12,12 +12,13 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Stack-Cairn/K-brain/internal/elicit"
 	"github.com/Stack-Cairn/K-brain/internal/tools"
 )
 
 // The card goldens pin each interactive card in every golden mode and size:
 // short and long commands, the three edit preview states, the single and
-// multi-question ask, and the plan review. Regenerate with:
+// multi-question ask, the plan review and an MCP server's form. Regenerate with:
 //
 //	go test ./internal/tui -run TestCardGoldens -update-golden
 
@@ -85,6 +86,25 @@ var cardScenes = []struct {
 		}}, reply: make(chan askAnswer, 1)})
 		// Answer the first question so the tab bar shows each state.
 		m.askKey(keyRunes("1"))
+	}},
+	{"elicit-form", func(m *model) {
+		m.Update(elicitRequest{req: goldenElicitRequest(), reply: make(chan elicit.Response, 1)})
+		typeInto(m, "ada")
+		m.elicitKey(tea.KeyMsg{Type: tea.KeyEnter})
+		typeInto(m, "hunter2")
+	}},
+	{"elicit-errors", func(m *model) {
+		m.Update(elicitRequest{req: goldenElicitRequest(), reply: make(chan elicit.Response, 1)})
+		typeInto(m, "a")
+		for range 3 {
+			m.elicitKey(tea.KeyMsg{Type: tea.KeyDown})
+		}
+		typeInto(m, "99")
+		m.elicitKey(tea.KeyMsg{Type: tea.KeyShiftTab})
+		for m.cards.elicit.focus != len(m.cards.elicit.inputs) {
+			m.elicitKey(tea.KeyMsg{Type: tea.KeyTab})
+		}
+		m.elicitKey(tea.KeyMsg{Type: tea.KeyEnter}) // Accept: refused, focus on User name
 	}},
 	{"plan", func(m *model) {
 		m.setPermissionMode("plan")

@@ -100,6 +100,7 @@ func (m *model) installAskHook() {
 		}
 	}
 	m.installPlanHook()
+	m.installElicitHook()
 }
 
 func (m *model) askKey(msg tea.KeyMsg) bool {

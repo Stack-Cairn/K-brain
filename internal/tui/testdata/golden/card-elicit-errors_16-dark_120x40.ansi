@@ -1,0 +1,40 @@
+[1;96m▌[0m[1;96m❯[0m add a --json flag to `kn status`                                                                                     [0m
+
+[96m╭[0m[96m─[0m [1;96m?[0m [1m[96mtracker[0m asks for input[0m [96m───────────────────────────────────────────────────────────────────────────────────────────[0m[96m╮[0m
+[96m│[0m [37mMCP server tracker asks while running its tool login; only this server receives your answers.[0m                        [96m│[0m
+[96m│[0m                                                                                                                      [96m│[0m
+[96m│[0m [1mSign in to the issue tracker to file the report.[0m                                                                     [96m│[0m
+[96m│[0m                                                                                                                      [96m│[0m
+[96m│[0m [93m⚠ This form asks for what looks like a secret (Password). MCP servers must not ask for secrets: answer only if you[0m   [96m│[0m
+[96m│[0m [93m  trust tracker.[0m                                                                                                     [96m│[0m
+[96m│[0m                                                                                                                      [96m│[0m
+[96m│[0m [96m❯[0m [1mUser name *[0m[37m: [0ma█                                                                                                    [96m│[0m
+[96m│[0m [91m    ! must be at least 2 characters[0m                                                                                  [96m│[0m
+[96m│[0m   Password *[37m: [0m[90mempty[0m                                                                                                  [96m│[0m
+[96m│[0m [91m    ! is required[0m                                                                                                    [96m│[0m
+[96m│[0m   Plan[37m: [0m[96mFree[0m                                                                                                         [96m│[0m
+[96m│[0m   Seats *[37m: [0m99                                                                                                        [96m│[0m
+[96m│[0m [91m    ! must be at most 50[0m                                                                                             [96m│[0m
+[96m│[0m   Email me[37m: [0m[✓] yes                                                                                                  [96m│[0m
+[96m│[0m   Topics[37m: [0m[ ] news  [ ] billing                                                                                      [96m│[0m
+[96m│[0m                                                                                                                      [96m│[0m
+[96m│[0m   [90mAccept[0m[37m · [0m[90mDecline[0m[37m · [0m[90mCancel[0m                                                                                          [96m│[0m
+[96m│[0m [37mtype to edit · ↑↓ fields · Enter next · Esc cancels[0m                                                                  [96m│[0m
+[96m╰[0m[96m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m[96m╯[0m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[90m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  [1;96m❯ [0m[7mA[0m[90msk k-brain anything…  / commands · Shift+Tab mode · Ctrl+P menu[0m                                                    [0m
+  [101m [0m[1;30;101mAlways allow[0m[101m [0m                                                                                    [37mkimi-k3-fast[0m[90m · [0m[1;96m✦ off[0m
