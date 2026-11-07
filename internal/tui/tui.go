@@ -355,6 +355,7 @@ func Run(cfg *config.Config, modelName, provName, sysPrompt, resumeID string, ca
 		servers := mcp.FromConfigMap(cfg.MCPServers)
 		if len(servers) > 0 {
 			m.mcpMgr = mcp.NewManager(servers)
+			m.mcpMgr.EnableElicitation()
 			m.mcpMgr.SetOnChange(m.mcpOnChange())
 			m.mcpMgr.Start(context.Background())
 			ag.SetMCPTools(m.mcpMgr.Tools())
@@ -994,6 +995,10 @@ func (m *model) Update(msg tea.Msg) (_ tea.Model, statusCmd tea.Cmd) {
 		if m.askDialog != nil && m.askDialog.reply == msg.reply {
 			m.askDialog = nil
 		}
+		return m, nil
+
+	case elicitRequest, elicitClose:
+		m.elicitMsg(msg)
 		return m, nil
 
 	case planRequest, planClose:

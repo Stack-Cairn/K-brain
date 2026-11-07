@@ -194,6 +194,8 @@ func (m *model) notifyQuestion() {
 	body := "Question waiting"
 	if d := m.askDialog; d != nil && d.req.Question != "" {
 		body += ": " + d.req.Question
+	} else if d == nil && m.elicitOpen() {
+		body = "Form waiting from MCP server " + plainText(m.cards.elicit.req.Server, false)
 	}
 	m.status().note.notify(m.notifyTitle(), body)
 }
@@ -210,7 +212,7 @@ func (m *model) windowTitle(now time.Time) string {
 	}
 	t := "kn · " + notifyText(name)
 	switch {
-	case m.permDialog != nil || m.askDialog != nil:
+	case m.permDialog != nil || m.askDialog != nil || m.elicitOpen():
 		return glyphs.ToolQueued + " " + t
 	case m.busy:
 		frames := glyphs.Spinner

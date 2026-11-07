@@ -205,7 +205,7 @@ func (m *model) transcriptMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd, bool) {
 // viewerShown reports whether the viewer has the screen: it is open and no
 // dialog that needs an answer (approval, question, interactive command) is.
 func (m *model) viewerShown() bool {
-	return m.tx != nil && m.tx.viewer != nil && m.permDialog == nil && m.askDialog == nil && m.iactive == nil
+	return m.tx != nil && m.tx.viewer != nil && m.permDialog == nil && m.askDialog == nil && !m.elicitOpen() && m.iactive == nil
 }
 
 func rowsLabel(n int) string {

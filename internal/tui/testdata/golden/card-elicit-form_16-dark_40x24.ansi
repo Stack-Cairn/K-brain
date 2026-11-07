@@ -1,0 +1,24 @@
+[1;96m▌[0m[1;96m❯[0m add a --json flag to `kn status`     [0m
+
+[96m╭[0m[96m─[0m [1;96m?[0m [1m[96mtracker[0m asks for input[0m [96m───────────[0m[96m╮[0m
+[96m│[0m                                      [96m│[0m
+[96m│[0m [93m⚠ This form asks for what looks like[0m [96m│[0m
+[96m│[0m [93m  a secret (Password). MCP servers[0m   [96m│[0m
+[96m│[0m [93m  must not ask for secrets: answer[0m   [96m│[0m
+[96m│[0m [93m  only if you trust tracker.[0m         [96m│[0m
+[96m│[0m                                      [96m│[0m
+[96m│[0m   User name *[37m: [0mada                   [96m│[0m
+[96m│[0m [96m❯[0m [1mPassword *[0m[37m: [0m•••••••█               [96m│[0m
+[96m│[0m [37m⋯ 7-14 / 18 · PgUp/PgDn[0m              [96m│[0m
+[96m│[0m                                      [96m│[0m
+[96m│[0m   [90mAccept[0m[37m · [0m[90mDecline[0m[37m · [0m[90mCancel[0m          [96m│[0m
+[96m│[0m [37mtype to edit · ↑↓ fields · Enter[0m     [96m│[0m
+[96m│[0m [37mnext · Esc cancels[0m                   [96m│[0m
+[96m╰[0m[96m──────────────────────────────────────[0m[96m╯[0m
+
+
+
+
+[90m────────────────────────────────────────[0m
+  [1;96m❯ [0m[7mA[0m[90msk k-brain anything…  / commands ·[0m [0m
+  [101m [0m[1;30;101mAlways allow[0m[101m [0m    [37mkimi-k3-fast[0m[90m · [0m[1;96m✦ off[0m

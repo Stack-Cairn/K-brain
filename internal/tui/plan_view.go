@@ -20,6 +20,8 @@ type cardState struct {
 	// plan returns to it.
 	prePlan string
 	plan    *planDialog
+	// elicit is an MCP server's form (elicit_card.go).
+	elicit *elicitDialog
 }
 
 func (m *model) cardsState() *cardState {

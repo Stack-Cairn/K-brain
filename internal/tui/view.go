@@ -119,6 +119,8 @@ var chromeSectionList = []chromeSection{
 	{"usage", (*model).usageCardRows},
 	// The plan review card (plan_view.go).
 	{"plan", (*model).planRows},
+	// An MCP server's form (elicit_card.go).
+	{"elicit", (*model).elicitRows},
 }
 
 func (m *model) chromeSections() []chromeSection { return chromeSectionList }
@@ -337,6 +339,7 @@ func (m *model) viewBody() string {
 		b.WriteString("\n" + m.askView() + "\n")
 	}
 	b.WriteString(m.planSection())
+	b.WriteString(m.elicitSection())
 	b.WriteString(m.todoPaneSection())
 	b.WriteString(m.usageCardBlock())
 	if m.busy {

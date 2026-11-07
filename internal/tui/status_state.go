@@ -180,7 +180,7 @@ func (m *model) statusAfter(cmd tea.Cmd) tea.Cmd {
 		st.beginTurn(m, now)
 	}
 
-	perm, ask := m.permDialog != nil, m.askDialog != nil
+	perm, ask := m.permDialog != nil, m.askDialog != nil || m.elicitOpen()
 	switch {
 	case st.wasBusy && !m.busy:
 		m.notifyTurnDone()

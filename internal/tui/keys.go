@@ -29,6 +29,10 @@ func (m *model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.planKey(msg)
 		return m, nil
 	}
+	if m.elicitOpen() {
+		m.elicitKey(msg)
+		return m, nil
+	}
 	if m.palette != nil {
 		return m.paletteKey(msg)
 	}

@@ -286,7 +286,7 @@ MCP 服务器可以在自己的工具运行期间请用户填写一张表单（M
 
 **记录与日志。** 事件日志和历史只保存去掉敏感字段后的回答，完整回答只在内存中交给 MCP 服务器。K-brain 的 MCP 日志只写服务器名、工具名、`action` 与 `reason`，不写任何字段值。服务器自己在工具结果里回显的内容不受此限制。
 
-ACP 不声明这一能力，服务器不会经 ACP 发起征询。用户侧说明见 [Hooks 与 MCP](user-guide/11-hooks-mcp.md)。
+`kn` 的 TUI 同样声明这一能力，用一张卡片显示表单（标题是服务器名，敏感字段遮住输入，校验规则同上，没有超时）。ACP 不声明，服务器不会经 ACP 发起征询。用户侧说明见 [Hooks 与 MCP](user-guide/11-hooks-mcp.md)。
 
 ### 记住的权限规则（`capabilities.permission_rules: 1`、`readonly_auto_allow: 1`）
 

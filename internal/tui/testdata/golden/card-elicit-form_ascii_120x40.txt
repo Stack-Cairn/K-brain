@@ -1,0 +1,40 @@
+|> add a --json flag to `kn status`
+
++- ? tracker asks for input -------------------------------------------------------------------------------------------+
+| MCP server tracker asks while running its tool login; only this server receives your answers.                        |
+|                                                                                                                      |
+| Sign in to the issue tracker to file the report.                                                                     |
+|                                                                                                                      |
+| ! This form asks for what looks like a secret (Password). MCP servers must not ask for secrets: answer only if you   |
+|   trust tracker.                                                                                                     |
+|                                                                                                                      |
+|   User name *: ada                                                                                                   |
+| > Password *: *******_                                                                                               |
+|   Plan: Free                                                                                                         |
+|   Seats *: 1-50                                                                                                      |
+|   Email me: [v] yes                                                                                                  |
+|   Topics: [ ] news  [ ] billing                                                                                      |
+|                                                                                                                      |
+|   Accept - Decline - Cancel                                                                                          |
+| type to edit - Up/Down fields - Enter next - Esc cancels                                                             |
++----------------------------------------------------------------------------------------------------------------------+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+------------------------------------------------------------------------------------------------------------------------
+  > Ask k-brain anything...  / commands - Shift+Tab mode - Ctrl+P menu
+   Always allow                                                                                     kimi-k3-fast - * off
