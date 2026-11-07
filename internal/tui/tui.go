@@ -176,6 +176,11 @@ type model struct {
 
 	pendingForkID string
 
+	// frag puts mouse reports cut in two by the input reader back together;
+	// fragFilter turns that on, in a real terminal session.
+	frag       mouseFrag
+	fragFilter bool
+
 	mouseOn  bool
 	sel      *selection
 	selDragX int
@@ -456,6 +461,7 @@ func Run(cfg *config.Config, modelName, provName, sysPrompt, resumeID string, ca
 	go func() { p.Send(cfgSyncTick{}) }()
 	go func() { p.Send(scheduleTickMsg{}) }()
 
+	m.fragFilter = true
 	tuiRunning = true
 	_, err = p.Run()
 	m.stopStatus()
@@ -1010,11 +1016,18 @@ func (m *model) Update(msg tea.Msg) (_ tea.Model, statusCmd tea.Cmd) {
 		m.planMsg(msg)
 		return m, nil
 
+	case mouseFragFlush:
+		_, cmd := m.mouseFragment(msg)
+		return m, cmd
+
 	case selScrollTick:
 
 		return m, m.selEdgeScroll()
 
 	case tea.KeyMsg:
+		if handled, cmd := m.mouseFragment(msg); handled {
+			return m, cmd
+		}
 		if _, _, ok := m.composerSelection(); ok && msg.Type == tea.KeyCtrlC && !m.busy {
 			// Ctrl+C copies a selected part of the draft and keeps it selected.
 			m.sel = nil
@@ -1130,10 +1143,12 @@ func (m *model) Update(msg tea.Msg) (_ tea.Model, statusCmd tea.Cmd) {
 		return m.onToolView(msg)
 
 	case promptEditedMsg:
+		m.restoreTerminalModes()
 		m.applyPromptEdit(msg)
 		return m, nil
 
 	case brainEditedMsg:
+		m.restoreTerminalModes()
 		if msg.err != nil {
 			m.append(errStyle.Render("/brain: editor failed: " + msg.err.Error()))
 		} else if n := len(config.BrainInstructions()); n > 0 {
@@ -1144,6 +1159,7 @@ func (m *model) Update(msg tea.Msg) (_ tea.Model, statusCmd tea.Cmd) {
 		return m, nil
 
 	case systemEditedMsg:
+		m.restoreTerminalModes()
 		if msg.err != nil {
 			m.append(errStyle.Render("/system: editor failed: " + msg.err.Error()))
 		} else if n := len(config.SystemInstructions()); n > 0 {
