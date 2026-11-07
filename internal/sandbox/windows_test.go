@@ -477,7 +477,7 @@ func checkGitRedirectsProtected(t *testing.T, p *Policy, root string, files, dir
 	t.Helper()
 	before := map[string]string{}
 	for _, path := range append(append([]string(nil), files...), dirs...) {
-		if !slices.Contains(p.Protected, path) {
+		if !slices.ContainsFunc(p.Protected, func(protected string) bool { return encloses(protected, path) }) {
 			t.Fatalf("%s is not protected: %v", path, p.Protected)
 		}
 		before[path] = entryState(path)
@@ -539,6 +539,9 @@ func TestWindowsGitInsideSandbox(t *testing.T) {
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	for key, value := range map[string]string{"GIT_AUTHOR_NAME": "sandbox", "GIT_AUTHOR_EMAIL": "sandbox@example.invalid", "GIT_COMMITTER_NAME": "sandbox", "GIT_COMMITTER_EMAIL": "sandbox@example.invalid"} {
+		t.Setenv(key, value)
+	}
 	gitBin, err := exec.LookPath("git")
 	if err != nil {
 		t.Skip("git is not installed")
@@ -547,7 +550,6 @@ func TestWindowsGitInsideSandbox(t *testing.T) {
 	gitRepoWithSubmoduleAndWorktree(t, base)
 	root := filepath.Join(base, "repo")
 	p := workspacePolicy(root)
-	identity := []string{"GIT_AUTHOR_NAME=sandbox", "GIT_AUTHOR_EMAIL=sandbox@example.invalid", "GIT_COMMITTER_NAME=sandbox", "GIT_COMMITTER_EMAIL=sandbox@example.invalid"}
 	if err := os.WriteFile(filepath.Join(root, "file.txt"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -571,7 +573,6 @@ func TestWindowsGitInsideSandbox(t *testing.T) {
 	} {
 		cmd := exec.Command(gitBin, step.args...)
 		cmd.Dir = filepath.Join(root, step.dir)
-		cmd.Env = identity
 		if out, code := sandboxed(t, p, cmd); code != 0 {
 			t.Fatalf("git %v in %q exited %d: %s", step.args, step.dir, code, out)
 		}
