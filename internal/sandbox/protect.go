@@ -14,8 +14,11 @@ import (
 // ProtectedPaths are the paths under a workspace that a later, unsandboxed
 // session or the user's own git trusts without asking: project instructions
 // and prompts, and the repository's hooks and configuration (which can name a
-// hooks directory, an fsmonitor or a pager to run). Paths that do not exist yet
-// are listed too; Seatbelt keeps them from being created.
+// hooks directory, an fsmonitor or a pager to run), together with the files
+// that tell git where to read those from (commondir, gitdir files) or which
+// configured drivers to run (info/attributes). Paths that do not exist yet are
+// listed too; Seatbelt and the Landlock supervisor keep them from being
+// created.
 func ProtectedPaths(root string) []string {
 	paths := []string{filepath.Join(root, ".liveagent"), filepath.Join(root, ".k-brain")}
 	return appendNew(paths, gitProtectedPaths(root)...)
@@ -51,6 +54,31 @@ func gitProtectedPaths(root string) []string {
 	}
 	paths = appendNew(paths, filepath.Join(common, "hooks"))
 	paths = appendNew(paths, configs...)
+	// commondir names the directory git reads config, hooks and refs from;
+	// written into a plain repository it would redirect them to a directory
+	// of the command's choosing. info/attributes can assign any filter, diff
+	// or merge driver the user's global configuration defines to a path.
+	paths = appendNew(paths, filepath.Join(gitDir, "commondir"), filepath.Join(common, "info", "attributes"))
+	// The other linked worktrees read their commondir and config.worktree
+	// from the common directory's worktrees/<name>.
+	paths = appendNew(paths, worktreeAdminPaths(common)...)
+	// Submodules keep their git directories under modules/; git commands in
+	// the superproject (status, diff, submodule update) run git in them.
+	modules := submoduleGitDirs(common)
+	moduleTops := map[string]string{}
+	for _, dir := range modules {
+		paths = appendNew(paths,
+			filepath.Join(dir, "config"), filepath.Join(dir, "hooks"),
+			filepath.Join(dir, "commondir"), filepath.Join(dir, "info", "attributes"))
+		configs = append(configs, filepath.Join(dir, "config"))
+		if top := readGitConfig(filepath.Join(dir, "config")).worktree; top != "" {
+			moduleTops[filepath.Join(dir, "config")] = expandGitPath(top, dir)
+		}
+	}
+	// A submodule's .git file names its git directory.
+	for _, file := range submoduleGitFiles(root, moduleTops) {
+		paths = appendNew(paths, file)
+	}
 
 	// core.hooksPath can come from the repository, an included file or the
 	// user's global configuration; a relative value is taken from the
@@ -67,7 +95,13 @@ func gitProtectedPaths(root string) []string {
 	}
 	hooks, includes := scanGitConfigs(append(configs, global...))
 	for _, hook := range hooks {
-		paths = appendNew(paths, expandGitPath(hook, root))
+		base := root
+		if top, ok := moduleTops[hook.file]; ok {
+			// A submodule's relative core.hooksPath is taken from the
+			// submodule's top level.
+			base = top
+		}
+		paths = appendNew(paths, expandGitPath(hook.value, base))
 	}
 	// An included file can set core.hooksPath on the next run.
 	return appendNew(paths, includes...)
@@ -94,37 +128,148 @@ func readGitFile(path string) string {
 	return filepath.Clean(dir)
 }
 
+// gitHooksPath is a core.hooksPath value and the top-level configuration file
+// it was read from (directly or through an include).
+type gitHooksPath struct{ value, file string }
+
 // scanGitConfigs reads the core.hooksPath values and the include paths of the
 // given files, following includes a few levels deep. Every includeIf counts:
 // protecting a file whose condition does not match costs nothing.
-func scanGitConfigs(files []string) (hooks, includes []string) {
+func scanGitConfigs(files []string) (hooks []gitHooksPath, includes []string) {
 	seen := map[string]bool{}
-	var visit func(file string, depth int)
-	visit = func(file string, depth int) {
+	var visit func(top, file string, depth int)
+	visit = func(top, file string, depth int) {
 		if depth > 5 || seen[file] {
 			return
 		}
 		seen[file] = true
 		values := readGitConfig(file)
-		hooks = append(hooks, values.hooksPaths...)
+		for _, value := range values.hooksPaths {
+			hooks = append(hooks, gitHooksPath{value: value, file: top})
+		}
 		for _, include := range values.includes {
 			include = expandGitPath(include, filepath.Dir(file))
 			includes = appendNew(includes, include)
-			visit(include, depth+1)
+			visit(top, include, depth+1)
 		}
 	}
 	for _, file := range files {
-		visit(file, 0)
+		visit(file, file, 0)
 	}
 	return hooks, includes
+}
+
+// Limits on the git directories listed at run start, so a huge or looping
+// tree cannot stall every command.
+const (
+	maxGitAdminDirs = 1000
+	maxModuleDepth  = 8
+)
+
+// worktreeAdminPaths lists commondir and config.worktree of every linked
+// worktree registered in the common directory when the run starts.
+func worktreeAdminPaths(common string) []string {
+	entries, err := os.ReadDir(filepath.Join(common, "worktrees"))
+	if err != nil {
+		return nil
+	}
+	var paths []string
+	for i, entry := range entries {
+		if i >= maxGitAdminDirs {
+			break
+		}
+		if !entry.IsDir() {
+			continue
+		}
+		dir := filepath.Join(common, "worktrees", entry.Name())
+		paths = append(paths, filepath.Join(dir, "commondir"), filepath.Join(dir, "config.worktree"))
+	}
+	return paths
+}
+
+// submoduleGitDirs lists the submodule git directories under common/modules
+// when the run starts, nested submodules included. A submodule's name may
+// contain slashes, so a directory that does not look like a git directory is
+// searched further.
+func submoduleGitDirs(common string) []string {
+	var dirs []string
+	var walk func(dir string, depth int)
+	walk = func(dir string, depth int) {
+		if depth > maxModuleDepth || len(dirs) >= maxGitAdminDirs {
+			return
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			return
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() || len(dirs) >= maxGitAdminDirs {
+				continue
+			}
+			path := filepath.Join(dir, entry.Name())
+			if isGitDir(path) {
+				dirs = append(dirs, path)
+				walk(filepath.Join(path, "modules"), depth+1)
+				continue
+			}
+			walk(path, depth+1)
+		}
+	}
+	walk(filepath.Join(common, "modules"), 0)
+	return dirs
+}
+
+// isGitDir reports whether dir looks like a git directory: a HEAD file and an
+// objects directory, or a commondir file (a linked worktree's).
+func isGitDir(dir string) bool {
+	if info, err := os.Lstat(filepath.Join(dir, "HEAD")); err != nil || !info.Mode().IsRegular() {
+		return false
+	}
+	if info, err := os.Lstat(filepath.Join(dir, "objects")); err == nil && info.IsDir() {
+		return true
+	}
+	_, err := os.Lstat(filepath.Join(dir, "commondir"))
+	return err == nil
+}
+
+// submoduleGitFiles lists the existing ".git" files of the workspace's
+// submodules: the paths in .gitmodules and the top levels the submodule git
+// directories name (core.worktree), which also covers nested submodules. A
+// path reached through a symlink below root is left out; it would make the
+// Linux backends refuse every run.
+func submoduleGitFiles(root string, tops map[string]string) []string {
+	candidates := []string{}
+	for _, path := range readGitConfig(filepath.Join(root, ".gitmodules")).submodulePaths {
+		candidates = append(candidates, filepath.Join(root, filepath.FromSlash(path)))
+	}
+	for _, top := range tops {
+		candidates = append(candidates, top)
+	}
+	var files []string
+	for _, top := range candidates {
+		file := filepath.Clean(filepath.Join(top, ".git"))
+		if !encloses(root, file) || symlinkBelow(root, file) != "" {
+			continue
+		}
+		if info, err := os.Lstat(file); err == nil && info.Mode().IsRegular() {
+			files = appendNew(files, file)
+		}
+	}
+	return files
 }
 
 type gitConfigValues struct {
 	hooksPaths []string
 	includes   []string
+	// worktree is core.worktree (a submodule's git directory names its top
+	// level with it).
+	worktree string
+	// submodulePaths are the submodule.<name>.path values of a .gitmodules
+	// file.
+	submodulePaths []string
 }
 
-// readGitConfig is a small reader for the two keys the sandbox cares about. It
+// readGitConfig is a small reader for the few keys the sandbox cares about. It
 // handles sections, subsections, comments and quoted values; anything it does
 // not understand is skipped.
 func readGitConfig(file string) gitConfigValues {
@@ -172,6 +317,10 @@ func readGitConfig(file string) gitConfigValues {
 			out.hooksPaths = append(out.hooksPaths, value)
 		case (section == "include" || section == "includeif") && key == "path":
 			out.includes = append(out.includes, value)
+		case section == "core" && key == "worktree":
+			out.worktree = value
+		case section == "submodule" && key == "path":
+			out.submodulePaths = append(out.submodulePaths, value)
 		}
 	}
 	return out

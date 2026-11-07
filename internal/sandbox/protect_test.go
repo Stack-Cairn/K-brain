@@ -48,6 +48,8 @@ func TestProtectedPathsPlainRepository(t *testing.T) {
 		filepath.Join(root, ".githooks"),
 		filepath.Join(root, ".gitconfig.local"),
 		filepath.Join(root, "tools", "hooks"),
+		filepath.Join(root, ".git", "commondir"),
+		filepath.Join(root, ".git", "info", "attributes"),
 	} {
 		if !slices.Contains(got, want) {
 			t.Errorf("ProtectedPaths lacks %s: %v", want, got)
@@ -72,6 +74,72 @@ func TestProtectedPathsLinkedWorktree(t *testing.T) {
 		filepath.Join(main, ".git", "config"),
 		filepath.Join(gitDir, "config.worktree"),
 	} {
+		if !slices.Contains(got, want) {
+			t.Errorf("ProtectedPaths lacks %s: %v", want, got)
+		}
+	}
+}
+
+func TestProtectedPathsSubmodulesAndWorktrees(t *testing.T) {
+	isolatedHome(t)
+	root := t.TempDir()
+	dotGit := filepath.Join(root, ".git")
+	writeFile(t, filepath.Join(dotGit, "config"), "[core]\n")
+	writeFile(t, filepath.Join(root, ".gitmodules"), "[submodule \"lib\"]\n\tpath = vendor/lib\n\turl = ../lib\n")
+	gitDir := func(dir, config string) {
+		writeFile(t, filepath.Join(dir, "HEAD"), "ref: refs/heads/main\n")
+		writeFile(t, filepath.Join(dir, "config"), config)
+		if err := os.MkdirAll(filepath.Join(dir, "objects"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	lib := filepath.Join(dotGit, "modules", "lib")
+	gitDir(lib, "[core]\n\tworktree = ../../../vendor/lib\n\thooksPath = tools/hooks\n")
+	writeFile(t, filepath.Join(root, "vendor", "lib", ".git"), "gitdir: ../../.git/modules/lib\n")
+	// A nested submodule, and one whose name contains a slash.
+	nested := filepath.Join(lib, "modules", "inner")
+	gitDir(nested, "[core]\n\tworktree = ../../../../../vendor/lib/inner\n")
+	writeFile(t, filepath.Join(root, "vendor", "lib", "inner", ".git"), "gitdir: ../../../.git/modules/lib/modules/inner\n")
+	slashed := filepath.Join(dotGit, "modules", "group", "tool")
+	gitDir(slashed, "[core]\n")
+	// A linked worktree registered in the main repository.
+	admin := filepath.Join(dotGit, "worktrees", "feature")
+	writeFile(t, filepath.Join(admin, "HEAD"), "ref: refs/heads/feature\n")
+	writeFile(t, filepath.Join(admin, "commondir"), "../..\n")
+	got := ProtectedPaths(root)
+	want := []string{
+		filepath.Join(dotGit, "commondir"),
+		filepath.Join(dotGit, "info", "attributes"),
+		filepath.Join(admin, "commondir"),
+		filepath.Join(admin, "config.worktree"),
+		filepath.Join(root, "vendor", "lib", ".git"),
+		filepath.Join(root, "vendor", "lib", "inner", ".git"),
+		filepath.Join(root, "vendor", "lib", "tools", "hooks"),
+	}
+	for _, dir := range []string{lib, nested, slashed} {
+		want = append(want, filepath.Join(dir, "config"), filepath.Join(dir, "hooks"), filepath.Join(dir, "commondir"), filepath.Join(dir, "info", "attributes"))
+	}
+	for _, path := range want {
+		if !slices.Contains(got, path) {
+			t.Errorf("ProtectedPaths lacks %s: %v", path, got)
+		}
+	}
+	for _, path := range []string{filepath.Join(dotGit, "modules"), filepath.Join(dotGit, "modules", "group"), filepath.Join(dotGit, "worktrees")} {
+		if slices.Contains(got, path) {
+			t.Errorf("%s is protected wholesale: %v", path, got)
+		}
+	}
+}
+
+func TestProtectedPathsLinkedWorktreeCommondir(t *testing.T) {
+	isolatedHome(t)
+	main := t.TempDir()
+	worktree := t.TempDir()
+	gitDir := filepath.Join(main, ".git", "worktrees", "feature")
+	writeFile(t, filepath.Join(gitDir, "commondir"), "../..\n")
+	writeFile(t, filepath.Join(worktree, ".git"), "gitdir: "+gitDir+"\n")
+	got := ProtectedPaths(worktree)
+	for _, want := range []string{filepath.Join(gitDir, "commondir"), filepath.Join(main, ".git", "info", "attributes")} {
 		if !slices.Contains(got, want) {
 			t.Errorf("ProtectedPaths lacks %s: %v", want, got)
 		}
@@ -436,4 +504,194 @@ func copyTestBinary(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return path
+}
+
+// gitRepoWithSubmoduleAndWorktree builds, with the real git and outside the
+// sandbox, a repository under root with a submodule at sub/ and a linked
+// worktree at wt/, so the git directories hold what git itself writes.
+func gitRepoWithSubmoduleAndWorktree(t *testing.T, root string) {
+	t.Helper()
+	gitBin, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("git is not installed")
+	}
+	run := func(dir string, args ...string) {
+		t.Helper()
+		cmd := exec.Command(gitBin, append([]string{"-c", "protocol.file.allow=always", "-c", "init.defaultBranch=main"}, args...)...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	upstream := filepath.Join(root, "upstream")
+	run(root, "init", "-q", upstream)
+	run(upstream, "commit", "-q", "--allow-empty", "-m", "lib")
+	repo := filepath.Join(root, "repo")
+	run(root, "init", "-q", repo)
+	run(repo, "commit", "-q", "--allow-empty", "-m", "init")
+	// A file:// URL keeps git from hard-linking the clone's files.
+	url := "file://" + filepath.ToSlash(upstream)
+	if runtime.GOOS == "windows" {
+		url = "file:///" + filepath.ToSlash(upstream)
+	}
+	run(repo, "submodule", "add", "-q", url, "sub")
+	run(repo, "commit", "-q", "-m", "add sub")
+	run(repo, "worktree", "add", "-q", "wt", "-b", "feature")
+	// Entries git does not create by itself, harmless as written: an empty
+	// attributes file and a worktree configuration git ignores without
+	// extensions.worktreeConfig.
+	writeFile(t, filepath.Join(repo, ".git", "info", "attributes"), "# none\n")
+	writeFile(t, filepath.Join(repo, ".git", "worktrees", "wt", "config.worktree"), "")
+	writeFile(t, filepath.Join(repo, ".git", "modules", "sub", "hooks", "pre-commit"), "#!/bin/sh\nexit 0\n")
+}
+
+// entryState describes a path for before/after comparison: its type and its
+// content, link target or (for a directory) its files' contents.
+func entryState(path string) string {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return "missing"
+	}
+	switch {
+	case info.Mode()&os.ModeSymlink != 0:
+		target, _ := os.Readlink(path)
+		return "symlink:" + target
+	case info.IsDir():
+		var b strings.Builder
+		b.WriteString("dir")
+		_ = filepath.WalkDir(path, func(file string, entry os.DirEntry, err error) error {
+			if err == nil && file != path {
+				rel, _ := filepath.Rel(path, file)
+				b.WriteString("|" + rel + "=" + entryState(file))
+			}
+			return nil
+		})
+		return b.String()
+	default:
+		data, _ := os.ReadFile(path)
+		return fmt.Sprintf("file:%o:%q", info.Mode().Perm(), data)
+	}
+}
+
+func TestLiveSandboxProtectsGitRedirects(t *testing.T) {
+	liveSandbox(t)
+	if runtime.GOOS == "windows" {
+		t.Skip("the Windows protected-path tests run the Windows helper")
+	}
+	if c := Probe(); !c.PathProtection {
+		t.Skip("this mechanism does not keep protected paths read-only here")
+	}
+	isolatedHome(t)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	for _, key := range []string{"GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"} {
+		t.Setenv(key, "sandbox")
+	}
+	for _, key := range []string{"GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"} {
+		t.Setenv(key, "sandbox@example.invalid")
+	}
+	base, err := canonicalPath(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	gitRepoWithSubmoduleAndWorktree(t, base)
+	root := filepath.Join(base, "repo")
+	p, err := ForRun(nil, RunRequest{Root: root, Network: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	existingFiles := []string{
+		".git/modules/sub/config",
+		".git/worktrees/wt/commondir",
+		".git/worktrees/wt/config.worktree",
+		".git/info/attributes",
+		"sub/.git",
+	}
+	existingDirs := []string{".git/modules/sub/hooks"}
+	// Missing entries: the main example of #171 and its submodule and
+	// worktree counterparts.
+	missing := []string{".git/commondir", ".git/modules/sub/commondir", ".git/modules/sub/info/attributes"}
+	for _, rel := range append(append(append([]string(nil), existingFiles...), existingDirs...), missing...) {
+		if !slices.Contains(p.Protected, filepath.Join(root, filepath.FromSlash(rel))) {
+			t.Fatalf("%s is not protected: %v", rel, p.Protected)
+		}
+	}
+	reserves := runtime.GOOS == "darwin" || Probe().Mechanism == mechanismLandlock
+	watched := append(append([]string(nil), existingFiles...), existingDirs...)
+	if reserves {
+		watched = append(watched, missing...)
+	}
+	before := map[string]string{}
+	for _, rel := range watched {
+		before[rel] = entryState(filepath.Join(root, filepath.FromSlash(rel)))
+	}
+	if before[".git/worktrees/wt/commondir"] == "missing" || before["sub/.git"] == "missing" {
+		t.Fatalf("git did not lay out the repository as expected: %v", before)
+	}
+	type attack struct{ name, script string }
+	var attacks []attack
+	for _, f := range existingFiles {
+		attacks = append(attacks,
+			attack{"write " + f, `printf '../../evil\n' > ` + f},
+			attack{"append " + f, `printf 'evil\n' >> ` + f},
+			attack{"delete " + f, `rm -f ` + f},
+			attack{"rename " + f, `mv ` + f + ` moved-entry`},
+			attack{"rename over " + f, `printf evil > evil-entry && mv -f evil-entry ` + f},
+			attack{"replace " + f + " with a symlink", `ln -sf ../evil ` + f},
+			attack{"delete and symlink " + f, `rm -f ` + f + `; ln -s ../evil ` + f},
+		)
+	}
+	for _, d := range existingDirs {
+		attacks = append(attacks,
+			attack{"write into " + d, `printf evil > ` + d + `/pre-commit`},
+			attack{"create in " + d, `printf evil > ` + d + `/post-checkout`},
+			attack{"delete " + d, `rm -rf ` + d},
+			attack{"rename " + d, `mv ` + d + ` moved-hooks && mkdir ` + d + ` && printf evil > ` + d + `/pre-commit`},
+			attack{"replace " + d + " with a symlink", `rm -rf ` + d + `; ln -s ../../../evil ` + d},
+		)
+	}
+	if reserves {
+		for _, f := range missing {
+			attacks = append(attacks,
+				attack{"create " + f, `printf '../../evil\n' > ` + f},
+				attack{"mkdir " + f, `mkdir -p ` + f},
+				attack{"symlink " + f, `ln -s ../evil ` + f},
+				attack{"rename into " + f, `printf '../../evil\n' > evil-entry && mv -f evil-entry ` + f},
+				attack{"hard link into " + f, `printf '../../evil\n' > evil-entry && ln evil-entry ` + f},
+			)
+		}
+	}
+	for _, a := range attacks {
+		out, _ := confinedRun(t, p, a.script)
+		for _, rel := range watched {
+			if now := entryState(filepath.Join(root, filepath.FromSlash(rel))); now != before[rel] {
+				t.Fatalf("%s changed %s:\nbefore %s\nafter  %s\noutput %s", a.name, rel, before[rel], now, out)
+			}
+		}
+	}
+	// Ordinary git use inside the sandbox still works: commits in the
+	// superproject, the submodule and the linked worktree, a branch, a status
+	// that recurses into the submodule and a new worktree.
+	for _, script := range []string{
+		`git status --porcelain >/dev/null`,
+		`printf x > file.txt && git add file.txt && git commit -q -m one`,
+		`git checkout -q -b topic && printf y >> file.txt && git commit -q -am two && git checkout -q main`,
+		`git branch -q other && git branch --list other | grep -q other`,
+		`cd sub && printf s > s.txt && git add s.txt && git commit -q -m sub`,
+		`cd wt && printf w > w.txt && git add w.txt && git commit -q -m wt`,
+		`git worktree add -q wt2 -b feature2 && test -f wt2/.git`,
+	} {
+		if out, err := confinedRun(t, p, script); err != nil {
+			t.Fatalf("ordinary git use failed: %s: %v\n%s", script, err, out)
+		}
+	}
+	for _, rel := range watched {
+		if now := entryState(filepath.Join(root, filepath.FromSlash(rel))); now != before[rel] {
+			t.Fatalf("ordinary git use changed %s:\nbefore %s\nafter  %s", rel, before[rel], now)
+		}
+	}
+	cmd := exec.Command("git", "rev-parse", "--git-common-dir")
+	cmd.Dir = root
+	if out, err := cmd.CombinedOutput(); err != nil || strings.TrimSpace(string(out)) != ".git" {
+		t.Fatalf("git outside the sandbox reads its common directory from %q (%v)", out, err)
+	}
 }

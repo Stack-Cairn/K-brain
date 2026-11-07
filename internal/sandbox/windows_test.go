@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -68,6 +69,12 @@ func runHelper(args []string) error {
 		return os.Rename(args[1], args[2])
 	case "remove":
 		return os.Remove(args[1])
+	case "symlink":
+		// Replace the path with a symlink to args[2].
+		if err := os.RemoveAll(args[1]); err != nil {
+			return err
+		}
+		return os.Symlink(args[2], args[1])
 	case "temp":
 		dir := os.Getenv("TEMP")
 		fmt.Println("TEMP=" + dir)
@@ -424,6 +431,150 @@ func TestWindowsProtectedPaths(t *testing.T) {
 	}
 	if out, ok := helper(t, p, "write", filepath.Join(root, ".git", "description")); !ok {
 		t.Fatalf("write to .git/description (not protected) failed: %s", out)
+	}
+}
+
+// gitRedirectLayout writes, without git, the files of a repository with a
+// submodule at sub/ and a linked worktree "wt" that tell git where to read
+// its configuration and hooks from, and returns the existing protected files
+// and directories among them.
+func gitRedirectLayout(t *testing.T, root string) (files, dirs []string) {
+	t.Helper()
+	dotGit := filepath.Join(root, ".git")
+	module := filepath.Join(dotGit, "modules", "sub")
+	admin := filepath.Join(dotGit, "worktrees", "wt")
+	for _, dir := range []string{filepath.Join(dotGit, "hooks"), filepath.Join(dotGit, "info"), filepath.Join(module, "objects"), filepath.Join(module, "hooks"), admin, filepath.Join(root, "sub")} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	contents := map[string]string{
+		filepath.Join(dotGit, "config"):              "[core]\n",
+		filepath.Join(dotGit, "info", "attributes"):  "# none\n",
+		filepath.Join(root, ".gitmodules"):           "[submodule \"sub\"]\n\tpath = sub\n",
+		filepath.Join(module, "HEAD"):                "ref: refs/heads/main\n",
+		filepath.Join(module, "config"):              "[core]\n\tworktree = ../../../sub\n",
+		filepath.Join(module, "hooks", "pre-commit"): "trusted",
+		filepath.Join(root, "sub", ".git"):           "gitdir: ../.git/modules/sub\n",
+		filepath.Join(admin, "HEAD"):                 "ref: refs/heads/wt\n",
+		filepath.Join(admin, "commondir"):            "../..\n",
+		filepath.Join(admin, "config.worktree"):      "",
+	}
+	for path, content := range contents {
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	files = []string{filepath.Join(dotGit, "info", "attributes"), filepath.Join(module, "config"), filepath.Join(module, "hooks", "pre-commit"),
+		filepath.Join(root, "sub", ".git"), filepath.Join(admin, "commondir"), filepath.Join(admin, "config.worktree")}
+	return files, []string{filepath.Join(module, "hooks")}
+}
+
+// checkGitRedirectsProtected tries to write, remove, rename, rename over and
+// replace with a symlink each existing redirect file, and to remove, rename
+// and fill each directory, then checks that nothing changed.
+func checkGitRedirectsProtected(t *testing.T, p *Policy, root string, files, dirs []string) {
+	t.Helper()
+	before := map[string]string{}
+	for _, path := range append(append([]string(nil), files...), dirs...) {
+		if !slices.Contains(p.Protected, path) {
+			t.Fatalf("%s is not protected: %v", path, p.Protected)
+		}
+		before[path] = entryState(path)
+	}
+	decoy := filepath.Join(root, "decoy")
+	if err := os.WriteFile(decoy, []byte("../../evil"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var attempts [][]string
+	for _, path := range files {
+		attempts = append(attempts,
+			[]string{"write", path},
+			[]string{"remove", path},
+			[]string{"rename", path, filepath.Join(root, "moved-entry")},
+			[]string{"rename", decoy, path},
+			[]string{"symlink", path, decoy},
+		)
+	}
+	for _, dir := range dirs {
+		attempts = append(attempts,
+			[]string{"write", filepath.Join(dir, "post-checkout")},
+			[]string{"remove", dir},
+			[]string{"rename", dir, filepath.Join(root, "moved-dir")},
+			[]string{"symlink", dir, root},
+		)
+	}
+	for _, attempt := range attempts {
+		if out, ok := helper(t, p, attempt...); ok {
+			t.Fatalf("%v succeeded: %s", attempt, out)
+		}
+		for path, state := range before {
+			if now := entryState(path); now != state {
+				t.Fatalf("%v changed %s: %s -> %s", attempt, path, state, now)
+			}
+		}
+	}
+	// A missing redirect file has no object to protect on Windows (documented):
+	// report what happens to the main example of issue #171.
+	commondir := filepath.Join(root, ".git", "commondir")
+	out, ok := helper(t, p, "write", commondir)
+	t.Logf("creating the missing .git/commondir (documented limitation): ok=%v %s", ok, out)
+	_ = os.Remove(commondir)
+}
+
+func TestWindowsProtectsGitRedirects(t *testing.T) {
+	isolateState(t)
+	root := workspace(t)
+	files, dirs := gitRedirectLayout(t, root)
+	p := workspacePolicy(root)
+	checkGitRedirectsProtected(t, p, root, files, dirs)
+}
+
+// TestWindowsGitInsideSandbox checks that ordinary git use still works at low
+// integrity with the redirect files protected.
+func TestWindowsGitInsideSandbox(t *testing.T) {
+	isolateState(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	gitBin, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("git is not installed")
+	}
+	base := workspace(t)
+	gitRepoWithSubmoduleAndWorktree(t, base)
+	root := filepath.Join(base, "repo")
+	p := workspacePolicy(root)
+	identity := []string{"GIT_AUTHOR_NAME=sandbox", "GIT_AUTHOR_EMAIL=sandbox@example.invalid", "GIT_COMMITTER_NAME=sandbox", "GIT_COMMITTER_EMAIL=sandbox@example.invalid"}
+	if err := os.WriteFile(filepath.Join(root, "file.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "sub", "s.txt"), []byte("s"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, step := range []struct {
+		dir  string
+		args []string
+	}{
+		{"", []string{"status", "--porcelain"}},
+		{"", []string{"add", "file.txt"}},
+		{"", []string{"commit", "-q", "-m", "one"}},
+		{"", []string{"checkout", "-q", "-b", "topic"}},
+		{"", []string{"checkout", "-q", "main"}},
+		{"", []string{"branch", "-q", "other"}},
+		{"sub", []string{"add", "s.txt"}},
+		{"sub", []string{"commit", "-q", "-m", "sub"}},
+		{"wt", []string{"commit", "-q", "--allow-empty", "-m", "wt"}},
+		{"", []string{"worktree", "add", "-q", "wt2", "-b", "feature2"}},
+	} {
+		cmd := exec.Command(gitBin, step.args...)
+		cmd.Dir = filepath.Join(root, step.dir)
+		cmd.Env = identity
+		if out, code := sandboxed(t, p, cmd); code != 0 {
+			t.Fatalf("git %v in %q exited %d: %s", step.args, step.dir, code, out)
+		}
 	}
 }
 

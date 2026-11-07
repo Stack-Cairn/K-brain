@@ -34,7 +34,7 @@
 
 保护生效时的已知限制：
 
-- 尚不存在的保护路径不能被创建（与 macOS 相同），因此在工作区根下 `git init` 新仓库会失败；
+- 尚不存在的保护路径不能被创建（与 macOS 相同），因此在工作区根下 `git init` 新仓库会失败；Landlock 下这一限制作用在路径上第一个不存在的目录，所以 `.git/info` 不存在时也不能创建它（macOS 只拒绝创建 `.git/info/attributes` 本身）；
 - 在工作区根、`.git` 及运行中新建的顶层目录里，`bind()` unix 套接字会失败（已有的子目录如 `src/` 不受影响）；经符号链接写入这些目录里运行中新建的文件、经 `/proc/self/cwd` 等魔术链接在这些目录里新建文件也交回内核处理，因而会失败；
 - 时间戳（`touch -d`、`utimensat`）不受保护；扩展属性在任何位置都不能设置；
 - 保护路径下超过 5 万个条目时，为安全起见拒绝对所有普通文件 chmod/chown（目录仍可）；
@@ -72,10 +72,16 @@ Ubuntu 23.10 及以后默认通过 AppArmor 禁止非特权用户命名空间（
 - 即使在可写根里（每个 `write` 工作区根都适用），以下路径也只读：这些文件下次会话或用户自己运行 git 时会被自动信任。
   - `.liveagent/`、`.k-brain/`；
   - `.git/hooks/`、`.git/config`、`.git/config.worktree`；`.git` 是文件（链接工作树、子模块）时还包括该文件本身，以及它指向的 git 目录中的 hooks 与配置；
+  - `.git/commondir`：它决定 git 从哪个目录读取配置、hooks 和引用，写进普通仓库就能把 git 引到命令自己准备的目录；
+  - `.git/info/attributes`：它可以把用户全局配置里定义的任意 filter/diff/merge 驱动套用到文件上，之后 `git add`、`git diff` 等会运行该驱动；
+  - 运行开始时已登记的链接工作树的 `.git/worktrees/<名字>/commondir` 与 `config.worktree`；
+  - 运行开始时已有的子模块：`.git/modules/<名字>/` 下的 `config`、`hooks/`、`commondir`、`info/attributes`（含嵌套子模块和名字里带 `/` 的子模块），子模块工作目录里的 `.git` 文件（按 `.gitmodules` 的 `path` 和子模块配置的 `core.worktree` 查找），以及子模块配置中 `core.hooksPath` 指向的目录（相对路径按子模块工作目录解析）；
   - `core.hooksPath` 指向的目录（读取仓库配置、其 `include`/`includeIf` 文件和全局 `~/.gitconfig`），以及这些被 include 的配置文件。
 
-  因此在沙箱里 `git remote add`、`git config` 等修改仓库配置的命令会失败；提交、分支、拉取等正常操作不受影响。
-- 防绕过：不能通过重命名上级目录（如 `mv .git .git2` 后新建 `.git`）或硬链接改写保护路径；保护路径若经由符号链接到达（Linux），或保护文件已有其他硬链接，运行会被拒绝。`core.hooksPath` 指向工作区本身或其上级时同样拒绝。macOS 和 Linux Landlock（`path_protection` 为 true 时）上尚不存在的保护路径也不能被创建；Linux bubblewrap 只能保护已存在的路径。
+  因此在沙箱里 `git remote add`、`git config` 等修改仓库配置的命令会失败；运行开始时已有的工作树不能用 `git worktree remove`/`prune` 删除，`git submodule deinit` 也会失败。提交、分支、切换分支、拉取、子模块和链接工作树里的提交、`git worktree add` 等正常操作不受影响。
+- 防绕过：不能通过重命名上级目录（如 `mv .git .git2` 后新建 `.git`）或硬链接改写保护路径；保护路径若经由符号链接到达（Linux），或保护文件已有其他硬链接，运行会被拒绝。`core.hooksPath` 指向工作区本身或其上级时同样拒绝。macOS 和 Linux Landlock（`path_protection` 为 true 时）上尚不存在的保护路径也不能被创建；Linux bubblewrap 与 Windows（`low-integrity`、`sandbox-user`）只能保护运行开始时已存在的路径，尚不存在的保护路径在运行中**可以被创建**。这对 `.git/commondir`、`.git/info/attributes`、`.git/config.worktree` 以及子模块的 `commondir`、`info/attributes` 尤其重要：git 通常不会创建它们，所以在这些机制上，沙箱命令仍可新建 `.git/commondir` 把之后在沙箱外运行的 git 引到别处（`config.worktree` 只在受保护的配置开启 `extensions.worktreeConfig` 时才会被读取）。
+- 子模块与链接工作树按运行开始时的状态列出：运行中新添加的子模块、新登记的工作树（如 `git worktree add`、`git submodule add`）的对应文件在本次运行中不受保护。
+- 已知缺口：工作树里的 `.gitattributes` 和 `.git/info/attributes` 一样能把全局配置里定义的驱动套用到文件上，但它是项目的普通文件，不受保护；全局 `core.attributesFile` 指向工作区内时同样如此。如果全局配置里定义了 filter/diff/merge 驱动，请留意沙箱命令对 `.gitattributes` 的修改。
 - 可启动沙箱外进程的 unix 套接字对命令不可用：容器引擎（docker/podman/containerd）、D-Bus 系统与会话总线、systemd 管理器；WSL 下还会隐藏 `/run/WSL`（Windows 互操作）。macOS 上联网模式下拒绝连接容器引擎套接字（断网时本来就禁止）。`SSH_AUTH_SOCK` 等凭据代理套接字不受影响。
 - 全局配置已开启沙箱时，按次请求只能收紧：网络只要任一方关闭就关闭，配置的可写/只读路径不变，并额外加上上面的屏蔽与只读规则。
 - 平台无法隔离时（Linux 上 bubblewrap 与 Landlock 都不可用、Windows 上无法以低完整性级别启动命令），请求 `400` 拒绝并给出原因，**不会**退回到不隔离运行。只要求断网而平台不能隔离网络时同样拒绝（Windows 原生未运行 `kn sandbox setup` 时如此，原因中会提示运行它）。
@@ -86,7 +92,7 @@ Ubuntu 23.10 及以后默认通过 AppArmor 禁止非特权用户命名空间（
 Windows 上每条命令以**低完整性级别**（Low integrity）运行：令牌由当前用户令牌复制而来，移除除 SeChangeNotify 以外的全部特权，再把完整性级别降为 Low。Windows 的强制完整性控制不允许低完整性进程写入、删除或改名任何中等完整性的对象（没有标签的文件和目录都按中等处理），也不能写 `HKCU` 注册表（`AppDataLow` 除外）或打开用户的其他进程。K-brain 把可写的根标为 Low、把根内的受保护路径标为 Medium、把屏蔽目录标为带"禁止向上读"的 Medium，因此：
 
 - 命令只能写（含删除、改名）工作区根、本次运行的其他 `write` 根和一个专用临时目录（`%TEMP%\k-brain-sandbox\<id>`，`TEMP`/`TMP`/`TMPDIR` 指向它）；用户目录、系统临时目录和其他未标记的目录都不可写，也不能把外面的文件挪进工作区。
-- 上文列出的受保护路径（`.liveagent/`、`.k-brain/`、`.git/hooks/`、`.git/config`、`core.hooksPath` 目录等）被标为 Medium，命令不能在其中写、删或改名文件。低完整性进程仍可通过 Low 的父目录删除或改名一个 Medium 子目录，所以运行期间启动器还以不允许删除共享的方式打开这些路径及其在根内的上级目录（如 `.git`），任何删除、改名都会因共享冲突失败；命令所在的 job 在启动器退出时被整体结束，不会比这些句柄活得更久。运行开始时还不存在的受保护路径不受保护（与 bubblewrap 相同）。
+- 上文列出的受保护路径（`.liveagent/`、`.k-brain/`、`.git/hooks/`、`.git/config`、`.git/commondir`、`.git/info/attributes`、子模块和工作树的 git 文件、`core.hooksPath` 目录等）被标为 Medium，命令不能在其中写、删或改名文件。低完整性进程仍可通过 Low 的父目录删除或改名一个 Medium 子目录，所以运行期间启动器还以不允许删除共享的方式打开这些路径及其在根内的上级目录（如 `.git`），任何删除、改名都会因共享冲突失败；命令所在的 job 在启动器退出时被整体结束，不会比这些句柄活得更久。运行开始时还不存在的受保护路径不受保护（与 bubblewrap 相同）：例如普通仓库里没有 `.git/commondir`，命令可以新建它（见上文）。
 - 上面列出的屏蔽目录（`~/.ssh`、`~/.aws`、`~/.gnupg`、`~/.config/gh` 与 K-brain 数据目录）被标为 Medium 并带"禁止向上读、写、执行"（`NO_READ_UP | NO_WRITE_UP | NO_EXECUTE_UP`，可继承），命令不能读取其中的文件或列出目录；K-brain 自身、启动器和用户的普通程序都是中等完整性，不受影响。打标签同样不进入 junction 和符号链接，任何一个文件打不上标签都会拒绝运行。之后在这些目录里新建的文件自动继承标签；从别处**挪进来**的文件保留原标签，K-brain 每分钟最多重新检查一遍这些目录。工作区位于屏蔽目录内时（例如客户端放在自己数据目录里的默认项目），工作区先被标为 Low，屏蔽目录的标签会跳过它，所以工作区照常可用，屏蔽目录的其余部分仍然隐藏。
 - 令牌没有"限制 SID"，保留原登录会话，所以使用系统 TLS（Schannel）的程序，如 PowerShell 的 `Invoke-WebRequest`、系统自带的 `curl.exe`，都能正常访问 HTTPS。
 - 命令在 job object 里启动（创建时即加入，关闭时结束整棵进程树），job 禁止读写剪贴板、全局 atom 和使用外部窗口句柄；用户界面特权隔离（UIPI）阻止它向用户的高完整性窗口发送消息或注入钩子。只继承三个标准输入输出句柄。取消或超时会结束沙箱内的全部进程。
@@ -125,7 +131,7 @@ setup 是**按 Windows 用户**的：每个运行它的用户得到自己的一�
 
 - **可写**：工作区根、本次运行的其他 `write` 根和该工作区的专用临时目录（`%TEMP%\k-brain-sandbox\<id>`）授予沙箱组和该根专属的"工作区 SID"修改权限（根本身不能被删除或改名），根下已有文件逐个继承。
 - **工作区之间隔离**：断网运行的命令使用受限令牌（restricted token），限制 SID 只包含 Everyone、Users、RESTRICTED、读取 SID、本次运行各可写根的工作区 SID 和 `-Offline` 组。受限令牌的写访问必须同时被普通 SID 和限制 SID 允许，所以断网命令只能写本次运行的根，写不了其他用过的工作区。这修正了 `low-integrity` 下"用过的工作区对任何低完整性进程都可写"的问题：授权只给沙箱账户，浏览器等其他程序和用户的其他进程都不在其中。
-- **受保护路径**（`.git/hooks`、`.git/config`、`core.hooksPath`、`.liveagent/`、`.k-brain/` 与 `readOnly` 路径）对沙箱组显式拒绝写、删、改名和改权限，运行期间启动器同样以不允许删除共享的方式打开它们。
+- **受保护路径**（`.git/hooks`、`.git/config`、`.git/commondir`、`.git/info/attributes`、子模块和工作树的 git 文件、`core.hooksPath`、`.liveagent/`、`.k-brain/` 与 `readOnly` 路径）对沙箱组显式拒绝写、删、改名和改权限，运行期间启动器同样以不允许删除共享的方式打开它们。运行开始时还不存在的受保护路径没有可以加 ACE 的对象，不受保护（与 `low-integrity` 相同），例如命令可以新建 `.git/commondir`。
 - **屏蔽目录**（`~/.ssh`、`~/.aws`、`~/.gnupg`、`~/.config/gh` 与 K-brain 数据目录）对沙箱组显式拒绝全部访问，可继承；每分钟最多重新检查一遍。位于屏蔽目录内的工作区保留自己的授权。用户目录的其余部分默认就不授予沙箱账户，因此也不可读（`low-integrity` 下是可读的）。
 - **可读**：K-brain 自身、要运行的程序（位于用户目录内时）和 PATH 中位于用户目录内的目录（每个进程只授予一次）授予沙箱组读取和执行。系统目录、Program Files 等对所有用户可读的位置本来就可读。
 - **环境变量**来自 K-brain 过滤后的环境（凭据类变量已被移除），而不是沙箱账户自己的用户配置；`TEMP`/`TMP` 指向专用临时目录，并通过 `GIT_CONFIG_*` 把可写根标为 Git 的 `safe.directory`（这些目录的所有者是用户，不是沙箱账户）。
