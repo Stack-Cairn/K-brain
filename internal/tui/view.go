@@ -176,6 +176,7 @@ func (m *model) padAboveTranscript(v string, n int) string {
 	m.composerTop += n
 	m.inputBodyOff += n
 	m.viewportTop += n
+	m.queueOff += n
 	if m.effortRow >= 0 {
 		m.effortRow += n
 	}
@@ -215,6 +216,7 @@ func (m *model) View() string {
 		m.composerTop -= lead
 		m.effortRow -= lead
 		m.viewportTop -= lead
+		m.queueOff -= lead
 	}
 
 	if m.height > 0 {
@@ -229,6 +231,7 @@ func (m *model) View() string {
 			m.composerTop -= dropped
 			m.effortRow -= dropped
 			m.viewportTop -= dropped
+			m.queueOff -= dropped
 			m.vpLead += dropped
 			m.viewH = m.height
 		}
@@ -257,6 +260,10 @@ func (m *model) View() string {
 		v = m.padAboveComposer(v, spare)
 	}
 	m.viewportTop += m.viewTop
+	m.queueTop = -1 << 20
+	if m.queueShown {
+		m.queueTop = m.viewTop + m.queueOff
+	}
 
 	m.effortY = -1
 	if m.effortRow >= 0 {
@@ -288,6 +295,7 @@ func (m *model) View() string {
 func (m *model) viewBody() string {
 	var b strings.Builder
 	m.viewportTop, m.viewportRows = 0, 0
+	m.queueOff, m.queueShown = 0, false
 	m.effortRow, m.effortX = -1, 0
 	if m.palette != nil {
 
@@ -346,6 +354,8 @@ func (m *model) viewBody() string {
 		b.WriteString("\n" + m.busyRow() + "\n")
 	}
 	if m.queueRows() > 0 {
+		m.queueShown = true
+		m.queueOff = strings.Count(b.String(), "\n")
 		b.WriteString(m.queueView())
 	}
 	if m.rew != nil {

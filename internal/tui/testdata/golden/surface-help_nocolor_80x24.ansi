@@ -1,4 +1,4 @@
-[1m❯[0m [1mKeyboard shortcuts[0m                                                       [2m1/78[0m
+[1m❯[0m [1mKeyboard shortcuts[0m                                                       [2m1/81[0m
   [1m[Keys][0m [2m Commands [0m
   [1m/[0m [2mtype to filter[0m
 ────────────────────────────────────────────────────────────────────────────────
@@ -15,7 +15,7 @@
   Ctrl+P                      open the command palette[2m[0m
   F2                          open settings[2m[0m
   Alt+↑                       focus the transcript, a block at a time[2m[0m
-[2m  ↓ 66 more[0m
+[2m  ↓ 69 more[0m
 ────────────────────────────────────────────────────────────────────────────────
   [1mShift+Tab[0m  cycle the permission mode
   [2mShift+Tab — cycle Normal / Plan / Auto review / Always allow[0m

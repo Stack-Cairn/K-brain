@@ -50,12 +50,15 @@ func (m *model) queueView() string {
 		hints = []string{m.tr("Enter saves"), m.tr("Esc puts it back")}
 	case m.queueFocused():
 		header = fmt.Sprintf(m.tr("queued (%d)"), len(m.queue))
-		hints = []string{m.tr("Enter send now"), m.tr("Ctrl+E edit"), m.tr("Del remove"), m.tr("↑↓ select"), m.tr("Alt+↑↓ move"), m.tr("Esc back")}
+		hints = []string{m.tr("Enter send now"), m.tr("Ctrl+E/click edit"), m.tr("Del remove"), m.tr("Esc back"), m.tr("↑↓ select"), m.tr("Alt+↑↓ move")}
 	case m.busy && m.input.Value() == "":
 		header = fmt.Sprintf(m.tr("queued (%d)"), len(m.queue))
-		hints = []string{m.tr("Enter on empty input sends now"), m.tr("↑ select")}
+		hints = []string{m.tr("↑/click select"), m.tr("Alt+E edit last"), m.tr("Enter on empty input sends now")}
 	default:
 		header = fmt.Sprintf(m.tr("queued (%d) · sent when the turn ends"), len(m.queue))
+		if m.busy && len(m.queue) > 0 {
+			hints = []string{m.tr("Alt+E edit last")}
+		}
 	}
 	b.WriteString(dimStyle.Render(fitHints(chromeGlyphs(header), hints, width)) + "\n")
 
@@ -66,7 +69,15 @@ func (m *model) queueView() string {
 		case editing:
 			return ansi.Truncate(accentStyle.Render(" "+glyphs.Fold+" ")+dimStyle.Render(num)+dimStyle.Render(text)+dimStyle.Render(m.tr("  (editing)")), width, ellipsisGlyph())
 		case selected:
-			return selectedRowStyle.Width(width).Render(ansi.Truncate(" "+chromeGlyphs("→")+" "+num+text, width, ellipsisGlyph()))
+			body := " " + chromeGlyphs("→") + " " + num + text
+			if width < queueMarkMinWidth {
+				return selectedRowStyle.Width(width).Render(ansi.Truncate(body, width, ellipsisGlyph()))
+			}
+			// A click on the mark at the row's end removes the message.
+			mark := " " + glyphs.Fail + " "
+			body = ansi.Truncate(body, width-ansi.StringWidth(mark)-1, ellipsisGlyph())
+			pad := max(width-ansi.StringWidth(body)-ansi.StringWidth(mark), 0)
+			return selectedRowStyle.Width(width).Render(body + strings.Repeat(" ", pad) + mark)
 		default:
 			return ansi.Truncate(youStyle.Render(" "+glyphUser)+dimStyle.Render(num)+text, width, ellipsisGlyph())
 		}
@@ -84,6 +95,82 @@ func (m *model) queueView() string {
 		b.WriteString(row(shown, edit.orig, false, true) + "\n")
 	}
 	return b.String()
+}
+
+// queueMarkMinWidth is the narrowest terminal the selected queued row keeps
+// its remove mark in; queueMarkCells is how many cells at the row's end
+// take a click as remove.
+const (
+	queueMarkMinWidth = 16
+	queueMarkCells    = 3
+)
+
+// queueMouse handles a left click on the queue pane: a click selects a
+// queued message, a click on the selected one edits it and a click on its
+// mark removes it.
+func (m *model) queueMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd, bool) {
+	if msg.Action != tea.MouseActionPress || msg.Button != tea.MouseButtonLeft || !m.queueShown || !m.busy ||
+		m.overlayOwnsKeys() || m.taskVP != nil {
+		return m, nil, false
+	}
+	d := msg.Y - m.queueTop - 1
+	rows := len(m.queue)
+	if m.editingQueued() != nil {
+		rows++
+	}
+	if d < 0 || d >= rows {
+		return m, nil, false
+	}
+	m.sel = nil
+	m.clearComposerSel()
+	if m.editingQueued() != nil {
+		return m, m.showNotice(m.tr("Enter saves · Esc puts it back")), true
+	}
+	if m.input.Value() != "" {
+		return m, m.showNotice(m.tr("clear the composer to pick a queued message · Ctrl+S stashes the draft · Alt+E edits the last one")), true
+	}
+	m.tasksFocus = false
+	m.menu = nil
+	if d != m.queueSel {
+		m.queueSel = d
+		return m, nil, true
+	}
+	if m.width >= queueMarkMinWidth && msg.X >= m.width-queueMarkCells {
+		m.queueRemoveSelected()
+		return m, nil, true
+	}
+	m.queueEditSelected()
+	return m, nil, true
+}
+
+// queueRemoveSelected drops the selected message from the queue and selects
+// the one that takes its place.
+func (m *model) queueRemoveSelected() {
+	if m.queueSel < 0 || m.queueSel >= len(m.queue) {
+		return
+	}
+	m.queue = append(m.queue[:m.queueSel], m.queue[m.queueSel+1:]...)
+	if m.queueSel >= len(m.queue) {
+		m.queueSel = len(m.queue) - 1
+	}
+}
+
+// queueEditLast is Alt+E: the newest queued message comes into the composer
+// for editing, whatever the composer holds. A draft goes to the stash first.
+func (m *model) queueEditLast() tea.Cmd {
+	if len(m.queue) == 0 {
+		return nil
+	}
+	var cmd tea.Cmd
+	if v := m.input.Value(); strings.TrimSpace(v) != "" {
+		m.composer().pushStash(v)
+		cmd = m.showNotice(m.tr("draft stashed · Ctrl+S on an empty composer restores it"))
+	}
+	m.menu = nil
+	m.clearComposerSel()
+	m.queueSel = len(m.queue) - 1
+	m.queueEditSelected()
+	return cmd
 }
 
 // fitHints appends as many " · hint" parts to head as fit in width, in

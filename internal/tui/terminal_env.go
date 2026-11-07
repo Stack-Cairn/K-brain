@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strconv"
@@ -14,22 +15,22 @@ import (
 	"github.com/muesli/termenv"
 )
 
-func enableClickWheelMouse(w *os.File) {
+func enableClickWheelMouse(w io.Writer) {
 	fmt.Fprint(w, "\x1b[?1006h\x1b[?1002h")
 }
 
-func disableClickWheelMouse(w *os.File) {
+func disableClickWheelMouse(w io.Writer) {
 	fmt.Fprint(w, "\x1b[?1003l\x1b[?1002l\x1b[?1000l\x1b[?1006l")
 }
 
-func enableKeyboardEnhancement(w *os.File) {
+func enableKeyboardEnhancement(w io.Writer) {
 	fmt.Fprint(w, tmuxPassthrough("\x1b[>1u"))
 	if inTmuxEnv() {
 		fmt.Fprint(w, "\x1b[>4;1m")
 	}
 }
 
-func disableKeyboardEnhancement(w *os.File) {
+func disableKeyboardEnhancement(w io.Writer) {
 	fmt.Fprint(w, tmuxPassthrough("\x1b[<u"))
 	if inTmuxEnv() {
 		fmt.Fprint(w, "\x1b[>4;0m")

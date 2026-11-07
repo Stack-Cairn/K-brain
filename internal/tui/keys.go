@@ -9,6 +9,14 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+// overlayOwnsKeys reports whether an open dialog or overlay takes key
+// presses before the composer does (see key): the composer may still be on
+// screen, but it is not where typing goes.
+func (m *model) overlayOwnsKeys() bool {
+	return m.iactive != nil || m.askDialog != nil || m.permDialog != nil || m.planOpen() || m.elicitOpen() ||
+		m.palette != nil || m.rew != nil || m.picker != nil || m.mpicker != nil || m.surfaceOpen() || m.usageOpen()
+}
+
 // key routes a key press: an open dialog or overlay takes it first, then the
 // composer's editing chords, then the global keys below; whatever is left is
 // a composer key (composer_keys.go).

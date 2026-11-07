@@ -39,7 +39,9 @@ var legacyHelpKeys = []string{
 	"Alt+M — multiline mode: Enter adds a line, Ctrl+J sends",
 	"Ctrl+R — search prompt history (Tab: all directories)",
 	"Ctrl+S — stash the draft, or restore it on an empty composer",
+	"mouse in the composer: click moves the cursor, drag selects, double click a word, triple click / Alt+A all · with a selection: Backspace/Del deletes, typing or paste replaces, Ctrl+X cuts, Ctrl+C copies",
 	"with a queued message selected: Enter sends it now, Ctrl+E edits, Alt+↑/↓ moves",
+	"Alt+E (busy) — edit the last queued message · click a queued message to select it, click it again to edit, its ✗ removes it",
 	"Alt+↑ — focus the transcript: j/k select a block, h/l fold / open, e toggle, E fold all, v view, / find, Esc back",
 	"in the block viewer: j/k scroll, Space/PgDn page, g/G top / end, / find, n/N next / previous, Esc back",
 }

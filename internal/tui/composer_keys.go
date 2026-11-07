@@ -220,6 +220,12 @@ func (m *model) composerPreKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 	}
 	c.observe(m, msg)
 
+	if c.sel != nil {
+		if cmd, done := m.composerSelKey(msg); done {
+			return m, cmd, true
+		}
+	}
+
 	if newline {
 		if m.multiline() && m.namePrompt == nil && m.menu == nil {
 			r, cmd := m.composerKey(tea.KeyMsg{Type: tea.KeyEnter})
@@ -249,6 +255,13 @@ func (m *model) composerPreKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 			m.queueSel = -1
 			return m, nil, true
 		}
+	}
+	if k == "alt+e" && m.busy && len(m.queue) > 0 && m.editingQueued() == nil && m.namePrompt == nil {
+		return m, m.queueEditLast(), true
+	}
+	if k == "alt+a" && m.namePrompt == nil && m.input.Value() != "" {
+		m.selectAllComposer()
+		return m, nil, true
 	}
 	if msg.Type == tea.KeyEsc && m.editingQueued() != nil && m.menu == nil {
 		m.queueEditCancel()
@@ -458,13 +471,7 @@ func (m *model) composerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyDelete, tea.KeyBackspace:
 
 		if m.busy && m.queueSel >= 0 && m.queueSel < len(m.queue) {
-			m.queue = append(m.queue[:m.queueSel], m.queue[m.queueSel+1:]...)
-			if m.queueSel >= len(m.queue) {
-				m.queueSel = len(m.queue) - 1
-			}
-			if len(m.queue) == 0 {
-				m.queueSel = -1
-			}
+			m.queueRemoveSelected()
 			return m, nil
 		}
 
