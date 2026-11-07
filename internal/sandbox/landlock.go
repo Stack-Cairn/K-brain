@@ -212,10 +212,10 @@ func probeLandlock(ctx context.Context) Capability {
 	}
 	c.Supported, c.NetworkControl = true, true
 	if err := landlockProtection(); err != nil {
-		c.Reason = fmt.Sprintf("using Landlock (ABI %d) with seccomp: writes are fenced to the workspace and offline runs get no network, but credential directories stay readable and protected workspace paths (.git hooks and config, agent settings) stay writable (%v)", abi, err)
+		c.Reason = fmt.Sprintf("using Landlock (ABI %d) with seccomp: writes are fenced to the workspace and offline runs get no network, but credential directories stay readable and protected workspace paths (.git hooks, config, commondir and info/attributes, submodule and worktree git files, agent settings) stay writable (%v)", abi, err)
 		return c
 	}
 	c.PathProtection = true
-	c.Reason = fmt.Sprintf("using Landlock (ABI %d) with seccomp: writes are fenced to the workspace, a supervisor keeps the protected workspace paths (.git hooks and config, agent settings) unchanged and offline runs get no network, but credential directories stay readable", abi)
+	c.Reason = fmt.Sprintf("using Landlock (ABI %d) with seccomp: writes are fenced to the workspace, a supervisor keeps the protected workspace paths (.git hooks, config, commondir and info/attributes, submodule and worktree git files, agent settings) unchanged and offline runs get no network, but credential directories stay readable", abi)
 	return c
 }

@@ -39,7 +39,7 @@ func (d *Denial) Hint() string {
 		}
 		return hint + " Do not retry with sudo."
 	case "protected":
-		return fmt.Sprintf("[sandbox] %s is read-only in the sandbox (git hooks and configuration, agent settings and configured read-only paths are protected). Ask the user to make this change outside the sandbox.", d.Path)
+		return fmt.Sprintf("[sandbox] %s is read-only in the sandbox (git hooks, configuration and the files that redirect them, agent settings and configured read-only paths are protected). Ask the user to make this change outside the sandbox.", d.Path)
 	case "masked":
 		return fmt.Sprintf("[sandbox] %s is hidden from sandboxed commands because it holds credentials.", d.Path)
 	case "network":

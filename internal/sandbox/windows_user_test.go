@@ -544,6 +544,12 @@ func TestWindowsSandboxUserAdminCycle(t *testing.T) {
 		}
 	})
 
+	t.Run("GitRedirects", func(t *testing.T) {
+		root := workspace(t)
+		files, dirs := gitRedirectLayout(t, root)
+		checkGitRedirectsProtected(t, workspacePolicy(root), root, files, dirs)
+	})
+
 	t.Run("MaskedReadsFail", func(t *testing.T) {
 		masked := filepath.Join(home, ".ssh")
 		if err := os.MkdirAll(masked, 0o700); err != nil {
