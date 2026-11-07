@@ -297,6 +297,19 @@ func TestComposerDoubleAndTripleClick(t *testing.T) {
 	if got := cursorAt(m); got != 2 {
 		t.Fatalf("and place the cursor, got %d", got)
 	}
+
+	// Typing over a double-clicked word ends the chain: a quick click right
+	// after only places the cursor.
+	*clock = clock.Add(time.Second)
+	clickInput(m, 0, 7)
+	*clock = clock.Add(100 * time.Millisecond)
+	clickInput(m, 0, 7)
+	typeKey(m, keyRunes("x"))
+	*clock = clock.Add(100 * time.Millisecond)
+	clickInput(m, 0, 6)
+	if _, _, ok := m.composerSelection(); ok || m.input.Value() != "hello x world" {
+		t.Fatalf("a click after an edit is a new single click (draft %q)", m.input.Value())
+	}
 }
 
 func TestComposerDragWideChars(t *testing.T) {

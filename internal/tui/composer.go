@@ -48,6 +48,7 @@ type composerState struct {
 	clickAt            time.Time
 	clicks             int
 	clickRow, clickCol int
+	clickVal           string
 
 	mru *slashMRU
 }

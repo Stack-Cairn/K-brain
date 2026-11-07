@@ -331,6 +331,10 @@ func Run(cfg *config.Config, modelName, provName, sysPrompt, resumeID string, ca
 		sandboxPolicy: cfg.Sandbox.Policy(cwd()),
 		input:         ti, spin: spinner.New(spinner.WithSpinner(spinner.Dot)), follow: true, saved: 1,
 		catalogs: config.LoadCatalogs(), mouseOn: mouseOn, now: time.Now, showThinking: showThinking,
+		// Nothing queued is selected until the user picks a message; 0 would
+		// select the first one queued in the session's first turn, and Esc
+		// would then deselect it instead of interrupting.
+		queueSel: -1,
 
 		compactModel: cfg.CompactModel, compactProv: cfg.CompactProvider,
 		skillScan:     func() []skills.Skill { return skills.Scan(skills.DefaultDirs()...) },

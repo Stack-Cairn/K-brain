@@ -95,3 +95,29 @@ func TestQueuePaneEditAndSendNow(t *testing.T) {
 		t.Fatalf("the second turn should carry the interjected message: %+v", reqs[1])
 	}
 }
+
+// In the session's first turn a queued message is not selected until the
+// user picks one, so Esc still interrupts the turn.
+func TestQueueFirstTurnEscInterrupts(t *testing.T) {
+	slow := make([]string, 60)
+	for i := range slow {
+		slow[i] = fmt.Sprintf("streaming part %02d", i+1)
+	}
+	s := tuicap.Start(t, tuicap.Options{
+		Width: 100, Height: 30,
+		Replies: []tuicap.Reply{tuicap.Lines(150*time.Millisecond, slow...)},
+	})
+	s.WaitFor("Ask k-brain anything")
+	s.Type("start a long task")
+	s.Press(tuicap.Enter)
+	s.WaitFor("Esc to interrupt")
+	s.Type("then run the linter")
+	s.Press(tuicap.Enter)
+	screen := s.WaitFor("queued (1)")
+	if strings.Contains(screen, "Enter send now") {
+		t.Fatalf("nothing should be selected before the user picks a message:\n%s", screen)
+	}
+	s.Press(tuicap.Esc)
+	screen = s.WaitGone("Esc to interrupt")
+	t.Logf("after Esc:\n%s", screen)
+}

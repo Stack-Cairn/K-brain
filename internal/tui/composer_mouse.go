@@ -313,13 +313,16 @@ func copyTextCmd(text string) tea.Cmd {
 func (m *model) composerClick(p selPos) {
 	now := m.nowFn()
 	c := m.composer()
-	if now.Sub(c.clickAt) <= multiClickWindow && c.clickRow == p.row && abs(c.clickCol-p.col) <= 1 {
+	// Clicks chain into a double or triple click only on the same spot,
+	// quickly, and with no edit in between.
+	if now.Sub(c.clickAt) <= multiClickWindow && c.clickRow == p.row && abs(c.clickCol-p.col) <= 1 && c.clickVal == m.input.Value() {
 		c.clicks++
 	} else {
 		c.clicks = 1
 	}
 	c.clickAt, c.clickRow, c.clickCol = now, p.row, p.col
 	off := m.inputOffsetAt(p.row, p.col, false)
+	defer func() { c.clickVal = m.input.Value() }()
 	switch {
 	case c.clicks == 2:
 		m.selectWordAt(off)
