@@ -1,4 +1,4 @@
-❯ Keyboard shortcuts                                                                                               1/78
+❯ Keyboard shortcuts                                                                                               1/81
   [Keys]  Commands
   / type to filter
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -31,7 +31,7 @@
   Alt+K                              cut to the end of the line
   Alt+D                              cut the next word
   Ctrl+Y                             paste the last cut text
-  ↓ 52 more
+  ↓ 55 more
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   Shift+Tab  cycle the permission mode
   Shift+Tab — cycle Normal / Plan / Auto review / Always allow

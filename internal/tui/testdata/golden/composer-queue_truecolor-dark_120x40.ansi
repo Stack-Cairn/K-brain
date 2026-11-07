@@ -11,9 +11,9 @@
   Then run the package tests.                                                                                           
 
   [38;2;86;182;194m⠋[0m [38;2;86;182;194mWriting…[0m                                                                               [38;2;134;139;149m0:07 · ⇣48 · Esc to interrupt[0m
-[38;2;134;139;149mqueued (2) · Enter send now · Ctrl+E edit · Del remove · ↑↓ select · Alt+↑↓ move · Esc back[0m
+[38;2;134;139;149mqueued (2) · Enter send now · Ctrl+E/click edit · Del remove · Esc back · ↑↓ select · Alt+↑↓ move[0m
 [1;38;2;47;191;160m ❯ [0m[38;2;134;139;149m1 [0mthen run the linter
-[1;38;2;47;191;160;48;2;38;43;52m → 2 and update the changelog with a line about the new flag[0m[48;2;38;43;52m                                                            [0m
+[1;38;2;47;191;160;48;2;38;43;52m → 2 and update the changelog with a line about the new flag                                                          ✗ [0m
 
 
 

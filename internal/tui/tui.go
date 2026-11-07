@@ -197,6 +197,11 @@ type model struct {
 	viewportRows int
 	inputLeft    int
 	inputTop     int
+	// queueOff and queueTop are the queue pane's header row, as an offset
+	// into the body while it is built and then on screen.
+	queueOff     int
+	queueTop     int
+	queueShown   bool
 	inputLines   []string
 	vpLead       int
 	viewTop      int
@@ -1010,6 +1015,11 @@ func (m *model) Update(msg tea.Msg) (_ tea.Model, statusCmd tea.Cmd) {
 		return m, m.selEdgeScroll()
 
 	case tea.KeyMsg:
+		if _, _, ok := m.composerSelection(); ok && msg.Type == tea.KeyCtrlC && !m.busy {
+			// Ctrl+C copies a selected part of the draft and keeps it selected.
+			m.sel = nil
+			return m, copyTextCmd(m.composerSelText())
+		}
 		if msg.Type == tea.KeyCtrlC && m.sel != nil && m.sel.done && !m.busy {
 			// With a finished selection, Ctrl+C copies it again instead of
 			// arming quit; the next Ctrl+C behaves as usual.
@@ -1027,6 +1037,9 @@ func (m *model) Update(msg tea.Msg) (_ tea.Model, statusCmd tea.Cmd) {
 
 		if msg.Shift {
 			return m, nil
+		}
+		if r, cmd, ok := m.queueMouse(msg); ok {
+			return r, cmd
 		}
 		if handled, cmd := m.handleMouseSelect(msg); handled {
 			return m, cmd

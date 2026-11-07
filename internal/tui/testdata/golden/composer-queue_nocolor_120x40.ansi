@@ -12,9 +12,9 @@
   Then run the package tests.                                                                                           
 
   ⠋ Writing…                                                                               [2m0:07 · ⇣48 · Esc to interrupt[0m
-[2mqueued (2) · Enter send now · Ctrl+E edit · Del remove · ↑↓ select · Alt+↑↓ move · Esc back[0m
+[2mqueued (2) · Enter send now · Ctrl+E/click edit · Del remove · Esc back · ↑↓ select · Alt+↑↓ move[0m
 [1m ❯ [0m[2m1 [0mthen run the linter
-[1;7m → 2 and update the changelog with a line about the new flag[0m[7m                                                            [0m
+[1;7m → 2 and update the changelog with a line about the new flag                                                          ✗ [0m
 
 
 

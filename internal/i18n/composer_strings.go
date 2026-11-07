@@ -39,6 +39,13 @@ var composerChinese = map[string]string{
 	"queued (%d) · sent when the turn ends": "队列 (%d) · 本轮结束后发送",
 	"queued (%d)":                           "队列 (%d)",
 	"search history…":                       "搜索历史…",
+	"mouse in the composer: click moves the cursor, drag selects, double click a word, triple click / Alt+A all · with a selection: Backspace/Del deletes, typing or paste replaces, Ctrl+X cuts, Ctrl+C copies": "输入框中的鼠标：单击移动光标，拖动选择，双击选词，三击 / Alt+A 全选 · 有选区时：Backspace/Del 删除，输入或粘贴替换，Ctrl+X 剪切，Ctrl+C 复制",
+	"Alt+E (busy) — edit the last queued message · click a queued message to select it, click it again to edit, its ✗ removes it":                                                                                "Alt+E（执行中）— 编辑最后一条排队消息 · 单击排队消息选中，再次单击编辑，点 ✗ 删除",
+	"Ctrl+E/click edit":              "Ctrl+E/单击 编辑",
+	"↑/click select":                 "↑/单击 选择",
+	"Alt+E edit last":                "Alt+E 编辑最后一条",
+	"Enter saves · Esc puts it back": "Enter 保存 · Esc 放回原处",
+	"clear the composer to pick a queued message · Ctrl+S stashes the draft · Alt+E edits the last one": "先清空输入框再选排队消息 · Ctrl+S 暂存草稿 · Alt+E 编辑最后一条",
 }
 
 var composerTraditionalChinese = map[string]string{
@@ -78,6 +85,13 @@ var composerTraditionalChinese = map[string]string{
 	"queued (%d) · sent when the turn ends": "佇列 (%d) · 本輪結束後傳送",
 	"queued (%d)":                           "佇列 (%d)",
 	"search history…":                       "搜尋歷史…",
+	"mouse in the composer: click moves the cursor, drag selects, double click a word, triple click / Alt+A all · with a selection: Backspace/Del deletes, typing or paste replaces, Ctrl+X cuts, Ctrl+C copies": "輸入框中的滑鼠：點一下移動游標，拖曳選取，雙擊選詞，三擊 / Alt+A 全選 · 有選取時：Backspace/Del 刪除，輸入或貼上取代，Ctrl+X 剪下，Ctrl+C 複製",
+	"Alt+E (busy) — edit the last queued message · click a queued message to select it, click it again to edit, its ✗ removes it":                                                                                "Alt+E（執行中）— 編輯最後一則佇列訊息 · 點一下佇列訊息選取，再點一下編輯，點 ✗ 刪除",
+	"Ctrl+E/click edit":              "Ctrl+E/點一下 編輯",
+	"↑/click select":                 "↑/點一下 選擇",
+	"Alt+E edit last":                "Alt+E 編輯最後一則",
+	"Enter saves · Esc puts it back": "Enter 儲存 · Esc 放回原處",
+	"clear the composer to pick a queued message · Ctrl+S stashes the draft · Alt+E edits the last one": "先清空輸入框再選佇列訊息 · Ctrl+S 暫存草稿 · Alt+E 編輯最後一則",
 }
 
 func init() {

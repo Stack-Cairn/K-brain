@@ -1,4 +1,4 @@
-❯ Keyboard shortcuts               1/78
+❯ Keyboard shortcuts               1/81
   [Keys]  Commands
   / type to filter
 ────────────────────────────────────────
@@ -14,7 +14,7 @@
   Ctrl+C Ctrl+C  quit
   Ctrl+P         open the command pal…
   F2             open settings
-  ↓ 67 more
+  ↓ 70 more
 ────────────────────────────────────────
   Shift+Tab  cycle the permission mode
   Shift+Tab — cycle Normal / Plan /

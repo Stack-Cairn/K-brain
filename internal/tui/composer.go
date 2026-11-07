@@ -2,6 +2,7 @@ package tui
 
 import (
 	"strings"
+	"time"
 	"unicode"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -40,6 +41,13 @@ type composerState struct {
 	hs *historySearch
 
 	queueEdit *queueEdit
+
+	// sel is the selected part of the draft (a drag, double or triple
+	// click, Alt+A); clicks counts clicks in a row on one spot.
+	sel                *composerSel
+	clickAt            time.Time
+	clicks             int
+	clickRow, clickCol int
 
 	mru *slashMRU
 }

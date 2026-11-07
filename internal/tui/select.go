@@ -95,6 +95,9 @@ func cellSlice(s string, off, n int) string {
 }
 
 func (m *model) selText(s selection) string {
+	if s.anchor.input {
+		return m.composerSelText()
+	}
 	lo, hi := selOrder(s)
 	var lines []string
 	for r := lo.row; r <= hi.row; r++ {
@@ -131,17 +134,13 @@ func selCols(lo, hi selPos, r, lineWidth int) (int, int) {
 	return start, max(end, start)
 }
 
+// highlightInput paints the composer selection, which a drag over the
+// composer keeps up to date.
 func (m *model) highlightInput(iv string) string {
-	if m.sel == nil || !m.sel.anchor.input {
+	if m.namePrompt != nil && m.namePrompt.mask {
 		return iv
 	}
-	lines := strings.Split(iv, "\n")
-	lo, hi := selOrder(*m.sel)
-	for r := lo.row; r <= hi.row && r < len(lines); r++ {
-		start, end := selCols(lo, hi, r, ansi.StringWidth(lines[r]))
-		lines[r] = reverseRange(lines[r], start, end)
-	}
-	return strings.Join(lines, "\n")
+	return m.highlightComposerSel(iv)
 }
 
 func (m *model) highlightSelection(view string) string {
@@ -296,6 +295,7 @@ func (m *model) handleMouseSelect(msg tea.MouseMsg) (handled bool, cmd tea.Cmd) 
 		if msg.Button != tea.MouseButtonLeft {
 			return false, nil
 		}
+		m.clearComposerSel()
 
 		if p, ok := m.inputPoint(msg.X, msg.Y, false); ok {
 			m.sel = &selection{anchor: p, cur: p}
@@ -315,6 +315,9 @@ func (m *model) handleMouseSelect(msg tea.MouseMsg) (handled bool, cmd tea.Cmd) 
 		if m.sel.anchor.input {
 			if p, ok := m.inputPoint(msg.X, msg.Y, true); ok {
 				m.sel.cur = p
+				if m.inputEditable() {
+					m.setComposerSel(m.inputSelRange(*m.sel))
+				}
 			}
 			return true, nil
 		}
@@ -327,6 +330,9 @@ func (m *model) handleMouseSelect(msg tea.MouseMsg) (handled bool, cmd tea.Cmd) 
 		if m.sel == nil || m.sel.done {
 			return false, nil
 		}
+		if m.sel.anchor.input {
+			return true, m.releaseInputSel()
+		}
 		if m.sel.anchor != m.sel.cur {
 			// Mouse capture keeps the terminal from selecting anything itself,
 			// so a finished drag copies the highlighted text and keeps the
@@ -334,15 +340,38 @@ func (m *model) handleMouseSelect(msg tea.MouseMsg) (handled bool, cmd tea.Cmd) 
 			m.sel.done = true
 			return true, m.copySelection()
 		}
-		inputClick := m.sel.anchor.input
 		m.sel = nil
-		if inputClick {
-			return true, nil
-		}
 		m.clickAt(msg.X, msg.Y)
 		return true, nil
 	}
 	return false, nil
+}
+
+// releaseInputSel ends a press on the composer: a drag keeps its selection
+// (Backspace deletes it, typing replaces it) and copies it, as a transcript
+// drag does; a click places the cursor or, repeated, selects.
+func (m *model) releaseInputSel() tea.Cmd {
+	s := *m.sel
+	if !m.inputEditable() {
+		m.sel = nil
+		return nil
+	}
+	if _, _, ok := m.composerSelection(); ok && s.anchor != s.cur {
+		m.sel.done = true
+		// The cursor goes where the drag ended.
+		backward := s.cur.row < s.anchor.row || (s.cur.row == s.anchor.row && s.cur.col < s.anchor.col)
+		m.placeCursor(m.inputOffsetAt(s.cur.row, s.cur.col, !backward))
+		return m.copySelection()
+	}
+	m.sel = nil
+	m.composerClick(s.anchor)
+	return nil
+}
+
+// inputEditable reports whether mouse edits apply to the composer: it shows
+// the draft itself, not a masked prompt or the placeholder.
+func (m *model) inputEditable() bool {
+	return !(m.namePrompt != nil && m.namePrompt.mask) && !m.ancientInput()
 }
 
 func (m *model) selEdgeScroll() tea.Cmd {

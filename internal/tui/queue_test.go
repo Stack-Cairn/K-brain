@@ -336,11 +336,13 @@ func TestQueueViewShowsSelection(t *testing.T) {
 	m.queueSel = 1
 	m.agent.Model = "m"
 	m.provName = "p"
+	m.width = 120
+	m.input.SetWidth(m.width - 2)
 	view := m.View()
-	if !strings.Contains(view, "Del remove") {
-		t.Errorf("selected queued message should show a delete hint:\n%s", view)
+	if !strings.Contains(view, "Del remove") || !strings.Contains(view, "Esc back") {
+		t.Errorf("selected queued message should show delete and back hints:\n%s", view)
 	}
-	if !strings.Contains(view, "↑↓ select") || !strings.Contains(view, "Alt+↑↓ move") || !strings.Contains(view, "Ctrl+E edit") {
+	if !strings.Contains(view, "↑↓ select") || !strings.Contains(view, "Alt+↑↓ move") || !strings.Contains(view, "Ctrl+E/click edit") {
 		t.Errorf("queue footer should advertise navigation:\n%s", view)
 	}
 }
