@@ -40,6 +40,9 @@ type ToolCall struct {
 	// QuestionAnswers is what the user answered a question tool call, one
 	// entry per question; for display, like the fields above.
 	QuestionAnswers []QuestionAnswer `json:"question_answers,omitempty"`
+	// Elicitations are the forms MCP servers asked the user to fill during
+	// the call and how each ended; for display.
+	Elicitations []Elicitation `json:"elicitations,omitempty"`
 }
 
 func stripAuthored(msgs []Message) []Message {
@@ -66,6 +69,7 @@ func stripAuthored(msgs []Message) []Message {
 				calls[j].ExitStatus = nil
 				calls[j].TimedOut = false
 				calls[j].QuestionAnswers = nil
+				calls[j].Elicitations = nil
 			}
 			out[i].ToolCalls = calls
 		}

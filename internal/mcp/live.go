@@ -233,6 +233,9 @@ func (m *LiveManager) reloadLocked() error {
 		configs[server.ID] = cfg
 	}
 	next := NewManager(configs)
+	// The backend serves elicitations to /v1 clients (or declines them for
+	// runs no client can answer).
+	next.EnableElicitation()
 	if m.onChange != nil {
 		next.SetOnChange(m.onChange)
 	}

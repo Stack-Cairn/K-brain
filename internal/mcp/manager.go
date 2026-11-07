@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"net/http"
@@ -71,6 +72,10 @@ type server struct {
 	settled bool
 
 	calling chan struct{}
+	// active is the tool call in progress (nil between calls); elicitMu
+	// serializes its elicitations.
+	active   *activeCall
+	elicitMu sync.Mutex
 
 	reconnect chan struct{}
 
@@ -138,6 +143,8 @@ type Manager struct {
 	onChange func()
 
 	connectTransport func(ctx context.Context, cfg ServerConfig, stderr *ringBuffer) (sdkmcp.Transport, error)
+	// elicitation: declare and serve MCP elicitation (EnableElicitation).
+	elicitation bool
 
 	onChangeMu sync.Mutex
 	closed     bool
@@ -303,6 +310,7 @@ func (s *server) connect(ctx context.Context, m *Manager) {
 		return
 	}
 	cfg, startGen := s.cfg, s.gen
+	elicitation := m.elicitation
 	timeout := cfg.StartupTimeoutDuration()
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	s.connectCancel = cancel
@@ -318,7 +326,13 @@ func (s *server) connect(ctx context.Context, m *Manager) {
 
 	transport, err := m.connectTransport(ctx, cfg, s.stderr)
 	if err == nil {
-		client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "k-brain", Title: "k-brain"}, nil)
+		var opts *sdkmcp.ClientOptions
+		if elicitation {
+			tap := newOrderTap()
+			transport = tap.wrap(transport)
+			opts = &sdkmcp.ClientOptions{ElicitationHandler: s.elicitHandler(tap)}
+		}
+		client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "k-brain", Title: "k-brain"}, opts)
 		var sess *sdkmcp.ClientSession
 		sess, err = client.Connect(ctx, transport, nil)
 		if err == nil {
@@ -492,8 +506,22 @@ func (s *server) call(ctx context.Context, tool string, args json.RawMessage) (s
 	case <-ctx.Done():
 		return "", ctx.Err()
 	}
-	ctx, cancel := context.WithTimeout(ctx, toolTimeout)
-	defer cancel()
+	// The timeout pauses while the user answers an elicitation form.
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	deadline := startDeadline(toolTimeout, func() { cancel(errToolTimeout) })
+	defer deadline.stop()
+	call := &activeCall{ctx: ctx, tool: tool, deadline: deadline}
+	s.mu.Lock()
+	s.active = call
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		if s.active == call {
+			s.active = nil
+		}
+		s.mu.Unlock()
+	}()
 	var argMap map[string]any
 	if len(args) > 0 {
 		if err := json.Unmarshal(args, &argMap); err != nil {
@@ -502,7 +530,7 @@ func (s *server) call(ctx context.Context, tool string, args json.RawMessage) (s
 	}
 	res, err := sess.CallTool(ctx, &sdkmcp.CallToolParams{Name: tool, Arguments: argMap})
 	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
+		if errors.Is(context.Cause(ctx), errToolTimeout) {
 			return "", fmt.Errorf("mcp tool %s timed out after %s", tool, toolTimeout)
 		}
 		return "", err

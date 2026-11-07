@@ -28,35 +28,41 @@ const (
 	ContentToolCall   = "tool_call"
 	ContentToolResult = "tool_result"
 
-	EventRunAccepted         = "run.accepted"
-	EventRunProgress         = "run.progress"
-	EventUserMessage         = "user.message.appended"
-	EventAssistantMessage    = "assistant.message.created"
-	EventTextDelta           = "assistant.text.delta"
-	EventThinkingDelta       = "assistant.thinking.delta"
-	EventHostedSearch        = "assistant.sources"
-	EventToolCall            = "tool.call"
-	EventToolResult          = "tool.result"
-	EventToolStatus          = "tool.status"
-	EventPermissionRequest   = "permission.requested"
-	EventPermissionResult    = "permission.resolved"
-	EventQuestionRequested   = "question.requested"
-	EventQuestionResolved    = "question.resolved"
-	EventClientToolRequested = "client_tool.requested"
-	EventClientToolResolved  = "client_tool.resolved"
-	EventSubagentStarted     = "subagent.started"
-	EventSubagentUpdate      = "subagent.updated"
-	EventSubagentCompleted   = "subagent.completed"
-	EventSubagentFailed      = "subagent.failed"
-	EventUsage               = "usage.updated"
-	EventHistoryUpdated      = "history.updated"
-	EventCompactionStarted   = "compaction.started"
-	EventCompactionCompleted = "compaction.completed"
-	EventRunCompleted        = "run.completed"
-	EventRunFailed           = "run.failed"
-	EventRunCancelled        = "run.cancelled"
-	EventHookWarning         = "hook.warning"
-	EventGoalUpdated         = "goal.updated"
+	EventRunAccepted       = "run.accepted"
+	EventRunProgress       = "run.progress"
+	EventUserMessage       = "user.message.appended"
+	EventAssistantMessage  = "assistant.message.created"
+	EventTextDelta         = "assistant.text.delta"
+	EventThinkingDelta     = "assistant.thinking.delta"
+	EventHostedSearch      = "assistant.sources"
+	EventToolCall          = "tool.call"
+	EventToolResult        = "tool.result"
+	EventToolStatus        = "tool.status"
+	EventPermissionRequest = "permission.requested"
+	EventPermissionResult  = "permission.resolved"
+	EventQuestionRequested = "question.requested"
+	EventQuestionResolved  = "question.resolved"
+	// EventElicitationRequested asks the client to show an MCP server's form
+	// (ElicitationRequest); EventElicitationResolved reports how it ended
+	// (ElicitationResolution). Only runs started with options.mcp_elicitation
+	// receive them.
+	EventElicitationRequested = "elicitation.requested"
+	EventElicitationResolved  = "elicitation.resolved"
+	EventClientToolRequested  = "client_tool.requested"
+	EventClientToolResolved   = "client_tool.resolved"
+	EventSubagentStarted      = "subagent.started"
+	EventSubagentUpdate       = "subagent.updated"
+	EventSubagentCompleted    = "subagent.completed"
+	EventSubagentFailed       = "subagent.failed"
+	EventUsage                = "usage.updated"
+	EventHistoryUpdated       = "history.updated"
+	EventCompactionStarted    = "compaction.started"
+	EventCompactionCompleted  = "compaction.completed"
+	EventRunCompleted         = "run.completed"
+	EventRunFailed            = "run.failed"
+	EventRunCancelled         = "run.cancelled"
+	EventHookWarning          = "hook.warning"
+	EventGoalUpdated          = "goal.updated"
 )
 
 type ModelRef struct {
@@ -213,6 +219,10 @@ type ToolRunInfo struct {
 	// QuestionAnswers is what the user answered a question or AskUserQuestion
 	// call, one entry per question, as question.resolved reports it.
 	QuestionAnswers []QuestionAnswer `json:"question_answers,omitempty"`
+	// Elicitations are the forms an MCP tool asked the user to fill in during
+	// the call, in order, including those declined without asking (reason
+	// no_client, unattended or limit). Sensitive values are left out.
+	Elicitations []Elicitation `json:"elicitations,omitempty"`
 }
 
 // SandboxDenial is a hint recognized from a failed command's output. Nothing
@@ -460,6 +470,64 @@ type QuestionResolution struct {
 	Cancelled  bool             `json:"cancelled,omitempty"`
 }
 
+// ElicitField is one input of an MCP elicitation form; ElicitOption one
+// choice of a choice field. See ai.ElicitField for the meaning of each key.
+type (
+	ElicitField  = ai.ElicitField
+	ElicitOption = ai.ElicitOption
+	// Elicitation is one elicitation in a tool call's history and tool.result
+	// (ToolRunInfo.Elicitations).
+	Elicitation = ai.Elicitation
+)
+
+// ElicitationRequest is the payload of elicitation.requested: an MCP server
+// (Server, the name it is configured under) asks the user to fill in Fields
+// while its tool Tool runs. The client shows Server prominently, renders
+// Fields (or RequestedSchema, the schema as the server sent it), and answers
+// with ElicitationAnswerRequest before DeadlineAt (Unix milliseconds).
+type ElicitationRequest struct {
+	ElicitationID   string          `json:"elicitation_id"`
+	ToolCallID      string          `json:"tool_call_id"`
+	RunID           string          `json:"run_id"`
+	DeadlineAt      int64           `json:"deadline_at"`
+	Server          string          `json:"server"`
+	Tool            string          `json:"tool"`
+	Message         string          `json:"message"`
+	Fields          []ElicitField   `json:"fields"`
+	RequestedSchema json.RawMessage `json:"requested_schema,omitempty"`
+}
+
+// ElicitationAnswerRequest is the body of POST
+// /v1/sessions/{id}/elicitations/{elicitation_id}. Action is "accept",
+// "decline" or "cancel"; Content, with accept only, maps field names to
+// values (string, number, boolean, or an array of option values for a
+// multiple choice) and is validated against the fields.
+type ElicitationAnswerRequest struct {
+	ConversationID string         `json:"conversation_id"`
+	RunID          string         `json:"run_id"`
+	ElicitationID  string         `json:"elicitation_id"`
+	Action         string         `json:"action"`
+	Content        map[string]any `json:"content,omitempty"`
+}
+
+// ElicitationResolution is the payload of elicitation.resolved. Action is
+// what the MCP server received; Reason is "user" (the client answered),
+// "timeout" (cancel at the deadline) or "cancelled" (cancel: the run stopped
+// or the server withdrew the request). Content is the accepted answer
+// without the values of sensitive fields, which Redacted names.
+type ElicitationResolution struct {
+	ElicitationID string         `json:"elicitation_id"`
+	ToolCallID    string         `json:"tool_call_id"`
+	RunID         string         `json:"run_id"`
+	Server        string         `json:"server"`
+	Tool          string         `json:"tool"`
+	Message       string         `json:"message"`
+	Action        string         `json:"action"`
+	Reason        string         `json:"reason"`
+	Content       map[string]any `json:"content,omitempty"`
+	Redacted      []string       `json:"redacted,omitempty"`
+}
+
 type Subagent struct {
 	ID          string   `json:"id"`
 	ParentID    string   `json:"parent_id,omitempty"`
@@ -560,6 +628,10 @@ type RunOptions struct {
 	// server is configured with. The run is refused when the machine cannot
 	// enforce it; it never falls back to running unconfined.
 	Sandbox *RunSandbox `json:"sandbox,omitempty"`
+	// MCPElicitation (capability mcp_elicitation) says the client can show MCP
+	// elicitation forms: the run publishes elicitation.requested and waits for
+	// an answer. Without it an MCP server's elicitation is declined at once.
+	MCPElicitation bool `json:"mcp_elicitation,omitempty"`
 }
 
 // RunSandbox is a run's request for OS-level confinement. Mode "workspace" lets
@@ -860,7 +932,7 @@ func FromAIMessage(m ai.Message) Message {
 		}
 	}
 	for _, tc := range m.ToolCalls {
-		out.ToolCalls = append(out.ToolCalls, ToolCall{ID: tc.ID, Name: tc.Function.Name, Arguments: json.RawMessage(tc.Function.Arguments), ToolRunInfo: ToolRunInfo{ExitCode: tc.ExitStatus, TimedOut: tc.TimedOut, DurationMs: tc.DurationMs, QuestionAnswers: tc.QuestionAnswers}})
+		out.ToolCalls = append(out.ToolCalls, ToolCall{ID: tc.ID, Name: tc.Function.Name, Arguments: json.RawMessage(tc.Function.Arguments), ToolRunInfo: ToolRunInfo{ExitCode: tc.ExitStatus, TimedOut: tc.TimedOut, DurationMs: tc.DurationMs, QuestionAnswers: tc.QuestionAnswers, Elicitations: tc.Elicitations}})
 	}
 	return out
 }

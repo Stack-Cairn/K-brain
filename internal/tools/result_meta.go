@@ -22,6 +22,7 @@ type callMeta struct {
 	gateWait time.Duration
 	denial   *sandbox.Denial
 	answers  []ai.QuestionAnswer
+	elicited []ai.Elicitation
 }
 
 type callMetaKey struct{}
@@ -117,6 +118,22 @@ func ReportQuestionAnswers(ctx context.Context, answers []ai.QuestionAnswer) {
 	m.mu.Unlock()
 }
 
+// ReportElicitation records a form an MCP server asked the user to fill
+// during the current tool call, for the call's history.
+func ReportElicitation(ctx context.Context, e ai.Elicitation) {
+	if m := callMetaFrom(ctx); m != nil {
+		m.mu.Lock()
+		m.elicited = append(m.elicited, e)
+		m.mu.Unlock()
+	}
+}
+
+// ReportUserWait leaves d, time the current tool call spent waiting for the
+// user (an MCP elicitation form), out of the call's duration.
+func ReportUserWait(ctx context.Context, d time.Duration) {
+	callMetaFrom(ctx).addGateWait(d)
+}
+
 func (m *callMeta) addGateWait(d time.Duration) {
 	if m == nil || d <= 0 {
 		return
@@ -135,6 +152,7 @@ func (m *callMeta) apply(r *Result, start time.Time) {
 	r.TimedOut = m.timedOut
 	r.SandboxDenial = m.denial
 	r.QuestionAnswers = m.answers
+	r.Elicitations = m.elicited
 	r.Duration = max(time.Since(start)-m.gateWait, time.Nanosecond)
 }
 

@@ -85,6 +85,7 @@ VITE_KBRAIN_TOKEN=<backend-token>
 | POST | `/v1/sessions/{id}/subagents/{task}/cancel` | 只停止该子代理，父运行继续；未运行返回 409，未知返回 404 |
 | POST | `/v1/sessions/{id}/permissions/{permission}` | 提交审批结果 |
 | POST | `/v1/sessions/{id}/questions/{question}` | 回答 `question.requested`；`selected_labels` 见下文，`capabilities.question_selected_labels` 表示支持 |
+| POST | `/v1/sessions/{id}/elicitations/{elicitation}` | 回答 MCP 服务器的表单征询 `elicitation.requested`；见下文，`capabilities.mcp_elicitation` 表示支持 |
 | POST | `/v1/sessions/{id}/close` | 结束当前会话运行与后台子代理并保存 |
 
 列表支持 `page`、`page_size`、`cwd`、`cwd_empty`、`shared`、`pinned`，返回 `sessions`、`total_count`、`epoch` 和字符串 `revision`。`/v1/health` 的 `capabilities.session_changes: 2` 表示同时支持不可变快照、增量、pinned、workdirs、字符串游标和过期 reset；客户端必须探测完整契约后才能放宽旧轮询。
@@ -119,6 +120,8 @@ CLI 可用 `-config FILE -session-dir DIR` 指定配置与存储目录；省略�
 - `assistant.text.delta`, `assistant.thinking.delta`, `assistant.message.created`
 - `tool.call`, `tool.result`, `tool.status`
 - `permission.requested`, `permission.resolved`, `permission.auto_resolved`
+- `question.requested`, `question.resolved`
+- `elicitation.requested`, `elicitation.resolved`（只在带 `options.mcp_elicitation` 的运行中出现）
 - `subagent.started`, `subagent.updated`, `subagent.completed`, `subagent.failed`
 - `trajectory.child.text`, `trajectory.child.thinking`, `trajectory.child.steer`, `trajectory.child.tool_start`, `trajectory.child.tool_end`（子代理自己的转录）
 - `usage.updated`
@@ -203,6 +206,87 @@ CLI 可用 `-config FILE -session-dir DIR` 指定配置与存储目录；省略�
 历史：两个工具的调用在 `/v1/sessions/{id}/history`（以及 `GET /v1/sessions/{id}`）的 `tool_calls[]` 上带 `question_answers`，内容与 `question.resolved` 的 `answers` 相同，重启后不变；`tool.result` 事件的 `tool_result` 也带这个字段。`AskUserQuestion` 的工具输出本身就是上面的 JSON；`question` 的工具输出是给模型的文本，客户端回放时应读 `question_answers`，不要拆分文本。超时或取消的提问没有 `question_answers`。在 TUI 中回答的 `question` 调用同样记录 `question_answers`（单问题形式的题目 id 为 `q1`）。
 
 旧客户端不发 `selected_labels`，行为不变。旧版后端不认识这个字段，会以 400（未知字段）拒绝，所以客户端必须先确认 `question_selected_labels == 1`；否则仍把多选标签用 `, ` 连接放进 `selected_label` 并设置 `custom: true`。
+
+### MCP 表单征询（`capabilities.mcp_elicitation: 1`）
+
+MCP 服务器可以在自己的工具运行期间请用户填写一张表单（MCP elicitation）。K-brain 只支持 form 模式，不支持 url 模式。
+
+**协议层。** 后端的 MCP manager 在 `initialize` 中声明 `capabilities.elicitation`：协商到 2025-11-25 时为 `{"form":{}}`，更早的协议为 `{}`（含义相同）。服务器在 `tools/call` 进行中发来的 `elicitation/create`，以及 2026-07-28 多轮往返结果里 `inputRequests` 中的 elicitation，走同一条处理路径。以下情况直接回 JSON-RPC 错误 `-32602`，不打扰用户、不发任何事件：`mode` 不是 `form`；`message` 为空或超过 10000 字符；`requestedSchema` 超出下表的子集（错误信息为 `invalid requestedSchema: ...`，指出属性名和关键字；SDK 自己的检查先拒绝一部分，信息以 `elicit schema ...` 开头）。没有工具正在运行时到达的 elicitation 直接回 `decline`；同一次工具调用最多问 8 次，之后的直接回 `decline`。
+
+`requestedSchema` 允许的子集（只能是一层对象，每个属性必须写 `type`；`$schema`、`$id`、`$comment` 接受并忽略，其他任何关键字都会被拒绝）：
+
+| 字段类型 | 写法 | 允许的约束 |
+| --- | --- | --- |
+| 文本 | `{"type":"string"}` | `title`、`description`、`minLength`、`maxLength`、`pattern`（Go RE2 语法，不锚定）、`format`（`email`/`uri`/`date`/`date-time`）、`default` |
+| 单选 | `{"type":"string","enum":[...]}`（可带旧式 `enumNames`）或 `{"type":"string","oneOf":[{"const","title"}]}` | `title`、`description`、`default`；不能再带长度、格式或 pattern |
+| 数字 | `{"type":"number"}` / `{"type":"integer"}` | `title`、`description`、`minimum`、`maximum`、`default` |
+| 开关 | `{"type":"boolean"}` | `title`、`description`、`default` |
+| 多选 | `{"type":"array","items":{"type":"string","enum":[...]}}` 或 `items:{"anyOf":[{"const","title"}]}` | `title`、`description`、`minItems`、`maxItems`、`uniqueItems`、`default` |
+
+根对象可带 `required`（必须是已有属性名、不重复）、`title`、`description` 和布尔 `additionalProperties`。上限：64 个属性，每个选择题 1–100 个互不相同的非空选项，属性名 1–128 字符，`title` 200 字符，`description` 2000 字符。`default` 必须满足字段自己的约束。没有 `requestedSchema` 或没有属性时是一个只需确认的空表单。
+
+**客户端选择加入。** 运行请求带 `options.mcp_elicitation: true`，表示客户端能显示表单。这样的运行在服务器请求时发布 `elicitation.requested` 并等待回答；不带该选项的运行和定时任务等无人值守运行立即回 `decline`，不发布 elicitation 事件，只在该工具调用的 `elicitations` 里留下记录（`reason` 为 `no_client` 或 `unattended`）；`/v1/mcp/tools/call` 直接调用工具时也一律回 `decline`。旧版后端不认识这个选项，会以 400（未知字段）拒绝整次运行，客户端必须先确认 `mcp_elicitation == 1`。
+
+**`elicitation.requested`**：
+
+```json
+{"elicitation_id":"elicit-1762490000000000000-42","tool_call_id":"call_1","run_id":"run-…",
+ "deadline_at":1762490180000,"server":"tracker","tool":"login","message":"Sign in to the issue tracker",
+ "fields":[
+  {"name":"username","type":"string","title":"User name","required":true,"min_length":2},
+  {"name":"password","type":"string","title":"Password","required":true,"sensitive":true},
+  {"name":"plan","type":"string","default":"free","options":[{"value":"free","label":"Free"},{"value":"pro","label":"Pro"}]},
+  {"name":"seats","type":"integer","required":true,"minimum":1,"maximum":50},
+  {"name":"notify","type":"boolean","default":true},
+  {"name":"topics","type":"array","max_items":2,"options":[{"value":"news","label":"news"},{"value":"billing","label":"billing"}]}],
+ "requested_schema":{"type":"object","properties":{…},"required":[…]}}
+```
+
+- `server` 是用户配置的 MCP 服务器名（不是服务器自报的名字），客户端必须醒目地显示它，让用户知道是谁在要数据；`tool` 是正在运行的工具名（不带 `mcp__` 前缀）。
+- `fields` 按服务器书写属性的顺序排列（拿不到原始顺序时，必填字段按 `required` 顺序在前，其余按名字排序）。每项：`name`（答案里的键）、`type`（`string`/`number`/`integer`/`boolean`/`array`）、可选 `title`、`description`、`required`、`default`、`format`、`min_length`、`max_length`、`pattern`、`minimum`、`maximum`、`options`（`[{value,label}]`，`label` 在服务器没给标题时等于 `value`）、`min_items`、`max_items`、`sensitive`。带 `options` 的 `string` 是单选，`array` 一定是多选。
+- `sensitive: true` 表示名字或标题看起来像密钥（password、token、API key、secret、PIN、OTP、信用卡号等，只判断自由文本字段）。规范禁止服务器用表单索要密钥；遇到这种字段时客户端应遮住输入并提醒用户核实服务器。后端不会把这类字段的值写进事件日志、历史或日志。
+- `requested_schema` 是服务器发来的 schema，供想自己渲染 JSON Schema 的客户端使用。
+- `deadline_at`（Unix 毫秒）与提问相同：默认 3 分钟。等待期间该工具的 MCP 超时暂停计时，用户填表的时间也不计入 `duration_ms`。
+
+**回答**：`POST /v1/sessions/{id}/elicitations/{elicitation_id}`，请求体 `{conversation_id,run_id,elicitation_id,action,content?}`：
+
+```json
+{"conversation_id":"…","run_id":"run-…","elicitation_id":"elicit-…","action":"accept",
+ "content":{"username":"ada","password":"…","plan":"pro","seats":3,"topics":["billing","news"]}}
+```
+
+`action` 为 `accept`、`decline`（用户明确拒绝）或 `cancel`（用户关掉表单，未作选择）。`content` 只随 `accept` 发送；省略等于 `{}`。校验规则：
+
+- 每个键必须是某个字段的 `name`；必填字段必须出现且不为 `null`；可选字段的 `null` 等于没填，不发给服务器。
+- `string`：必须是字符串；长度按 Unicode 字符计算；`format` 为 `email`（单个裸地址，不带显示名）、`uri`（带 scheme 的绝对 URI）、`date`（`YYYY-MM-DD`）、`date-time`（RFC 3339）；`pattern` 在值中任意位置匹配即可。单选值必须是某个选项的 `value`。
+- `number`/`integer`：必须是 JSON 数字，`integer` 必须是整数；`minimum`/`maximum` 为闭区间。
+- `boolean`：必须是 `true`/`false`，不接受字符串。
+- 多选：字符串数组，每项是某个选项的 `value`，不能重复，个数满足 `min_items`/`max_items`；后端按选项顺序保存。
+- 服务器没收到的可选字段由 MCP 层按 schema 的 `default` 补上。
+
+响应：
+
+- `200 {"ok":true}`：已交给服务器；
+- `200 {"ok":true,"duplicate":true}`：同一回答重复提交（比较校验后的结果，敏感字段不参与比较）；
+- `400`：`action` 无效、`decline`/`cancel` 带了 `content`、请求体有未知字段，或内容校验失败。校验失败时为 `{"version","error":"invalid content: ...","field_errors":{"seats":"must be at least 1",…}}`，`field_errors` 按字段名给出英文说明（未知键只出现在 `error` 里）。表单继续等待，客户端可以修改后重发；
+- `404`：这个运行里没有该 elicitation；
+- `409`：`conversation_id`/`elicitation_id` 与路径不符，已用其他回答结束，或已不再等待（超时、运行已停止）。
+
+**`elicitation.resolved`**：
+
+```json
+{"elicitation_id":"elicit-…","tool_call_id":"call_1","run_id":"run-…","server":"tracker","tool":"login",
+ "message":"Sign in to the issue tracker","action":"accept","reason":"user",
+ "content":{"username":"ada","plan":"pro","seats":3,"topics":["news","billing"]},"redacted":["password"]}
+```
+
+`action` 是服务器收到的结果。`reason`：`user`（客户端回答）、`timeout`（到 `deadline_at` 无人回答，回 `cancel`）、`cancelled`（运行被停止或服务器撤回请求，回 `cancel`）。`content` 只在 `accept` 时出现，不含敏感字段的值，`redacted` 列出被去掉的字段名。每个 `elicitation.requested` 恰好对应一个 `elicitation.resolved`，重放时两者都在。
+
+**历史。** `tool.result` 的 `tool_result` 和历史里的 `tool_calls[]` 带 `elicitations`：该调用期间的每次征询按顺序记录 `{elicitation_id?,server,message,fields,action,reason,content?,redacted?}`，包括未询问用户就回绝的（`reason` 为 `no_client`、`unattended` 或 `limit`，这时没有 `elicitation_id`）。服务器拒绝的 schema（`-32602`）不记录。模型看不到这个字段，只看到服务器最终返回的工具结果。
+
+**记录与日志。** 事件日志和历史只保存去掉敏感字段后的回答，完整回答只在内存中交给 MCP 服务器。K-brain 的 MCP 日志只写服务器名、工具名、`action` 与 `reason`，不写任何字段值。服务器自己在工具结果里回显的内容不受此限制。
+
+ACP 不声明这一能力，服务器不会经 ACP 发起征询。用户侧说明见 [Hooks 与 MCP](user-guide/11-hooks-mcp.md)。
 
 ### 记住的权限规则（`capabilities.permission_rules: 1`、`readonly_auto_allow: 1`）
 

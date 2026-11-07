@@ -29,6 +29,10 @@ type healthCapabilities struct {
 	// QuestionSelectedLabels is 1 where question answers accept
 	// selected_labels and question history carries question_answers.
 	QuestionSelectedLabels int `json:"question_selected_labels"`
+	// MCPElicitation is 1 where runs accept options.mcp_elicitation and serve
+	// MCP servers' elicitation forms through elicitation.requested and
+	// POST /v1/sessions/{id}/elicitations/{elicitation_id}.
+	MCPElicitation int `json:"mcp_elicitation"`
 }
 
 // healthRunSandboxV1 describes per-run sandboxing (options.sandbox). Clients
@@ -127,6 +131,7 @@ func (s *Server) health() healthResponse {
 			SubagentTranscripts:     1,
 			SandboxSetup:            1,
 			QuestionSelectedLabels:  1,
+			MCPElicitation:          1,
 		},
 	}
 }
