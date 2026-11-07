@@ -152,6 +152,7 @@ func (a *Agent) runTools(ctx context.Context, calls []ai.ToolCall, ev Events) []
 		}
 		calls[oc.i].TimedOut = oc.out.TimedOut
 		calls[oc.i].QuestionAnswers = oc.out.QuestionAnswers
+		calls[oc.i].Elicitations = oc.out.Elicitations
 	}
 	return results
 }

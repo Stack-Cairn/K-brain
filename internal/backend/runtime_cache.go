@@ -26,7 +26,7 @@ func (s *Server) reapRuntimes(now time.Time) {
 			continue
 		}
 		idle := rt.leases.Load() == 0 && !rt.activeLocked() && rt.backgroundSettledLocked() && !rt.closing && rt.runtimeErr == nil &&
-			len(rt.permissions) == 0 && len(rt.questions) == 0 && len(rt.clientTools) == 0 &&
+			len(rt.permissions) == 0 && len(rt.questions) == 0 && len(rt.elicitations) == 0 && len(rt.clientTools) == 0 &&
 			(rt.terminalManager == nil || !rt.terminalManager.HasRunningSessions()) &&
 			(rt.processManager == nil || !rt.processManager.HasRunningProcesses()) &&
 			// A pending wait or undelivered notice would otherwise be lost with the runtime.

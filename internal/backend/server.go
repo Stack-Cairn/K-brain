@@ -23,6 +23,7 @@ import (
 	"github.com/Stack-Cairn/K-brain/internal/agent"
 	"github.com/Stack-Cairn/K-brain/internal/ai"
 	"github.com/Stack-Cairn/K-brain/internal/approval"
+	"github.com/Stack-Cairn/K-brain/internal/elicit"
 	"github.com/Stack-Cairn/K-brain/internal/mcp"
 	"github.com/Stack-Cairn/K-brain/internal/memory"
 	"github.com/Stack-Cairn/K-brain/internal/memoryruntime"
@@ -211,6 +212,7 @@ type runtimeSession struct {
 	// Cua tools then run without asking for as long as the runtime stays loaded.
 	computerAllowAll bool
 	questions        map[string]*questionWaiter
+	elicitations     map[string]*elicitationWaiter
 	clientTools      map[string]*clientToolWaiter
 	eventDir         string
 	// journal is the event journal kept open while a run streams; journalMarks
@@ -686,6 +688,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(parts) == 3 && parts[1] == "questions" && parts[2] != "" && r.Method == http.MethodPost {
 		s.answerQuestion(w, r, id, parts[2])
+		return
+	}
+	if len(parts) == 3 && parts[1] == "elicitations" && parts[2] != "" && r.Method == http.MethodPost {
+		s.answerElicitation(w, r, id, parts[2])
 		return
 	}
 	if len(parts) == 3 && parts[1] == "client-tools" && parts[2] != "" && r.Method == http.MethodPost {
@@ -1612,6 +1618,15 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, end func(),
 		tools.ReportQuestionAnswers(questionCtx, result.Answers)
 		return answers, true
 	})
+	ctx = elicit.With(ctx, func(elicitCtx context.Context, req elicit.Request) elicit.Response {
+		switch {
+		case isUnattendedRun(elicitCtx):
+			return elicit.Response{Action: elicit.Decline, Reason: elicit.ReasonUnattended}
+		case !options.MCPElicitation:
+			return elicit.Response{Action: elicit.Decline, Reason: elicit.ReasonNoClient}
+		}
+		return s.waitElicitation(elicitCtx, rt, runID, tools.ToolCallID(elicitCtx), req)
+	})
 	ctx = context.WithValue(ctx, questionRunKey{}, runID)
 	ctx = tools.WithRunIdentity(ctx, tools.RunIdentity{ConversationID: rt.id, RunID: runID})
 	ctx = tools.WithWorkingDir(ctx, rt.agent.WorkingDir)
@@ -1792,7 +1807,7 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, end func(),
 
 // toolRunInfo is the display metadata of a tool result for tool.result events.
 func toolRunInfo(result tools.Result) protocol.ToolRunInfo {
-	info := protocol.ToolRunInfo{ExitCode: result.ExitCode, TimedOut: result.TimedOut, DurationMs: result.DurationMs(), QuestionAnswers: result.QuestionAnswers}
+	info := protocol.ToolRunInfo{ExitCode: result.ExitCode, TimedOut: result.TimedOut, DurationMs: result.DurationMs(), QuestionAnswers: result.QuestionAnswers, Elicitations: result.Elicitations}
 	if d := result.SandboxDenial; d != nil {
 		info.SandboxDenial = &protocol.SandboxDenial{Kind: d.Kind, Path: d.Path, SuggestedRoot: d.SuggestedRoot}
 	}

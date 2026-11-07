@@ -32,6 +32,9 @@ type Result struct {
 	// QuestionAnswers is what the user answered a question tool call, one
 	// entry per question (see ReportQuestionAnswers). Display only.
 	QuestionAnswers []ai.QuestionAnswer
+	// Elicitations are the forms MCP servers asked the user to fill during
+	// the call (see ReportElicitation). Display only.
+	Elicitations []ai.Elicitation
 }
 
 type attachmentKey struct{}
