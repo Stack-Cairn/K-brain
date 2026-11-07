@@ -315,7 +315,7 @@ func (m *model) handleMouseSelect(msg tea.MouseMsg) (handled bool, cmd tea.Cmd) 
 		if m.sel.anchor.input {
 			if p, ok := m.inputPoint(msg.X, msg.Y, true); ok {
 				m.sel.cur = p
-				if m.inputEditable() {
+				if m.inputSelectable() {
 					m.setComposerSel(m.inputSelRange(*m.sel))
 				}
 			}
@@ -352,26 +352,38 @@ func (m *model) handleMouseSelect(msg tea.MouseMsg) (handled bool, cmd tea.Cmd) 
 // drag does; a click places the cursor or, repeated, selects.
 func (m *model) releaseInputSel() tea.Cmd {
 	s := *m.sel
-	if !m.inputEditable() {
+	if !m.inputSelectable() {
 		m.sel = nil
 		return nil
 	}
 	if _, _, ok := m.composerSelection(); ok && s.anchor != s.cur {
 		m.sel.done = true
-		// The cursor goes where the drag ended.
-		backward := s.cur.row < s.anchor.row || (s.cur.row == s.anchor.row && s.cur.col < s.anchor.col)
-		m.placeCursor(m.inputOffsetAt(s.cur.row, s.cur.col, !backward))
+		if m.inputEditable() {
+			// The cursor goes where the drag ended.
+			backward := s.cur.row < s.anchor.row || (s.cur.row == s.anchor.row && s.cur.col < s.anchor.col)
+			m.placeCursor(m.inputOffsetAt(s.cur.row, s.cur.col, !backward))
+		}
 		return m.copySelection()
 	}
 	m.sel = nil
-	m.composerClick(s.anchor)
+	if m.inputEditable() {
+		m.composerClick(s.anchor)
+	}
 	return nil
 }
 
-// inputEditable reports whether mouse edits apply to the composer: it shows
-// the draft itself, not a masked prompt or the placeholder.
-func (m *model) inputEditable() bool {
+// inputSelectable reports whether a drag over the composer selects (and
+// copies) the draft: it shows the draft itself, not a masked prompt or the
+// placeholder. A masked value is never selected or copied.
+func (m *model) inputSelectable() bool {
 	return !(m.namePrompt != nil && m.namePrompt.mask) && !m.ancientInput()
+}
+
+// inputEditable reports whether clicks also move the composer's cursor and
+// select words or everything: only while typing goes to the composer, not
+// while a dialog or card (a permission prompt, an MCP form, ...) takes keys.
+func (m *model) inputEditable() bool {
+	return m.inputSelectable() && !m.overlayOwnsKeys()
 }
 
 func (m *model) selEdgeScroll() tea.Cmd {

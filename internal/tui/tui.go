@@ -1028,7 +1028,7 @@ func (m *model) Update(msg tea.Msg) (_ tea.Model, statusCmd tea.Cmd) {
 		if handled, cmd := m.mouseFragment(msg); handled {
 			return m, cmd
 		}
-		if _, _, ok := m.composerSelection(); ok && msg.Type == tea.KeyCtrlC && !m.busy {
+		if _, _, ok := m.composerSelection(); ok && msg.Type == tea.KeyCtrlC && !m.busy && !m.overlayOwnsKeys() {
 			// Ctrl+C copies a selected part of the draft and keeps it selected.
 			m.sel = nil
 			return m, copyTextCmd(m.composerSelText())

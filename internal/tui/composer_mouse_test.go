@@ -9,6 +9,8 @@ import (
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Stack-Cairn/K-brain/internal/elicit"
 )
 
 // composerModel is a laid-out model whose composer holds val, with a clock
@@ -505,5 +507,87 @@ func TestQueueAltEEditsLast(t *testing.T) {
 	typeKey(m, tea.KeyMsg{Type: tea.KeyEsc})
 	if strings.Join(m.queue, "|") != "first|second" {
 		t.Fatalf("Esc puts it back, queue %q", m.queue)
+	}
+}
+
+// While an MCP form is open it takes the keys: mouse drags anywhere must not
+// copy a masked field, clicks must not pick queued messages or move the
+// composer's cursor behind the card, and Ctrl+C still cancels the form even
+// with part of the draft selected.
+func TestElicitCardWithComposerMouse(t *testing.T) {
+	var f fakeClipboard
+	useFakeClipboard(t, &f)
+	m, _ := queueScreenModel(t, "queued one")
+	m.Update(mkWinSize(100, 60))
+	reply := openElicit(m, goldenElicitRequest())
+	for _, k := range []tea.KeyMsg{keyRunes("a"), keyRunes("d"), keyRunes("a"), {Type: tea.KeyEnter}} {
+		m.Update(k)
+	}
+	for _, r := range "hunter2" {
+		m.Update(keyRunes(string(r)))
+	}
+	if got := m.cards.elicit.inputs[1].text; got != "hunter2" {
+		t.Fatalf("typing should reach the card's password field, got %q", got)
+	}
+
+	// Drag along every row, and once over the whole screen.
+	var cmds []tea.Cmd
+	h := len(strings.Split(m.View(), "\n"))
+	drag := func(x0, y0, x1, y1 int) {
+		m.View()
+		mouse(m, tea.MouseActionPress, x0, y0)
+		mouse(m, tea.MouseActionMotion, x1, y1)
+		cmds = append(cmds, mouse(m, tea.MouseActionRelease, x1, y1))
+	}
+	for y := 0; y < h; y++ {
+		drag(0, y, 99, y)
+		drag(99, y, 0, y)
+	}
+	drag(0, 0, 99, h-1)
+	for _, c := range cmds {
+		if c != nil {
+			c()
+		}
+	}
+	for _, s := range append(f.native, f.term.String()) {
+		if strings.Contains(s, "hunter2") || strings.Contains(s, "aHVudGVyM") {
+			t.Fatalf("a masked field reached the clipboard: %q", s)
+		}
+	}
+	if !m.elicitOpen() || m.cards.elicit.focus != 1 {
+		t.Fatal("mouse use must leave the form open on the same field")
+	}
+	if m.queueSel != -1 || len(m.queue) != 1 {
+		t.Fatalf("queued messages are not picked while the form is open (sel %d, %d queued)", m.queueSel, len(m.queue))
+	}
+
+	m.setComposer("hello brave world", len("hello brave world"))
+	m.sel = nil
+	clickInput(m, 0, 0)
+	if got := cursorAt(m); got != len("hello brave world") {
+		t.Fatalf("a click must not move the cursor of a composer that does not take keys, got %d", got)
+	}
+	m.Update(keyRunes("x"))
+	if got := m.cards.elicit.inputs[1].text; got != "hunter2x" || m.input.Value() != "hello brave world" {
+		t.Fatalf("keys go to the form: field %q, draft %q", got, m.input.Value())
+	}
+
+	m.busy = false // idle, where Ctrl+C would otherwise copy a selected draft
+	dragInput(m, 0, 6, 0, 11)
+	if got := m.composerSelText(); got != "brave" {
+		t.Fatalf("a drag over the draft still selects it to copy, got %q", got)
+	}
+	// Right after a drag Ctrl+C copies it again, as for the transcript; a
+	// selected draft alone (say, left from before the form opened) must not
+	// keep Ctrl+C from the form.
+	m.sel = nil
+	m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	select {
+	case r := <-reply:
+		if r.Action != elicit.Cancel {
+			t.Fatalf("Ctrl+C answered %v, want cancel", r.Action)
+		}
+	default:
+		t.Fatal("Ctrl+C must cancel the form, not copy the selected draft")
 	}
 }

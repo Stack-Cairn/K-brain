@@ -110,7 +110,7 @@ const (
 // mark removes it.
 func (m *model) queueMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd, bool) {
 	if msg.Action != tea.MouseActionPress || msg.Button != tea.MouseButtonLeft || !m.queueShown || !m.busy ||
-		m.palette != nil || m.picker != nil || m.mpicker != nil || m.taskVP != nil {
+		m.overlayOwnsKeys() || m.taskVP != nil {
 		return m, nil, false
 	}
 	d := msg.Y - m.queueTop - 1
