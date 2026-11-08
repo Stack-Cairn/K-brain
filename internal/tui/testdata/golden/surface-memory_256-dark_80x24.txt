@@ -15,10 +15,10 @@
 
 
 
-
 ────────────────────────────────────────────────────────────────────────────────
   prefers pnpm over npm in this monorepo
   open — Enter marks it done
   installation · ~/.k-brain/memory.md
+  organizer: every 24h (backend default)
 ────────────────────────────────────────────────────────────────────────────────
   ↑/↓ select · Enter mark done · Esc close

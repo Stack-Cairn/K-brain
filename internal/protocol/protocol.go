@@ -80,7 +80,9 @@ type SessionSummary struct {
 	MessageCount int       `json:"message_count"`
 	Shared       bool      `json:"shared"`
 	Pinned       bool      `json:"pinned,omitempty"`
-	Archived     bool      `json:"archived,omitempty"`
+	// Archived is always present so clients can tell archived sessions apart in
+	// lists requested with archived=include (capability session_archive).
+	Archived bool `json:"archived"`
 	// ForkedFrom names the session this one was branched from; ForkSeq is the last copied message.
 	ForkedFrom string `json:"forked_from,omitempty"`
 	ForkSeq    int    `json:"fork_seq,omitempty"`

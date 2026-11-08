@@ -93,6 +93,12 @@ func boolQuery(r *http.Request, key string) (*bool, error) {
 	return &b, nil
 }
 
+// archiveQuery reads the `archived` filter shared by the session list, snapshot,
+// changes and workdirs endpoints: exclude (default), include or only.
+func archiveQuery(r *http.Request) (session.ArchiveFilter, error) {
+	return session.ParseArchiveFilter(r.URL.Query().Get("archived"))
+}
+
 func (s *Server) listSessions(w http.ResponseWriter, r *http.Request) {
 	page, err := intQuery(r, "page", 1, 1, int(^uint(0)>>1))
 	if err != nil {
@@ -123,7 +129,12 @@ func (s *Server) listSessions(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, 400, err.Error())
 		return
 	}
-	opts := session.PageOptions{Limit: size, Offset: (page - 1) * size, Shared: shared, Pinned: pinned}
+	archive, err := archiveQuery(r)
+	if err != nil {
+		writeJSONError(w, 400, err.Error())
+		return
+	}
+	opts := session.PageOptions{Limit: size, Offset: (page - 1) * size, Shared: shared, Pinned: pinned, Archive: archive}
 	if values, exists := r.URL.Query()["cwd"]; exists {
 		cwd := values[0]
 		opts.CWD = &cwd

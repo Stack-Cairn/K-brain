@@ -25,7 +25,10 @@ type PageOptions struct {
 	Shared          *bool
 	SharedOnly      bool
 	IncludeArchived bool
-	Pinned          *bool
+	// Archive selects by archived flag; IncludeArchived (older callers) widens
+	// the default ArchiveExclude to ArchiveInclude.
+	Archive ArchiveFilter
+	Pinned  *bool
 }
 
 type Page struct {
@@ -60,6 +63,10 @@ func (s *Store) listPageContext(ctx context.Context, options PageOptions) (Page,
 	if err := ctx.Err(); err != nil {
 		return Page{}, err
 	}
+	archive := options.Archive
+	if options.IncludeArchived && archive == ArchiveExclude {
+		archive = ArchiveInclude
+	}
 	type entry struct {
 		meta  Meta
 		count int
@@ -79,7 +86,7 @@ func (s *Store) listPageContext(ctx context.Context, options PageOptions) (Page,
 				return err
 			}
 			meta := cached.meta
-			if meta.TaskID != "" || (!options.IncludeEmpty && cached.count == 0) || (!options.IncludeArchived && meta.Archived) {
+			if meta.TaskID != "" || (!options.IncludeEmpty && cached.count == 0) || !archive.Matches(meta.Archived) {
 				continue
 			}
 			if options.Pinned != nil && meta.Pinned != *options.Pinned {

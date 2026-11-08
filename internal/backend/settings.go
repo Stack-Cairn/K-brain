@@ -8,6 +8,7 @@ import (
 	"maps"
 	"net/http"
 	"net/url"
+	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -25,6 +26,11 @@ type SettingsStore struct {
 	mu       sync.RWMutex
 	cfg      *config.Config
 	save     func(*config.Config) error
+	// organizerPath is the config path whose memory organizer file holds the
+	// schedule saved through memoryOrganizer; empty means it cannot be saved.
+	organizerPath  string
+	organizer      config.MemoryOrganizerConfig
+	organizerSaved bool
 }
 
 func NewSettingsStore(cfg *config.Config, save func(*config.Config) error) *SettingsStore {
@@ -96,15 +102,17 @@ type settingsAIApproval struct {
 }
 
 type settingsProjection struct {
-	AIApproval      settingsAIApproval    `json:"aiApproval"`
-	Computer        config.ComputerConfig `json:"computer"`
-	Memory          settingsMemory        `json:"memory"`
-	Version         string                `json:"version"`
-	Mode            string                `json:"mode"`
-	DefaultModel    string                `json:"defaultModel"`
-	DefaultProvider string                `json:"defaultProvider"`
-	Providers       []settingsProvider    `json:"providers"`
-	Models          []settingsModel       `json:"models"`
+	AIApproval settingsAIApproval    `json:"aiApproval"`
+	Computer   config.ComputerConfig `json:"computer"`
+	Memory     settingsMemory        `json:"memory"`
+	// MemoryOrganizer is filled by the server (settingsView); nil elsewhere.
+	MemoryOrganizer *settingsMemoryOrganizer `json:"memoryOrganizer,omitempty"`
+	Version         string                   `json:"version"`
+	Mode            string                   `json:"mode"`
+	DefaultModel    string                   `json:"defaultModel"`
+	DefaultProvider string                   `json:"defaultProvider"`
+	Providers       []settingsProvider       `json:"providers"`
+	Models          []settingsModel          `json:"models"`
 }
 
 // settingsMemory projects the memory master switch with its default resolved.
@@ -162,13 +170,16 @@ type settingsProviderUpdate struct {
 	Models                 []settingsModelUpdate `json:"models"`
 }
 type settingsUpdate struct {
-	AIApproval      *config.AIApprovalConfig `json:"aiApproval,omitempty"`
-	Computer        *config.ComputerConfig   `json:"computer,omitempty"`
-	Memory          *settingsMemoryUpdate    `json:"memory,omitempty"`
-	DefaultModel    *string                  `json:"defaultModel,omitempty"`
-	DefaultProvider *string                  `json:"defaultProvider,omitempty"`
-	Providers       []settingsProviderUpdate `json:"providers,omitempty"`
-	DeleteProviders []string                 `json:"deleteProviders,omitempty"`
+	AIApproval *config.AIApprovalConfig `json:"aiApproval,omitempty"`
+	Computer   *config.ComputerConfig   `json:"computer,omitempty"`
+	Memory     *settingsMemoryUpdate    `json:"memory,omitempty"`
+	// MemoryOrganizer is applied by handleSettings, not applySettings: it lives
+	// in its own file and reschedules the running organizer.
+	MemoryOrganizer *settingsMemoryOrganizerUpdate `json:"memoryOrganizer,omitempty"`
+	DefaultModel    *string                        `json:"defaultModel,omitempty"`
+	DefaultProvider *string                        `json:"defaultProvider,omitempty"`
+	Providers       []settingsProviderUpdate       `json:"providers,omitempty"`
+	DeleteProviders []string                       `json:"deleteProviders,omitempty"`
 }
 
 func publicBaseURL(raw string) string {
@@ -245,7 +256,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == http.MethodGet {
-		writeJSON(w, http.StatusOK, projectSettings(s.settings.Snapshot()))
+		writeJSON(w, http.StatusOK, s.settingsView(s.settings.Snapshot()))
 		return
 	}
 	if r.Method != http.MethodPut {
@@ -263,24 +274,66 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "expected one settings object")
 		return
 	}
+	organizerUpdate := update.MemoryOrganizer
+	update.MemoryOrganizer = nil
+	// An update that only changes the organizer schedule leaves config.json and
+	// the settings revision alone, so sessions do not rebuild their model clients.
+	configChanged := organizerUpdate == nil || !reflect.DeepEqual(update, settingsUpdate{})
 	s.settings.mu.Lock()
-	defer s.settings.mu.Unlock()
 	next := s.settings.cfg.Snapshot()
 	if err := applySettings(next, update); err != nil {
+		s.settings.mu.Unlock()
 		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if s.settings.save == nil {
+	var organizer config.MemoryOrganizerConfig
+	if organizerUpdate != nil {
+		var err error
+		if organizer, err = s.nextMemoryOrganizerLocked(*organizerUpdate); err != nil {
+			s.settings.mu.Unlock()
+			writeJSONError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if s.settings.organizerPath == "" {
+			s.settings.mu.Unlock()
+			writeJSONError(w, http.StatusServiceUnavailable, errOrganizerPersistence.Error())
+			return
+		}
+	}
+	if configChanged && s.settings.save == nil {
+		s.settings.mu.Unlock()
 		writeJSONError(w, http.StatusServiceUnavailable, "settings persistence is unavailable")
 		return
 	}
-	if err := s.settings.save(next); err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "could not persist settings")
-		return
+	if organizerUpdate != nil {
+		if err := config.SaveMemoryOrganizer(s.settings.organizerPath, organizer); err != nil {
+			s.settings.mu.Unlock()
+			writeJSONError(w, http.StatusInternalServerError, "could not persist settings")
+			return
+		}
 	}
-	s.settings.cfg = next
-	s.settings.revision++
-	writeJSON(w, http.StatusOK, projectSettings(next))
+	if configChanged {
+		if err := s.settings.save(next); err != nil {
+			if organizerUpdate != nil {
+				// Keep the two files consistent: the request failed as a whole.
+				_ = config.RestoreMemoryOrganizer(s.settings.organizerPath, s.settings.organizer, s.settings.organizerSaved)
+			}
+			s.settings.mu.Unlock()
+			writeJSONError(w, http.StatusInternalServerError, "could not persist settings")
+			return
+		}
+		s.settings.cfg = next
+		s.settings.revision++
+	}
+	if organizerUpdate != nil {
+		s.settings.organizer, s.settings.organizerSaved = organizer, true
+	}
+	cfg := s.settings.cfg.Snapshot()
+	s.settings.mu.Unlock()
+	if organizerUpdate != nil {
+		s.rescheduleMemoryOrganizer()
+	}
+	writeJSON(w, http.StatusOK, s.settingsView(cfg))
 }
 
 func applySettings(cfg *config.Config, update settingsUpdate) error {

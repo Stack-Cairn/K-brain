@@ -88,6 +88,11 @@ func (s *Server) pruneHTTPSnapshotsLocked(now time.Time) {
 }
 
 func (s *Server) createSessionSnapshot(w http.ResponseWriter, r *http.Request) {
+	archive, err := archiveQuery(r)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	// Reserve before copying or encoding a full projection. The retained and
 	// in-flight counts share the four-snapshot budget, with only one builder.
 	s.snapshotMu.Lock()
@@ -117,7 +122,7 @@ func (s *Server) createSessionSnapshot(w http.ResponseWriter, r *http.Request) {
 	if err := r.Context().Err(); err != nil {
 		return
 	}
-	snapshot, err := s.store.SummarySnapshot(ctx)
+	snapshot, err := s.store.SummarySnapshotFiltered(ctx, archive)
 	if err != nil {
 		if s.shuttingDown.Load() {
 			writeJSONError(w, http.StatusServiceUnavailable, "backend is closing")
@@ -275,6 +280,11 @@ func (s *Server) sessionChanges(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rescan := rescanRaw == "1"
+	archive, err := archiveQuery(r)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	result, err := s.store.SummaryChanges(r.Context(), session.SummaryChangeRequest{Epoch: r.URL.Query().Get("epoch"), Since: since, Wait: time.Duration(wait) * time.Second, Rescan: rescan})
 	if err != nil {
 		if errors.Is(err, session.ErrTooManySummaryWaiters) {
@@ -299,7 +309,12 @@ func (s *Server) sessionChanges(w http.ResponseWriter, r *http.Request) {
 		out.NextSince = &next
 	}
 	for _, change := range result.Changes {
-		item := protocol.SessionChange{ID: change.ID, Revision: strconv.FormatUint(change.Revision, 10), Kind: change.Kind, Listed: change.Listed}
+		// listed is recomputed for the requested archived filter; an archive or
+		// unarchive is an upsert whose session.archived flipped, so a client on
+		// the default filter sees listed turn false (or true) and one on
+		// archived=include sees the flag change in place.
+		listed := change.Kind == "upsert" && archive.Listed(change.Meta, change.MessageCount)
+		item := protocol.SessionChange{ID: change.ID, Revision: strconv.FormatUint(change.Revision, 10), Kind: change.Kind, Listed: listed}
 		if change.Kind == "upsert" {
 			summary := summary(change.Meta, change.MessageCount)
 			item.Session = &summary
@@ -310,7 +325,12 @@ func (s *Server) sessionChanges(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) sessionWorkdirs(w http.ResponseWriter, r *http.Request) {
-	snapshot, err := s.store.SummarySnapshot(r.Context())
+	archive, err := archiveQuery(r)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	snapshot, err := s.store.SummarySnapshotFiltered(r.Context(), archive)
 	if err != nil {
 		mutationError(w, err)
 		return

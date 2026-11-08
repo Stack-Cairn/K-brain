@@ -53,7 +53,7 @@ func backendCLI(args []string) error {
 		}
 		return err
 	})
-	memoryOrganizerInterval := fs.Duration("memory-organizer-interval", 24*time.Hour, "interval for backend memory organizer runs; 0 uses 24h")
+	memoryOrganizerInterval := fs.Duration("memory-organizer-interval", 24*time.Hour, "default interval for backend memory organizer runs; 0 uses 24h. A schedule saved in settings (memoryOrganizer) takes precedence")
 	fs.Usage = func() {
 		fmt.Fprintln(os.Stderr, "usage: kn backend [-listen address] [-parent-stdio] [-token bearer-token]")
 		fmt.Fprintln(os.Stderr, "serve the K-brain canonical session API for LiveAgent")
@@ -92,6 +92,10 @@ func backendCLI(args []string) error {
 	}
 	cfg, store, configFilename := data.Config, data.Sessions, data.ConfigPath
 	settings := backend.NewSettingsStore(cfg, data.SaveConfig)
+	// The organizer schedule saved through /v1/settings overrides the flag.
+	if err := settings.UseMemoryOrganizerFile(configFilename); err != nil {
+		fmt.Fprintln(os.Stderr, "memory organizer: ignoring unreadable saved schedule:", err)
+	}
 	closeTools, err := initializeToolRuntime(cfg)
 	if err != nil {
 		return err

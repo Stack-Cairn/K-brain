@@ -47,6 +47,14 @@ type healthCapabilities struct {
 	// /v1/sessions/{id}/runs/{run_id}/tools/{tool_call_id}/background moves a
 	// running foreground shell command to the background.
 	BackgroundTool int `json:"background_tool"`
+	// SessionArchive is 1 where the session list, snapshots, changes and
+	// workdirs accept archived=exclude|include|only and every session summary
+	// carries archived.
+	SessionArchive int `json:"session_archive"`
+	// MemoryOrganizerSettings is 1 where /v1/settings reads and writes
+	// memoryOrganizer {enabled, intervalHours} and saving it reschedules the
+	// running organizer.
+	MemoryOrganizerSettings int `json:"memory_organizer_settings"`
 }
 
 // healthRunSandboxV1 describes per-run sandboxing (options.sandbox). Clients
@@ -153,6 +161,8 @@ func (s *Server) health() healthResponse {
 			SSHManager:              1,
 			SkillPacks:              1,
 			BackgroundTool:          1,
+			SessionArchive:          1,
+			MemoryOrganizerSettings: 1,
 		},
 		HostBridge: s.hostBridge.status(),
 	}
