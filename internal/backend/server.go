@@ -103,6 +103,8 @@ type Server struct {
 	mcp                  *mcp.LiveManager
 	build                protocol.Build
 	instance             instanceIdentity
+	// hostBridge is the LiveAgent desktop's tool bridge, kept in memory only.
+	hostBridge hostBridge
 
 	mu                  sync.Mutex
 	sessions            map[string]*runtimeSession
@@ -434,6 +436,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == http.MethodGet && r.URL.Path == "/v1/health" {
 		writeJSON(w, http.StatusOK, s.health())
+		return
+	}
+	if r.URL.Path == "/v1/host-bridge" {
+		s.handleHostBridge(w, r)
 		return
 	}
 	if r.URL.Path == "/v1/sandbox/setup" {
@@ -1014,6 +1020,7 @@ func (s *Server) rebuildAgentLocked(rt *runtimeSession, selected protocol.ModelR
 		s.cron.attachTool(ag, selected)
 	}
 	s.attachPlanningTools(ag)
+	s.syncHostTools(ag)
 	ag.ModelName, ag.Provider = selected.Model, selected.Provider
 	if s.mcp != nil {
 		mcpTools, filter := s.mcp.ToolsForTurn(context.Background(), cwd, nil, rt.mcpActivation)
@@ -1095,6 +1102,7 @@ func (s *Server) loadRuntime(id string, model protocol.ModelRef, cwd string) (*r
 		s.cron.attachTool(ag, model)
 	}
 	s.attachPlanningTools(ag)
+	s.syncHostTools(ag)
 	ag.ModelName, ag.Provider = model.Model, model.Provider
 	if s.mcp != nil {
 		mcpTools, filter := s.mcp.ToolsForTurn(context.Background(), cwd, nil, activation)
@@ -1433,6 +1441,14 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, end func(),
 			return tools.GateReject, "approval policy denies this action"
 		}
 		if isUnattendedRun(req.Context) {
+			if hostBridgeTool(req.Tool) {
+				// Nobody can answer a prompt: host reads (ReadTerminal, TunnelManager
+				// list/check) run as read-only, host actions only under an explicit allow
+				// rule or per-tool policy, and anything that would ask fails at once.
+				return runToolGate(options, req, s.evaluateRules(rt.id, ruleRoot, req), func(tools.GateRequest) (tools.GateDecision, string) {
+					return tools.GateReject, "unattended scheduled runs cannot request interactive approval; add an allow rule for " + req.Tool
+				})
+			}
 			return tools.GateReject, "unattended scheduled runs cannot request interactive approval"
 		}
 		gateOptions := options

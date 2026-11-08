@@ -133,6 +133,8 @@ func (s *Server) startCanonicalRunWith(ctx context.Context, rt *runtimeSession, 
 	if err := s.refreshSettingsLocked(rt); err != nil {
 		return fail(400, err.Error())
 	}
+	// A desktop bridge may have connected or gone since the session loaded.
+	s.syncHostTools(rt.agent)
 	// Normalize after model selection so model-specific tools and MCP filters are current.
 	options, err := normalizeRunOptions(in.Options, rt.agent.WorkingDir, rt.agent.KnownTools())
 	if err != nil {

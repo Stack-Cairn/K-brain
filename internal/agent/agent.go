@@ -184,6 +184,9 @@ type Agent struct {
 	toolsMu     sync.Mutex
 	mcpTools    []tools.Tool
 	pluginTools []tools.Tool
+	// hostTools are provided by the desktop host while it is connected; one
+	// with the name of a tool in Tools replaces it (see SetHostTools).
+	hostTools []tools.Tool
 
 	wfMu sync.Mutex
 	wf   *workflow.Manager
@@ -503,6 +506,25 @@ func (a *Agent) SetMCPTools(ts []tools.Tool) {
 	suggesterMu.Unlock()
 }
 
+// SetHostTools replaces the tools the desktop host provides. A host tool named
+// like one of Tools takes its place while set; nil restores the agent's own.
+func (a *Agent) SetHostTools(ts []tools.Tool) {
+	a.toolsMu.Lock()
+	a.hostTools = ts
+	a.toolsMu.Unlock()
+}
+
+// ownToolsLocked is Tools with the host tools in place; the caller holds toolsMu.
+func (a *Agent) ownToolsLocked() []tools.Tool {
+	out := make([]tools.Tool, 0, len(a.Tools)+len(a.hostTools))
+	for _, tool := range a.Tools {
+		if !slices.ContainsFunc(a.hostTools, func(host tools.Tool) bool { return host.Def.Function.Name == tool.Def.Function.Name }) {
+			out = append(out, tool)
+		}
+	}
+	return append(out, a.hostTools...)
+}
+
 func (a *Agent) SetPluginTools(ts []tools.Tool) {
 	a.toolsMu.Lock()
 	a.pluginTools = ts
@@ -511,7 +533,7 @@ func (a *Agent) SetPluginTools(ts []tools.Tool) {
 
 func (a *Agent) suggest(name string) []string {
 	a.toolsMu.Lock()
-	all := append(append(append([]tools.Tool(nil), a.Tools...), a.mcpTools...), a.pluginTools...)
+	all := append(append(a.ownToolsLocked(), a.mcpTools...), a.pluginTools...)
 	a.toolsMu.Unlock()
 	names := make([]string, len(all))
 	for i, t := range all {
@@ -523,7 +545,7 @@ func (a *Agent) suggest(name string) []string {
 func (a *Agent) AvailableTools() []tools.Tool {
 	a.toolsMu.Lock()
 	defer a.toolsMu.Unlock()
-	return a.withoutMemoryTools(a.modeTools(append(append(append([]tools.Tool(nil), a.Tools...), a.mcpTools...), a.pluginTools...)))
+	return a.withoutMemoryTools(a.modeTools(append(append(a.ownToolsLocked(), a.mcpTools...), a.pluginTools...)))
 }
 
 func (a *Agent) AllTools() []tools.Tool {
@@ -532,7 +554,7 @@ func (a *Agent) AllTools() []tools.Tool {
 	if a.RunToolsSet {
 		return a.withoutMemoryTools(append([]tools.Tool(nil), a.RunTools...))
 	}
-	return a.withoutMemoryTools(a.modeTools(append(append(append([]tools.Tool(nil), a.Tools...), a.mcpTools...), a.pluginTools...)))
+	return a.withoutMemoryTools(a.modeTools(append(append(a.ownToolsLocked(), a.mcpTools...), a.pluginTools...)))
 }
 
 func (a *Agent) Turn(ctx context.Context, input string, ev Events) (string, error) {

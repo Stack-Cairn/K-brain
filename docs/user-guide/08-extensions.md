@@ -27,3 +27,19 @@ Plugins 为本地扩展提供工具或命令。`/plugins list` 查看插件，`/
 指导和续聊消息最多 64 KiB；每个子代理最多排队 32 条尚未处理的指导。查询列表最多返回 100 条、按 ID 排序，单条描述最多约 256 字节；`total` 和 `truncated` 表示列表是否完整，已知 ID 可单独查询。自动回传及工具返回的报告使用现有约 50 KB 截断规则，完整子代理对话仍按原机制保存。
 
 续聊保留原任务 ID 和原始完成报告；新回复通过工具返回，并写入子代理对话。只有仍在内存中持有执行上下文的子代理可以续聊。重启、闲置回收或清理任务后，不保证上下文仍可续用；只有历史摘要时会明确报错，不会创建一个冒充原任务的新对话。
+
+## LiveAgent 桌面工具（ReadTerminal、TunnelManager）
+
+在 LiveAgent 桌面里使用 K-brain 时，桌面连上后端后会登记一个只在本机 loopback 上监听的宿主桥，模型因此多出两个工具，名字、参数和返回文本与 LiveAgent v1 相同：
+
+| 工具 | 用途 | 默认权限 |
+| --- | --- | --- |
+| `ReadTerminal` | 读取当前项目在桌面里打开的终端的最近输出（只读，不能输入）；传 `session_id` 时读取本会话 `TerminalSession` 的输出 | 按只读放行，不询问 |
+| `TunnelManager` | 通过 Gateway 列出（`list`）、新建（`create`）、关闭（`close`）、探测（`check`）临时的远程 HTTP/WebSocket/SSE 隧道 | `list`/`check` 放行；`create`/`close` 询问 |
+
+- 桌面没有连接时运行里没有这两个工具（`ReadTerminal` 回到只读本会话终端的版本）；桌面在会话打开之后才连上，下一次发送消息时生效。运行中途桌面断开，调用返回 `LiveAgent desktop is not connected`。
+- 每次调用最多等桌面 10 秒，停止运行会立即取消。
+- 权限规则照常适用：例如 deny 规则 `ReadTerminal` 禁止读取终端，allow 规则 `TunnelManager(create:*)` 让新建隧道不再询问。定时任务等无人值守的运行无法弹出审批，`create`/`close` 必须事先有这样的 allow 规则（或以 `full_access` 运行），否则立即失败。
+- 宿主桥的地址和令牌只保存在后端内存里，不写盘、不进日志和会话历史，也不会传给命令的环境变量。沙箱里的命令仍可以连到本机端口，但没有令牌，无法调用宿主桥。
+
+协议细节见 [LiveAgent 后端协议](../liveagent-backend.md) 的"桌面宿主桥"一节。

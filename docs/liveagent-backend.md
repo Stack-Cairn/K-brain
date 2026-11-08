@@ -87,6 +87,7 @@ VITE_KBRAIN_TOKEN=<backend-token>
 | POST | `/v1/sessions/{id}/questions/{question}` | 回答 `question.requested`；`selected_labels` 见下文，`capabilities.question_selected_labels` 表示支持 |
 | POST | `/v1/sessions/{id}/elicitations/{elicitation}` | 回答 MCP 服务器的表单征询 `elicitation.requested`；见下文，`capabilities.mcp_elicitation` 表示支持 |
 | POST | `/v1/sessions/{id}/close` | 结束当前会话运行与后台子代理并保存 |
+| PUT / DELETE | `/v1/host-bridge` | 桌面登记 / 清除宿主桥，供 `ReadTerminal`、`TunnelManager` 回调桌面；见下文，`capabilities.host_bridge` 表示支持 |
 
 列表支持 `page`、`page_size`、`cwd`、`cwd_empty`、`shared`、`pinned`，返回 `sessions`、`total_count`、`epoch` 和字符串 `revision`。`/v1/health` 的 `capabilities.session_changes: 2` 表示同时支持不可变快照、增量、pinned、workdirs、字符串游标和过期 reset；客户端必须探测完整契约后才能放宽旧轮询。
 
@@ -287,6 +288,51 @@ MCP 服务器可以在自己的工具运行期间请用户填写一张表单（M
 **记录与日志。** 事件日志和历史只保存去掉敏感字段后的回答，完整回答只在内存中交给 MCP 服务器。K-brain 的 MCP 日志只写服务器名、工具名、`action` 与 `reason`，不写任何字段值。服务器自己在工具结果里回显的内容不受此限制。
 
 `kn` 的 TUI 同样声明这一能力，用一张卡片显示表单（标题是服务器名，敏感字段遮住输入，校验规则同上，没有超时）。ACP 不声明，服务器不会经 ACP 发起征询。用户侧说明见 [Hooks 与 MCP](user-guide/11-hooks-mcp.md)。
+
+### 桌面宿主桥（`capabilities.host_bridge: 1`）
+
+有些工具操作的状态在 LiveAgent 桌面的 Rust 进程里：终端标签页和 Gateway 隧道。这类工具由 K-brain 持有（schema、权限、历史、事件都和其他工具一样），副作用交给桌面执行：桌面在 loopback 上开一个 HTTP 服务（宿主桥），K-brain 执行工具时回调它。
+
+**登记。** 桌面用普通的 `/v1` 后端令牌调用 `PUT /v1/host-bridge`：
+
+```json
+{"url":"http://127.0.0.1:<port>","token":"<random>","host":"liveagent-desktop","tools":["ReadTerminal","TunnelManager"]}
+```
+
+- `url` 只接受 `http`，主机只能是 `127.0.0.1`、`[::1]` 或 `localhost`，可带端口，不能带路径、用户名密码、query 或 fragment；否则返回 400，登记不变。
+- `token` 必填，不含空白和控制字符，最长 4096 字节。`host` 可省略（默认 `liveagent-desktop`），最长 128 字节。
+- `tools` 里 K-brain 不认识的名字被忽略，请求里的未知字段也被忽略；只有列出的已知工具才会注册。
+- 成功返回 `200 {"connected":true,"tools":[...]}`。再次 PUT 整体替换上一次登记。`DELETE /v1/host-bridge` 清除登记，返回 `{"connected":false,"tools":[]}`。其他方法返回 405。
+- 登记只保存在后端进程内存里：不写盘，不进日志、事件和历史，也不传给子进程的环境变量。后端重启后登记丢失，桌面应在每次（重新）连接后端时重新 PUT（`/v1/health` 的 `instanceId` 变化即表示后端重启过）。
+- `/v1/health` 报告 `host_bridge: {"connected": bool, "tools": [...]}`，不含 url 和 token。
+
+**调用。** K-brain 发 `POST {url}/v1/host/{command}`，带 `Authorization: Bearer <token>` 和 `Content-Type: application/json`，请求体是参数 JSON。桌面必须以 HTTP 200 回答 `{"ok":true,"result":...}` 或 `{"ok":false,"error":{"code":"...","message":"..."}}`；任何非 200 状态都按传输错误处理。`error.message`（`code` 附在括号里）作为工具失败的原因交给模型。每次调用默认 10 秒超时；运行被停止时正在进行的调用随之取消。回答最多 8 MiB。K-brain 的客户端不走代理、不跟随重定向，并拒绝对端不是 loopback 地址的连接。
+
+| command | 参数 | `result` |
+| --- | --- | --- |
+| `terminal_read_tail` | `{project_path_key, session_id?, max_bytes?}` | `{sessions:[{id,title,cwd,shell,running}], selectedSession, output, truncated}` |
+| `gateway_tunnel_state` | `{}` | `{revision, agentOnline, relay, tunnels:[{id,slug,name,targetUrl,publicPath,createdAt,expiresAt,activeConnections,projectPathKey,local}], gatewayUnsupported?}` |
+| `gateway_tunnel_create` | `{input:{targetUrl, name?, ttlSeconds?}}` | 不使用 |
+| `gateway_tunnel_close` | `{tunnel_id}` | 不使用 |
+| `gateway_tunnel_check` | `{tunnel_id?}` | 不使用 |
+
+结果形状与桌面已有的 Tauri 命令 `terminal_read_tail`、`gateway_tunnel_state` 相同。K-brain 总是发送 `max_bytes`（默认 32 KiB，限制在 4–128 KiB）和 `ttlSeconds`（默认 3600）。`project_path_key` 是会话工作目录按桌面 `project_path_key` 的规则归一化后的值：Windows 盘符、UNC 和 `\\?\` 路径改为正斜杠、转小写、去掉根之外的末尾分隔符（`\\?\UNC\Server\Share\Repo\` 得到 `//server/share/repo`）；其他路径保留大小写，只去掉末尾的 `/`。`gateway_tunnel_state` 的结果可以另带不属于契约的 `publicBaseUrl`，有它时工具结果显示完整公网地址，否则显示 `publicPath`。
+
+**工具。** 桥登记了对应工具时，运行里才有它们：
+
+- `ReadTerminal`：沿用 LiveAgent v1 的名字、描述、`terminal_id`/`max_bytes` 参数和结果文本，读取当前项目的桌面终端。它替换 K-brain 自己的同名工具，另加一个 `session_id` 参数：传入本会话 `TerminalSession` 的 id 时仍读本地终端，不经过桌面。
+- `TunnelManager`：沿用 v1 的 schema、描述和结果文本。`create` 在调用前后各读一次状态，找出新建的隧道；`check` 触发探测后等待 2.5 秒再读取状态（运行停止时提前结束）。
+
+每次运行开始时按当前登记重新挂载这两个工具，所以会话加载之后才连上的桥在下一次运行生效；桥断开后下一次运行不再提供它们。运行中途桥断开或桌面不可达时，调用返回 `LiveAgent desktop is not connected`。
+
+**权限。**
+
+- `ReadTerminal` 与 `TunnelManager` 的 `list`/`check` 按只读放行（与 Read、本地 `ReadTerminal` 一致）：normal、auto_edit、auto_review 下不询问，发 `permission.auto_resolved`（`source: "read_only"`）。规则匹配的 `command` 分别是终端 id（省略时为空）、`list`、`check` 或 `check <id>`；deny 规则（如 `ReadTerminal`、`TunnelManager(list)`）、按工具的 ask/deny 策略和计划模式照常生效。
+- `create`/`close` 默认询问，`command` 为 `create <targetUrl>`、`close <id>`，不生成可记住的规则建议；可以手动添加 `TunnelManager(create:*)`、`TunnelManager(close:*)` 这样的 allow 规则。`full_access`/`always` 直接放行。
+- 定时任务等无人值守运行：读取照常按只读放行；`create`/`close` 只有在 allow 规则、按工具的 allow 策略或 `full_access`/`always` 下才执行，否则立即失败（`unattended scheduled runs cannot request interactive approval; add an allow rule for TunnelManager`），不发起审批也不等待。
+- 审批在调用桌面之前完成，被拒绝的 `create` 不会到达桌面。
+
+**令牌与沙箱。** 令牌只在 K-brain 进程内存里，不进入任何子进程。沙箱里的命令（联网的运行中）仍能连到本机 loopback 端口，包括桥监听的端口，但拿不到令牌；未开沙箱的命令同样拿不到。桌面必须校验每个请求的 `Authorization`，拒绝缺少或不匹配令牌的请求。
 
 ### 记住的权限规则（`capabilities.permission_rules: 1`、`readonly_auto_allow: 1`）
 

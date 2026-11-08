@@ -44,7 +44,7 @@ func (a *Agent) MemoryEnabled() bool { return !a.memoryOff.Load() }
 func (a *Agent) KnownTools() []tools.Tool {
 	a.toolsMu.Lock()
 	defer a.toolsMu.Unlock()
-	return a.modeTools(append(append(append([]tools.Tool(nil), a.Tools...), a.mcpTools...), a.pluginTools...))
+	return a.modeTools(append(append(a.ownToolsLocked(), a.mcpTools...), a.pluginTools...))
 }
 
 func (a *Agent) withoutMemoryTools(all []tools.Tool) []tools.Tool {

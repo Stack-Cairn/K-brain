@@ -101,6 +101,7 @@ func (a *Agent) newSub(o SubModel) *Agent {
 	sub.Tools = sub.inheritedTools(a.Tools)
 	sub.mcpTools = sub.inheritedTools(a.mcpTools)
 	sub.pluginTools = sub.inheritedTools(a.pluginTools)
+	sub.hostTools = sub.inheritedTools(a.hostTools)
 	a.toolsMu.Unlock()
 
 	if effort != "" {
