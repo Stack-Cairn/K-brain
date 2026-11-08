@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"testing"
 )
 
 const (
@@ -20,7 +21,26 @@ const (
 // replacing files already present in the new directory.
 func UserDir() (string, error) {
 	home, _ := os.UserHomeDir()
-	return Resolve(home, os.Getenv(LiveAgentHomeEnv), os.Getenv(LegacyHomeEnv))
+	preferred, legacy := os.Getenv(LiveAgentHomeEnv), os.Getenv(LegacyHomeEnv)
+	if testing.Testing() {
+		home, preferred, legacy = testSafe(home, preferred, legacy)
+	}
+	return Resolve(home, preferred, legacy)
+}
+
+// LegacyUserDir is the pre-LiveAgent global directory (~/.k-brain) that is
+// imported once. Under `go test` it is "" unless the home directory is a
+// temporary one: tests must not read a developer's real data.
+func LegacyUserDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return ""
+	}
+	dir := filepath.Join(home, LegacyDirName)
+	if testing.Testing() && !InTempDir(dir) {
+		return ""
+	}
+	return dir
 }
 
 func Resolve(home, preferred, legacyOverride string) (string, error) {

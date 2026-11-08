@@ -50,12 +50,10 @@ func OpenLocal(opts Options) (_ *Local, err error) {
 		if err := migrateDesktopData(opts.LegacyDesktopDir, root, ".migration-desktop-kbrain"); err != nil {
 			return nil, err
 		}
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return nil, err
-		}
-		if err := migrateDesktopData(filepath.Join(home, ".k-brain"), root, ".migration-legacy-kbrain"); err != nil {
-			return nil, err
+		if legacy := datapath.LegacyUserDir(); legacy != "" {
+			if err := migrateDesktopData(legacy, root, ".migration-legacy-kbrain"); err != nil {
+				return nil, err
+			}
 		}
 	}
 	path := opts.ConfigPath
