@@ -166,6 +166,15 @@
       "firstRelease": "v0.107.28",
       "evidenceCommit": "pending",
       "missing": "Do not send SSH hosts to /v1/settings/ssh (it does not exist) and expect no SSHManager tool in runs: keep SSH sessions on the desktop."
+    },
+    {
+      "name": "skill_packs",
+      "type": "integer",
+      "compare": "eq",
+      "value": 1,
+      "firstRelease": "v0.107.28",
+      "evidenceCommit": "pending",
+      "missing": "Skills nested in skill packs are not found (only <root>/<name>/SKILL.md): /v1/skills items have no pack or shadowed and there is no shadowed list. Hide pack toggles and never send packs to PUT /v1/skills/settings (an older backend rejects it with 400 for the unknown field)."
     }
   ]
 }

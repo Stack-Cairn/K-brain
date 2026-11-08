@@ -1,8 +1,10 @@
 package backend
 
 import (
+	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/Stack-Cairn/K-brain/internal/session"
@@ -33,4 +35,54 @@ func TestRunReadRootsGrantCompactionSegments(t *testing.T) {
 	if roots := runReadRoots(nil, id, workspace); slices.Contains(roots, dir) {
 		t.Fatal("no store, no compaction root")
 	}
+}
+
+// A pack skill's SKILL.md points at files next to it (references/, scripts/), several
+// levels below the managed root. The managed root grant must cover them without
+// widening to the user's home directory.
+func TestRunReadRootsCoverSkillPackFilesButNotHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("LIVEAGENT_HOME", filepath.Join(home, ".liveagent"))
+	t.Setenv("K_BRAIN_HOME", "")
+	ref := filepath.Join(home, ".liveagent", "skills", "demo-pack", "skills", "radare2", "references", "commands.md")
+	if err := os.MkdirAll(filepath.Dir(ref), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(ref, []byte("ref"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	workspace := t.TempDir()
+	roots := runReadRoots(nil, "", workspace)
+	realHome, err := filepath.EvalSymlinks(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	realRef, err := filepath.EvalSymlinks(ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	covered := false
+	for _, root := range roots {
+		realRoot, err := filepath.EvalSymlinks(root)
+		if err != nil {
+			continue
+		}
+		if isWithin(realHome, realRoot) {
+			t.Fatalf("read roots %v grant the home directory via %s", roots, root)
+		}
+		if isWithin(realRef, realRoot) {
+			covered = true
+		}
+	}
+	if !covered {
+		t.Fatalf("read roots %v do not cover the pack reference %s", roots, ref)
+	}
+}
+
+// isWithin reports whether path is root or below it.
+func isWithin(path, root string) bool {
+	rel, err := filepath.Rel(root, path)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
 }

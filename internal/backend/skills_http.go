@@ -22,12 +22,14 @@ func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
 			writeJSONError(w, http.StatusUnprocessableEntity, err.Error())
 			return
 		}
-		installed, invalid, err := m.List()
+		installed, shadowed, invalid, err := m.ListAll()
 		if err != nil {
 			writeJSONError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"version": "v1", "revision": rev, "rootDir": m.Root(), "skills": installed, "invalid": invalid, "enabled": state.Enabled, "selected": state.Selected, "settings": state, "warnings": []string{}})
+		// skills holds one entry per name; shadowed pack copies are listed apart
+		// so clients that key skills by name never see duplicates.
+		writeJSON(w, http.StatusOK, map[string]any{"version": "v1", "revision": rev, "rootDir": m.Root(), "skills": installed, "shadowed": shadowed, "invalid": invalid, "enabled": state.Enabled, "selected": state.Selected, "settings": state, "warnings": []string{}})
 		return
 	}
 	if r.URL.Path == "/v1/skills/files" && r.Method == http.MethodGet {
@@ -59,11 +61,14 @@ func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
 			Selected   []string `json:"selected"`
 			Mode       string   `json:"mode"`
 			SkillNames []string `json:"skillNames"`
+			// Packs is omitted by clients without skill packs; the stored value
+			// is kept then. {} clears it.
+			Packs map[string]bool `json:"packs"`
 		}
 		if err := decodeJSON(w, r, &in); err != nil {
 			return
 		}
-		rev, err := m.SaveSettings(in.Workdir, skills.SkillSettings{Enabled: in.Enabled, Selected: in.Selected, Mode: in.Mode, SkillNames: in.SkillNames})
+		rev, err := m.SaveSettings(in.Workdir, skills.SkillSettings{Enabled: in.Enabled, Selected: in.Selected, Mode: in.Mode, SkillNames: in.SkillNames, Packs: in.Packs})
 		if err != nil {
 			writeJSONError(w, http.StatusUnprocessableEntity, err.Error())
 			return

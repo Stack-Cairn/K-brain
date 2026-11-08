@@ -197,10 +197,10 @@ func (m *model) skillCands() []cand {
 	out := make([]cand, 0, len(sk))
 	for _, s := range sk {
 		d := s.Description
-		if len(d) > 80 {
-			d = d[:80] + "…"
+		if s.Pack != "" {
+			d = "[" + s.Pack + "] " + d
 		}
-		out = append(out, cand{"$" + s.Name, d})
+		out = append(out, cand{"$" + s.Name, skills.TruncateDescription(d, 80)})
 	}
 	return out
 }

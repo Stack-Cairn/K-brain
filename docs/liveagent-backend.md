@@ -89,6 +89,10 @@ VITE_KBRAIN_TOKEN=<backend-token>
 | POST | `/v1/sessions/{id}/close` | 结束当前会话运行与后台子代理并保存 |
 | PUT / DELETE | `/v1/host-bridge` | 桌面登记 / 清除宿主桥，供 `ReadTerminal`、`TunnelManager` 回调桌面；见下文，`capabilities.host_bridge` 表示支持 |
 | GET / PUT | `/v1/settings/ssh` | 读取（密钥脱敏）/ 保存 `SSHManager` 的 SSH 主机与项目关联；另有 `PUT`/`DELETE /v1/settings/ssh/hosts/{id}` 与 `DELETE /v1/settings/ssh/hosts/{id}/host-keys`；见下文，`capabilities.ssh_manager` 表示支持 |
+| GET | `/v1/skills` | 托管 Skills 根目录下的技能（含技能包里的技能）、被遮蔽的副本、无效条目与启用设置；字段见下文"技能包" |
+| GET | `/v1/skills/files` / `/v1/skills/file?path=` | 列出各技能的 SKILL.md 相对路径 / 按相对路径读取根目录下的文件（技能包里的嵌套路径同样可读） |
+| PUT | `/v1/skills/settings` | 保存启用设置（全局或按 `workdir` 的项目设置）；`packs` 见下文，`capabilities.skill_packs` 表示支持 |
+| POST | `/v1/skills/manage` | SkillsManager 操作：`list`、`read`、`validate`、`delete`、`create`、`install`、`install_start` 等 |
 
 列表支持 `page`、`page_size`、`cwd`、`cwd_empty`、`shared`、`pinned`，返回 `sessions`、`total_count`、`epoch` 和字符串 `revision`。`/v1/health` 的 `capabilities.session_changes: 2` 表示同时支持不可变快照、增量、pinned、workdirs、字符串游标和过期 reset；客户端必须探测完整契约后才能放宽旧轮询。
 
@@ -405,6 +409,47 @@ MCP 服务器可以在自己的工具运行期间请用户填写一张表单（M
 - 定时任务等无人值守运行不询问也不等待：需要审批的动作只有在 allow 规则、按工具的 allow 策略或 `full_access`/`always` 下才执行，否则立即失败；主机密钥必须已经保存、凭据必须已经保存，否则同样立即失败并说明原因。
 
 **记录与日志。** 密钥不进入事件、历史、日志和工具结果；保存的密钥只在 `hosts.json` 里。远端命令自己输出的内容不受此限制。
+
+### 技能包（`capabilities.skill_packs: 1`）
+
+除了 `<root>/<name>/SKILL.md` 形式的技能，K-brain 还识别**技能包**：一个顶层目录本身没有 SKILL.md，但更深处有 SKILL.md（例如整个克隆下来的技能仓库）。LiveAgent 桌面的 Rust 服务实现同一规则，下面的上限和顺序都属于契约：
+
+- **顶层条目。** 对技能根目录下每个顶层目录 `<dir>`：有 `<dir>/SKILL.md` 就是一个技能（原有行为）；否则，`<dir>` 以下 4 层之内有 SKILL.md 时，`<dir>` 是一个技能包。点开头的目录和下面列出的跳过目录不会成为技能包。
+- **遍历。** 广度优先，最多到 `<dir>` 以下 4 层目录，每个包最多访问 5000 个目录、接受 200 个技能；超出时停止并在 `invalid` 中报告。跳过点开头的目录、`node_modules`、`vendor`、`target`、`build`、`dist`、`__pycache__`，以及解析后落在技能根目录之外的符号链接。技能目录本身也会继续向下遍历（路由技能下面可以有子技能）。
+- **识别。** 每个含 SKILL.md、且 frontmatter 有 `name` 与 `description` 的目录是一个技能，技能名取 frontmatter 的 `name`。包内技能按宽松规则检查：名字不必等于目录名，允许 `|` 块标量描述；名字不能为空、不能以 `.` 开头、不能含空白、控制字符或路径分隔符，最长 128 字符。严格的命名规则只用于 create / validate 顶层技能。缺少 name 或 description 的 SKILL.md 进入 `invalid`。
+- **重名。** 包内最浅的路径保留名字，同深度按 baseDir 字节序取小者；顶层技能优先于任何包内技能；两个包之间，目录名字典序在前的包优先。落败的副本标为 shadowed，不参与提示词、补全和启用。客户端适配目录（例如包内 `plugins/` 下为其他客户端准备的副本）通常就以这种方式被遮蔽。
+- **身份。** `baseDir` 是相对技能根目录的路径，始终用正斜杠（Windows 也一样），例如 `reverse-skill/skills/radare2`；`skillFile` 是 `<baseDir>/SKILL.md`，技能可按 `skill://<skillFile>` 引用。技能里的相对路径相对该技能自己的目录解析。
+
+**`GET /v1/skills`。** `skills[]` 每项新增：
+
+| 字段 | 含义 |
+| --- | --- |
+| `pack` | 所属技能包的目录名；顶层技能为空字符串 |
+| `baseDir` | 相对根目录的技能目录，正斜杠 |
+| `shadowed` | 在 `skills[]` 中总是 `false` |
+| `shadowedBy` | 仅被遮蔽的副本有：胜出技能的 `baseDir` |
+
+`skills[]` 中每个名字只出现一次；被遮蔽的副本放在顶层新增的 `shadowed[]` 数组里（`shadowed: true`），这样按名字索引技能的旧客户端不会看到重复项。`SkillsManager` 的 `list` 返回同样的 `shadowed`。
+
+**启用设置。** 托管根目录的技能仍是选择加入：
+
+- 包内技能和顶层技能一样按名字放进 `selected`（重名已在发现阶段消解，名字在根目录内唯一）。
+- `skills-settings.json` 的全局设置与项目 `custom` 设置新增 `packs`，键是技能包目录名：`true` 打开该包的全部技能，`false` 关闭全部技能（优先于 `selected` 里的名字），不在 `packs` 里的包按 `selected` 逐个决定。
+- `PUT /v1/skills/settings` 接受 `packs`。省略 `packs` 时保留已存的值（不认识技能包的客户端不会清掉它），传 `{}` 清空。旧后端会以 400 拒绝含 `packs` 的请求（未知字段），客户端应先检查 `capabilities.skill_packs`。
+- 兼容目录（项目 `.liveagent/skills`、`.agents/skills` 等）里的技能包与原来一样总是启用。
+
+**提示词。** `<available_skills>` 中包内技能归在 `<skill_pack name="..." location="<包目录>">` 下。每个包最多占 12 KiB：放得下就完整列出；放不下时，路由技能（包内最浅的技能）完整列出，描述截到 1024 字符，其余技能按"路由技能的子孙在前、再按深度和 baseDir"的顺序写成紧凑的 `<skill name="..." dir="<相对包目录>">描述前 80 字符</skill>`，剩下放不下的计入 `<more count="N">`。
+
+**读取授权。** 运行的只读授权仍是整个托管根目录和各兼容扫描目录，包内 `references/`、`scripts/` 等文件因此可读，不会扩大到用户主目录。
+
+**SkillsManager。**
+
+- `read` 接受嵌套路径，如 `reverse-skill/skills/radare2/references/x.md`。
+- `validate` 传包目录名时检查整个包（至少一个可用技能，遍历问题作为 `warnings`）；传包内技能的名字或 baseDir 时做宽松检查；结果带 `pack`。
+- `delete` 传包内技能（名字或 baseDir）会被拒绝并说明原因：技能包作为一个目录安装（通常是一个 git 仓库），只能整体删除；可以在启用设置里关掉单个技能。传包目录名则删除整个包。
+- `install` 的本地目录、zip 或 GitHub 来源在根部没有 SKILL.md、但 4 层内有技能时，整体安装为技能包：包名取 `name` 参数，否则取 GitHub 仓库名（tree URL 取最后一级目录）、目录名或压缩包名。结果带 `pack` 和 `skills`（技能数），`skillFile` 指向路由技能。安装时跳过点开头的文件和目录（如 `.git`），单个技能同样如此。
+
+`kn` 的 TUI 同样识别技能包：`$名字` 补全中包内技能的说明以 `[包名]` 开头，`/extensions skills` 把包内技能按包分组，`kn skills list` 显示所属包、baseDir 和被遮蔽的副本。TUI 没有启用设置，列出所有扫描到的技能。
 
 ### 记住的权限规则（`capabilities.permission_rules: 1`、`readonly_auto_allow: 1`）
 
