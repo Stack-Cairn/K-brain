@@ -28,7 +28,8 @@ func skillsCLI(args []string) error {
 
 func skillsListCLI() error {
 	dirs := skills.DefaultDirs()
-	sk, problems := skills.ScanDetailed(dirs...)
+	scan := skills.ScanAll(dirs...)
+	sk, problems := scan.Skills, scan.Problems
 	if len(sk) == 0 && len(problems) == 0 {
 		fmt.Println("no skills found (looked in: " + strings.Join(dirs, ", ") + ")")
 		return nil
@@ -38,7 +39,15 @@ func skillsListCLI() error {
 		if s.Warning != "" {
 			warn = " ⚠ " + s.Warning
 		}
-		fmt.Printf("%-24s %s%s\n", s.Name, filepath.Dir(filepath.Dir(s.Path)), warn)
+		where := filepath.Dir(filepath.Dir(s.Path))
+		if s.Pack != "" {
+			// Pack skills: the skills directory, then the skill's place in its pack.
+			where = s.Root + "  (pack " + s.Pack + ": " + s.BaseDir + ")"
+		}
+		fmt.Printf("%-24s %s%s\n", s.Name, where, warn)
+	}
+	for _, s := range scan.Shadowed {
+		fmt.Printf("%-24s %s  (shadowed by %s)\n", s.Name, filepath.Join(s.Root, filepath.FromSlash(s.BaseDir)), s.ShadowedBy)
 	}
 	for _, p := range problems {
 		fmt.Fprintf(os.Stderr, "skills: %s: %s\n", p.Path, p.Err)
@@ -71,8 +80,15 @@ func skillsImportCLI(args []string) error {
 		name, srcDir string
 	}
 	var importable, skipped []candidate
+	packs := 0
 	for _, dir := range skills.ForeignDirs() {
 		for _, s := range skills.Scan(dir) {
+			// A pack skill's directory is part of a larger tree (often a git
+			// repository); copying it alone would split the pack.
+			if s.Pack != "" {
+				packs++
+				continue
+			}
 			c := candidate{name: s.Name, srcDir: filepath.Dir(s.Path)}
 
 			if existing[s.Name] {
@@ -84,6 +100,9 @@ func skillsImportCLI(args []string) error {
 		}
 	}
 
+	if packs > 0 {
+		fmt.Printf("○ skipped %d skill(s) inside skill packs — copy a pack's whole directory to import it\n", packs)
+	}
 	if len(importable) == 0 && len(skipped) == 0 {
 		fmt.Println("nothing found to import (looked in: " + strings.Join(skills.ForeignDirs(), ", ") + ")")
 		return nil

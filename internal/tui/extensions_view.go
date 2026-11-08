@@ -152,6 +152,14 @@ func skillSurfaceRows(m *model) []surfaceRow {
 	if m.skillScan != nil {
 		list = m.skillScan()
 	}
+	// Top-level skills first, then each skill pack under its own heading
+	// (sections must be contiguous).
+	sort.SliceStable(list, func(i, j int) bool {
+		if (list[i].Pack == "") != (list[j].Pack == "") {
+			return list[i].Pack == ""
+		}
+		return list[i].Pack < list[j].Pack
+	})
 	var rows []surfaceRow
 	for _, s := range list {
 		s := s
@@ -162,11 +170,16 @@ func skillSurfaceRows(m *model) []surfaceRow {
 		if s.Warning != "" {
 			value = "warning"
 		}
+		section := ""
+		if s.Pack != "" {
+			section = "pack: " + s.Pack
+		}
 		rows = append(rows, surfaceRow{
-			key:    s.Name,
-			desc:   s.Description,
-			value:  value,
-			search: s.Path,
+			section: section,
+			key:     s.Name,
+			desc:    s.Description,
+			value:   value,
+			search:  s.Path,
 			preview: func(m *model) []string {
 				w, _ := m.surfaceSize()
 				out := []string{cardTitleStyle.Render(s.Name)}
@@ -178,6 +191,9 @@ func skillSurfaceRows(m *model) []surfaceRow {
 				}
 				if s.Warning != "" {
 					out = append(out, warnStyle.Render(s.Warning))
+				}
+				if s.Pack != "" {
+					out = append(out, textHintStyle.Render("skill pack "+s.Pack+" · "+s.BaseDir))
 				}
 				out = append(out, textMutedStyle.Render(s.Path))
 				return out

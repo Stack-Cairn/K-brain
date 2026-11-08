@@ -42,7 +42,11 @@ func (m *model) doctorReport() string {
 	per := make([]sc, 0, len(sk))
 	for _, s := range sk {
 		n := len(s.Name) + min(len(s.Description), 300) + len(s.Path) + 8
-		per = append(per, sc{s.Name, filepath.Dir(filepath.Dir(s.Path)), n})
+		dir := filepath.Dir(filepath.Dir(s.Path))
+		if s.Root != "" {
+			dir = s.Root
+		}
+		per = append(per, sc{s.Name, dir, n})
 	}
 	sort.Slice(per, func(i, j int) bool { return per[i].n > per[j].n })
 	var top []string

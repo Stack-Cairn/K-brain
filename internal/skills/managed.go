@@ -8,9 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -47,6 +49,13 @@ type SkillSummary struct {
 	BuiltIn     bool            `json:"builtIn"`
 	InstalledAt int64           `json:"installedAt,omitempty"`
 	Source      *SourceMetadata `json:"source,omitempty"`
+	// Pack is the skill pack directory holding the skill; empty for a
+	// top-level skill. BaseDir is then "<pack>/<path inside the pack>".
+	Pack string `json:"pack"`
+	// Shadowed is true for a pack skill whose name another skill kept;
+	// ShadowedBy is that skill's baseDir. Shadowed skills are never active.
+	Shadowed   bool   `json:"shadowed"`
+	ShadowedBy string `json:"shadowedBy,omitempty"`
 }
 type InvalidSkill struct {
 	Path  string `json:"path"`
@@ -57,12 +66,22 @@ type InstallResult struct {
 	Target    string `json:"target"`
 	Backup    string `json:"backup,omitempty"`
 	SkillFile string `json:"skillFile"`
+	// Pack is set when the source had no SKILL.md at its root and was
+	// installed as a skill pack named Pack; Skills counts the pack's skills and
+	// SkillFile is its router (shallowest skill).
+	Pack   string `json:"pack,omitempty"`
+	Skills int    `json:"skills,omitempty"`
 }
 type Validation struct {
 	Name   string   `json:"name"`
 	Target string   `json:"target"`
 	OK     bool     `json:"ok"`
 	Errors []string `json:"errors"`
+	// Pack is set when Name is a skill pack or a skill inside one; such
+	// skills get the lenient pack checks. Warnings lists a pack's unusable
+	// SKILL.md files and walk limits.
+	Pack     string   `json:"pack,omitempty"`
+	Warnings []string `json:"warnings,omitempty"`
 }
 type PackageResult struct {
 	Name    string `json:"name"`
@@ -78,6 +97,10 @@ type SkillSettings struct {
 	Selected   []string `json:"selected"`
 	Mode       string   `json:"mode,omitempty"`
 	SkillNames []string `json:"skillNames,omitempty"`
+	// Packs switches whole skill packs, keyed by pack directory name: true
+	// turns on every skill of the pack, false turns all of them off even when
+	// selected by name. A pack not listed follows Selected skill by skill.
+	Packs map[string]bool `json:"packs,omitempty"`
 }
 type settingsFile struct {
 	Revision uint64                   `json:"revision"`
@@ -102,6 +125,7 @@ type ExternalSkill struct {
 	Description string `json:"description"`
 	BaseDir     string `json:"baseDir"`
 	SkillFile   string `json:"skillFile"`
+	Pack        string `json:"pack,omitempty"`
 }
 type ExternalScan struct {
 	Tool    string          `json:"tool"`
@@ -130,6 +154,7 @@ type ManagerResponse struct {
 	StartLine         int             `json:"startLine,omitempty"`
 	NumLines          int             `json:"numLines,omitempty"`
 	Skills            []SkillSummary  `json:"skills,omitempty"`
+	Shadowed          []SkillSummary  `json:"shadowed,omitempty"`
 	Invalid           []InvalidSkill  `json:"invalid,omitempty"`
 	Installed         []InstallResult `json:"installed,omitempty"`
 	Created           *InstallResult  `json:"created,omitempty"`
@@ -145,6 +170,7 @@ type ManagerResponse struct {
 
 type Manager struct {
 	root              string
+	rawRoot           string // root before symlink resolution, as DirsFor spells it
 	jobsMu            sync.Mutex
 	jobs              map[string]*Job
 	client            *http.Client
@@ -173,7 +199,7 @@ func NewManager() (*Manager, error) {
 	if err != nil {
 		return nil, err
 	}
-	m := &Manager{root: canonical, jobs: map[string]*Job{}, client: publicHTTPClient(), storeURL: "https://clawhub.ai"}
+	m := &Manager{root: canonical, rawRoot: root, jobs: map[string]*Job{}, client: publicHTTPClient(), storeURL: "https://clawhub.ai"}
 	if err := m.ensureBuiltins(); err != nil {
 		return nil, err
 	}
@@ -252,52 +278,111 @@ func (m *Manager) ensureBuiltins() error {
 }
 func isBuiltin(n string) bool { return n == "skills-creator" || n == "skills-installer" }
 
+// List returns the usable skills of the managed root (top-level skills and
+// the pack skills that kept their names) and the SKILL.md files it could not
+// use. ListAll also returns the shadowed pack skills.
 func (m *Manager) List() ([]SkillSummary, []InvalidSkill, error) {
+	out, _, bad, err := m.ListAll()
+	return out, bad, err
+}
+
+func (m *Manager) ListAll() (skills, shadowed []SkillSummary, invalid []InvalidSkill, err error) {
 	if err := m.ensureBuiltins(); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	managedWriteMu.Lock()
 	defer managedWriteMu.Unlock()
-	es, err := os.ReadDir(m.root)
-	if err != nil {
-		return nil, nil, err
+	if _, err := os.ReadDir(m.root); err != nil {
+		return nil, nil, nil, err
 	}
+	scan := scanRoot(m.root)
 	out := []SkillSummary{}
 	bad := []InvalidSkill{}
-	for _, e := range es {
-		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
-			continue
+	for _, p := range scan.Problems {
+		if rel, err := filepath.Rel(m.root, p.Path); err == nil && strings.HasPrefix(rel, ".") {
+			continue // staging and backup directories
 		}
-		p, pathErr := safePath(m.root, e.Name()+"/SKILL.md")
-		if pathErr != nil {
-			bad = append(bad, InvalidSkill{Path: e.Name(), Error: pathErr.Error()})
-			continue
-		}
-		s, err := parse(p)
-		if err != nil {
-			bad = append(bad, InvalidSkill{Path: p, Error: err.Error()})
-			continue
-		}
-		if s.Name == "" {
-			s.Name = e.Name()
-		}
-		if w := validate(s); w != "" {
-			bad = append(bad, InvalidSkill{Path: p, Error: w})
-			continue
-		}
-		sum := SkillSummary{Name: s.Name, Description: s.Description, Target: filepath.Dir(p), SkillFile: e.Name() + "/SKILL.md", BaseDir: e.Name(), BuiltIn: isBuiltin(e.Name())}
-		if st, e2 := os.Stat(p); e2 == nil {
-			sum.InstalledAt = st.ModTime().UnixMilli()
-		}
-		meta, metaErr := safePath(m.root, e.Name()+"/_meta.json")
-		if b, e2 := os.ReadFile(meta); metaErr == nil && e2 == nil {
-			_ = json.Unmarshal(b, &sum.Source)
-		}
-		out = append(out, sum)
+		bad = append(bad, InvalidSkill{Path: p.Path, Error: p.Err})
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-	return out, bad, nil
+	for _, s := range scan.Skills {
+		if s.Pack == "" {
+			if strings.HasPrefix(s.BaseDir, ".") {
+				continue
+			}
+			// Top-level skills keep the strict managed rules.
+			if _, pathErr := safePath(m.root, s.BaseDir+"/SKILL.md"); pathErr != nil {
+				bad = append(bad, InvalidSkill{Path: s.BaseDir, Error: pathErr.Error()})
+				continue
+			}
+			if s.Warning != "" {
+				bad = append(bad, InvalidSkill{Path: s.Path, Error: s.Warning})
+				continue
+			}
+		}
+		out = append(out, m.summary(s))
+	}
+	lost := []SkillSummary{}
+	for _, s := range scan.Shadowed {
+		lost = append(lost, m.summary(s))
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Name != out[j].Name {
+			return out[i].Name < out[j].Name
+		}
+		return out[i].BaseDir < out[j].BaseDir
+	})
+	sort.SliceStable(lost, func(i, j int) bool { return lost[i].BaseDir < lost[j].BaseDir })
+	return out, lost, bad, nil
 }
+
+func (m *Manager) summary(s Skill) SkillSummary {
+	sum := SkillSummary{Name: s.Name, Description: s.Description, Target: filepath.Dir(s.Path), SkillFile: s.BaseDir + "/SKILL.md", BaseDir: s.BaseDir, BuiltIn: s.Pack == "" && isBuiltin(s.BaseDir), Pack: s.Pack, Shadowed: s.ShadowedBy != "", ShadowedBy: s.ShadowedBy}
+	if st, err := os.Stat(s.Path); err == nil {
+		sum.InstalledAt = st.ModTime().UnixMilli()
+	}
+	owner := s.BaseDir
+	if s.Pack != "" {
+		owner = s.Pack
+	}
+	meta, metaErr := safePath(m.root, owner+"/_meta.json")
+	if b, err := os.ReadFile(meta); metaErr == nil && err == nil {
+		_ = json.Unmarshal(b, &sum.Source)
+	}
+	return sum
+}
+
+// packSkill finds a pack skill of the managed root by name or by baseDir,
+// shadowed copies included (they are looked up by baseDir only).
+func (m *Manager) packSkill(key string) (Skill, bool) {
+	scan := scanRoot(m.root)
+	for _, s := range scan.Skills {
+		if s.Pack != "" && (s.Name == key || s.BaseDir == key) {
+			return s, true
+		}
+	}
+	for _, s := range scan.Shadowed {
+		if s.BaseDir == key {
+			return s, true
+		}
+	}
+	return Skill{}, false
+}
+
+// isPack reports whether name is a top-level directory of the managed root
+// without a SKILL.md, i.e. a skill pack (possibly an empty one).
+func (m *Manager) isPack(name string) bool {
+	if !validPackID(name) {
+		return false
+	}
+	dir := filepath.Join(m.root, name)
+	i, err := os.Lstat(dir)
+	if err != nil || !i.IsDir() {
+		return false
+	}
+	_, err = os.Stat(filepath.Join(dir, "SKILL.md"))
+	return errors.Is(err, fs.ErrNotExist)
+}
+
 func (m *Manager) Read(path string, offset, length int) (string, bool, int, error) {
 	if offset < 0 || length < 0 {
 		return "", false, 0, errors.New("invalid read window")
@@ -345,7 +430,36 @@ func (m *Manager) Read(path string, offset, length int) (string, bool, int, erro
 	return strings.Join(lines[offset:end], ""), truncated || end < len(lines), end - offset, nil
 }
 func (m *Manager) Validate(name string) Validation {
-	v := Validation{Name: name, Target: filepath.Join(m.root, name), Errors: []string{}}
+	v := Validation{Name: name, Target: filepath.Join(m.root, filepath.FromSlash(name)), Errors: []string{}}
+	if m.isPack(name) {
+		// A pack is valid when its walk finds at least one skill.
+		v.Pack = name
+		found, problems := walkPack(m.root, m.root, name)
+		for _, p := range problems {
+			v.Warnings = append(v.Warnings, p.Path+": "+p.Err)
+		}
+		v.OK = len(found) > 0
+		if !v.OK {
+			v.Errors = append(v.Errors, "skill pack has no SKILL.md with a name and description within 4 levels")
+		}
+		return v
+	}
+	if _, err := os.Stat(filepath.Join(m.root, name)); err != nil || strings.Contains(name, "/") {
+		if s, ok := m.packSkill(name); ok {
+			// Pack skills get the lenient discovery checks, not the strict
+			// create/install rules.
+			v.Pack, v.Target = s.Pack, filepath.Dir(s.Path)
+			parsed, err := parse(s.Path)
+			if err == nil {
+				err = lenientCheck(parsed)
+			}
+			if err != nil {
+				v.Errors = append(v.Errors, err.Error())
+			}
+			v.OK = err == nil
+			return v
+		}
+	}
 	if err := cleanName(name); err != nil {
 		v.Errors = append(v.Errors, err.Error())
 		return v
@@ -370,12 +484,20 @@ func copyTree(dst, src string) error {
 		if err != nil {
 			return err
 		}
-		if i.Mode()&os.ModeSymlink != 0 {
-			return errors.New("symlinks are not allowed in skills")
-		}
 		rel, _ := filepath.Rel(src, p)
 		if rel == "." {
 			return nil
+		}
+		// Dot entries (.git, .gitignore, client adapter metadata) are left
+		// behind rather than failing the install.
+		if strings.HasPrefix(i.Name(), ".") {
+			if i.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if i.Mode()&os.ModeSymlink != 0 {
+			return errors.New("symlinks are not allowed in skills")
 		}
 		if _, err := childPath(filepath.ToSlash(rel)); err != nil {
 			return err
@@ -445,7 +567,11 @@ func validateTree(root string) (string, error) {
 	}
 	return file, nil
 }
-func (m *Manager) installDir(ctx context.Context, src, name string, meta *SourceMetadata, conflict string) (InstallResult, error) {
+
+// installDir installs the skill in src. A src without a SKILL.md at its root
+// but with skills further down is installed as a skill pack named name, or
+// packName (the source's own name) when name is empty.
+func (m *Manager) installDir(ctx context.Context, src, name, packName string, meta *SourceMetadata, conflict string) (InstallResult, error) {
 	if conflict == "" {
 		conflict = "backup"
 	}
@@ -460,6 +586,9 @@ func (m *Manager) installDir(ctx context.Context, src, name string, meta *Source
 	dest := filepath.Join(stage, "content")
 	if err = copyTree(dest, src); err != nil {
 		return InstallResult{}, err
+	}
+	if _, statErr := os.Stat(filepath.Join(dest, "SKILL.md")); errors.Is(statErr, fs.ErrNotExist) {
+		return m.installPack(ctx, stage, dest, name, packName, meta, conflict)
 	}
 	parsed, err := parse(filepath.Join(dest, "SKILL.md"))
 	if err != nil {
@@ -508,42 +637,87 @@ func (m *Manager) installDir(ctx context.Context, src, name string, meta *Source
 			return InstallResult{}, err
 		}
 	}
+	target, backup, err := m.commitInstall(ctx, stage, dest, name, conflict)
+	if err != nil {
+		return InstallResult{}, err
+	}
+	return InstallResult{Name: name, Target: target, SkillFile: name + "/SKILL.md", Backup: backup}, nil
+}
+
+// installPack installs the staged tree dest as a skill pack.
+func (m *Manager) installPack(ctx context.Context, stage, dest, name, packName string, meta *SourceMetadata, conflict string) (InstallResult, error) {
+	if name == "" {
+		name = normalizeRegistryName(packName)
+	}
+	if err := cleanName(name); err != nil {
+		return InstallResult{}, fmt.Errorf("skill pack name: %w; pass name", err)
+	}
+	if isBuiltin(name) {
+		return InstallResult{}, errors.New("built-in skills cannot be overwritten")
+	}
+	found, _ := walkPack(stage, stage, filepath.Base(dest))
+	var skills []Skill
+	for _, s := range found {
+		if s.ShadowedBy == "" {
+			skills = append(skills, s)
+		}
+	}
+	if len(skills) == 0 {
+		return InstallResult{}, errors.New("no SKILL.md at the source root, and no skill (SKILL.md with name and description) in the directories up to 4 levels below it")
+	}
+	if meta != nil {
+		b, _ := json.MarshalIndent(meta, "", "  ")
+		if err := os.WriteFile(filepath.Join(dest, "_meta.json"), b, 0600); err != nil {
+			return InstallResult{}, err
+		}
+	}
+	target, backup, err := m.commitInstall(ctx, stage, dest, name, conflict)
+	if err != nil {
+		return InstallResult{}, err
+	}
+	router := name + strings.TrimPrefix(skills[0].BaseDir, filepath.Base(dest)) + "/SKILL.md"
+	return InstallResult{Name: name, Target: target, SkillFile: router, Backup: backup, Pack: name, Skills: len(skills)}, nil
+}
+
+// commitInstall moves the staged dest to <root>/<name>, handling an existing
+// target per conflict.
+func (m *Manager) commitInstall(ctx context.Context, stage, dest, name, conflict string) (string, string, error) {
 	managedWriteMu.Lock()
 	defer managedWriteMu.Unlock()
-	if err = ctx.Err(); err != nil {
-		return InstallResult{}, err
+	if err := ctx.Err(); err != nil {
+		return "", "", err
 	}
 	target := filepath.Join(m.root, name)
 	backup := ""
 	rollback := ""
 	if i, e := os.Lstat(target); e == nil {
 		if i.Mode()&os.ModeSymlink != 0 {
-			return InstallResult{}, errors.New("target is a symlink")
+			return "", "", errors.New("target is a symlink")
 		}
 		if conflict == "fail" {
-			return InstallResult{}, errors.New("skill already exists")
+			return "", "", errors.New("skill already exists")
 		}
 		rollback = filepath.Join(stage, "previous")
 		if conflict == "backup" {
 			if e = os.MkdirAll(filepath.Join(m.root, ".backups"), 0700); e != nil {
-				return InstallResult{}, e
+				return "", "", e
 			}
 			rollback = filepath.Join(m.root, ".backups", fmt.Sprintf("%s-%d", name, time.Now().UnixNano()))
 			backup = rollback
 		}
 		if e = os.Rename(target, rollback); e != nil {
-			return InstallResult{}, e
+			return "", "", e
 		}
 	} else if !os.IsNotExist(e) {
-		return InstallResult{}, e
+		return "", "", e
 	}
-	if err = os.Rename(dest, target); err != nil {
+	if err := os.Rename(dest, target); err != nil {
 		if rollback != "" {
 			_ = os.Rename(rollback, target)
 		}
-		return InstallResult{}, err
+		return "", "", err
 	}
-	return InstallResult{Name: name, Target: target, SkillFile: name + "/SKILL.md", Backup: backup}, nil
+	return target, backup, nil
 }
 func (m *Manager) zipSource(src string) (string, error) {
 	r, err := zip.OpenReader(src)
@@ -568,6 +742,9 @@ func (m *Manager) zipSource(src string) (string, error) {
 	}
 	for _, f := range r.File {
 		name := strings.TrimSuffix(f.Name, "/")
+		if dotEntry(name) {
+			continue
+		}
 		rel, e := childPath(name)
 		if e != nil {
 			return "", e
@@ -616,20 +793,45 @@ func (m *Manager) zipSource(src string) (string, error) {
 	ok = true
 	return tmp, nil
 }
+
+// dotEntry reports whether an archive path has a dot-prefixed component
+// (other than ".." which childPath rejects); such entries are skipped.
+func dotEntry(name string) bool {
+	for _, c := range strings.Split(strings.ReplaceAll(name, "\\", "/"), "/") {
+		if strings.HasPrefix(c, ".") && c != ".." && c != "." {
+			return true
+		}
+	}
+	return false
+}
+
 func (m *Manager) Install(ctx context.Context, source, name, conflict string, meta *SourceMetadata, progress func(int64, int64)) (InstallResult, error) {
 	source = strings.TrimSpace(source)
 	if source == "" {
 		return InstallResult{}, errors.New("source is required")
 	}
 	subpath := ""
+	// packName names a source installed as a skill pack when no name is given:
+	// the GitHub repository (or the last directory of a tree URL), the
+	// directory, or the archive file name.
+	packName := ""
+	fromGitHub := false
 	if strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://") {
 		u, parseErr := validateRemoteURL(source, m.allowInsecureHTTP)
 		if parseErr != nil {
 			return InstallResult{}, parseErr
 		}
+		packName = archiveStem(path.Base(u.Path))
 		var err error
 		if u.Host == "github.com" {
+			fromGitHub = true
+			if parts := strings.Split(strings.Trim(u.Path, "/"), "/"); len(parts) >= 2 {
+				packName = strings.TrimSuffix(parts[1], ".git")
+			}
 			source, subpath, err = githubSource(source)
+			if subpath != "" {
+				packName = path.Base(subpath)
+			}
 		} else if u.Scheme != "https" && u.Hostname() != "127.0.0.1" && u.Hostname() != "localhost" {
 			return InstallResult{}, errors.New("remote skill sources require HTTPS")
 		}
@@ -650,7 +852,10 @@ func (m *Manager) Install(ctx context.Context, source, name, conflict string, me
 		return InstallResult{}, errors.New("source is a symlink")
 	}
 	if st.IsDir() {
-		return m.installDir(ctx, source, name, meta, conflict)
+		return m.installDir(ctx, source, name, filepath.Base(filepath.Clean(source)), meta, conflict)
+	}
+	if packName == "" {
+		packName = archiveStem(filepath.Base(source))
 	}
 	rawSkill := strings.EqualFold(filepath.Base(source), "SKILL.md")
 	if !rawSkill {
@@ -674,7 +879,7 @@ func (m *Manager) Install(ctx context.Context, source, name, conflict string, me
 		if e = os.WriteFile(filepath.Join(tmp, "SKILL.md"), b, 0600); e != nil {
 			return InstallResult{}, e
 		}
-		return m.installDir(ctx, tmp, name, meta, conflict)
+		return m.installDir(ctx, tmp, name, "", meta, conflict)
 	}
 	tmp, err := m.zipSource(source)
 	if err != nil {
@@ -689,12 +894,25 @@ func (m *Manager) Install(ctx context.Context, source, name, conflict string, me
 		}
 		if len(entries) == 1 && entries[0].IsDir() {
 			base = filepath.Join(base, entries[0].Name())
+			if !fromGitHub {
+				packName = entries[0].Name()
+			}
 		}
 	}
 	if subpath != "" {
 		base = filepath.Join(base, subpath)
 	}
-	return m.installDir(ctx, base, name, meta, conflict)
+	return m.installDir(ctx, base, name, packName, meta, conflict)
+}
+
+// archiveStem drops a .zip or .skill extension.
+func archiveStem(n string) string {
+	for _, ext := range []string{".zip", ".skill"} {
+		if strings.HasSuffix(strings.ToLower(n), ext) {
+			return n[:len(n)-len(ext)]
+		}
+	}
+	return n
 }
 
 func (m *Manager) Create(name, description, body, conflict string, files []map[string]string) (InstallResult, error) {
@@ -736,9 +954,24 @@ func (m *Manager) Create(name, description, body, conflict string, files []map[s
 			return InstallResult{}, err
 		}
 	}
-	return m.installDir(context.Background(), tmp, name, nil, conflict)
+	return m.installDir(context.Background(), tmp, name, "", nil, conflict)
 }
 func (m *Manager) Delete(name string) (DeleteResult, error) {
+	if m.isPack(name) {
+		// A whole pack goes at once.
+		p := filepath.Join(m.root, name)
+		managedWriteMu.Lock()
+		defer managedWriteMu.Unlock()
+		if err := os.RemoveAll(p); err != nil {
+			return DeleteResult{}, err
+		}
+		return DeleteResult{Name: name, Target: p}, nil
+	}
+	if _, err := os.Lstat(filepath.Join(m.root, name)); err != nil || strings.Contains(name, "/") {
+		if s, ok := m.packSkill(name); ok {
+			return DeleteResult{}, fmt.Errorf("skill %q (%s) is part of skill pack %q, which is installed as one directory (often a git repository); it cannot be deleted on its own. Disable it in the skill settings, or delete the whole pack with name %q", s.Name, s.BaseDir, s.Pack, s.Pack)
+		}
+	}
 	if err := cleanName(name); err != nil {
 		return DeleteResult{}, err
 	}
@@ -815,20 +1048,12 @@ func (m *Manager) Package(name string) (PackageResult, error) {
 
 func (m *Manager) scanExternal(root string) ExternalScan {
 	x := ExternalScan{Tool: filepath.Base(root), RootDir: root}
-	ents, e := os.ReadDir(root)
-	if e != nil {
+	if _, e := os.ReadDir(root); e != nil {
 		return x
 	}
 	x.Exists = true
-	for _, ent := range ents {
-		if !ent.IsDir() {
-			continue
-		}
-		p := filepath.Join(root, ent.Name(), "SKILL.md")
-		s, e := parse(p)
-		if e == nil {
-			x.Skills = append(x.Skills, ExternalSkill{Name: s.Name, Description: s.Description, BaseDir: filepath.Dir(p), SkillFile: p})
-		}
+	for _, s := range scanRoot(root).Skills {
+		x.Skills = append(x.Skills, ExternalSkill{Name: s.Name, Description: s.Description, BaseDir: filepath.Dir(s.Path), SkillFile: s.Path, Pack: s.Pack})
 	}
 	return x
 }
@@ -906,6 +1131,7 @@ func (m *Manager) Settings(workdir string) (uint64, SkillSettings, error) {
 			switch p.Mode {
 			case "custom":
 				v.Selected = p.SkillNames
+				v.Packs = p.Packs
 			case "off":
 				v.Enabled = false
 			}
@@ -919,8 +1145,14 @@ func (m *Manager) SaveSettings(workdir string, v SkillSettings) (uint64, error) 
 		return 0, errors.New("mode must be inherit, custom or off")
 	}
 	for _, n := range append(append([]string{}, v.Selected...), v.SkillNames...) {
-		if err := cleanName(n); err != nil {
-			return 0, err
+		// Pack skills are selected by their (leniently checked) names too.
+		if !validManagedName(n) && !lenientName(n) {
+			return 0, fmt.Errorf("invalid skill name %q", n)
+		}
+	}
+	for n := range v.Packs {
+		if !validPackID(n) {
+			return 0, fmt.Errorf("invalid skill pack name %q", n)
 		}
 	}
 	key := ""
@@ -939,6 +1171,17 @@ func (m *Manager) SaveSettings(workdir string, v SkillSettings) (uint64, error) 
 	}
 	s.Revision++
 	v.Selected = builtinsSelected(v.Selected)
+	// A client that does not know packs leaves them out; keep what is stored.
+	if v.Packs == nil {
+		if key == "" {
+			v.Packs = s.Global.Packs
+		} else {
+			v.Packs = s.Projects[key].Packs
+		}
+	}
+	if len(v.Packs) == 0 {
+		v.Packs = nil
+	}
 	if key == "" {
 		s.Global = v
 	} else {
@@ -969,6 +1212,12 @@ func (m *Manager) SaveSettings(workdir string, v SkillSettings) (uint64, error) 
 	}
 	return s.Revision, nil
 }
+
+// Effective returns the skills a backend run advertises for workdir. Skills of
+// the managed root are opt-in: a top-level skill is on when selected by name;
+// a pack skill when its pack is switched on in settings.packs, or, for a pack
+// not listed there, when selected by name. A pack switched off hides all of
+// its skills. Skills of the other scan directories are always on.
 func (m *Manager) Effective(workdir string) ([]Skill, SkillSettings, error) {
 	_, set, err := m.Settings(workdir)
 	if err != nil {
@@ -985,6 +1234,14 @@ func (m *Manager) Effective(workdir string) ([]Skill, SkillSettings, error) {
 	for _, n := range set.Selected {
 		wanted[n] = true
 	}
+	on := func(s Skill) bool {
+		if s.Pack != "" {
+			if v, ok := set.Packs[s.Pack]; ok {
+				return v
+			}
+		}
+		return wanted[s.Name]
+	}
 	var out []Skill
 	seen := map[string]bool{}
 	// Existing project and user scan directories remain compatibility sources.
@@ -993,24 +1250,37 @@ func (m *Manager) Effective(workdir string) ([]Skill, SkillSettings, error) {
 		if seen[s.Name] {
 			continue
 		}
-		managed := within(m.root, s.Path)
-		if managed && !wanted[s.Name] {
+		if m.managed(s) && !on(s) {
 			continue
 		}
 		seen[s.Name] = true
 		out = append(out, s)
 	}
 	for _, x := range all {
-		if wanted[x.Name] && !seen[x.Name] {
-			s, e := parse(filepath.Join(m.root, x.SkillFile))
-			if e == nil {
-				out = append(out, s)
-				seen[x.Name] = true
-			}
+		if seen[x.Name] {
+			continue
+		}
+		s, e := parse(filepath.Join(m.root, filepath.FromSlash(x.SkillFile)))
+		if e != nil {
+			continue
+		}
+		s.Root, s.BaseDir, s.Pack = m.root, x.BaseDir, x.Pack
+		if s.Name == "" {
+			s.Name = x.Name
+		}
+		if on(s) {
+			out = append(out, s)
+			seen[x.Name] = true
 		}
 	}
 	return out, set, nil
 }
+
+// managed reports whether a scanned skill lives in the managed root.
+func (m *Manager) managed(s Skill) bool {
+	return within(m.root, s.Path) || (m.rawRoot != "" && within(m.rawRoot, s.Path))
+}
+
 func stringArg(a map[string]any, key string) string { v, _ := a[key].(string); return v }
 func (m *Manager) Manage(ctx context.Context, args map[string]any) (ManagerResponse, error) {
 	if err := ctx.Err(); err != nil {
@@ -1027,7 +1297,7 @@ func (m *Manager) Manage(ctx context.Context, args map[string]any) (ManagerRespo
 	var err error
 	switch a {
 	case "list":
-		r.Skills, r.Invalid, err = m.List()
+		r.Skills, r.Shadowed, r.Invalid, err = m.ListAll()
 	case "read":
 		r.Path = stringArg(args, "path")
 		offset := intArg(args, "offset", 0)

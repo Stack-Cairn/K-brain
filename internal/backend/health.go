@@ -39,6 +39,10 @@ type healthCapabilities struct {
 	// SSHManager is 1 where the native SSHManager tool runs SSH/SFTP for the
 	// hosts stored with GET/PUT /v1/settings/ssh.
 	SSHManager int `json:"ssh_manager"`
+	// SkillPacks is 1 where skills nested in skill packs are discovered:
+	// /v1/skills items carry pack and shadowed, the response lists shadowed
+	// copies, and /v1/skills/settings accepts packs.
+	SkillPacks int `json:"skill_packs"`
 }
 
 // healthRunSandboxV1 describes per-run sandboxing (options.sandbox). Clients
@@ -143,6 +147,7 @@ func (s *Server) health() healthResponse {
 			MCPElicitation:          1,
 			HostBridge:              1,
 			SSHManager:              1,
+			SkillPacks:              1,
 		},
 		HostBridge: s.hostBridge.status(),
 	}
