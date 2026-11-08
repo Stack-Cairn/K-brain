@@ -1,0 +1,49 @@
+name: Host bridge tests
+
+on:
+  pull_request:
+    paths:
+      - 'internal/backend/**'
+      - 'internal/agent/**'
+      - 'internal/permissions/**'
+      - 'internal/tools/**'
+      - 'internal/protocol/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/host-bridge-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'internal/backend/**'
+      - 'internal/agent/**'
+      - 'internal/permissions/**'
+      - 'internal/tools/**'
+      - 'internal/protocol/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/host-bridge-tests.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  host-bridge:
+    name: Host bridge (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - name: Preserve committed LF on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go vet ./internal/backend ./internal/agent
+      - run: go test -race ./internal/backend -run "^Test(HostBridge|LiveAgentProjectPathKey)" -count=1 -timeout=10m
+      - run: go test ./internal/protocol -count=1

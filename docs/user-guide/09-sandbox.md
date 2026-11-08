@@ -83,6 +83,7 @@ Ubuntu 23.10 及以后默认通过 AppArmor 禁止非特权用户命名空间（
 - 子模块与链接工作树按运行开始时的状态列出：运行中新添加的子模块、新登记的工作树（如 `git worktree add`、`git submodule add`）的对应文件在本次运行中不受保护。
 - 已知缺口：工作树里的 `.gitattributes` 和 `.git/info/attributes` 一样能把全局配置里定义的驱动套用到文件上，但它是项目的普通文件，不受保护；全局 `core.attributesFile` 指向工作区内时同样如此。如果全局配置里定义了 filter/diff/merge 驱动，请留意沙箱命令对 `.gitattributes` 的修改。
 - 可启动沙箱外进程的 unix 套接字对命令不可用：容器引擎（docker/podman/containerd）、D-Bus 系统与会话总线、systemd 管理器；WSL 下还会隐藏 `/run/WSL`（Windows 互操作）。macOS 上联网模式下拒绝连接容器引擎套接字（断网时本来就禁止）。`SSH_AUTH_SOCK` 等凭据代理套接字不受影响。
+- 联网的运行里，命令可以连到本机 loopback 端口，包括 LiveAgent 桌面宿主桥的端口；桥的令牌只在 K-brain 进程内存里，不进入命令的环境，命令无法调用它（见 [LiveAgent 桌面工具](08-extensions.md#liveagent-桌面工具readterminaltunnelmanager)）。
 - 全局配置已开启沙箱时，按次请求只能收紧：网络只要任一方关闭就关闭，配置的可写/只读路径不变，并额外加上上面的屏蔽与只读规则。
 - 平台无法隔离时（Linux 上 bubblewrap 与 Landlock 都不可用、Windows 上无法以低完整性级别启动命令），请求 `400` 拒绝并给出原因，**不会**退回到不隔离运行。只要求断网而平台不能隔离网络时同样拒绝（Windows 原生未运行 `kn sandbox setup` 时如此，原因中会提示运行它）。
 - `/v1/health` 的 `capabilities.run_sandbox` 报告 `supported`、`mechanism`、`platform`、`network_control`、`read_masking`、`path_protection`、`modes` 和 `reason`（不可用的原因，或可用但有局限时的说明）。`mechanism` 为 `bubblewrap`、`landlock`、`seatbelt`、`low-integrity` 或 `sandbox-user`。Windows 上还报告 `setup_available`（可以运行 `kn sandbox setup`，Windows 上始终为 true）和 `setup_hint`（给用户看的一句英文提示：尚未安装时说明运行它能带来什么，安装了但自检失败时说明问题并建议重新运行；`sandbox-user` 正常工作时为空）。客户端应仅在 `supported` 为 true 时提供沙箱选项，仅在 `network_control` 也为 true 时提供断网选项；`read_masking` 或 `path_protection` 为 false 时应提示用户凭据目录可读、保护路径可写。

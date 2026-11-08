@@ -148,6 +148,15 @@
       "firstRelease": "v0.107.26",
       "evidenceCommit": "pending",
       "missing": "Never send options.mcp_elicitation (an older backend rejects the run with 400 for the unknown field) and show no elicitation forms: MCP servers cannot ask the user for input, and tool calls carry no elicitations in history."
+    },
+    {
+      "name": "host_bridge",
+      "type": "integer",
+      "compare": "eq",
+      "value": 1,
+      "firstRelease": "v0.107.28",
+      "evidenceCommit": "pending",
+      "missing": "Do not register a host bridge (PUT /v1/host-bridge does not exist) and expect no host_bridge status in health: runs have no ReadTerminal for desktop terminals and no TunnelManager."
     }
   ]
 }

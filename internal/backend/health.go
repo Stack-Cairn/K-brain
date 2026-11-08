@@ -33,6 +33,9 @@ type healthCapabilities struct {
 	// MCP servers' elicitation forms through elicitation.requested and
 	// POST /v1/sessions/{id}/elicitations/{elicitation_id}.
 	MCPElicitation int `json:"mcp_elicitation"`
+	// HostBridge is 1 where the desktop can register a tool bridge with
+	// PUT/DELETE /v1/host-bridge and health reports host_bridge.
+	HostBridge int `json:"host_bridge"`
 }
 
 // healthRunSandboxV1 describes per-run sandboxing (options.sandbox). Clients
@@ -68,6 +71,9 @@ type healthResponse struct {
 	InstanceID         string                `json:"instanceId"`
 	CapabilityRevision uint64                `json:"capabilityRevision"`
 	Capabilities       healthCapabilities    `json:"capabilities"`
+	// HostBridge says whether a desktop tool bridge is registered and which tools
+	// it provides; never its URL or token.
+	HostBridge hostBridgeStatus `json:"host_bridge"`
 }
 
 // capabilityRevision changes only when runtime availability changes. Image
@@ -132,6 +138,8 @@ func (s *Server) health() healthResponse {
 			SandboxSetup:            1,
 			QuestionSelectedLabels:  1,
 			MCPElicitation:          1,
+			HostBridge:              1,
 		},
+		HostBridge: s.hostBridge.status(),
 	}
 }
