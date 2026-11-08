@@ -53,6 +53,7 @@ VITE_KBRAIN_TOKEN=<backend-token>
 | 方法 | 路径 | 作用 |
 | --- | --- | --- |
 | GET | `/v1/health` | 健康状态与协议版本 |
+| GET | `/v1/debug/stacks` | 把所有 goroutine 的调用栈写到 `k-brain.log` 所在目录的 `stacks-<时间>-<pid>.txt`，返回 `{"path":...}`；只接受本机回环地址，不获取会话锁，backend 卡住时也能用（见用户指南《故障排查》） |
 | GET | `/v1/models` | 当前后端模型路由目录 |
 | POST | `/v1/sandbox/setup` | 在 Windows 上通过 UAC 安装或修复沙箱账户（`sandbox-user`），返回 setup 状态与新的 `run_sandbox`；`capabilities.sandbox_setup` 表示支持 |
 | GET / PUT | `/v1/settings` | 读取脱敏配置 / 原子持久化供应商、模型与默认选择 |
@@ -167,6 +168,8 @@ CLI 可用 `-config FILE -session-dir DIR` 指定配置与存储目录；省略�
 `/subagents` 与 `/subagents/{task}` 从事件日志和已保存的后台任务折叠得到，重载或后端重启后仍可读取；重启前仍在运行、此后没有终态的子代理报 `cancelled`。已结束的后台子代理返回其保存的完整对话（去掉 system/developer 消息），其他情况由事件重建：首条为子代理收到的提示，随后是 assistant 文本/思考与工具调用、工具结果。轨迹接口带 `redact_tool_content=true` 时，子代理文本与工具内容一样替换为 `[redacted]`。
 
 ### Windows 沙箱 setup（`capabilities.sandbox_setup: 1`）
+
+平台沙箱自检在后端启动时于后台进行。`/v1/health` 最多等它 2 秒：自检还没完成时 `run_sandbox.supported` 为 false、`mechanism` 为空、`reason` 说明自检尚未完成，客户端应稍后重新读取（自检卡住不会再拖住 health）。
 
 `capabilities.run_sandbox` 增加两个字段：`setup_available`（本机可以安装沙箱账户，只在 Windows 上为 true）和 `setup_hint`（给用户看的一句英文；setup 未安装时说明它能带来断网和工作区隔离，已安装但自检失败时说明问题并建议重新运行；正常工作时为空）。`mechanism` 为 `sandbox-user` 时命令以专用沙箱账户运行，`network_control` 为 true；仍为 `low-integrity` 时断网请求照旧被拒绝。细节见 [沙箱](user-guide/09-sandbox.md) 的 Windows 部分。
 
