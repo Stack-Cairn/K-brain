@@ -136,6 +136,14 @@ func main() {
 		return
 	}
 
+	if flag.NArg() > 0 && flag.Arg(0) == "debug" {
+		if err := debugCLI(flag.Args()[1:], os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, "kn debug:", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	if flag.NArg() > 0 && flag.Arg(0) == "update" {
 		if err := updateCLI(); err != nil {
 			fmt.Fprintln(os.Stderr, "kn:", err)

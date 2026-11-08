@@ -27,7 +27,7 @@ func (m *model) openPromptEditor() tea.Cmd {
 		return nil
 	}
 	m.menu = nil
-	return tea.ExecProcess(cmd, func(err error) tea.Msg {
+	return execEditor(cmd, func(err error) tea.Msg {
 		return promptEditedMsg{path: path, original: original, err: err}
 	})
 }

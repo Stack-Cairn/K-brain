@@ -128,11 +128,11 @@ func (m *model) submitTurnAs(text string, authored, notice bool) (tea.Model, tea
 		ctx = agent.WithBackgroundNotice(ctx)
 	}
 	m.cancel = cancel
-	p := m.prog
+	post := m.poster()
 
 	stream := newTurnStream(func(msg tea.Msg) {
-		if p != nil {
-			p.Send(msg)
+		if post != nil {
+			post(msg)
 		}
 	})
 	send := stream.emit

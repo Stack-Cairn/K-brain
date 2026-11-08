@@ -197,7 +197,7 @@ const contextBarCells = 6
 // contextCell is the footer's context readout: a bar and the percentage on
 // a wide footer, the percentage alone when the footer is tight.
 func (m *model) contextCell() string {
-	pct := contextPercent(m.agent.ContextTokens(), m.agent.ContextLimit)
+	pct := contextPercent(m.agent.ContextTokensNow(), m.agent.ContextLimit)
 	label := fmt.Sprintf(m.tr("%d%% ctx"), pct)
 	if m.width < 90 {
 		return label

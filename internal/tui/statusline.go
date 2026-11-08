@@ -99,7 +99,7 @@ func (m *model) statusLineInput() statusLineInput {
 	if m.agent != nil {
 		in.Model.ID = m.agent.Model
 		in.Effort = m.agent.Effort
-		in.Context.Tokens, in.Context.Limit = m.agent.ContextTokens(), m.agent.ContextLimit
+		in.Context.Tokens, in.Context.Limit = m.agent.ContextTokensNow(), m.agent.ContextLimit
 		if in.Context.Limit > 0 {
 			in.Context.Percent = in.Context.Tokens * 100 / in.Context.Limit
 		}

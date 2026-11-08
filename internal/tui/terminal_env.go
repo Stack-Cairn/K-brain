@@ -158,7 +158,7 @@ func detectColorScheme() string {
 		if ok {
 			setScheme(light)
 		} else {
-			SetUnknownTheme()
+			setUnknownScheme()
 		}
 		return how
 	}
@@ -198,10 +198,20 @@ func detectColorScheme() string {
 	if ok {
 		setScheme(light)
 	} else {
-
-		SetUnknownTheme()
+		setUnknownScheme()
 	}
 	return how
+}
+
+// setUnknownScheme uses the neutral palette when the background could not be
+// detected. It also pins lipgloss to its dark default: left unset, the first
+// adaptive color or markdown render asks the terminal itself (an OSC 11 query
+// with a multi-second timeout per byte) on the UI goroutine, and while
+// bubbletea is reading stdin the reply never arrives, so the screen freezes
+// for seconds the first time a reply is drawn.
+func setUnknownScheme() {
+	SetUnknownTheme()
+	lipgloss.SetHasDarkBackground(true)
 }
 
 func fallbackScheme(inTmux bool, colorfgbg string) (light, ok bool, how string) {

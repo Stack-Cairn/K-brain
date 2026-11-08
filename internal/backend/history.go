@@ -167,13 +167,24 @@ func (s *Server) sessionsExist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	existing := []string{}
+	// Lock order is rt.mu, then s.mu (run start and model switches take s.mu
+	// while holding rt.mu), so read the loaded runtimes under s.mu and check
+	// each one after releasing it. Waiting for rt.mu under s.mu deadlocked
+	// every request when a run start was switching the session's model.
+	loaded := map[string]*runtimeSession{}
 	s.mu.Lock()
+	for _, id := range in.IDs {
+		if rt := s.sessions[id]; rt != nil {
+			loaded[id] = rt
+		}
+	}
+	s.mu.Unlock()
 	for _, id := range in.IDs {
 		if !found[id] {
 			continue
 		}
 		found[id] = false // report each id once
-		if rt := s.sessions[id]; rt != nil {
+		if rt := loaded[id]; rt != nil {
 			rt.mu.Lock()
 			deleted := rt.deleted
 			rt.mu.Unlock()
@@ -183,7 +194,6 @@ func (s *Server) sessionsExist(w http.ResponseWriter, r *http.Request) {
 		}
 		existing = append(existing, id)
 	}
-	s.mu.Unlock()
 	writeJSON(w, 200, map[string]any{"existing": existing})
 }
 

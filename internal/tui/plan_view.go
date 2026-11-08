@@ -90,12 +90,12 @@ func (m *model) installPlanHook() {
 			return tools.PlanVerdict{}, false
 		}
 		reply := make(chan planAnswer, 1)
-		m.prog.Send(planRequest{plan: plan, reply: reply})
+		m.post(planRequest{plan: plan, reply: reply})
 		select {
 		case a := <-reply:
 			return a.verdict, a.ok
 		case <-ctx.Done():
-			m.prog.Send(planClose{reply: reply})
+			m.post(planClose{reply: reply})
 			return tools.PlanVerdict{}, false
 		}
 	}

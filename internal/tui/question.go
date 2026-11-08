@@ -90,12 +90,12 @@ func (m *model) installAskHook() {
 			return nil, false
 		}
 		reply := make(chan askAnswer, 1)
-		m.prog.Send(askRequest{req: req, reply: reply})
+		m.post(askRequest{req: req, reply: reply})
 		select {
 		case ans := <-reply:
 			return ans.answers, ans.ok
 		case <-ctx.Done():
-			m.prog.Send(askClose{reply: reply})
+			m.post(askClose{reply: reply})
 			return nil, false
 		}
 	}

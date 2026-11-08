@@ -470,7 +470,10 @@ func Run(cfg *config.Config, modelName, provName, sysPrompt, resumeID string, ca
 
 	m.fragFilter = true
 	tuiRunning = true
+	stopDiagnostics := startDiagnostics(p)
 	_, err = p.Run()
+	stopDiagnostics()
+	forgetUIPoster(p)
 	m.stopStatus()
 	m.endSession("exit")
 	m.cancelGoalFromContext()
@@ -573,9 +576,7 @@ func refreshCatalogs(cfg *config.Config, force bool) map[string]config.Catalog {
 
 func (m *model) fetchCatalogs(force bool) {
 	cats := refreshCatalogs(m.cfg, force)
-	if m.prog != nil {
-		m.prog.Send(catalogsMsg(cats))
-	}
+	m.post(catalogsMsg(cats))
 }
 
 func (m *model) resume(id string) error {
@@ -907,6 +908,10 @@ func cwd() string {
 }
 
 func (m *model) Update(msg tea.Msg) (_ tea.Model, statusCmd tea.Cmd) {
+	if ping, ok := msg.(watchdogPing); ok {
+		close(ping.done)
+		return m, nil
+	}
 	defer m.layout()
 	defer func() { statusCmd = m.statusAfter(statusCmd) }()
 
@@ -1152,6 +1157,9 @@ func (m *model) Update(msg tea.Msg) (_ tea.Model, statusCmd tea.Cmd) {
 	case toolResultMsg, toolTickMsg, hostedSearchMsg, todosMsg:
 		return m.onToolView(msg)
 
+	case terminalLostMsg:
+		return m.onTerminalLost(msg)
+
 	case promptEditedMsg:
 		m.restoreTerminalModes()
 		m.applyPromptEdit(msg)
@@ -1183,7 +1191,7 @@ func (m *model) Update(msg tea.Msg) (_ tea.Model, statusCmd tea.Cmd) {
 
 		m.flushThink()
 		m.flushCurrent()
-		m.iactive = &interactive{keys: msg.keys}
+		m.iactive = &interactive{keys: msg.keys, stop: msg.stop}
 		m.append(toolStyle.Render("⚒ bash ") + dimStyle.Render("(interactive — type to respond, 15s inactivity timeout)"))
 		return m, nil
 
@@ -1585,15 +1593,15 @@ func (m *model) wireProgram() {
 
 		go m.prog.Send(taskUpdateMsg{})
 	}
-	p := m.prog
+	post := m.poster()
 	m.agent.Tasks().OnEvents = func(id string) agent.Events {
 		return agent.Events{
-			OnToolStart: func(_, n, a string) { p.Send(subProgressMsg{id: id, tool: subToolLabel(n, a)}) },
-			OnUsage:     func(u ai.Usage) { p.Send(subProgressMsg{id: id, usage: u}) },
+			OnToolStart: func(_, n, a string) { post(subProgressMsg{id: id, tool: subToolLabel(n, a)}) },
+			OnUsage:     func(u ai.Usage) { post(subProgressMsg{id: id, usage: u}) },
 		}
 	}
-	m.fgReg().setSend(func(msg tea.Msg) { p.Send(msg) })
-	m.wireBackgrounding(p.Send)
+	m.fgReg().setSend(post)
+	m.wireBackgrounding(post)
 }
 
 func (m *model) wireWaits() {

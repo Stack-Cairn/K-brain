@@ -162,6 +162,8 @@ type Agent struct {
 	waitReg          *waitRegistry
 
 	msgsMu sync.Mutex
+	// lastContextTokens is the last count ContextTokensNow computed.
+	lastContextTokens atomic.Int64
 
 	loopMu      sync.Mutex
 	lastCallKey string
@@ -284,6 +286,34 @@ func (a *Agent) AppendUser(content string) {
 	a.Messages = append(a.Messages, ai.Message{Role: "user", Content: content, SentAt: &now})
 	a.msgsMu.Unlock()
 	a.mu.Unlock()
+}
+
+// appendSteered adds the messages steered into the running turn and then
+// reports each through ev.OnSteer. The callbacks run after msgsMu is released:
+// a front end may block in OnSteer until its UI loop takes the event, and that
+// loop reads the transcript (MessagesSnapshot, ContextTokens) while drawing.
+// Calling OnSteer under msgsMu deadlocked the TUI for good.
+func (a *Agent) appendSteered(steered []pendingSteer, ev Events) {
+	if len(steered) == 0 {
+		return
+	}
+	messages := make([]ai.Message, 0, len(steered))
+	for _, s := range steered {
+		now := time.Now()
+		message := ai.Message{Role: "user", Content: s.text, Parts: s.parts, SentAt: &now, PromptSnapshots: a.memoryOffMarks()}
+		if s.notice {
+			message.Origin = ai.OriginBackground
+		}
+		messages = append(messages, message)
+	}
+	a.msgsMu.Lock()
+	a.Messages = append(a.Messages, messages...)
+	a.msgsMu.Unlock()
+	if ev.OnSteer != nil {
+		for _, s := range steered {
+			ev.OnSteer(s.text)
+		}
+	}
 }
 
 func (a *Agent) drainPending() []pendingSteer {
@@ -478,7 +508,24 @@ func (a *Agent) MessagesSnapshot() []ai.Message {
 }
 
 func (a *Agent) ContextTokens() int {
-	return EstimateTokens(a.MessagesSnapshot())
+	n := EstimateTokens(a.MessagesSnapshot())
+	a.lastContextTokens.Store(int64(n))
+	return n
+}
+
+// ContextTokensNow is ContextTokens for drawing a frame: it never waits for
+// the transcript lock. While another goroutine holds it, it returns the last
+// count it computed. A UI that blocks in View on an agent lock freezes for good
+// once the lock holder waits on that UI.
+func (a *Agent) ContextTokensNow() int {
+	if !a.msgsMu.TryLock() {
+		return int(a.lastContextTokens.Load())
+	}
+	messages := append([]ai.Message(nil), a.Messages...)
+	a.msgsMu.Unlock()
+	n := EstimateTokens(messages)
+	a.lastContextTokens.Store(int64(n))
+	return n
 }
 
 func (a *Agent) RestoreMessages(messages []ai.Message) {
@@ -834,23 +881,7 @@ func (a *Agent) turnPending(ctx context.Context, input string, parts []ai.Conten
 			}
 		}
 		steered := a.drainPending()
-		if len(steered) > 0 {
-			a.msgsMu.Lock()
-		}
-		for _, s := range steered {
-			if ev.OnSteer != nil {
-				ev.OnSteer(s.text)
-			}
-			now := time.Now()
-			message := ai.Message{Role: "user", Content: s.text, Parts: s.parts, SentAt: &now, PromptSnapshots: a.memoryOffMarks()}
-			if s.notice {
-				message.Origin = ai.OriginBackground
-			}
-			a.Messages = append(a.Messages, message)
-		}
-		if len(steered) > 0 {
-			a.msgsMu.Unlock()
-		}
+		a.appendSteered(steered, ev)
 		if len(msg.ToolCalls) == 0 && len(steered) == 0 && !resume {
 
 			if !a.compacted {

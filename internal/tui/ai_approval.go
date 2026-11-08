@@ -18,10 +18,10 @@ func (m *model) withAIApproval(ctx context.Context, intent string) context.Conte
 	if !cfg.AIApproval.Enabled() {
 		return ctx
 	}
-	p := m.prog
+	post := m.poster()
 	run := approval.NewRun(cfg.AIApproval.Mode, intent, approval.New(ctx, cfg), func(phase, tool string, report approval.Report, automatic bool) {
-		if p != nil && (!report.Safe() || automatic) {
-			p.Send(noticeMsg("AI " + phase + " " + tool + ": " + report.Description()))
+		if post != nil && (!report.Safe() || automatic) {
+			post(noticeMsg("AI " + phase + " " + tool + ": " + report.Description()))
 		}
 	})
 	return tools.WithReview(ctx, run.Hooks(func(req tools.GateRequest) (tools.GateDecision, string) {

@@ -440,6 +440,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleImage(w, r)
 		return
 	}
+	// Replies are written after the handler returns and releases its locks
+	// (deferred_response.go); streaming handlers flush and write directly.
+	deferred := newDeferredResponse(w)
+	defer deferred.finish()
+	w = deferred
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
 		return
@@ -454,6 +459,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == http.MethodGet && r.URL.Path == "/v1/health" {
 		writeJSON(w, http.StatusOK, s.health())
+		return
+	}
+	if r.Method == http.MethodGet && r.URL.Path == "/v1/debug/stacks" {
+		s.debugStacks(w, r)
 		return
 	}
 	if r.URL.Path == "/v1/host-bridge" {

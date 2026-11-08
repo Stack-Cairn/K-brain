@@ -22,7 +22,7 @@ func (m *model) openBrain() tea.Cmd {
 	}
 	m.append(dimStyle.Render("editing " + path + " — save and quit to apply (next turn picks it up)"))
 	c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
-	return tea.ExecProcess(c, func(err error) tea.Msg {
+	return execEditor(c, func(err error) tea.Msg {
 		return brainEditedMsg{path, err}
 	})
 }
@@ -40,7 +40,7 @@ func (m *model) openSystem() tea.Cmd {
 	}
 	m.append(dimStyle.Render("editing " + path + " — save and quit to apply (next turn picks it up)"))
 	c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
-	return tea.ExecProcess(c, func(err error) tea.Msg {
+	return execEditor(c, func(err error) tea.Msg {
 		return systemEditedMsg{path, err}
 	})
 }

@@ -27,38 +27,53 @@ func run(pass *analysis.Pass) (any, error) {
 
 	insp := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 
-	nodeFilter := []ast.Node{(*ast.CallExpr)(nil)}
+	nodeFilter := []ast.Node{(*ast.CallExpr)(nil), (*ast.SelectorExpr)(nil)}
 	insp.WithStack(nodeFilter, func(n ast.Node, push bool, stack []ast.Node) bool {
 		if !push {
 			return true
 		}
-		call := n.(*ast.CallExpr)
-
-		if strings.HasSuffix(pass.Fset.Position(call.Pos()).Filename, "_test.go") {
+		if strings.HasSuffix(pass.Fset.Position(n.Pos()).Filename, "_test.go") {
 			return true
 		}
-		sel, ok := call.Fun.(*ast.SelectorExpr)
-		if !ok || sel.Sel.Name != sendMethod {
-			return true
+		switch n := n.(type) {
+		case *ast.CallExpr:
+			sel, ok := n.Fun.(*ast.SelectorExpr)
+			if !ok || !isProgramSend(pass, sel) {
+				return true
+			}
+			if detached(stack) || hasNolint(pass, stack) {
+				return true
+			}
+			pass.Reportf(n.Pos(),
+				"synchronous (*tea.Program).Send can deadlock the TUI event loop: detach it (go x.Send(...)) or, if this runs on a background goroutine, mark it //nolint:uilock")
+		case *ast.SelectorExpr:
+			// p.Send as a value (a callback, an argument) hides a synchronous
+			// Send from the check above.
+			if !isProgramSend(pass, n) {
+				return true
+			}
+			if len(stack) >= 2 {
+				if call, ok := stack[len(stack)-2].(*ast.CallExpr); ok && call.Fun == n {
+					return true
+				}
+			}
+			if hasNolint(pass, stack) {
+				return true
+			}
+			pass.Reportf(n.Pos(),
+				"(*tea.Program).Send used as a function value runs synchronously wherever it is called: pass a non-blocking sender instead, or mark it //nolint:uilock")
 		}
-
-		t := pass.TypesInfo.TypeOf(sel.X)
-		if t == nil || !strings.HasSuffix(t.String(), "tea.Program") {
-			return true
-		}
-
-		if detached(stack) {
-			return true
-		}
-
-		if hasNolint(pass, stack) {
-			return true
-		}
-		pass.Reportf(call.Pos(),
-			"synchronous (*tea.Program).Send can deadlock the TUI event loop: detach it (go x.Send(...)) or, if this runs on a background goroutine, mark it //nolint:uilock")
 		return true
 	})
 	return nil, nil
+}
+
+func isProgramSend(pass *analysis.Pass, sel *ast.SelectorExpr) bool {
+	if sel.Sel.Name != sendMethod {
+		return false
+	}
+	t := pass.TypesInfo.TypeOf(sel.X)
+	return t != nil && strings.HasSuffix(t.String(), "tea.Program")
 }
 
 func detached(stack []ast.Node) bool {
