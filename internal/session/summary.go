@@ -138,7 +138,7 @@ func cloneMeta(meta Meta) Meta {
 }
 
 func summaryListed(entry summaryEntry) bool {
-	return entry.meta.TaskID == "" && entry.count > 0 && !entry.meta.Archived
+	return ArchiveExclude.Listed(entry.meta, entry.count)
 }
 
 func summaryProjectionEqual(left, right summaryEntry) bool {
@@ -468,6 +468,11 @@ func (s *Store) SummaryCursor(ctx context.Context) (cursor SummaryCursor, err er
 }
 
 func (s *Store) SummarySnapshot(ctx context.Context) (snapshot SummarySnapshot, err error) {
+	return s.SummarySnapshotFiltered(ctx, ArchiveExclude)
+}
+
+// SummarySnapshotFiltered is SummarySnapshot with an explicit archived filter.
+func (s *Store) SummarySnapshotFiltered(ctx context.Context, archive ArchiveFilter) (snapshot SummarySnapshot, err error) {
 	err = s.withLock(func() error {
 		if err := s.syncSummariesLocked(ctx); err != nil {
 			return err
@@ -476,7 +481,7 @@ func (s *Store) SummarySnapshot(ctx context.Context) (snapshot SummarySnapshot, 
 		s.extendSummaryJournalLocked(time.Now().Add(s.summarySnapshotLease))
 		snapshot.Cursor = summaryCursor(s.summaries)
 		for _, entry := range s.summaries.entries {
-			if summaryListed(entry) {
+			if archive.Listed(entry.meta, entry.count) {
 				snapshot.Items = append(snapshot.Items, SummaryItem{Meta: cloneMeta(entry.meta), MessageCount: entry.count})
 			}
 		}

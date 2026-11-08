@@ -23,6 +23,7 @@ import (
 	"github.com/Stack-Cairn/K-brain/internal/agent"
 	"github.com/Stack-Cairn/K-brain/internal/ai"
 	"github.com/Stack-Cairn/K-brain/internal/approval"
+	"github.com/Stack-Cairn/K-brain/internal/config"
 	"github.com/Stack-Cairn/K-brain/internal/elicit"
 	"github.com/Stack-Cairn/K-brain/internal/mcp"
 	"github.com/Stack-Cairn/K-brain/internal/memory"
@@ -45,19 +46,23 @@ type Factory func(context.Context, string, protocol.ModelRef) (*agent.Agent, err
 type MemoryRuntimeFactory func(context.Context, string, protocol.ModelRef) (*memoryruntime.Runtime, error)
 
 type Options struct {
-	Image                   *ImageModule
-	Store                   *session.Store
-	Factory                 Factory
-	EventDir                string
-	Token                   string
-	Models                  []protocol.ModelRef
-	DefaultCWD              string
-	FilesystemRoots         []string
-	Settings                *SettingsStore
-	Prompts                 *resources.PromptStore
-	MemoryRoot              string
-	MemoryStore             *memory.Store
-	MemoryRuntimeFactory    MemoryRuntimeFactory
+	Image                *ImageModule
+	Store                *session.Store
+	Factory              Factory
+	EventDir             string
+	Token                string
+	Models               []protocol.ModelRef
+	DefaultCWD           string
+	FilesystemRoots      []string
+	Settings             *SettingsStore
+	Prompts              *resources.PromptStore
+	MemoryRoot           string
+	MemoryStore          *memory.Store
+	MemoryRuntimeFactory MemoryRuntimeFactory
+	// MemoryOrganizerInterval is the startup default for the scheduled organizer
+	// (the -memory-organizer-interval flag): 0 starts no scheduler, a negative
+	// value means 24h. A schedule saved through /v1/settings memoryOrganizer
+	// takes precedence over it.
 	MemoryOrganizerInterval time.Duration
 	QuestionTimeout         time.Duration
 	MCP                     *mcp.LiveManager
@@ -98,16 +103,20 @@ type Server struct {
 	questionWait         time.Duration
 	memoryRuntimeFactory MemoryRuntimeFactory
 	organizerRuntime     *memoryruntime.Runtime
-	organizerCancel      func()
-	cron                 *cronManager
-	planning             *planning.Store
-	planningCancel       context.CancelFunc
-	planningDone         chan struct{}
-	hookStore            *HookStore
-	hookRunner           *BackendHookRunner
-	mcp                  *mcp.LiveManager
-	build                protocol.Build
-	instance             instanceIdentity
+	organizerScheduler   *memoryruntime.OrganizerScheduler
+	// organizerDefault is the startup organizer interval used while no schedule
+	// is saved; organizerMu serializes rescheduling.
+	organizerDefault time.Duration
+	organizerMu      sync.Mutex
+	cron             *cronManager
+	planning         *planning.Store
+	planningCancel   context.CancelFunc
+	planningDone     chan struct{}
+	hookStore        *HookStore
+	hookRunner       *BackendHookRunner
+	mcp              *mcp.LiveManager
+	build            protocol.Build
+	instance         instanceIdentity
 	// hostBridge is the LiveAgent desktop's tool bridge, kept in memory only.
 	hostBridge hostBridge
 	// ssh runs SSHManager's connections to the hosts in Settings > SSH.
@@ -296,11 +305,11 @@ func New(opts Options) (*Server, error) {
 	cron.promptExecutor = server.executeCronPromptCanonical
 	cron.loopResults = server.deliverLoopResults
 	go cron.loop()
+	server.organizerDefault = opts.MemoryOrganizerInterval
+	if server.organizerDefault <= 0 {
+		server.organizerDefault = config.DefaultMemoryOrganizerInterval
+	}
 	if opts.MemoryRuntimeFactory != nil && opts.MemoryOrganizerInterval != 0 {
-		interval := opts.MemoryOrganizerInterval
-		if interval < 0 {
-			interval = 24 * time.Hour
-		}
 		runtime, runtimeErr := opts.MemoryRuntimeFactory(context.Background(), opts.DefaultCWD, protocol.ModelRef{})
 		if runtimeErr != nil {
 			cron.close()
@@ -308,7 +317,8 @@ func New(opts Options) (*Server, error) {
 			return nil, fmt.Errorf("start memory organizer runtime: %w", runtimeErr)
 		}
 		server.organizerRuntime = runtime
-		server.organizerCancel = runtime.StartOrganizerScheduler(context.Background(), opts.DefaultCWD, interval)
+		schedule := server.memoryOrganizerSetting()
+		server.organizerScheduler = runtime.NewOrganizerScheduler(context.Background(), opts.DefaultCWD, schedule.Enabled, schedule.interval)
 	}
 	server.startRuntimeReaper()
 	// Probe the platform sandbox off the request path; /v1/health reports it.
@@ -364,8 +374,11 @@ func (s *Server) Close() error {
 		}
 		rt.mu.Unlock()
 	}
-	if s.organizerCancel != nil {
-		s.organizerCancel()
+	s.organizerMu.Lock()
+	scheduler := s.organizerScheduler
+	s.organizerMu.Unlock()
+	if scheduler != nil {
+		scheduler.Close()
 	}
 	var err error
 	if s.organizerRuntime != nil {

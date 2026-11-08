@@ -55,19 +55,19 @@ VITE_KBRAIN_TOKEN=<backend-token>
 | GET | `/v1/health` | 健康状态与协议版本 |
 | GET | `/v1/models` | 当前后端模型路由目录 |
 | POST | `/v1/sandbox/setup` | 在 Windows 上通过 UAC 安装或修复沙箱账户（`sandbox-user`），返回 setup 状态与新的 `run_sandbox`；`capabilities.sandbox_setup` 表示支持 |
-| GET / PUT | `/v1/settings` | 读取脱敏配置 / 原子持久化供应商、模型与默认选择 |
+| GET / PUT | `/v1/settings` | 读取脱敏配置 / 原子持久化供应商、模型与默认选择；记忆开关 `memory` 与记忆整理计划 `memoryOrganizer` 也在这里 |
 | GET / PUT | `/v1/mcp` | 读取脱敏 MCP 配置 / 原子持久化并 reload stdio/http servers |
 | POST | `/v1/mcp/reload` | 从 K-brain-owned MCP 配置重建 live manager |
 | GET | `/v1/mcp/tools` | 按 workspace 与 enabled server IDs 返回 discovered schemas |
 | POST | `/v1/mcp/search` | ToolSearch 语义的动态工具目录检索 |
 | POST | `/v1/mcp/tools/call` | 通过 Go manager 执行 MCP tool call |
 | POST | `/v1/text/generate` | 无状态辅助文本生成；canonical `messages` 仅允许文本与 system/developer/user/assistant，后端不转发 tools |
-| GET / POST | `/v1/sessions` | 列出 / 创建会话 |
+| GET / POST | `/v1/sessions` | 列出 / 创建会话；列表的 `archived=exclude|include|only` 见下文，`capabilities.session_archive` 表示支持 |
 | POST | `/v1/sessions/exists` | 传 `{"ids":[...]}`（最多 5000 个），返回 `{"existing":[...]}`；只看文件是否存在、不读会话内容，`capabilities.session_exists` 表示支持 |
-| POST | `/v1/sessions/snapshots` | 建立 60 秒不可变会话摘要快照，返回 epoch、revision、token、总数和 workdirs |
+| POST | `/v1/sessions/snapshots` | 建立 60 秒不可变会话摘要快照，返回 epoch、revision、token、总数和 workdirs；可带 `archived` |
 | GET / DELETE | `/v1/sessions/snapshots/{token}` | 按 `offset` / `limit`（最多 500）读取或释放快照；过期或不可续传返回 410 |
-| GET | `/v1/sessions/changes` | 按 epoch、since、wait、rescan 长轮询最终列表变化，返回独立的 head_revision 与 next_since |
-| GET | `/v1/sessions/workdirs` | 从同一摘要缓存汇总默认可见会话的工作目录、数量和最新时间 |
+| GET | `/v1/sessions/changes` | 按 epoch、since、wait、rescan 长轮询最终列表变化，返回独立的 head_revision 与 next_since；可带 `archived` |
+| GET | `/v1/sessions/workdirs` | 从同一摘要缓存汇总默认可见会话的工作目录、数量和最新时间；可带 `archived` |
 | GET | `/v1/sessions/{id}` | 消息、子代理任务与最近事件序号 |
 | PATCH | `/v1/sessions/{id}` | 持久化 title、pinned、archived 或 model |
 | DELETE | `/v1/sessions/{id}` | 删除会话与运行日志并取消仍在运行的后台子代理；正在进行的一轮返回 409 |
@@ -95,7 +95,7 @@ VITE_KBRAIN_TOKEN=<backend-token>
 | PUT | `/v1/skills/settings` | 保存启用设置（全局或按 `workdir` 的项目设置）；`packs` 见下文，`capabilities.skill_packs` 表示支持 |
 | POST | `/v1/skills/manage` | SkillsManager 操作：`list`、`read`、`validate`、`delete`、`create`、`install`、`install_start` 等 |
 
-列表支持 `page`、`page_size`、`cwd`、`cwd_empty`、`shared`、`pinned`，返回 `sessions`、`total_count`、`epoch` 和字符串 `revision`。`/v1/health` 的 `capabilities.session_changes: 2` 表示同时支持不可变快照、增量、pinned、workdirs、字符串游标和过期 reset；客户端必须探测完整契约后才能放宽旧轮询。
+列表支持 `page`、`page_size`、`cwd`、`cwd_empty`、`shared`、`pinned`、`archived`，返回 `sessions`、`total_count`、`epoch` 和字符串 `revision`。`/v1/health` 的 `capabilities.session_changes: 2` 表示同时支持不可变快照、增量、pinned、workdirs、字符串游标和过期 reset；客户端必须探测完整契约后才能放宽旧轮询。
 
 增量响应的 `head_revision` 只表示服务端当前水位，客户端只能用实际交付批次的 `next_since` 续传；空批不推进。epoch 不匹配、游标早于回收水位或超出 head 时返回 `reset:true`、`next_since:null`。upsert 携带完整 `SessionSummary`；delete 不携带 session。会话列表和变化清单保存在内存中，不修改 transcript 格式。首次列表/快照/changes 才惰性建立摘要缓存；普通 TUI、ACP 与 `kn run` 不启动 HTTP 扫描器。存在 HTTP changes 订阅时，同 Store 共用有界外部文件扫描，退出租约后释放。
 
@@ -154,7 +154,7 @@ CLI 可用 `-config FILE -session-dir DIR` 指定配置与存储目录；省略�
 
 ### 子代理转录（`capabilities.subagent_transcripts: 1`）
 
-`Subagent` 载荷除 `id/description/status/model/started_at/ended_at/result/error` 外增加：`parent_tool_call_id`（发起它的父 `subagent` 工具调用 id，客户端据此把 `subagent.*` 事件并进那张工具卡片）、`background`（后台任务为 `true`）、`usage`（子代理全部请求的 token 合计）、`tool_count`（子代理已发起的工具调用数）与 `duration_ms`（结束后给出）。前台子代理的 `description` 取工具参数里的描述，`model` 为子代理实际使用的模型。用户停止的子代理以 `subagent.failed` 结束，`status:"cancelled"`、`error:"subagent stopped by the user"`；前台子代理被停止后父运行照常继续，父模型看到一次失败的工具结果。
+`Subagent` 载荷除 `id/description/status/model/started_at/ended_at/report/error` 外增加：`parent_tool_call_id`（发起它的父 `subagent` 工具调用 id，客户端据此把 `subagent.*` 事件并进那张工具卡片）、`background`（后台任务为 `true`）、`usage`（子代理全部请求的 token 合计）、`tool_count`（子代理已发起的工具调用数）与 `duration_ms`（结束后给出）。前台子代理的 `description` 取工具参数里的描述，`model` 为子代理实际使用的模型。用户停止的子代理以 `subagent.failed` 结束，`status:"cancelled"`、`error:"subagent stopped by the user"`；前台子代理被停止后父运行照常继续，父模型看到一次失败的工具结果。
 
 子代理运行期间，后端把它自己的转录以 `trajectory.child.*` 事件写进同一事件日志，`run_id` 为父运行、`payload.task_id` 为子代理 id：
 
@@ -465,6 +465,37 @@ MCP 服务器可以在自己的工具运行期间请用户填写一张表单（M
 
 `kn` 的 TUI 同样识别技能包：`$名字` 补全中包内技能的说明以 `[包名]` 开头，`/extensions skills` 把包内技能按包分组，`kn skills list` 显示所属包、baseDir 和被遮蔽的副本。TUI 没有启用设置，列出所有扫描到的技能。
 
+### 归档会话（`capabilities.session_archive: 1`）
+
+归档是会话元数据里的 `archived` 标记，`PATCH /v1/sessions/{id}` 带 `{"archived":true|false}` 设置，TUI 归档写的是同一个标记。归档会话默认不出现在列表里，客户端用查询参数 `archived` 选择：
+
+| `archived` | 返回 |
+| --- | --- |
+| 省略或 `exclude` | 只有未归档会话（以前的行为） |
+| `include` | 归档与未归档会话 |
+| `only` | 只有归档会话 |
+
+- 适用于 `GET /v1/sessions`、`POST /v1/sessions/snapshots`、`GET /v1/sessions/changes`、`GET /v1/sessions/workdirs`；其他取值返回 400。它与 `cwd`、`pinned`、`shared` 等条件同时生效，`total_count` 和快照 `total_count`/`workdirs` 按过滤后的结果计算。子代理会话和没有消息的会话在任何取值下都不列出。
+- 每个会话摘要（列表、快照、changes 的 `session`、会话详情、PATCH 响应）都带 `archived: true|false`，`false` 也不省略。
+- 归档与取消归档都是一次 `upsert` 变化，revision 与 PATCH 响应的 `sync_revision` 一致；TUI 或其他进程直接改文件的归档由扫描器（或 `rescan=1`）发现，同样报告。`listed` 按本次请求的 `archived` 计算：默认过滤下归档得到 `listed:false`（客户端从列表移除），取消归档得到 `listed:true`；`include` 下两种情况都是 `listed:true`，只是 `session.archived` 变化；`only` 下 `listed` 跟随 `archived`。
+- 同一个变化游标可以用不同的 `archived` 读取，epoch/revision 与过滤无关；客户端应让快照与之后的 changes 使用同一个取值。
+- 旧后端忽略这个参数，只返回未归档会话；摘要里的 `archived` 在为 `false` 时被省略，客户端按 `false` 处理。
+
+### 记忆整理计划（`capabilities.memory_organizer_settings: 1`）
+
+后端按计划运行记忆整理器（与 `POST /v1/memory/organizer` 的手动运行相同，trigger 为 `scheduled`）。计划放在 `/v1/settings`，与记忆开关 `memory` 并列：
+
+```json
+{"memoryOrganizer": {"enabled": true, "intervalHours": 24}}
+```
+
+- GET（以及 PUT 的响应）总是带 `memoryOrganizer`，给出生效值。优先级：保存过的设置 > 启动参数 `kn backend -memory-organizer-interval`（默认 24h，`0` 或负数也按 24h）> 默认值（开启、24 小时）。没有保存过设置时 `enabled` 为 `true`，`intervalHours` 来自启动参数（可以是小数，可能不在 1–168 之内）。
+- PUT 接受 `memoryOrganizer:{enabled?,intervalHours?}`，至少给一个字段；省略的字段沿用当前生效值，保存结果总是同时含两个字段，此后启动参数不再起作用。`intervalHours` 是数字（可以带小数），范围 1–168（含两端）；超出范围、类型不对、空对象或未知字段返回 400，什么都不改。没有配置文件路径的嵌入后端返回 503。
+- 保存位置是配置文件旁的 `<配置文件名>.memory-organizer.json`（默认 `config.json.memory-organizer.json`，内容 `{"enabled":bool,"intervalHours":number}`），不写进 config.json，所以不认识它的旧版本照常启动，回退后按启动参数运行。只改 `memoryOrganizer` 的 PUT 不写 config.json、不增加设置 revision；与其他设置一起 PUT 时先写计划文件再写 config.json，config.json 写失败会还原计划文件并返回 500。文件读不出或内容无效时后端在 stderr 报告并按启动参数运行，下一次成功保存会覆盖它。
+- 保存后立即对正在运行的整理器生效，不需要重启：关闭后不再按计划运行（正在进行的一次整理照常完成），开启或修改间隔时倒计时从保存时刻重新开始，下一次计划运行在 `intervalHours` 之后；两次计划运行之间也按上一次结束后重新计时，不会重叠。手动整理不受 `enabled` 影响。
+- TUI 的 `/memory` 列表与记忆面板显示同一份保存值（`organizer: every 6h (LiveAgent memory settings)`、`organizer: off ...`，没有保存值时为 `organizer: every 24h (backend default)`）；TUI 自己不运行整理器，也看不到后端的启动参数。
+- 旧后端的 PUT 遇到 `memoryOrganizer` 这个未知字段返回 400，客户端在能力缺失时不要发送它。
+
 ### 记住的权限规则（`capabilities.permission_rules: 1`、`readonly_auto_allow: 1`）
 
 规则写法参照 Claude Code：`Bash(npm test:*)` 前缀、`Bash(git status)` 精确、`Edit(src/**)` 项目内路径（Write/Edit 共用）、`mcp__srv__tool` 整个工具；规则引擎在 `internal/permissions`，TUI、ACP 与 HTTP 后端共用。复合命令每一段都要被规则或只读判定覆盖才放行；命令替换、子 shell、写文件重定向、包装命令等看不清的命令不受 allow 规则影响。
@@ -483,6 +514,60 @@ MCP 服务器可以在自己的工具运行期间请用户填写一张表单（M
 - Windows 路径：`\\?\D:\...` 与 `\\?\UNC\server\share\...` 先还原成 `D:\...`、`\\server\share\...` 再比较授权根、匹配权限规则和读写；还原后含义会变的写法（`.`、`..`、`/`、末尾的点或空格、`:` 流、保留设备名）以及 `\\.\`、`\??\`、卷 GUID、GLOBALROOT 直接拒绝。
 - 只读命令白名单另含：`hostname`（不带参数）、`whoami`、`date`（不带参数或只带 `+格式`）、`Get-Date`、`Get-Process`/`ps`、`Get-FileHash`、任意程序只带 `--version`、`git stash list|show`、`git tag`（不带参数或 `-l/--list`）、`git config --get|--get-all|--get-regexp|--list|-l`、`cd`/`Set-Location`/`pushd`/`popd`，以及 PowerShell 管道里的 `Select-Object`、`Sort-Object`、`Measure-Object`、`Format-Table`、`Format-List`、`Format-Wide`、`Out-String`。
 - 不做只读放行：含 `$` 的变量展开（`echo $OPENAI_API_KEY`、`$env:X`）、PowerShell 非文件驱动器（`Env:`、`Variable:`、`Function:`、`Alias:`、`Cert:`、`HKLM:`、`HKCU:`、`WSMan:`、`Registry::`）、`git -C <目录>`，以及 `cd` 之后再运行的 git——git 读取所在仓库的配置，`core.fsmonitor`、`diff.external` 等配置会运行程序。
+
+### MCP 配置与运行选择
+
+`PUT /v1/mcp` 的请求体与 GET 相同：`{servers:[{id,enabled,transport:"stdio"|"http",command,args,env,cwd,url,headers,auth,timeoutMs,workspaceRoots,policy}],selected}`。
+
+- 整体替换：请求里没有的 server 被删除，省略的 `selected`、`policy`、`workspaceRoots` 被清空。唯一的例外是凭据：已存在的 id 省略 `env`/`headers`（或给 `null`）时沿用旧值，给 `{}` 才清空；新旧都是 oauth 且新的 `credentialRef` 为空时沿用旧的。GET 对这些值脱敏，所以 GET 改完再 PUT 不会丢凭据。id 去掉首尾空白，空 id 与重复 id 直接丢弃；未知字段与校验失败返回 400。每次成功的 PUT 都会重连全部 server；重建失败时恢复之前的配置。
+- `policy` 按 server 配置，是 `{工具名: "allow"|"ask"|"deny"}`，值必须是这三个小写字符串。键是模型看到的完整工具名 `mcp__<serverKey>__<工具名>`（取 `GET /v1/mcp/tools` 返回的 `tools[].name`，不要自己拼：id 含 `[A-Za-z0-9_-]` 以外的字符或 `__` 时 serverKey 会加哈希后缀，工具名里的其他字符换成 `_`），原始 MCP 工具名不会匹配。查找先按完整名精确匹配（区分大小写），没有再用 `"*"`；没有其他通配。
+  - `allow` 与不设相同。`deny`：工具仍出现在模型的工具列表里，调用时直接返回错误 `MCP tool "<name>" is denied by policy`，所有模式（含 `full_access`、无人值守运行）都生效。`ask`：调用前走本次运行的权限判定，规则与内置工具相同——计划模式与 `approval_policy:"deny"` 拒绝，deny/ask 规则任何模式都生效，`full_access`/`always` 直接放行，记住的 allow 规则放行，`normal`/`auto_edit`/`auto_review` 弹出 `permission.requested`（可"总是允许"，记成整个工具名的规则）；定时任务、loop 等无人值守运行里 `ask` 直接拒绝（`unattended scheduled runs cannot request interactive approval`）。
+  - 没有 `policy`（或 `allow`）的 MCP 工具不经过权限判定：`normal`、`auto_edit`、`full_access` 和无人值守运行里都直接执行，`approval_policy:"deny"` 也拦不住；只有计划模式（MCP 工具被移出工具列表）、`mode:"chat"`（没有工具）、运行选项 `options.tools.policies` 里的 `deny`（移除）/`ask`/`allow`（走权限判定），以及 AI 审查（`auto_review` 或全局 AI 审批，审查不通过时询问）会拦它。客户端要求"每次确认"时应设 `ask`。
+  - `POST /v1/mcp/tools/call` 同样应用 `selected`、`workspaceRoots` 与 `policy`，但这条 HTTP 调用没有运行上下文：`deny` 生效，`ask` 不会弹出审批而是直接执行。
+- `selected` 是默认的 server id 白名单：为空表示全部已启用的 server；不校验 id 是否存在。
+- `workspaceRoots` 按路径层级判断会话工作目录是否在某个根之内（不是字符串前缀，不解析符号链接）；为空表示任何目录都可用。判断用的是会话工作目录，不是运行选项里的 `workspace_roots`。
+
+运行选项 `mcp_server_ids`（`RunOptions.MCPServerIDs`）：
+
+- 省略、`null` 与 `[]` 含义相同：使用配置里的 `selected`，`selected` 也为空时使用全部已启用且 `workspaceRoots` 允许的 server。
+- 非空时只用列出的 server（再与已启用、`workspaceRoots` 取交集），替换而不是叠加 `selected`；未知 id 被忽略。因此不能用这个字段关闭全部 MCP，要关闭只能传一个不存在的 id（例如 `["__none__"]`），或用 `mode:"chat"`、`options.tools` 的 `deny`。
+- 每次运行开始时重新计算，只作用于本次运行，不会粘在会话上；下一次运行不传就回到 `selected`。例外是后台子代理完成后的唤醒运行，它沿用上一次用户运行的全部选项（包括 `mcp_server_ids`）。子代理在启动时复制父运行当前的 MCP 工具集。
+- `options.tools` 里的工具名在应用本次 `mcp_server_ids` 之前校验，按的是会话当前（上一次运行留下的）工具集；针对本次才新加入的 MCP 工具的策略可能被拒为未知工具。
+
+### 技能设置的工作目录覆盖
+
+`GET /v1/skills?workdir=<路径>` 返回 `{version,revision,rootDir,skills,shadowed,invalid,enabled,selected,settings,warnings}`，`settings` 是该目录合并后的 `{enabled,selected,mode?,skillNames?,packs?}`。`PUT /v1/skills/settings` 的请求体是 `{workdir?,enabled,selected,mode?,skillNames?,packs?}`（未知字段 400，其他校验失败 422；`packs` 见上文技能包），响应 `{version,revision,settings}`，`settings` 是合并后的结果。`revision` 是全局计数，每次保存加一。
+
+- 不带 `workdir` 时整体替换全局设置；省略的 `enabled` 按 `false` 处理，会关闭全部技能。省略 `packs` 时保留已存的值。
+- 带 `workdir` 时写该目录的覆盖。目录必须存在；按解析符号链接后的绝对路径识别（相对路径按后端进程的工作目录解析）。`mode` 为 `inherit`、`custom`、`off` 或空；空等于 `custom` 且 `skillNames = selected`。读取时从全局设置出发：`custom` 用 `skillNames` 作为 `selected`、用自己的 `packs`，`off` 关闭技能，`inherit` 完全跟随全局；覆盖自己的 `enabled`/`selected` 不参与合并，所以全局 `enabled:false` 时 `custom` 也打不开技能。`skills-creator` 与 `skills-installer` 总在 `selected` 里。
+- 没有删除覆盖的接口；清除覆盖就 PUT `{workdir, mode:"inherit", enabled:true, selected:[], packs:{}}`（不支持技能包的后端去掉 `packs`），之后该目录完全跟随全局（条目仍保存在文件里）。
+- 运行按会话的工作目录取用：系统提示词每一轮重新生成，技能部分按会话 cwd 读取合并后的设置，所以保存后的下一轮就生效，不需要重载会话。会话 cwd 已不存在时退回未托管的技能扫描。子代理不带技能提示。
+
+### `usage.updated`
+
+载荷是 `{input_tokens,output_tokens,cached_tokens,cache_write_tokens}`，每个字段为 0 时省略（可能是 `{}`）。它是单次模型请求的用量，不是累计值；`input_tokens` 是该次请求的完整输入（含缓存读写的部分，大致等于当时的上下文大小），`cached_tokens`/`cache_write_tokens` 是其中缓存读取、写入的部分。没有上下文窗口字段。
+
+- 运行中主代理每次模型请求结束后发一条（包括工具轮数用尽后的收尾请求，以及出错的请求），`run_id` 为当前运行；用户、定时、loop 与唤醒运行都一样。客户端自己累加得到本次运行的合计；`run.completed` 不带用量。
+- 手动压缩（`POST /v1/sessions/{id}/compact`）在 `compaction.completed` 之前发一条，是压缩请求的用量；运行中的自动压缩不单独发。
+- 子代理不发 `usage.updated`；它的用量在 `subagent.*` 载荷的 `usage`（子代理全部请求的合计）里。
+
+### 子代理工具
+
+模型可见的五个工具只在主代理上，子代理不能再派生或控制其他子代理。`status`/`steer`/`cancel`/`followup` 只能针对后台子代理（前台子代理不进任务表，返回 unknown subagent）；后台子代理 id 由描述的前几个词加序号组成（例如 `fix-login-tests-1`，没有描述时为 `subagent-task-N`），前台为 `foreground-N`。任务表属于当前 Agent，后端重启、切换模型或工作目录后旧 id 不能再被控制。
+
+| 工具 | 参数 | 结果 |
+| --- | --- | --- |
+| `subagent` | `prompt`（必填）、`description`、`background`（默认 false）、`model`、`provider`、`effort`、`worktree` | 前台：子代理最终报告（最多 50,000 字节，worktree 模式追加 `Worktree: <路径>`），失败时 `Error: …`；后台：`Started background subagent <id>: <description>. …`，报告稍后以 `[subagent <id> <status>] <description>` 通知送回并触发唤醒运行 |
+| `subagent_status` | `id`（可选） | 带 id：JSON `{id,description,status,following_up,can_followup,report?}`；不带：`{tasks:[…不含 report],total,truncated}`，最多 100 条。`status` 为 `running`、`done`、`error`、`cancelled` |
+| `subagent_steer` | `id`、`message`（都必填，消息最多 64 KiB，最多 32 条待处理） | `Steered <id>; …`；运行中或 follow-up 进行中可用，消息在子代理下一个循环边界送达。错误以非失败的 `Error: …` 文本返回 |
+| `subagent_cancel` | `id`（必填） | `Cancellation requested; …` 或 `Subagent is already inactive; …`；有 follow-up 时先取消 follow-up |
+| `subagent_followup` | `id`、`message`（都必填） | 同步返回这次追问的最终报告。子代理仍在运行（应改用 steer）、已有 follow-up、从旧会话恢复（不再活跃）或仍在收尾时返回失败 |
+
+事件与转录的关联：
+
+- `subagent.*` 的 `parent_tool_call_id` 是发起它的那次 `subagent` 工具调用 id。`subagent_status`/`steer`/`cancel`/`followup` 的工具调用通过参数 `arguments.id` 指向子代理 id。客户端应按子代理 id（即 `trajectory.child.*` 的 `task_id`）归组，而不是按 `run_id`。
+- follow-up 沿用同一个子代理 id 与同一段对话，不产生新 id，也不发新的 `subagent.started`。追问消息以 `trajectory.child.steer {task_id,text}` 记录（转录里显示为一条用户消息），之后的 `trajectory.child.*` 事件继续用同一 `task_id`，并记在该子代理第一次 `subagent.started` 所在的运行下（即使追问发生在之后的运行里）。追问开始和结束时各重发一次 `subagent.completed`/`subagent.failed`，`status` 与 `report` 保持原来的值，`usage` 更新；追问的报告只作为 `subagent_followup` 的工具结果返回，不写入 `report`。追问结束后保存的完整转录包含原对话与追问。
+- 追问进行中子代理不算 live：`GET /v1/sessions/{id}/subagents/{task}` 返回上次保存的转录且 `live:false`，`/events` 立即结束；实时内容只在主会话 SSE 的 `trajectory.child.*` 里。
 
 ## Fixtures 与验证入口
 

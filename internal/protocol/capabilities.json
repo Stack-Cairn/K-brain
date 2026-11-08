@@ -184,6 +184,24 @@
       "firstRelease": "v0.107.28",
       "evidenceCommit": "pending",
       "missing": "Offer no way to move a running command to the background (POST /v1/sessions/{id}/runs/{run_id}/tools/{tool_call_id}/background does not exist): a foreground Bash call runs until it ends, times out or the run is cancelled."
+    },
+    {
+      "name": "session_archive",
+      "type": "integer",
+      "compare": "eq",
+      "value": 1,
+      "firstRelease": "v0.107.28",
+      "evidenceCommit": "pending",
+      "missing": "Never send archived on the session list, snapshots, changes or workdirs (an older backend ignores it and returns only unarchived sessions); archived sessions cannot be listed, so hide the archived view and its unarchive action, and treat a missing archived field on a summary as false."
+    },
+    {
+      "name": "memory_organizer_settings",
+      "type": "integer",
+      "compare": "eq",
+      "value": 1,
+      "firstRelease": "v0.107.28",
+      "evidenceCommit": "pending",
+      "missing": "Hide the organizer schedule setting and never send memoryOrganizer in PUT /v1/settings (an older backend rejects the request with 400 for the unknown field); the organizer runs on the backend's -memory-organizer-interval (default 24h) and changing it needs a restart."
     }
   ]
 }

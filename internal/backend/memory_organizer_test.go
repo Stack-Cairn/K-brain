@@ -51,7 +51,7 @@ func TestMemoryOrganizerProductionSchedulerStartupAndShutdown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if server.organizerRuntime == nil || server.organizerCancel == nil {
+	if server.organizerRuntime == nil || server.organizerScheduler == nil {
 		t.Fatal("memory organizer scheduler was not started")
 	}
 	t.Cleanup(func() {

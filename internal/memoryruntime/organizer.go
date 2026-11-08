@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Stack-Cairn/K-brain/internal/memory"
@@ -355,29 +356,104 @@ func organizerRunFromStore(stored memory.OrganizeRun) (OrganizerRun, error) {
 // StartOrganizerScheduler is a host-owned wakeup loop. It only invokes the
 // K-brain organizer model configured on this Runtime.
 func (r *Runtime) StartOrganizerScheduler(ctx context.Context, workdir string, interval time.Duration) func() {
+	return r.NewOrganizerScheduler(ctx, workdir, true, interval).Close
+}
+
+// NewOrganizerScheduler starts a scheduled organizer loop that can be paused,
+// resumed and given a new interval while it runs (see OrganizerScheduler.Update).
+// A non-positive interval means 24h.
+func (r *Runtime) NewOrganizerScheduler(ctx context.Context, workdir string, enabled bool, interval time.Duration) *OrganizerScheduler {
+	return newOrganizerScheduler(ctx, enabled, interval, func(runCtx context.Context) {
+		_, _ = r.RunOrganizer(runCtx, workdir, OrganizerScheduled)
+	})
+}
+
+// OrganizerScheduler runs the organizer every interval while enabled. Each
+// countdown starts when the scheduler starts, when Update is called and when the
+// previous scheduled run returns, so runs never overlap.
+type OrganizerScheduler struct {
+	mu       sync.Mutex
+	enabled  bool
+	interval time.Duration
+	update   chan struct{}
+	cancel   context.CancelFunc
+	done     chan struct{}
+	once     sync.Once
+}
+
+func newOrganizerScheduler(ctx context.Context, enabled bool, interval time.Duration, run func(context.Context)) *OrganizerScheduler {
 	if interval <= 0 {
 		interval = 24 * time.Hour
 	}
 	scheduleCtx, cancel := context.WithCancel(ctx)
-	done := make(chan struct{})
-	ticker := time.NewTicker(interval)
-	go func() {
-		defer close(done)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-scheduleCtx.Done():
-				return
-			case <-ticker.C:
-				_, _ = r.RunOrganizer(scheduleCtx, workdir, OrganizerScheduled)
-			}
+	s := &OrganizerScheduler{enabled: enabled, interval: interval, update: make(chan struct{}, 1), cancel: cancel, done: make(chan struct{})}
+	go s.loop(scheduleCtx, run)
+	return s
+}
+
+func (s *OrganizerScheduler) loop(ctx context.Context, run func(context.Context)) {
+	defer close(s.done)
+	var timer *time.Timer
+	var fire <-chan time.Time
+	arm := func() {
+		if timer != nil {
+			timer.Stop()
+		}
+		timer, fire = nil, nil
+		enabled, interval := s.State()
+		if enabled {
+			timer = time.NewTimer(interval)
+			fire = timer.C
+		}
+	}
+	defer func() {
+		if timer != nil {
+			timer.Stop()
 		}
 	}()
-	return func() {
-		cancel()
-		<-done
+	arm()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-s.update:
+			arm()
+		case <-fire:
+			run(ctx)
+			arm()
+		}
 	}
 }
+
+// Update applies a new schedule without restarting the loop: disabling stops
+// future runs (a run in progress finishes), and enabling or changing the
+// interval restarts the countdown from now. A non-positive interval means 24h.
+func (s *OrganizerScheduler) Update(enabled bool, interval time.Duration) {
+	if interval <= 0 {
+		interval = 24 * time.Hour
+	}
+	s.mu.Lock()
+	s.enabled, s.interval = enabled, interval
+	s.mu.Unlock()
+	select {
+	case s.update <- struct{}{}:
+	default:
+	}
+}
+
+// State is the schedule the loop currently follows.
+func (s *OrganizerScheduler) State() (enabled bool, interval time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.enabled, s.interval
+}
+
+// Close stops the loop, cancelling a run in progress, and waits for it.
+func (s *OrganizerScheduler) Close() {
+	s.once.Do(s.cancel)
+	<-s.done
+}
+
 func (r *Runtime) cancelRun(run OrganizerRun, err error) (OrganizerRun, error) {
 	stored, changed, cancelErr := r.store.CancelOrganizeRunOwned(run.RunID, run.Epoch, run.Executor, err.Error())
 	if cancelErr != nil {

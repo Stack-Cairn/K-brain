@@ -5,9 +5,31 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Stack-Cairn/K-brain/internal/config"
 	"github.com/Stack-Cairn/K-brain/internal/memory"
 	tea "github.com/charmbracelet/bubbletea"
 )
+
+// memoryOrganizerSummary describes the backend memory organizer schedule as
+// saved in LiveAgent's memory settings (the same file /v1/settings writes).
+// The organizer runs only in the backend; without a saved schedule the backend
+// uses its -memory-organizer-interval flag, 24h by default.
+func memoryOrganizerSummary() string {
+	p, err := config.Path()
+	if err != nil {
+		return ""
+	}
+	saved, ok, err := config.LoadMemoryOrganizer(p)
+	switch {
+	case err != nil:
+		return "organizer: saved schedule unreadable, backend default applies"
+	case !ok:
+		return "organizer: every 24h (backend default)"
+	case !saved.Enabled:
+		return "organizer: off (LiveAgent memory settings)"
+	}
+	return "organizer: every " + strconv.FormatFloat(saved.IntervalHours, 'f', -1, 64) + "h (LiveAgent memory settings)"
+}
 
 func (m *model) memoryCommand(args []string) {
 	scopes := []memory.Scope{memory.Installation(), memory.Session(m.sessionID)}
@@ -63,6 +85,9 @@ func (m *model) memoryListing(scopes []memory.Scope) {
 	} else {
 		b.WriteString(dimStyle.Render("memory — injected into every turn · /memory <n> [session] marks done · edit the files directly:"))
 	}
+	if line := memoryOrganizerSummary(); line != "" {
+		b.WriteString("\n" + dimStyle.Render(line))
+	}
 	found := false
 	for _, s := range scopes {
 		entries := s.Entries()
@@ -98,9 +123,14 @@ func (m *model) openMemoryView(scopes []memory.Scope) {
 			hints: "↑/↓ select · Enter mark done · Esc close",
 		}},
 	}
+	notes := []string{}
 	if m.agent != nil && !m.agent.MemoryEnabled() {
-		s.note = "memory is off — entries are not injected into turns"
+		notes = append(notes, "memory is off — entries are not injected into turns")
 	}
+	if line := memoryOrganizerSummary(); line != "" {
+		notes = append(notes, line)
+	}
+	s.note = strings.Join(notes, " · ")
 	m.openSurface(s)
 }
 
