@@ -286,12 +286,19 @@ func bashTool() Tool {
 			if cb, ok := ctx.Value(updateKey{}).(func(string)); ok {
 				onUpdate = cb
 			}
-			res := bashrun.Run(ctx, bashrun.Options{
+			run, err := runForeground(ctx, bashrun.Options{
 				Command:  a.Command,
 				Timeout:  dur,
 				Dir:      WorkingDir(ctx),
 				OnUpdate: onUpdate,
-			})
+			}, nil)
+			if err != nil {
+				return "", err
+			}
+			if run.backgrounded != "" {
+				return run.backgrounded, nil
+			}
+			res := run.Result
 			reportShellRun(ctx, res.ExitCode, res.TimedOut)
 
 			s := TruncateTail(res.Output)

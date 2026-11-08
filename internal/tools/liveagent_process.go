@@ -47,6 +47,11 @@ type liveagentProcess struct {
 	cmd            *exec.Cmd
 	log            *os.File
 	isolated       bool
+	// wait reaps the process when something other than cmd.Wait owns it.
+	wait func() error
+	// backgrounded marks a foreground command the user moved to the
+	// background: it outlives its turn, even a cancelled one, but not the session.
+	backgrounded bool
 
 	mu       sync.Mutex
 	status   liveagentProcessStatus
@@ -189,6 +194,53 @@ func (m *liveagentProcessManager) startWithID(ctx context.Context, prefix, comma
 	return p, nil
 }
 
+// adopt takes over a foreground command the user moved to the background. It
+// keeps its process group, sandbox and output so far, and no longer ends with
+// its turn: only stop, StopBackgrounded and CloseAll end it. It reports its
+// exit like any unwatched process.
+func (m *liveagentProcessManager) adopt(ctx context.Context, d *bashrun.Detached, command, cwd string) (*liveagentProcess, error) {
+	log, err := os.CreateTemp("", "k-brain-managed-process-*.log")
+	if err != nil {
+		return nil, fmt.Errorf("create process log: %w", err)
+	}
+	identity, _ := RunIdentityFromContext(ctx)
+	p := &liveagentProcess{
+		id: newLiveAgentProcessID("bash"), command: command, conversationID: identity.ConversationID, runID: identity.RunID, cwd: cwd,
+		startedAt: d.Started, cmd: d.Cmd, wait: d.Wait, log: log, pid: d.PID, backgrounded: true,
+		status: liveagentProcessRunning, done: make(chan struct{}),
+	}
+	m.mu.Lock()
+	if m.closed {
+		m.mu.Unlock()
+		_ = log.Close()
+		_ = os.Remove(log.Name())
+		return nil, errors.New("managed process manager is closed")
+	}
+	m.processes[p.id] = p
+	m.mu.Unlock()
+	if err := d.Stream(&liveagentProcessWriter{p: p, file: log}); err != nil {
+		fmt.Fprintf(log, "[output before the command moved to the background was not fully kept: %v]\n", err)
+	}
+	go m.reap(context.Background(), p, 0)
+	return p, nil
+}
+
+// StopBackgrounded stops the commands the user moved to the background, which
+// end with the session the way managed processes started in its turns do.
+func (m *liveagentProcessManager) StopBackgrounded() {
+	m.mu.Lock()
+	ids := make([]string, 0, len(m.processes))
+	for id, p := range m.processes {
+		if p.backgrounded {
+			ids = append(ids, id)
+		}
+	}
+	m.mu.Unlock()
+	for _, id := range ids {
+		_, _, _ = m.stop(id)
+	}
+}
+
 type liveagentProcessWriter struct {
 	p    *liveagentProcess
 	file *os.File
@@ -209,7 +261,11 @@ func (w *liveagentProcessWriter) Write(data []byte) (int, error) {
 
 func (m *liveagentProcessManager) reap(ctx context.Context, p *liveagentProcess, timeout time.Duration) {
 	result := make(chan error, 1)
-	go func() { result <- p.cmd.Wait() }()
+	wait := p.cmd.Wait
+	if p.wait != nil {
+		wait = p.wait
+	}
+	go func() { result <- wait() }()
 	var timer <-chan time.Time
 	var timeoutTimer *time.Timer
 	if timeout > 0 {

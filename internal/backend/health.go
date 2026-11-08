@@ -43,6 +43,10 @@ type healthCapabilities struct {
 	// /v1/skills items carry pack and shadowed, the response lists shadowed
 	// copies, and /v1/skills/settings accepts packs.
 	SkillPacks int `json:"skill_packs"`
+	// BackgroundTool is 1 where POST
+	// /v1/sessions/{id}/runs/{run_id}/tools/{tool_call_id}/background moves a
+	// running foreground shell command to the background.
+	BackgroundTool int `json:"background_tool"`
 }
 
 // healthRunSandboxV1 describes per-run sandboxing (options.sandbox). Clients
@@ -148,6 +152,7 @@ func (s *Server) health() healthResponse {
 			HostBridge:              1,
 			SSHManager:              1,
 			SkillPacks:              1,
+			BackgroundTool:          1,
 		},
 		HostBridge: s.hostBridge.status(),
 	}

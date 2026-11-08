@@ -170,6 +170,12 @@ type Agent struct {
 	files *fileLocks
 	bg    *taskRegistry
 
+	// fg and procs move foreground shell commands to the background (background.go).
+	fg        *tools.Foreground
+	procMu    sync.Mutex
+	procs     *tools.ManagedProcessManager
+	ownsProcs bool
+
 	subagentInflight atomic.Int64
 	otherInflight    atomic.Int64
 
@@ -187,6 +193,8 @@ type Agent struct {
 	// hostTools are provided by the desktop host while it is connected; one
 	// with the name of a tool in Tools replaces it (see SetHostTools).
 	hostTools []tools.Tool
+	// processTool reads and stops backgrounded commands; set once there is one.
+	processTool *tools.Tool
 
 	wfMu sync.Mutex
 	wf   *workflow.Manager
@@ -443,6 +451,7 @@ func New(client ai.Client, model string, maxTokens int, systemPrompt string, opt
 	a.Reminders = DefaultReminders()
 	a.files = newFileLocks()
 	a.bg = newTaskRegistry()
+	a.fg = tools.NewForeground()
 	return a
 }
 
@@ -545,16 +554,16 @@ func (a *Agent) suggest(name string) []string {
 func (a *Agent) AvailableTools() []tools.Tool {
 	a.toolsMu.Lock()
 	defer a.toolsMu.Unlock()
-	return a.withoutMemoryTools(a.modeTools(append(append(a.ownToolsLocked(), a.mcpTools...), a.pluginTools...)))
+	return a.withoutMemoryTools(a.modeTools(a.withProcessToolLocked(append(append(a.ownToolsLocked(), a.mcpTools...), a.pluginTools...))))
 }
 
 func (a *Agent) AllTools() []tools.Tool {
 	a.toolsMu.Lock()
 	defer a.toolsMu.Unlock()
 	if a.RunToolsSet {
-		return a.withoutMemoryTools(append([]tools.Tool(nil), a.RunTools...))
+		return a.withoutMemoryTools(a.withProcessToolLocked(append([]tools.Tool(nil), a.RunTools...)))
 	}
-	return a.withoutMemoryTools(a.modeTools(append(append(a.ownToolsLocked(), a.mcpTools...), a.pluginTools...)))
+	return a.withoutMemoryTools(a.modeTools(a.withProcessToolLocked(append(append(a.ownToolsLocked(), a.mcpTools...), a.pluginTools...))))
 }
 
 func (a *Agent) Turn(ctx context.Context, input string, ev Events) (string, error) {

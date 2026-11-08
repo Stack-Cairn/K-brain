@@ -490,6 +490,13 @@ func renderToolHeader(b *block, width int) string {
 		if d, ok := toolTimer.running(b.toolID); ok && d >= time.Second {
 			meta = textMutedStyle.Render(fmtElapsed(d))
 		}
+		if b.bgHint != "" {
+			hint := textHintStyle.Render(b.bgHint)
+			if meta != "" {
+				hint += "  " + meta
+			}
+			meta = hint
+		}
 		out := withMeta(chromeGlyphs(row), meta, width)
 		if b.live != "" {
 			for l := range strings.SplitSeq(b.live, "\n") {

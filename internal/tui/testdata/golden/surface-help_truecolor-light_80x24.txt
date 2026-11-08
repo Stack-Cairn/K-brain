@@ -1,4 +1,4 @@
-❯ Keyboard shortcuts                                                       1/81
+❯ Keyboard shortcuts                                                       1/82
   [Keys]  Commands
   / type to filter
 ────────────────────────────────────────────────────────────────────────────────
@@ -15,7 +15,7 @@
   Ctrl+P                      open the command palette
   F2                          open settings
   Alt+↑                       focus the transcript, a block at a time
-  ↓ 69 more
+  ↓ 70 more
 ────────────────────────────────────────────────────────────────────────────────
   Shift+Tab  cycle the permission mode
   Shift+Tab — cycle Normal / Plan / Auto review / Always allow

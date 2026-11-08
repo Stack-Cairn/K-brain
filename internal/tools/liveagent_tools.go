@@ -428,7 +428,14 @@ func liveagentBash(ctx context.Context, manager *liveagentProcessManager, a map[
 		return fmt.Sprintf("Bash session_id=%s\n%s", p.id, out), nil
 	}
 	update, _ := ctx.Value(updateKey{}).(func(string))
-	res := bashrun.Run(ctx, bashrun.Options{Command: command, Dir: dir, Timeout: timeout, OnUpdate: update})
+	run, err := runForeground(ctx, bashrun.Options{Command: command, Dir: dir, Timeout: timeout, OnUpdate: update}, manager)
+	if err != nil {
+		return "", err
+	}
+	if run.backgrounded != "" {
+		return run.backgrounded, nil
+	}
+	res := run.Result
 	reportShellRun(ctx, res.ExitCode, res.TimedOut)
 	out := TruncateTail(res.Output)
 	if res.OutputFile != "" {

@@ -231,6 +231,9 @@ func (m *model) onToolStart(msg toolStartMsg) (tea.Model, tea.Cmd) {
 	row := toolStyle.Render("⚒ "+toolVerb(msg.name)+suffix+" ") + dimStyle.Render(args)
 
 	run := block{kind: blockToolRun, text: row, toolID: msg.id, toolRunning: true, toolName: msg.name, toolArgs: msg.args}
+	if m.backgroundable[msg.id] {
+		run.bgHint = m.tr(toolBackgroundHint)
+	}
 	if at >= 0 {
 		m.blocks = slices.Insert(m.blocks, at, run)
 	} else {
@@ -279,6 +282,8 @@ func (m *model) onToolEnd(msg toolEndMsg) (tea.Model, tea.Cmd) {
 			b.toolRunning = false
 			b.toolFailed = toolResultFailed(msg.result)
 			b.live = ""
+			b.bgHint = ""
+			delete(m.backgroundable, msg.id)
 
 			b.text = toolHeaderRow(msg.name, b.toolArgs, b.toolFailed)
 			b.stale = true

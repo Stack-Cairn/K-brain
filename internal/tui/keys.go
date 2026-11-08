@@ -87,6 +87,11 @@ func (m *model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.stopSelectedTask()
 			return m, nil
 		}
+	case tea.KeyCtrlB:
+		// Without a backgroundable call it stays the composer's cursor left.
+		if cmd, ok := m.backgroundTools(); ok {
+			return m, cmd
+		}
 	case tea.KeyCtrlT:
 
 		if len(m.dockTasks()) == 0 {
