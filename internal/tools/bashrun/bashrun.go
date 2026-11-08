@@ -36,6 +36,10 @@ type Result struct {
 	Killed bool
 
 	Interactive bool
+
+	// Detached is the still-running command Run handed over when Options.Detach
+	// fired; the other fields then describe only what it printed so far.
+	Detached *Detached
 }
 
 type Options struct {
@@ -63,6 +67,12 @@ type Options struct {
 	Env []string
 
 	Sandbox *sandbox.Policy
+
+	// Detach, once it fires, makes Run return the running command as
+	// Result.Detached instead of waiting for it. The command keeps its process
+	// group and sandbox and no longer ends with ctx or Timeout. Interactive
+	// commands ignore it.
+	Detach <-chan struct{}
 }
 
 type workingDirKey struct{}
@@ -93,7 +103,26 @@ func Run(ctx context.Context, opts Options) Result {
 	ctx, cancel := context.WithTimeout(ctx, opts.Timeout)
 	defer cancel()
 
-	cmd, err := Command(ctx, opts.Shell, opts.Command)
+	// A detachable command is bound to a context that follows ctx only until
+	// it is detached: after that, cancelling the turn or the timeout firing no
+	// longer kills it.
+	commandCtx := ctx
+	detach := func() bool { return false }
+	release := func() {}
+	if opts.Detach != nil && !opts.Interactive {
+		detached, cancelDetached := context.WithCancelCause(context.WithoutCancel(ctx))
+		stop := context.AfterFunc(ctx, func() { cancelDetached(context.Cause(ctx)) })
+		commandCtx, detach = detached, stop
+		release = func() { stop(); cancelDetached(nil) }
+	}
+	handedOver := false
+	defer func() {
+		if !handedOver {
+			release()
+		}
+	}()
+
+	cmd, err := Command(commandCtx, opts.Shell, opts.Command)
 	if err != nil {
 		return Result{Exit: err.Error()}
 	}
@@ -107,7 +136,7 @@ func Run(ctx context.Context, opts Options) Result {
 		policy = sandbox.FromContext(ctx)
 	}
 	if policy != nil && policy.Enabled() {
-		cmd, err = policy.Wrap(ctx, cmd)
+		cmd, err = policy.Wrap(commandCtx, cmd)
 		if err != nil {
 			return Result{Exit: err.Error()}
 		}
@@ -125,12 +154,79 @@ func Run(ctx context.Context, opts Options) Result {
 	if opts.Interactive {
 		return runInteractive(ctx, cmd, opts)
 	}
-	return runPiped(ctx, cmd, opts.OnUpdate)
+	res := runDetachable(ctx, cmd, opts.OnUpdate, opts.Detach, detach, release)
+	handedOver = res.Detached != nil
+	return res
 }
 
 const updateInterval = 100 * time.Millisecond
 
+// pipedRun is a started command whose output is drained into a bounded buffer,
+// or into sink once a detached command's owner takes the stream over.
+type pipedRun struct {
+	cmd     *exec.Cmd
+	started time.Time
+	state   *trackedProcess
+	stdout  *os.File
+	stderr  *os.File
+	wg      sync.WaitGroup
+
+	waited  chan struct{}
+	waitErr error
+
+	mu   sync.Mutex
+	out  outputBuffer
+	sink io.Writer
+}
+
+func (r *pipedRun) drain(f *os.File) {
+	defer r.wg.Done()
+	buf := make([]byte, 4096)
+	for {
+		n, rerr := f.Read(buf)
+		if n > 0 {
+			r.mu.Lock()
+			if r.sink != nil {
+				_, _ = r.sink.Write(buf[:n])
+			} else {
+				r.out.Write(buf[:n])
+			}
+			r.mu.Unlock()
+		}
+		if rerr != nil {
+			return
+		}
+	}
+}
+
+// finish waits for the command and its output, then closes the pipes. A
+// grandchild still holding them open is given a short grace period.
+func (r *pipedRun) finish() (waitErr error, killed bool) {
+	<-r.waited
+	killed = r.state.finish(r.waitErr)
+
+	drained := make(chan struct{})
+	go func() { r.wg.Wait(); close(drained) }()
+	graceTimer := time.NewTimer(500 * time.Millisecond)
+	select {
+	case <-drained:
+		graceTimer.Stop()
+	case <-graceTimer.C:
+	}
+
+	_ = r.stdout.Close()
+	_ = r.stderr.Close()
+	r.wg.Wait()
+	return r.waitErr, killed
+}
+
 func runPiped(ctx context.Context, cmd *exec.Cmd, onUpdate func(string)) Result {
+	return runDetachable(ctx, cmd, onUpdate, nil, nil, nil)
+}
+
+// runDetachable runs cmd like runPiped; once detachReq fires and detach
+// succeeds it returns the still-running command instead of waiting for it.
+func runDetachable(ctx context.Context, cmd *exec.Cmd, onUpdate func(string), detachReq <-chan struct{}, detach func() bool, release func()) Result {
 
 	stdout, outW, err := os.Pipe()
 	if err != nil {
@@ -161,34 +257,14 @@ func runPiped(ctx context.Context, cmd *exec.Cmd, onUpdate func(string)) Result 
 
 	_ = outW.Close()
 	_ = errW.Close()
-	state := track(cmd)
-	defer untrack(cmd)
+	r := &pipedRun{cmd: cmd, started: time.Now(), state: track(cmd), stdout: stdout, stderr: stderr, waited: make(chan struct{})}
+	r.wg.Add(2)
+	go r.drain(stdout)
+	go r.drain(stderr)
+	go func() { r.waitErr = cmd.Wait(); close(r.waited) }()
 
-	var out outputBuffer
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-	wg.Add(2)
-	drain := func(r io.Reader) {
-		defer wg.Done()
-		buf := make([]byte, 4096)
-		for {
-			n, rerr := r.Read(buf)
-			if n > 0 {
-				mu.Lock()
-				out.Write(buf[:n])
-				mu.Unlock()
-			}
-			if rerr != nil {
-				return
-			}
-		}
-	}
-	go drain(stdout)
-	go drain(stderr)
-
-	var updatesDone chan struct{}
 	if onUpdate != nil {
-		updatesDone = make(chan struct{})
+		updatesDone := make(chan struct{})
 		stopped := make(chan struct{})
 		defer func() { close(updatesDone); <-stopped }()
 		go func() {
@@ -201,39 +277,39 @@ func runPiped(ctx context.Context, cmd *exec.Cmd, onUpdate func(string)) Result 
 				case <-updatesDone:
 					return
 				case <-ticker.C:
-					mu.Lock()
-					if out.total == previous {
-						mu.Unlock()
+					r.mu.Lock()
+					if r.out.total == previous {
+						r.mu.Unlock()
 						continue
 					}
-					previous = out.total
-					snap := out.snapshot()
-					mu.Unlock()
+					previous = r.out.total
+					snap := r.out.snapshot()
+					r.mu.Unlock()
 					onUpdate(snap)
 				}
 			}
 		}()
 	}
 
-	waitErr := cmd.Wait()
-	killed := state.finish(waitErr)
-
-	drained := make(chan struct{})
-	go func() { wg.Wait(); close(drained) }()
-	graceTimer := time.NewTimer(500 * time.Millisecond)
 	select {
-	case <-drained:
-		graceTimer.Stop()
-	case <-graceTimer.C:
+	case <-r.waited:
+	case <-detachReq:
+		select {
+		case <-r.waited:
+		default:
+			// detach fails once ctx has ended: the command is being killed.
+			if detach() {
+				return Result{Detached: newDetached(r, release)}
+			}
+		}
 	}
 
-	_ = stdout.Close()
-	_ = stderr.Close()
-	wg.Wait()
+	waitErr, killed := r.finish()
+	untrack(cmd)
 
-	mu.Lock()
-	res := Result{Output: out.result(), OutputFile: out.path(), OutputBytes: out.total}
-	mu.Unlock()
+	r.mu.Lock()
+	res := Result{Output: r.out.result(), OutputFile: r.out.path(), OutputBytes: r.out.total}
+	r.mu.Unlock()
 	if ctx.Err() == context.DeadlineExceeded {
 		res.TimedOut = true
 		res.Killed = true

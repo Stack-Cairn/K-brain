@@ -120,6 +120,9 @@ type model struct {
 	vp          transcriptView
 	blocks      []block
 	ancientMode bool
+	// backgroundable holds the running calls Ctrl+B can move to the
+	// background (tool_background.go).
+	backgroundable map[string]bool
 
 	msgBlock  []int
 	follow    bool
@@ -1143,6 +1146,9 @@ func (m *model) Update(msg tea.Msg) (_ tea.Model, statusCmd tea.Cmd) {
 	case toolEndMsg:
 		return m.onToolEnd(msg)
 
+	case toolBackgroundableMsg:
+		return m.onToolBackgroundable(msg)
+
 	case toolResultMsg, toolTickMsg, hostedSearchMsg, todosMsg:
 		return m.onToolView(msg)
 
@@ -1587,6 +1593,7 @@ func (m *model) wireProgram() {
 		}
 	}
 	m.fgReg().setSend(func(msg tea.Msg) { p.Send(msg) })
+	m.wireBackgrounding(p.Send)
 }
 
 func (m *model) wireWaits() {

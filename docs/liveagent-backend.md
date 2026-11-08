@@ -79,6 +79,7 @@ VITE_KBRAIN_TOKEN=<backend-token>
 | POST | `/v1/sessions/{id}/runs` | 提交提示及可选模型切换 |
 | GET | `/v1/sessions/{id}/events?after_seq=N` | 从指定序号之后重放并订阅事件 |
 | POST | `/v1/sessions/{id}/runs/{run}/cancel` | 取消运行 |
+| POST | `/v1/sessions/{id}/runs/{run}/tools/{tool_call_id}/background` | 把该调用正在前台运行的 shell 命令移到后台；见下文，`capabilities.background_tool` 表示支持 |
 | GET | `/v1/sessions/{id}/subagents` | 本会话的前台与后台子代理（按开始时间排序）及当前 `last_seq` |
 | GET | `/v1/sessions/{id}/subagents/{task}` | 子代理截至此刻的只读转录（运行中或已结束）、`live` 与 `last_seq` |
 | GET | `/v1/sessions/{id}/subagents/{task}/events?after_seq=N` | 只含该子代理事件的 SSE，子代理结束后关闭 |
@@ -86,7 +87,7 @@ VITE_KBRAIN_TOKEN=<backend-token>
 | POST | `/v1/sessions/{id}/permissions/{permission}` | 提交审批结果 |
 | POST | `/v1/sessions/{id}/questions/{question}` | 回答 `question.requested`；`selected_labels` 见下文，`capabilities.question_selected_labels` 表示支持 |
 | POST | `/v1/sessions/{id}/elicitations/{elicitation}` | 回答 MCP 服务器的表单征询 `elicitation.requested`；见下文，`capabilities.mcp_elicitation` 表示支持 |
-| POST | `/v1/sessions/{id}/close` | 结束当前会话运行与后台子代理并保存 |
+| POST | `/v1/sessions/{id}/close` | 结束当前会话运行、后台子代理和移到后台的命令并保存 |
 | PUT / DELETE | `/v1/host-bridge` | 桌面登记 / 清除宿主桥，供 `ReadTerminal`、`TunnelManager` 回调桌面；见下文，`capabilities.host_bridge` 表示支持 |
 | GET / PUT | `/v1/settings/ssh` | 读取（密钥脱敏）/ 保存 `SSHManager` 的 SSH 主机与项目关联；另有 `PUT`/`DELETE /v1/settings/ssh/hosts/{id}` 与 `DELETE /v1/settings/ssh/hosts/{id}/host-keys`；见下文，`capabilities.ssh_manager` 表示支持 |
 | GET | `/v1/skills` | 托管 Skills 根目录下的技能（含技能包里的技能）、被遮蔽的副本、无效条目与启用设置；字段见下文"技能包" |
@@ -293,6 +294,19 @@ MCP 服务器可以在自己的工具运行期间请用户填写一张表单（M
 **记录与日志。** 事件日志和历史只保存去掉敏感字段后的回答，完整回答只在内存中交给 MCP 服务器。K-brain 的 MCP 日志只写服务器名、工具名、`action` 与 `reason`，不写任何字段值。服务器自己在工具结果里回显的内容不受此限制。
 
 `kn` 的 TUI 同样声明这一能力，用一张卡片显示表单（标题是服务器名，敏感字段遮住输入，校验规则同上，没有超时）。ACP 不声明，服务器不会经 ACP 发起征询。用户侧说明见 [Hooks 与 MCP](user-guide/11-hooks-mcp.md)。
+
+### 把运行中的命令移到后台（`capabilities.background_tool: 1`）
+
+`POST /v1/sessions/{id}/runs/{run_id}/tools/{tool_call_id}/background`（无请求体）把活动运行里某个工具调用正在前台运行的 shell 命令移到后台。可以移到后台的是 `Bash`（不带 `yield_time_ms` 的前台路径）和 CLI 的 `bash`（非交互）；`tool_call_id` 是 `tool.call` 事件里该调用的 `id`（也是 `tool.status`、`tool.result` 关联用的 id）。
+
+- 命令不会被结束或重启：进程组、沙箱和工作目录不变，到此为止的输出连同之后的输出都写进一个 `ManagedProcess` 日志，进程登记到会话的进程管理器，id 形如 `bash-…`。
+- 这次工具调用立即返回成功，结果文本以 `The user moved this command to the background.` 开头，带 `process_id`、`pid`、`cwd`、`log`、`command`、`cursor` 和到 `cursor` 为止的输出末尾（最多 8 KiB），并告诉模型用 `ManagedProcess(action="wait"|"read_log"|"status"|"stop")` 继续读取或停止它。
+- 进程自己结束时按现有规则通知会话：没有 `wait` 在看时送一条 `[process bash-… completed|failed exit_code=N]` 通知（`origin:"background"`），会话空闲则启动唤醒运行。
+- 移到后台之后，取消这次运行、原调用的超时都不再结束它；`ManagedProcess(action="stop")`、`POST /close`、删除会话和关闭后端会结束它；它运行期间会话不会被闲置回收。
+- 响应：`200 {"ok":true,"tool_call_id":"...","process_id":"bash-..."}`。会话不存在返回 404；`run_id` 不是活动运行返回 409 `run is not active`；调用未知、已结束、是交互式命令或已经移过一次返回 409（重复请求是无副作用的 409）。命令恰好在请求到达时结束的，同样返回 409，工具结果是命令的正常输出。
+- 同一运行里有多个可移到后台的调用时，每个调用单独请求。子代理里的调用不在主代理的登记表里，返回 409。
+
+旧后端没有这个路由（返回 404），客户端应先检查能力再显示入口。
 
 ### 桌面宿主桥（`capabilities.host_bridge: 1`）
 

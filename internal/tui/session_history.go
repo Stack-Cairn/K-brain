@@ -168,6 +168,9 @@ func (m *model) endSession(reason string) {
 	if err := m.agent.EndSession(context.Background(), reason); err != nil {
 		config.LogEvent("hooks.session_end", err.Error())
 	}
+	// Commands moved to the background belong to the conversation that ran
+	// them: their exit notices would land in the next one.
+	m.agent.CloseManagedProcesses()
 }
 
 // reminderOnly reports a user message that is nothing but a wrapped reminder.

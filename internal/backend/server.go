@@ -710,6 +710,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.cancelRun(w, r, id, parts[2])
 		return
 	}
+	if len(parts) == 6 && parts[1] == "runs" && parts[2] != "" && parts[3] == "tools" && parts[4] != "" && parts[5] == "background" && r.Method == http.MethodPost {
+		s.backgroundTool(w, r, id, parts[2], parts[4])
+		return
+	}
 	if len(parts) == 3 && parts[1] == "permissions" && parts[2] != "" && r.Method == http.MethodPost {
 		s.permission(w, r, id, parts[2])
 		return
@@ -1038,6 +1042,7 @@ func (s *Server) rebuildAgentLocked(rt *runtimeSession, selected protocol.ModelR
 	terminalManager := rt.terminalManager
 	processManager := rt.processManager
 	ag.Tools = append(tools.WithoutCLIOnlyTools(ag.Tools), tools.LiveAgentCatalogWithManagers([]string{selected.Provider}, terminalManager, processManager)...)
+	ag.SetManagedProcesses(processManager)
 	if s.cron != nil {
 		s.cron.attachTool(ag, selected)
 	}
@@ -1120,6 +1125,7 @@ func (s *Server) loadRuntime(id string, model protocol.ModelRef, cwd string) (*r
 	terminalManager := tools.NewTerminalManager()
 	processManager := tools.NewManagedProcessManager()
 	ag.Tools = append(tools.WithoutCLIOnlyTools(ag.Tools), tools.LiveAgentCatalogWithManagers([]string{model.Provider}, terminalManager, processManager)...)
+	ag.SetManagedProcesses(processManager)
 	if s.cron != nil {
 		s.cron.attachTool(ag, model)
 	}
@@ -2058,8 +2064,44 @@ func (s *Server) closeSession(w http.ResponseWriter, r *http.Request, id string)
 	if rt.agent != nil {
 		rt.agent.Tasks().CancelRunning()
 	}
+	// So do commands the user moved to the background, which a cancelled run
+	// leaves running.
+	processManager := rt.processManager
 	rt.mu.Unlock()
+	if processManager != nil {
+		processManager.StopBackgrounded()
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "session_id": id})
+}
+
+// backgroundTool moves the foreground shell command of a tool call in the
+// active run to the background: the call returns at once and the command keeps
+// running as a managed process.
+func (s *Server) backgroundTool(w http.ResponseWriter, r *http.Request, id, run, toolCallID string) {
+	rt, err := s.loadRuntimeByID(id)
+	if err != nil {
+		writeJSONError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	defer s.releaseRuntime(rt)
+	rt.mu.Lock()
+	active := rt.runID == run && rt.cancel != nil
+	ag := rt.agent
+	rt.mu.Unlock()
+	if !active || ag == nil {
+		writeJSONError(w, http.StatusConflict, "run is not active")
+		return
+	}
+	processID, err := ag.Foreground().Background(r.Context(), toolCallID)
+	if errors.Is(err, tools.ErrNotBackgroundable) {
+		writeJSONError(w, http.StatusConflict, err.Error())
+		return
+	}
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "tool_call_id": toolCallID, "process_id": processID})
 }
 func (s *Server) permission(w http.ResponseWriter, r *http.Request, id, pid string) {
 	rt, err := s.loadRuntimeByID(id)

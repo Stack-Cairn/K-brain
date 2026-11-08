@@ -126,6 +126,7 @@ var keymap = []keyBinding{
 	{"shift+down", keyQueue, "queueMove", ""},
 	{"esc", keyQueue, "queueDeselect", ""},
 	{"alt+e", keyBusy, "queueEditLast", "Alt+E (busy) — edit the last queued message · click a queued message to select it, click it again to edit, its ✗ removes it"},
+	{"ctrl+b", keyBusy, "backgroundTool", "Ctrl+B (busy) — move the running shell command to the background; it keeps running and the agent is told when it exits"},
 	{"f2", keyGlobal, "settings", ""},
 	{"alt+up", keyGlobal, "focusTranscript", "Alt+↑ — focus the transcript: j/k select a block, h/l fold / open, e toggle, E fold all, v view, / find, Esc back"},
 	{"down", keyTranscript, "focusNext", ""},

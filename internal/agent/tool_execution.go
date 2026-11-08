@@ -97,6 +97,7 @@ func (a *Agent) runTools(ctx context.Context, calls []ai.ToolCall, ev Events) []
 			defer a.trackTool(name, -1)
 			start := time.Now()
 			callCtx := tools.WithToolCallID(ctx, tc.ID)
+			callCtx = tools.WithBackgrounding(callCtx, a.fg, a.managedProcesses)
 			if ev.OnToolOutput != nil && streamsToolOutput(name) {
 				callCtx = tools.WithOnUpdate(callCtx, func(soFar string) {
 					ev.OnToolOutput(tc.ID, soFar)

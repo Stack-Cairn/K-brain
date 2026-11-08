@@ -89,6 +89,7 @@ var helpActionDesc = map[string]string{
 	"selectAll":       "select the whole draft",
 	"cutSelection":    "cut the selected text",
 	"queueEditLast":   "edit the last queued message",
+	"backgroundTool":  "move the running shell command to the background",
 	"focusTranscript": "focus the transcript, a block at a time",
 	"focusNext":       "next block",
 	"focusPrev":       "previous block",

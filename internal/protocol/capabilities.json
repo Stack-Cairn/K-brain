@@ -175,6 +175,15 @@
       "firstRelease": "v0.107.28",
       "evidenceCommit": "pending",
       "missing": "Skills nested in skill packs are not found (only <root>/<name>/SKILL.md): /v1/skills items have no pack or shadowed and there is no shadowed list. Hide pack toggles and never send packs to PUT /v1/skills/settings (an older backend rejects it with 400 for the unknown field)."
+    },
+    {
+      "name": "background_tool",
+      "type": "integer",
+      "compare": "eq",
+      "value": 1,
+      "firstRelease": "v0.107.28",
+      "evidenceCommit": "pending",
+      "missing": "Offer no way to move a running command to the background (POST /v1/sessions/{id}/runs/{run_id}/tools/{tool_call_id}/background does not exist): a foreground Bash call runs until it ends, times out or the run is cancelled."
     }
   ]
 }

@@ -1,4 +1,4 @@
-[96m>[0m [1mKeyboard shortcuts[0m               [37m1/81[0m
+[96m>[0m [1mKeyboard shortcuts[0m               [37m1/82[0m
   [1;96m[Keys][0m [90m Commands [0m
   [96m/[0m [37mtype to filter[0m
 [90m----------------------------------------[0m
@@ -14,7 +14,7 @@
   Ctrl+C Ctrl+C  [37mquit[0m[37m[0m
   Ctrl+P         [37mopen the command p...[0m[37m[0m
   F2             [37mopen settings[0m[37m[0m
-[37m  Down 70 more[0m
+[37m  Down 71 more[0m
 [90m----------------------------------------[0m
   [1mShift+Tab[0m  [37mcycle the permission mode[0m
   [37mShift+Tab - cycle Normal / Plan /[0m

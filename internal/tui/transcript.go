@@ -289,6 +289,8 @@ type block struct {
 	toolArgs string
 
 	live string
+	// bgHint is a running shell call's Ctrl+B cue (tool_background.go).
+	bgHint string
 
 	// run is how a finished tool call ran, when known.
 	run *toolRunMeta
