@@ -17,3 +17,17 @@ func closureSend(p *tea.Program, m tea.Msg) {
 func whitelistedSend(p *tea.Program, m tea.Msg) {
 	p.Send(m)
 }
+
+func valueSend(p *tea.Program) func(tea.Msg) {
+	return p.Send
+}
+
+func takesSender(send func(tea.Msg)) {}
+
+func argSend(p *tea.Program) {
+	takesSender(p.Send)
+}
+
+func whitelistedValue(p *tea.Program) {
+	takesSender(p.Send) //nolint:uilock
+}

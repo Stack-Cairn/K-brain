@@ -21,7 +21,7 @@ func snapshotWorkspace() string {
 		return ""
 	}
 	if commit == "" {
-		commit, err = gitOut(ctx, "commit-tree", "HEAD^{tree}", "-m", "k-brain turn snapshot")
+		commit, err = gitOut(ctx, "commit-tree", "--no-gpg-sign", "HEAD^{tree}", "-m", "k-brain turn snapshot")
 		if err != nil {
 			return ""
 		}
@@ -144,6 +144,10 @@ func gitRaw(ctx context.Context, args ...string) (string, error) {
 func gitRawAt(ctx context.Context, dir string, args ...string) (string, error) {
 	c := exec.CommandContext(ctx, "git", args...)
 	c.Dir = dir
+	// Snapshots run on the UI goroutine when a turn is submitted: a git
+	// child (a signing helper, a credential prompt) that keeps the pipes open
+	// must not hold the UI past the context deadline.
+	c.WaitDelay = time.Second
 	var out, errb bytes.Buffer
 	c.Stdout, c.Stderr = &out, &errb
 	if err := c.Run(); err != nil {

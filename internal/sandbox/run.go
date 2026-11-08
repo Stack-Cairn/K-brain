@@ -30,30 +30,68 @@ type Capability struct {
 }
 
 var (
-	probeMu   sync.Mutex
-	probeDone bool
-	probed    Capability
+	probeMu  sync.Mutex
+	probeCur *probeRun
 	// probeFunc is replaced in tests.
 	probeFunc = probePlatform
 )
+
+// probeRun is one platform probe. Every caller shares the run in flight, so a
+// probe that hangs (a wedged sandbox launcher) holds no lock and costs one
+// goroutine however often the capability is asked for.
+type probeRun struct {
+	done chan struct{}
+	c    Capability
+}
+
+func currentProbe() *probeRun {
+	probeMu.Lock()
+	defer probeMu.Unlock()
+	if probeCur == nil {
+		r := &probeRun{done: make(chan struct{})}
+		probeCur = r
+		probe := probeFunc
+		go func() {
+			r.c = probe()
+			close(r.done)
+		}()
+	}
+	return probeCur
+}
 
 // Probe checks the platform mechanism once per process by running a trivial
 // confined command, so a binary that exists but cannot start (no user
 // namespaces in a container) reports unsupported instead of failing later.
 func Probe() Capability {
-	probeMu.Lock()
-	defer probeMu.Unlock()
-	if !probeDone {
-		probed, probeDone = probeFunc(), true
+	r := currentProbe()
+	<-r.done
+	return r.c
+}
+
+// ProbeWithin is Probe for request paths that must answer: it waits at most d
+// for a probe still in flight and reports ok=false instead of waiting longer.
+func ProbeWithin(d time.Duration) (c Capability, ok bool) {
+	r := currentProbe()
+	select {
+	case <-r.done:
+		return r.c, true
+	default:
 	}
-	return probed
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-r.done:
+		return r.c, true
+	case <-t.C:
+		return Capability{}, false
+	}
 }
 
 // Reprobe forgets the probed capability, so the next Probe checks again (after
 // the sandbox setup changed).
 func Reprobe() {
 	probeMu.Lock()
-	probeDone = false
+	probeCur = nil
 	probeMu.Unlock()
 }
 

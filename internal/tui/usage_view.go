@@ -80,13 +80,13 @@ func (m *model) usageView() string {
 	var rows []string
 
 	if m.agent != nil && m.agent.ContextLimit > 0 {
-		tok, limit := m.agent.ContextTokens(), m.agent.ContextLimit
+		tok, limit := m.agent.ContextTokensNow(), m.agent.ContextLimit
 		pct := contextPercent(tok, limit)
 		cells := min(20, max(inner-usageLabelW-24, 4))
 		rows = append(rows, usageRow(m.tr("Context"), contextBar(pct, cells)+" "+
 			fmt.Sprintf("%d%%  %s / %s", pct, fmtTok(tok), fmtTok(limit)), inner))
 	} else if m.agent != nil {
-		rows = append(rows, usageRow(m.tr("Context"), fmtTok(m.agent.ContextTokens())+" "+textMutedStyle.Render(m.tr("(window unknown)")), inner))
+		rows = append(rows, usageRow(m.tr("Context"), fmtTok(m.agent.ContextTokensNow())+" "+textMutedStyle.Render(m.tr("(window unknown)")), inner))
 	}
 
 	var sum ai.UsageSummary

@@ -68,9 +68,9 @@ func (m *model) composer() *composerState {
 // finished build refresh an open @ menu, so completion shows the files as
 // soon as they are listed.
 func (m *model) warmFileIndex() {
-	p := m.prog
+	post := m.poster()
 	setFileIndexNotify(func() {
-		p.Send(viewProbe{fn: func(m *model) {
+		post(viewProbe{fn: func(m *model) {
 			val := m.input.Value()
 			if strings.HasPrefix(val[strings.LastIndexAny(val, " \n")+1:], "@") {
 				m.refreshMenu()

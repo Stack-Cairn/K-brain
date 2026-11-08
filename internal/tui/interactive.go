@@ -15,14 +15,22 @@ import (
 )
 
 type interactive struct {
-	keys    chan []byte
+	keys chan []byte
+	// stop ends this command. The turn's cancel does not reach a command a
+	// background subagent started, and a command that keeps printing never
+	// hits its inactivity timeout, so without its own stop every key would
+	// go to it until the model-chosen timeout ran out.
+	stop    context.CancelFunc
 	output  string
 	await   bool
 	awaitcd int
 }
 
 type (
-	interactiveStartMsg struct{ keys chan []byte }
+	interactiveStartMsg struct {
+		keys chan []byte
+		stop context.CancelFunc
+	}
 	interactiveOutMsg   struct{ chunk string }
 	interactiveAwaitMsg struct{ secsLeft int }
 	interactiveDoneMsg  struct {
@@ -43,19 +51,22 @@ func newInteractiveRunner(prog *tea.Program) *interactiveRunner {
 }
 
 func (r *interactiveRunner) Run(ctx context.Context, command string, timeout time.Duration, _ <-chan []byte) string {
+	ctx, stop := context.WithCancel(ctx)
+	defer stop()
 	keys := make(chan []byte, 16)
 	r.mu.Lock()
 	r.keys = keys
 	r.mu.Unlock()
-	r.prog.Send(interactiveStartMsg{keys: keys})
+	post := uiPoster(r.prog)
+	post(interactiveStartMsg{keys: keys, stop: stop})
 
 	res := bashrun.Run(ctx, bashrun.Options{
 		Command:           command,
 		Timeout:           timeout,
 		Interactive:       true,
 		InactivityTimeout: 15 * time.Second,
-		OnOutput:          func(chunk string) { r.prog.Send(interactiveOutMsg{chunk}) },
-		OnAwaitInput:      func(s int) { r.prog.Send(interactiveAwaitMsg{secsLeft: s}) },
+		OnOutput:          func(chunk string) { post(interactiveOutMsg{chunk}) },
+		OnAwaitInput:      func(s int) { post(interactiveAwaitMsg{secsLeft: s}) },
 		Keys:              keys,
 	})
 
@@ -63,7 +74,7 @@ func (r *interactiveRunner) Run(ctx context.Context, command string, timeout tim
 	r.keys = nil
 	r.mu.Unlock()
 
-	r.prog.Send(interactiveDoneMsg{output: res.Output, exit: res.Exit})
+	post(interactiveDoneMsg{output: res.Output, exit: res.Exit})
 
 	return interactiveOutput(res)
 }
@@ -82,10 +93,15 @@ func interactiveOutput(res bashrun.Result) string {
 func (m *model) iactiveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.Type {
 	case tea.KeyCtrlC:
-
+		// The first Ctrl+C goes to the command, as in a terminal; the second
+		// stops the command and the turn.
 		if !m.interrupt1 {
 			m.interrupt1 = true
+			m.sendKeys([]byte{0x03})
 			return m, nil
+		}
+		if m.iactive.stop != nil {
+			m.iactive.stop()
 		}
 		if m.cancel != nil {
 			m.cancel()

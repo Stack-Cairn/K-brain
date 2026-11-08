@@ -148,12 +148,12 @@ func (m *model) installElicitHook() {
 			return elicit.Response{Action: elicit.Cancel, Reason: elicit.ReasonCancelled}
 		}
 		reply := make(chan elicit.Response, 1)
-		m.prog.Send(elicitRequest{req: req, reply: reply})
+		m.post(elicitRequest{req: req, reply: reply})
 		select {
 		case r := <-reply:
 			return r
 		case <-ctx.Done():
-			m.prog.Send(elicitClose{reply: reply})
+			m.post(elicitClose{reply: reply})
 			return elicit.Response{Action: elicit.Cancel, Reason: elicit.ReasonCancelled}
 		}
 	}

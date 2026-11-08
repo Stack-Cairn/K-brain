@@ -27,6 +27,7 @@ import (
 	sysprompt "github.com/Stack-Cairn/K-brain/internal/prompts"
 	"github.com/Stack-Cairn/K-brain/internal/protocol"
 	"github.com/Stack-Cairn/K-brain/internal/routing"
+	"github.com/Stack-Cairn/K-brain/internal/stackdump"
 	"github.com/Stack-Cairn/K-brain/internal/storage"
 	"github.com/Stack-Cairn/K-brain/internal/tools/bashrun"
 )
@@ -241,6 +242,14 @@ func backendCLI(args []string) error {
 		readyAddr = net.JoinHostPort("127.0.0.1", port)
 	}
 	fmt.Printf("k-brain backend listening on http://%s\n", readyAddr)
+	// A wedged backend can be inspected without stopping it: SIGUSR1 (Unix)
+	// or GET /v1/debug/stacks writes every goroutine's stack next to
+	// k-brain.log, and the watchdog does so by itself after a 20 s stall.
+	stopStacks := stackdump.OnSignal(reportStacks("k-brain backend"))
+	defer stopStacks()
+	watchdogCtx, stopWatchdog := context.WithCancel(context.Background())
+	defer stopWatchdog()
+	server.Watchdog(backendWatchdogTimeout).Start(watchdogCtx)
 	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	shutdown := sigCtx.Done()

@@ -23,6 +23,8 @@ func TestAnalyzer(t *testing.T) {
 	annotated = strings.Replace(annotated,
 		"func whitelistedSend(p *tea.Program, m tea.Msg) {",
 		"func whitelistedSend(p *tea.Program, m tea.Msg) {\n//nolint:uilock", 1)
+	annotated = strings.Replace(annotated, "return p.Send\n", "return p.Send // want \"function value\"\n", 1)
+	annotated = strings.Replace(annotated, "takesSender(p.Send)\n", "takesSender(p.Send) // want \"function value\"\n", 1)
 	if err := os.WriteFile(fixture, []byte(annotated), 0o600); err != nil {
 		t.Fatal(err)
 	}

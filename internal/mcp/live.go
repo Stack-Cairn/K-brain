@@ -80,7 +80,7 @@ func OpenLiveManager(ctx context.Context, path string, fallback map[string]Serve
 		settings = settingsFromConfigs(fallback)
 	}
 	m := &LiveManager{path: path, ctx: ctx, settings: normalizeLiveSettings(settings)}
-	if err := m.reloadLocked(); err != nil {
+	if _, err := m.reloadLocked(); err != nil {
 		return nil, err
 	}
 	return m, nil
@@ -88,7 +88,7 @@ func OpenLiveManager(ctx context.Context, path string, fallback map[string]Serve
 
 func NewLiveManager(ctx context.Context, path string, settings LiveSettings) (*LiveManager, error) {
 	m := &LiveManager{path: path, ctx: ctx, settings: normalizeLiveSettings(settings)}
-	if err := m.reloadLocked(); err != nil {
+	if _, err := m.reloadLocked(); err != nil {
 		return nil, err
 	}
 	return m, nil
@@ -187,13 +187,15 @@ func (m *LiveManager) Replace(ctx context.Context, settings LiveSettings) error 
 	}
 	previous := m.settings
 	m.settings = settings
-	err := m.reloadLocked()
+	retired, err := m.reloadLocked()
 	if err != nil {
 		m.settings = previous
-		_ = m.reloadLocked()
+		again, _ := m.reloadLocked()
+		retired = append(retired, again...)
 	}
 	fn := m.onChange
 	m.mu.Unlock()
+	closeManagers(retired)
 	if err != nil {
 		return err
 	}
@@ -205,19 +207,36 @@ func (m *LiveManager) Replace(ctx context.Context, settings LiveSettings) error 
 
 func (m *LiveManager) Reload() error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	if m.closed {
+		m.mu.Unlock()
 		return errors.New("mcp manager is closed")
 	}
 	settings, err := loadLiveSettings(m.path)
 	if err != nil {
+		m.mu.Unlock()
 		return err
 	}
 	m.settings = normalizeLiveSettings(settings)
-	return m.reloadLocked()
+	retired, err := m.reloadLocked()
+	m.mu.Unlock()
+	closeManagers(retired)
+	return err
 }
 
-func (m *LiveManager) reloadLocked() error {
+// closeManagers closes managers a reload replaced. It runs after m.mu is
+// released: closing waits for every server of the old manager to shut down
+// (seconds for a stdio server; about ten for a remote one that never answered
+// initialize, while the SDK tries to deliver the cancellation), and ToolsFor,
+// Statuses and Settings — so every run start and MCP request — wait for m.mu.
+func closeManagers(managers []*Manager) {
+	for _, old := range managers {
+		old.Close()
+	}
+}
+
+// reloadLocked starts a manager for m.settings and returns the one it
+// replaced; the caller closes it after releasing m.mu.
+func (m *LiveManager) reloadLocked() ([]*Manager, error) {
 	configs := make(map[string]ServerConfig)
 	for _, server := range m.settings.Servers {
 		if isManagedComputerServer(server) {
@@ -225,7 +244,7 @@ func (m *LiveManager) reloadLocked() error {
 		}
 		cfg, err := m.transportConfig(server)
 		if err != nil {
-			return fmt.Errorf("mcp server %q: %w", server.ID, err)
+			return nil, fmt.Errorf("mcp server %q: %w", server.ID, err)
 		}
 		if !server.Enabled {
 			cfg.Enabled = new(bool)
@@ -242,10 +261,10 @@ func (m *LiveManager) reloadLocked() error {
 	next.Start(m.ctx)
 	old := m.manager
 	m.manager = next
-	if old != nil {
-		old.Close()
+	if old == nil {
+		return nil, nil
 	}
-	return nil
+	return []*Manager{old}, nil
 }
 
 func isManagedComputerServer(server LiveServer) bool {

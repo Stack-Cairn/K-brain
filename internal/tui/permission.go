@@ -193,17 +193,17 @@ func (m *model) installPermGate() {
 		if ctx.Err() != nil {
 			return tools.GateReject, "cancelled"
 		}
-		p := prog()
-		if p == nil {
+		post := uiPoster(prog())
+		if post == nil {
 			return tools.GateReject, "permission interface unavailable"
 		}
 		reply := make(chan permAnswer, 1)
-		p.Send(permRequest{req: req, reply: reply})
+		post(permRequest{req: req, reply: reply})
 		select {
 		case ans := <-reply:
 			return ans.decision, ans.redirect
 		case <-ctx.Done():
-			p.Send(permClose{reply: reply})
+			post(permClose{reply: reply})
 			return tools.GateReject, "cancelled"
 		case <-m.permissionDone:
 			return tools.GateReject, "session closed"

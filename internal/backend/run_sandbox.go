@@ -2,6 +2,7 @@ package backend
 
 import (
 	"path/filepath"
+	"time"
 
 	"github.com/Stack-Cairn/K-brain/internal/protocol"
 	"github.com/Stack-Cairn/K-brain/internal/sandbox"
@@ -37,9 +38,21 @@ func (s *Server) runSandboxPolicy(configured *sandbox.Policy, cwd string, option
 	})
 }
 
+// sandboxProbeWait bounds how long /v1/health waits for the sandbox probe.
+// The probe launches a confined process; on a machine where that launch
+// hangs, health must still answer or clients take the backend for dead.
+var sandboxProbeWait = 2 * time.Second
+
 // runSandboxCapability is the /v1/health description of per-run sandboxing.
 func runSandboxCapability() healthRunSandboxV1 {
-	c := sandbox.Probe()
+	c, ok := sandbox.ProbeWithin(sandboxProbeWait)
+	if !ok {
+		return healthRunSandboxV1{
+			Version: runSandboxVersion,
+			Modes:   []string{"workspace"},
+			Reason:  "the sandbox capability check has not finished yet",
+		}
+	}
 	return healthRunSandboxV1{
 		Supported:      c.Supported,
 		Version:        runSandboxVersion,

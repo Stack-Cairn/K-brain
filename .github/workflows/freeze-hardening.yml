@@ -1,0 +1,115 @@
+name: Freeze hardening
+
+on:
+  pull_request:
+    paths:
+      - 'cmd/**'
+      - 'internal/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/freeze-hardening.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'cmd/**'
+      - 'internal/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/freeze-hardening.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  ui-lock-gate:
+    name: UI lock analyzer
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go test ./internal/uilock -count=1
+      # Fails on any blocking UI send (p.Send) made where a lock may be held
+      # or the event loop may be waiting; see internal/uilock.
+      - run: go run ./cmd/k-brain-vet ./...
+
+  hangs:
+    name: Hang regressions (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - name: Preserve committed LF on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go vet ./internal/agent ./internal/tui ./internal/backend ./internal/mcp ./internal/stackdump ./internal/datapath ./internal/sandbox ./cmd/kn
+      - run: go test -race ./internal/agent -run "^Test(OnSteerRunsWithoutTranscriptLock|ContextTokensNowNeverWaits)$" -count=1 -timeout=10m
+      - run: go test -race ./internal/tui -run "^Test(UIMailbox|PostToIdleProgram|UIWatchdog|UpdateAnswersTheWatchdog|Editor|LostTerminal|EscThenBracket|ZeroCoordinate|CtrlCTwiceStops)|^Fuzz" -count=1 -timeout=10m
+      - run: go test -race ./internal/backend -run "^Test(SessionsExistDoesNotHold|UnreadReplyDoesNotKeep|WedgedMCPServerDoesNotBlock|DebugStacks|BackendWatchdog)" -count=1 -timeout=10m
+      - run: go test -race ./internal/mcp -run "^TestReplaceClosesTheOldManagerOutsideTheLock$" -count=1 -timeout=10m
+      - run: go test -race ./internal/sandbox -run "^TestProbeWithin" -count=1 -timeout=10m
+      - run: go test -race ./internal/stackdump ./internal/datapath -count=1 -timeout=10m
+      - run: go test -race ./cmd/kn -run "^TestDebugStacks" -count=1 -timeout=10m
+
+  test-isolation:
+    name: Tests stay out of HOME (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - name: Preserve committed LF on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Keep the Go caches when HOME moves
+        shell: bash
+        run: |
+          echo "GOCACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          echo "GOMODCACHE=$(go env GOMODCACHE)" >> "$GITHUB_ENV"
+      # HOME points outside the temporary directory, like a developer's real
+      # one. Test failures here are reported, not fatal (other workflows own
+      # them); writing into HOME is what this job checks.
+      - name: Full test suite with a real-looking HOME
+        id: suite
+        continue-on-error: true
+        timeout-minutes: 40
+        shell: bash
+        run: |
+          guard="$RUNNER_WORKSPACE/guard-home"
+          mkdir -p "$guard"
+          export HOME="$guard" USERPROFILE="$guard" LIVEAGENT_HOME= K_BRAIN_HOME= GOTELEMETRY=off
+          go test ./... -count=1 -timeout=30m
+      - name: Nothing was written to HOME's data directories
+        shell: bash
+        run: |
+          guard="$RUNNER_WORKSPACE/guard-home"
+          leaked=0
+          for d in .liveagent .k-brain; do
+            if [ -e "$guard/$d" ]; then
+              echo "::error::tests wrote to $d in HOME"
+              find "$guard/$d" -maxdepth 3 | head -50
+              leaked=1
+            fi
+          done
+          exit $leaked
+      - name: Report suite failures
+        if: steps.suite.outcome == 'failure'
+        shell: bash
+        run: echo "::warning::the full test suite had failures with a real-looking HOME; see the suite step"

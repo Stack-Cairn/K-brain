@@ -103,7 +103,7 @@ func describe(msgs []tea.Msg) string {
 
 // fragModel is a busy session with a long transcript scrolled to the end
 // and the fragment filter on, as in a terminal.
-func fragModel(t *testing.T) (*model, context.Context) {
+func fragModel(t testing.TB) (*model, context.Context) {
 	t.Helper()
 	m := selTestModel()
 	for i := range 80 {

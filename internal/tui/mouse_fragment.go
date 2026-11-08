@@ -69,11 +69,12 @@ func (m *model) mouseFragment(msg tea.Msg) (handled bool, cmd tea.Cmd) {
 		}
 		held, partial := *f.held, f.text
 		f.held, f.text = nil, ""
-		if partial != "" && partial != "[" {
+		keys, ok := heldKeys(held, partial)
+		if !ok {
 			// A report that never finished: drop it rather than type it.
 			return true, nil
 		}
-		return true, m.replayKeys(held)
+		return true, m.replayKeys(keys...)
 	case tea.KeyMsg:
 		if f.held == nil {
 			if !startsFrag(msg) {
@@ -113,13 +114,34 @@ func (m *model) mouseFragment(msg tea.Msg) (handled bool, cmd tea.Cmd) {
 		// Not a report after all: the held key goes first, then this one.
 		held, partial := *f.held, f.text
 		f.held, f.text = nil, ""
-		if partial != "" && partial != "[" {
+		keys, ok := heldKeys(held, partial)
+		if !ok {
 			// Part of a report had already arrived; it is not typing.
 			return true, m.replayKeys(msg)
 		}
-		return true, m.replayKeys(held, msg)
+		return true, m.replayKeys(append(keys, msg)...)
 	}
 	return false, nil
+}
+
+// heldKeys is what was held back, as the keys that arrived: the Esc or Alt+[
+// and, after a bare Esc, a "[" that came as a key of its own (it was being
+// held as the possible start of a report). ok is false when more of a
+// report had arrived: that is a cut report, not typing.
+func heldKeys(held tea.KeyMsg, partial string) (keys []tea.KeyMsg, ok bool) {
+	own := ""
+	if held.Alt {
+		own = "["
+	}
+	switch partial {
+	case own:
+		return []tea.KeyMsg{held}, true
+	case own + "[":
+		if own == "" {
+			return []tea.KeyMsg{held, {Type: tea.KeyRunes, Runes: []rune("[")}}, true
+		}
+	}
+	return nil, false
 }
 
 // replayKeys runs keys through Update in order, past the fragment check.
@@ -167,7 +189,9 @@ func parseSGRMouse(s string) (tea.MouseMsg, bool) {
 	if ev.Action != tea.MouseActionMotion && !ev.IsWheel() && mm[4] == "m" {
 		ev.Action, ev.Type = tea.MouseActionRelease, tea.MouseRelease
 	}
-	ev.X, ev.Y = x-1, y-1
+	// A malformed report can carry 0 coordinates; nothing downstream
+	// expects a negative cell.
+	ev.X, ev.Y = max(0, x-1), max(0, y-1)
 	return tea.MouseMsg(ev), true
 }
 
@@ -228,5 +252,8 @@ func (m *model) restoreTerminalModes() {
 	if m.mouseOn {
 		enableClickWheelMouse(w)
 	}
+	// Pop before pushing so each editor round trip leaves the keyboard
+	// protocol stack one entry deep instead of growing it by one.
+	disableKeyboardEnhancement(w)
 	enableKeyboardEnhancement(w)
 }
