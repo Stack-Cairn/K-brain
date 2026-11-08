@@ -88,6 +88,19 @@ func ToolCallID(ctx context.Context) string {
 
 var Ask func(ctx context.Context, req AskRequest) (answers []AskAnswer, ok bool)
 
+// AskHandler returns the front end that asks the user for ctx: the one
+// WithAsk set, else Ask; nil when nobody can be asked. Tools other than
+// question use it to ask a question of their own.
+func AskHandler(ctx context.Context) AskFunc {
+	if ask, ok := ctx.Value(askContextKey{}).(AskFunc); ok {
+		return ask
+	}
+	if Ask == nil {
+		return nil
+	}
+	return Ask
+}
+
 // questionSchema is the question tool's input: one question (question,
 // options, multiple) or, with questions, up to four asked together. Both
 // forms stay accepted; questions wins when both are given.

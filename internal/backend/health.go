@@ -36,6 +36,9 @@ type healthCapabilities struct {
 	// HostBridge is 1 where the desktop can register a tool bridge with
 	// PUT/DELETE /v1/host-bridge and health reports host_bridge.
 	HostBridge int `json:"host_bridge"`
+	// SSHManager is 1 where the native SSHManager tool runs SSH/SFTP for the
+	// hosts stored with GET/PUT /v1/settings/ssh.
+	SSHManager int `json:"ssh_manager"`
 }
 
 // healthRunSandboxV1 describes per-run sandboxing (options.sandbox). Clients
@@ -139,6 +142,7 @@ func (s *Server) health() healthResponse {
 			QuestionSelectedLabels:  1,
 			MCPElicitation:          1,
 			HostBridge:              1,
+			SSHManager:              1,
 		},
 		HostBridge: s.hostBridge.status(),
 	}

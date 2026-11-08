@@ -155,6 +155,8 @@ func GateRequestFor(ctx context.Context, tool string, args json.RawMessage) Gate
 				}
 				req.Command = winpath.Simplify(ResolvePath(ctx, target))
 			}
+		case SSHManagerTool:
+			req.Command, req.Poll = SSHManagerGateCommand(args)
 		case "ProcessWait", "ReadTerminal", "ManagedProcess", "ProcessStop":
 			pollRequest(&req, args)
 			if tool == "ManagedProcess" && !req.Poll {

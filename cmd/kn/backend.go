@@ -193,6 +193,16 @@ func backendCLI(args []string) error {
 			}
 		}()
 	}
+	// SSHManager's hosts and known_hosts live beside the config file, hidden
+	// from sandboxed commands like the rest of the backend's data.
+	sshDir := ""
+	if configFilename != "" {
+		sshDir = filepath.Join(filepath.Dir(configFilename), "ssh")
+	}
+	masked := sandboxMaskedDirs(store.SessionsDir())
+	if sshDir != "" {
+		masked = append(masked, sshDir)
+	}
 	server, err := backend.New(backend.Options{
 		Image:                   imageModule,
 		Store:                   store,
@@ -210,8 +220,9 @@ func backendCLI(args []string) error {
 		FilesystemRoots:         filesystemRoots,
 		Build:                   protocol.NewBuild(version, revision),
 		PermissionRulesDir:      permissionRulesDir(),
-		SandboxMasked:           sandboxMaskedDirs(store.SessionsDir()),
+		SandboxMasked:           masked,
 		SandboxEnvKeep:          cfg.Sandbox.EnvKeep,
+		SSHDir:                  sshDir,
 	})
 	if err != nil {
 		return err

@@ -34,6 +34,8 @@ import (
 	"github.com/Stack-Cairn/K-brain/internal/sandbox"
 	"github.com/Stack-Cairn/K-brain/internal/session"
 	"github.com/Stack-Cairn/K-brain/internal/session/recording"
+	"github.com/Stack-Cairn/K-brain/internal/sshhosts"
+	"github.com/Stack-Cairn/K-brain/internal/sshmgr"
 	"github.com/Stack-Cairn/K-brain/internal/tools"
 )
 
@@ -71,6 +73,9 @@ type Options struct {
 	// SandboxEnvKeep lists the credential-looking variables commands of
 	// sandboxed runs still inherit (sandbox.envKeep).
 	SandboxEnvKeep []string
+	// SSHDir holds SSHManager's hosts (hosts.json) and K-brain's own
+	// known_hosts. Empty uses EventDir/ssh.
+	SSHDir string
 }
 
 type Server struct {
@@ -105,6 +110,8 @@ type Server struct {
 	instance             instanceIdentity
 	// hostBridge is the LiveAgent desktop's tool bridge, kept in memory only.
 	hostBridge hostBridge
+	// ssh runs SSHManager's connections to the hosts in Settings > SSH.
+	ssh *sshmgr.Manager
 
 	mu                  sync.Mutex
 	sessions            map[string]*runtimeSession
@@ -264,6 +271,13 @@ func New(opts Options) (*Server, error) {
 			return nil, err
 		}
 	}
+	if opts.SSHDir == "" {
+		opts.SSHDir = filepath.Join(opts.EventDir, "ssh")
+	}
+	sshHosts, err := sshhosts.Open(opts.SSHDir)
+	if err != nil {
+		return nil, fmt.Errorf("open SSH settings: %w", err)
+	}
 	cron, err := newCronManager(opts.Store, opts.DefaultCWD, opts.Settings)
 	if err != nil {
 		return nil, err
@@ -274,7 +288,7 @@ func New(opts Options) (*Server, error) {
 		store:           opts.Store, factory: opts.Factory, token: opts.Token, models: append([]protocol.ModelRef(nil), opts.Models...),
 		settings: opts.Settings, usage: NewProviderUsageService(opts.Settings), prompts: opts.Prompts,
 		eventDir: opts.EventDir, permissionDir: opts.PermissionRulesDir, sandboxMasked: append([]string(nil), opts.SandboxMasked...), sandboxEnvKeep: append([]string(nil), opts.SandboxEnvKeep...), defaultCWD: opts.DefaultCWD, memoryStore: memoryStore, questionWait: opts.QuestionTimeout, memoryRuntimeFactory: opts.MemoryRuntimeFactory, cron: cron, hookStore: hookStore, hookRunner: NewBackendHookRunner(hookStore), mcp: opts.MCP, sessions: make(map[string]*runtimeSession), snapshots: make(map[string]sessionHTTPSnapshot),
-		build: opts.Build,
+		build: opts.Build, ssh: sshmgr.New(sshHosts, sshmgr.Options{}),
 	}
 	if len(server.filesystemRoots) == 0 && opts.DefaultCWD != "" {
 		server.filesystemRoots = []string{opts.DefaultCWD}
@@ -290,6 +304,7 @@ func New(opts Options) (*Server, error) {
 		runtime, runtimeErr := opts.MemoryRuntimeFactory(context.Background(), opts.DefaultCWD, protocol.ModelRef{})
 		if runtimeErr != nil {
 			cron.close()
+			server.ssh.Close()
 			return nil, fmt.Errorf("start memory organizer runtime: %w", runtimeErr)
 		}
 		server.organizerRuntime = runtime
@@ -359,6 +374,9 @@ func (s *Server) Close() error {
 	}
 	if s.cron != nil {
 		s.cron.close()
+	}
+	if s.ssh != nil {
+		s.ssh.Close()
 	}
 	if planningCancel != nil {
 		planningCancel()
@@ -516,6 +534,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.URL.Path == "/v1/computer" {
 		s.handleComputer(w, r)
+		return
+	}
+	if r.URL.Path == sshSettingsPath || strings.HasPrefix(r.URL.Path, sshSettingsPath+"/") {
+		s.handleSSHSettings(w, r)
 		return
 	}
 	if strings.HasPrefix(r.URL.Path, "/v1/settings/providers/") && strings.HasSuffix(r.URL.Path, "/models") {
@@ -1400,7 +1422,7 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, end func(),
 	progress := &runProgress{started: time.Now(), publish: rt.publish}
 	progress.phase("preparing")
 	rt.mu.Lock()
-	restoreRunOptions := applyRunOptionsWith(rt.agent, options, s.clientTools(rt, options.ClientTools))
+	restoreRunOptions := applyRunOptionsWith(rt.agent, options, s.withSSHManagerTool(s.clientTools(rt, options.ClientTools), rt.agent.WorkingDir, options))
 	rt.mu.Unlock()
 	defer func() {
 		rt.mu.Lock()
@@ -1441,7 +1463,7 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, end func(),
 			return tools.GateReject, "approval policy denies this action"
 		}
 		if isUnattendedRun(req.Context) {
-			if hostBridgeTool(req.Tool) {
+			if hostBridgeTool(req.Tool) || req.Tool == tools.SSHManagerTool {
 				// Nobody can answer a prompt: host reads (ReadTerminal, TunnelManager
 				// list/check) run as read-only, host actions only under an explicit allow
 				// rule or per-tool policy, and anything that would ask fails at once.

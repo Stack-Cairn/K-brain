@@ -486,10 +486,16 @@ type (
 // Fields (or RequestedSchema, the schema as the server sent it), and answers
 // with ElicitationAnswerRequest before DeadlineAt (Unix milliseconds).
 type ElicitationRequest struct {
-	ElicitationID   string          `json:"elicitation_id"`
-	ToolCallID      string          `json:"tool_call_id"`
-	RunID           string          `json:"run_id"`
-	DeadlineAt      int64           `json:"deadline_at"`
+	ElicitationID string `json:"elicitation_id"`
+	ToolCallID    string `json:"tool_call_id"`
+	RunID         string `json:"run_id"`
+	DeadlineAt    int64  `json:"deadline_at"`
+	// Source is empty when an MCP server asks and "ssh" when an SSH server
+	// asks during an SSHManager login (keyboard-interactive, for example a
+	// one-time code). For "ssh", Server is "ssh:<host name>" and names an
+	// SSH host, not an MCP server; Fields marked sensitive are prompts the
+	// server does not echo.
+	Source          string          `json:"source,omitempty"`
 	Server          string          `json:"server"`
 	Tool            string          `json:"tool"`
 	Message         string          `json:"message"`
@@ -519,6 +525,7 @@ type ElicitationResolution struct {
 	ElicitationID string         `json:"elicitation_id"`
 	ToolCallID    string         `json:"tool_call_id"`
 	RunID         string         `json:"run_id"`
+	Source        string         `json:"source,omitempty"`
 	Server        string         `json:"server"`
 	Tool          string         `json:"tool"`
 	Message       string         `json:"message"`

@@ -49,10 +49,13 @@ type ElicitOption struct {
 type Elicitation struct {
 	// ElicitationID is the /v1 elicitation id; empty when the request never
 	// reached a /v1 client (TUI, or declined without asking).
-	ElicitationID string        `json:"elicitation_id,omitempty"`
-	Server        string        `json:"server"`
-	Message       string        `json:"message"`
-	Fields        []ElicitField `json:"fields"`
+	ElicitationID string `json:"elicitation_id,omitempty"`
+	// Source is empty for an MCP server and "ssh" for the keyboard-interactive
+	// login of an SSHManager host (Server is then "ssh:<host name>").
+	Source  string        `json:"source,omitempty"`
+	Server  string        `json:"server"`
+	Message string        `json:"message"`
+	Fields  []ElicitField `json:"fields"`
 	// Action is "accept", "decline" or "cancel": what the MCP server received.
 	Action string `json:"action"`
 	// Reason says how the action came about: "user", "timeout", "cancelled",

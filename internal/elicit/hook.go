@@ -40,9 +40,16 @@ const (
 // the user in a stream of forms.
 const MaxPerCall = 8
 
+// SourceSSH marks a request that comes from an SSH server's
+// keyboard-interactive login (SSHManager) rather than an MCP server. Server
+// is then "ssh:<host name>", and RedactFor keeps none of the answers.
+const SourceSSH = "ssh"
+
 // Request is an elicitation a front end should show: Server is the
 // configured MCP server name, the identity the user must see.
 type Request struct {
+	// Source is empty for an MCP server, SourceSSH for an SSH login.
+	Source  string
 	Server  string
 	Tool    string
 	Message string

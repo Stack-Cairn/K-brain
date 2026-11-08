@@ -68,7 +68,7 @@ Ubuntu 23.10 及以后默认通过 AppArmor 禁止非特权用户命名空间（
 
 - `mode` 目前只有 `workspace`（省略即 `workspace`）；`network: false` 断网。
 - 可写范围是运行的 `write` 工作区根（`workspace_roots` 中 access 为 `write` 的目录）加临时目录。
-- 以下目录对命令不可读写：`~/.ssh`、`~/.aws`、`~/.gnupg`、`~/.config/gh`，以及 K-brain 自己的数据目录（配置/API key、会话、记忆、权限规则）。工作区本身位于这些目录内时，工作区仍可用，但其外的部分保持隐藏；工作区**包含**这些目录（例如把家目录当工作区）时运行会被拒绝。
+- 以下目录对命令不可读写：`~/.ssh`、`~/.aws`、`~/.gnupg`、`~/.config/gh`，以及 K-brain 自己的数据目录（配置/API key、会话、记忆、权限规则、SSH 主机与 known_hosts）。工作区本身位于这些目录内时，工作区仍可用，但其外的部分保持隐藏；工作区**包含**这些目录（例如把家目录当工作区）时运行会被拒绝。
 - 即使在可写根里（每个 `write` 工作区根都适用），以下路径也只读：这些文件下次会话或用户自己运行 git 时会被自动信任。
   - `.liveagent/`、`.k-brain/`；
   - `.git/hooks/`、`.git/config`、`.git/config.worktree`；`.git` 是文件（链接工作树、子模块）时还包括该文件本身，以及它指向的 git 目录中的 hooks 与配置；
