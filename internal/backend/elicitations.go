@@ -26,6 +26,10 @@ import (
 //
 // The journal never holds the values of sensitive fields (elicit.Redact):
 // only the MCP server receives them, from memory.
+//
+// SSHManager reuses this flow for the keyboard-interactive prompts of an SSH
+// login (source "ssh", server "ssh:<host name>"); the journal then keeps none
+// of the answers (elicit.RedactFor), sensitive or not.
 
 type elicitationWaiter struct {
 	request    protocol.ElicitationRequest
@@ -58,6 +62,7 @@ func (s *Server) waitElicitation(ctx context.Context, rt *runtimeSession, runID,
 		ToolCallID:      toolCallID,
 		RunID:           runID,
 		DeadlineAt:      time.Now().Add(timeout).UnixMilli(),
+		Source:          req.Source,
 		Server:          req.Server,
 		Tool:            req.Tool,
 		Message:         req.Message,
@@ -107,8 +112,8 @@ func (rt *runtimeSession) settleElicitationLocked(waiter *elicitationWaiter, act
 		return nil
 	}
 	req := waiter.request
-	result := protocol.ElicitationResolution{ElicitationID: req.ElicitationID, ToolCallID: req.ToolCallID, RunID: req.RunID, Server: req.Server, Tool: req.Tool, Message: req.Message, Action: action, Reason: reason}
-	result.Content, result.Redacted = elicit.Redact(req.Fields, content)
+	result := protocol.ElicitationResolution{ElicitationID: req.ElicitationID, ToolCallID: req.ToolCallID, RunID: req.RunID, Source: req.Source, Server: req.Server, Tool: req.Tool, Message: req.Message, Action: action, Reason: reason}
+	result.Content, result.Redacted = elicit.RedactFor(req.Source, req.Fields, content)
 	if err := rt.publishEventLocked(req.RunID, protocol.EventElicitationResolved, result); err != nil {
 		return err
 	}
@@ -199,7 +204,7 @@ func (s *Server) answerElicitation(w http.ResponseWriter, r *http.Request, id, e
 		}
 	}
 	if resolved != nil {
-		kept, _ := elicit.Redact(request.Fields, content)
+		kept, _ := elicit.RedactFor(request.Source, request.Fields, content)
 		if resolved.Reason == elicit.ReasonUser && resolved.Action == in.Action && sameContent(resolved.Content, kept) {
 			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "duplicate": true})
 			return

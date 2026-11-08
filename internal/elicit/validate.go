@@ -259,6 +259,25 @@ func Redact(fields []ai.ElicitField, content map[string]any) (map[string]any, []
 	return out, redacted
 }
 
+// RedactFor is Redact for a request from source. Answers to an SSH login
+// (SourceSSH) are credentials even when the server echoes them, so none is
+// kept: every answered field is left out.
+func RedactFor(source string, fields []ai.ElicitField, content map[string]any) (map[string]any, []string) {
+	if source != SourceSSH {
+		return Redact(fields, content)
+	}
+	if content == nil {
+		return nil, nil
+	}
+	var redacted []string
+	for _, f := range fields {
+		if _, ok := content[f.Name]; ok {
+			redacted = append(redacted, f.Name)
+		}
+	}
+	return map[string]any{}, redacted
+}
+
 // sensitiveWords are whole words of a field's name or title that read like a
 // secret; sensitiveJoined are matched anywhere in the name and title with
 // separators removed ("api_key", "apiKey" and "API key" all read "apikey").

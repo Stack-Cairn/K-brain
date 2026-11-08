@@ -157,6 +157,15 @@
       "firstRelease": "v0.107.28",
       "evidenceCommit": "pending",
       "missing": "Do not register a host bridge (PUT /v1/host-bridge does not exist) and expect no host_bridge status in health: runs have no ReadTerminal for desktop terminals and no TunnelManager."
+    },
+    {
+      "name": "ssh_manager",
+      "type": "integer",
+      "compare": "eq",
+      "value": 1,
+      "firstRelease": "v0.107.28",
+      "evidenceCommit": "pending",
+      "missing": "Do not send SSH hosts to /v1/settings/ssh (it does not exist) and expect no SSHManager tool in runs: keep SSH sessions on the desktop."
     }
   ]
 }

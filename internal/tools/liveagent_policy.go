@@ -197,6 +197,19 @@ func liveagentPath(ctx context.Context, raw string, access string, tool string, 
 	return "", &liveagentOutsideRootsError{path: path, msg: tool + ".path is outside the authorized workspace roots"}
 }
 
+// ResolveWorkspacePath resolves a local path argument the way the LiveAgent
+// file tools do (workspace-relative, absolute, ~/..., file://, root://) and
+// requires it inside the run's workspace roots; access is "read" or "write".
+// label names the argument in errors, for example "SSHManager.local_path".
+func ResolveWorkspacePath(ctx context.Context, raw, access, label string, allowDirectory bool) (string, error) {
+	const tool = "\x00tool"
+	path, err := liveagentPath(ctx, raw, access, tool, allowDirectory)
+	if err != nil {
+		return "", errors.New(strings.ReplaceAll(err.Error(), tool+".path", label))
+	}
+	return path, nil
+}
+
 // liveagentOutsideRootsError is the rejection of a well-formed absolute path
 // that no workspace root covers; path is the resolved target.
 type liveagentOutsideRootsError struct{ path, msg string }

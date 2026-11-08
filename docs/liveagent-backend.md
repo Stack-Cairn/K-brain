@@ -88,6 +88,7 @@ VITE_KBRAIN_TOKEN=<backend-token>
 | POST | `/v1/sessions/{id}/elicitations/{elicitation}` | 回答 MCP 服务器的表单征询 `elicitation.requested`；见下文，`capabilities.mcp_elicitation` 表示支持 |
 | POST | `/v1/sessions/{id}/close` | 结束当前会话运行与后台子代理并保存 |
 | PUT / DELETE | `/v1/host-bridge` | 桌面登记 / 清除宿主桥，供 `ReadTerminal`、`TunnelManager` 回调桌面；见下文，`capabilities.host_bridge` 表示支持 |
+| GET / PUT | `/v1/settings/ssh` | 读取（密钥脱敏）/ 保存 `SSHManager` 的 SSH 主机与项目关联；另有 `PUT`/`DELETE /v1/settings/ssh/hosts/{id}` 与 `DELETE /v1/settings/ssh/hosts/{id}/host-keys`；见下文，`capabilities.ssh_manager` 表示支持 |
 
 列表支持 `page`、`page_size`、`cwd`、`cwd_empty`、`shared`、`pinned`，返回 `sessions`、`total_count`、`epoch` 和字符串 `revision`。`/v1/health` 的 `capabilities.session_changes: 2` 表示同时支持不可变快照、增量、pinned、workdirs、字符串游标和过期 reset；客户端必须探测完整契约后才能放宽旧轮询。
 
@@ -333,6 +334,77 @@ MCP 服务器可以在自己的工具运行期间请用户填写一张表单（M
 - 审批在调用桌面之前完成，被拒绝的 `create` 不会到达桌面。
 
 **令牌与沙箱。** 令牌只在 K-brain 进程内存里，不进入任何子进程。沙箱里的命令（联网的运行中）仍能连到本机 loopback 端口，包括桥监听的端口，但拿不到令牌；未开沙箱的命令同样拿不到。桌面必须校验每个请求的 `Authorization`，拒绝缺少或不匹配令牌的请求。
+
+### SSH 主机与 SSHManager（`capabilities.ssh_manager: 1`）
+
+`SSHManager` 是 K-brain 自己的工具：SSH/SFTP 连接、主机密钥校验、登录交互都在后端进程里完成（Go `golang.org/x/crypto/ssh` 与 `github.com/pkg/sftp`），不经过桌面宿主桥。名字、参数、`action` 列表、`session_strategy`、`credential` 取值和结果文本沿用 LiveAgent v1 `sshManagerTools.ts`。
+
+**存储。** 主机保存在 `<配置目录>/ssh/hosts.json`，K-brain 自己的 known_hosts 在同目录的 `known_hosts`（`kn backend` 的配置目录与 TUI 相同；嵌入方不设 `Options.SSHDir` 时为 `<EventDir>/ssh`）。目录权限 0700，文件 0600，原子替换写入。K-brain 从不读取用户的 `~/.ssh/known_hosts`、`~/.ssh/config` 或 ssh-agent。该目录与其他数据目录一样对沙箱里的命令隐藏。
+
+**`GET /v1/settings/ssh`**：
+
+```json
+{"revision":3,"knownHostsPath":"/…/ssh/known_hosts",
+ "hosts":[{"id":"web","name":"Web","description":"","host":"10.0.0.8","port":22,"username":"deploy",
+   "authType":"password","password":"","passwordConfigured":true,
+   "privateKey":"","privateKeyPath":"","privateKeyConfigured":false,
+   "privateKeyPassphrase":"","privateKeyPassphraseConfigured":false,
+   "proxy":{"type":"socks5","url":"","port":0,"username":"","password":"","passwordConfigured":false,"useSystemProxy":false},
+   "credential":"saved",
+   "hostKeys":[{"algorithm":"ssh-ed25519","fingerprint":"SHA256:…"}]}],
+ "projectHostAssociations":{"/Users/me/repo":["web"]}}
+```
+
+- 主机字段与 LiveAgent 的 `SshHostConfig` 相同。四个密钥（`password`、`privateKey`、`privateKeyPassphrase`、`proxy.password`）只写不读：响应里永远是空字符串，是否已保存看对应的 `…Configured`。`privateKeyPath` 不是密钥，原样返回。
+- `credential`：`saved`（密码主机有密码；私钥主机有 `privateKey` 或 `privateKeyPath`）、`missing`、`interactive`（`authType` 为 `keyboardInteractive`）。
+- `hostKeys` 是 known_hosts 里该主机地址（`host:port`，非 22 端口写作 `[host]:port`，IPv6 带方括号）已信任的密钥。
+- `projectHostAssociations` 的键按桌面 `project_path_key` 规则归一化（与宿主桥相同）。
+
+**`PUT /v1/settings/ssh`** 请求体 `{baseRevision?,hosts?,projectHostAssociations?}`：
+
+- `hosts` 出现时是完整列表：列表外的主机被删除。每项必填 `id`（不含 `/ \ ? # %`，最长 128 字节）、`name`、`host`；`port` 可为数字或数字字符串，缺省 22；`authType` 为 `password`（缺省）、`privateKey` 或 `keyboardInteractive`；`proxy.type` 为 `socks5`（缺省）或 `http`。最多 256 台主机。
+- 密钥字段遵循供应商 `apiKey` 的规则：省略或空字符串保留已存值；非空值替换；`clearPassword`/`clearPrivateKey`/`clearPrivateKeyPassphrase`/`proxy.clearPassword: true` 清除；另外，`…Configured: false` 且值为空也表示清除（设置表单里清空了该项）。所以把 GET 的结果原样 PUT 回来不会丢失任何密钥。改变 `authType` 时不再适用的密钥一并丢弃。`privateKey` 必须是能解析的私钥（加密的也可以）。
+- `projectHostAssociations` 出现时整体替换；不存在的主机 id、重复项被丢弃，每个项目最多 64 台。
+- `baseRevision` 非零时必须等于当前 `revision`，否则 409；省略则直接覆盖。GET 结果里的 `revision`、`knownHostsPath`、`credential`、`hostKeys` 可以带着发回，会被忽略。
+- 成功返回 200 与新的 GET 文档；校验失败 400（英文说明指出主机和字段），写盘失败 500。
+
+单台主机：`PUT /v1/settings/ssh/hosts/{id}`（请求体是一台主机，`id` 可省略，与路径不符为 400）新增或更新；`DELETE /v1/settings/ssh/hosts/{id}` 删除（并删除它的项目关联），不存在为 404。`DELETE /v1/settings/ssh/hosts/{id}/host-keys` 从 known_hosts 删除该主机的密钥，返回 `{"removed":N,"host":{…}}`，用于服务器确实换了密钥之后。主机被删除、连接参数（地址、端口、用户名、认证方式、密钥、代理）被修改或密钥被遗忘时，该主机已打开的会话立即关闭。
+
+**工具挂载。** 每次运行开始时，只有会话工作目录关联了至少一台主机，运行里才有 `SSHManager`（与 v1 一样）；之后建立的关联在下一次运行生效。客户端在 `options.client_tools` 里自己声明了 `SSHManager` 时以客户端的为准。`options.tools` 可以列出 `SSHManager`。
+
+**动作。** `list_hosts`、`create_session`、`list_sessions`、`close_session`、`exec`、`read_session`、`send_input`、`resize`，以及 `sftp_list`、`sftp_stat`、`sftp_read_text`、`sftp_write_text`、`sftp_mkdir`、`sftp_rename`、`sftp_delete`、`sftp_upload`、`sftp_download`、`sftp_transfer_status`、`sftp_cancel_transfer`。
+
+- 会话按项目隔离：只能使用当前项目关联的主机，只能看到、使用当前项目打开的会话。`session_strategy` 为 `reuse`（缺省，复用该主机正在运行的会话）、`new`（另开一条连接，不能与 `session_id` 同用）、`require_existing`（没有会话就失败）。会话在后端进程里跨运行保持，空闲 30 分钟、连接断开或后端关闭时结束；不自动重连。
+- `exec` 缺省超时 30 秒（最大 300 秒），stdout/stderr 各保留末尾 64 KiB（4–256 KiB 可调）；超时或运行被停止时发 `TERM` 信号并关闭通道，最多再等 3 秒。`cwd` 用 `cd '<cwd>' && ` 前缀实现。
+- `read_session`/`send_input`/`resize` 第一次使用时在会话上开启交互式 shell（PTY），缓冲最近 256 KiB 输出。
+- `sftp_upload`/`sftp_download` 在后台执行，立即返回 `transfer_id`，用 `sftp_transfer_status` 查询、`sftp_cancel_transfer` 取消；每个会话最多 32 个进行中的传输，目录最多 100000 个文件。`local_path` 按文件工具的规则解析（工作区相对路径、绝对路径、`~/...`、`file://`），必须在运行的工作区根内，上传要求可读、下载要求可写。不跟随本地符号链接；`sftp_delete` 不跟随远端符号链接。
+- 代理：`proxy.url` 非空时按 `proxy.type` 走 SOCKS5 或 HTTP CONNECT；`useSystemProxy` 时与供应商请求使用同一个代理（LiveAgent 管理的应用代理，否则 `HTTPS_PROXY`/`HTTP_PROXY`/`NO_PROXY`）。
+
+**主机密钥。** 连接时用 K-brain 的 known_hosts 校验服务器密钥：
+
+- 未知密钥：发一个普通的提问卡片（`question.requested`），问题文本给出主机、地址、算法和 SHA256 指纹，选项为 `Trust once`（只信任这一次）、`Trust and save`（写入 known_hosts）和推荐的 `Reject`。拒绝、超时或运行被停止都不连接。
+- 已知主机出现不同的密钥：直接拒绝，不询问，工具结果以 `REMOTE HOST KEY CHANGED` 开头并给出新旧指纹；用户确认服务器确实换了密钥后，调用 `DELETE …/host-keys` 再重新连接确认。
+
+**登录。** 保存的密码、私钥（`privateKey` 或 `privateKeyPath`；后者由后端进程读取，开头的 `~` 展开为家目录）和口令直接使用。需要用户输入时（没保存的密码、加密私钥没保存口令、keyboard-interactive/MFA 提示）走 MCP 表单征询的同一套事件和回答接口，因此运行必须带 `options.mcp_elicitation: true`，否则调用失败并说明原因：
+
+```json
+{"elicitation_id":"elicit-…","tool_call_id":"call_1","run_id":"run-…","deadline_at":…,
+ "source":"ssh","server":"ssh:Web","tool":"SSHManager",
+ "message":"SSHManager needs the password of Web (deploy@10.0.0.8:22). It is used for this connection only and is not saved.",
+ "fields":[{"name":"password","type":"string","title":"Password","required":true,"sensitive":true}]}
+```
+
+- `source: "ssh"` 表示这是 SSH 服务器的登录表单，`server` 是 `ssh:<主机名>`，不是 MCP 服务器。加密私钥的口令字段名为 `passphrase`。keyboard-interactive 的字段名为 `response_1`、`response_2`…，标题是服务器的提示文字，服务器不回显的提示标为 `sensitive`。一次登录最多 5 轮提示。
+- 用户在表单里输入的值只用于这一次连接，不保存到 `hosts.json`。`elicitation.resolved`、`tool.result` 的 `elicitations` 和历史里 `content` 为 `{}`，`redacted` 列出全部已回答字段——不论字段是否标为敏感都不记录。
+- 已保存密码的主机遇到单个不回显的密码提示时自动用保存的密码回答。
+
+**权限。**
+
+- `list_hosts`、`list_sessions`、`read_session`、`sftp_transfer_status` 只读 K-brain 自己的状态，按只读放行（发 `permission.auto_resolved`，`source: "read_only"`）。
+- 其余动作默认与 Bash 一样询问；审批在连接之前完成，被拒绝的调用不会连接服务器。规则匹配的 `command` 为 `<action> <host_id 或 session_id> <细节>`，细节是远端命令（`exec`）、输入（`send_input`）、路径、`from -> to`（`sftp_rename`）、`local -> remote`（`sftp_upload`）、`remote -> local`（`sftp_download`）或 `transfer_id`。例如 `SSHManager(exec web:*)` 放行在 `web` 上的所有命令，`SSHManager(sftp_delete:*)` 可以写成 deny 规则。不生成可记住的规则建议。
+- 定时任务等无人值守运行不询问也不等待：需要审批的动作只有在 allow 规则、按工具的 allow 策略或 `full_access`/`always` 下才执行，否则立即失败；主机密钥必须已经保存、凭据必须已经保存，否则同样立即失败并说明原因。
+
+**记录与日志。** 密钥不进入事件、历史、日志和工具结果；保存的密钥只在 `hosts.json` 里。远端命令自己输出的内容不受此限制。
 
 ### 记住的权限规则（`capabilities.permission_rules: 1`、`readonly_auto_allow: 1`）
 
