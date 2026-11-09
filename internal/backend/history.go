@@ -69,6 +69,17 @@ func (s *Server) mutationAllowed(w http.ResponseWriter, rt *runtimeSession) bool
 	return true
 }
 
+// metadataAllowed keeps only the deleted-session refusal for requests that
+// touch store-only metadata (pinned, archived): those flags have no turn-side
+// writer, and their store update serializes with a running turn under rt.mu.
+func (s *Server) metadataAllowed(w http.ResponseWriter, rt *runtimeSession) bool {
+	if rt.deleted {
+		writeJSONError(w, 404, "session not found")
+		return false
+	}
+	return true
+}
+
 func intQuery(r *http.Request, key string, fallback, minimum, maximum int) (int, error) {
 	value, exists := r.URL.Query()[key]
 	if !exists {
@@ -237,7 +248,14 @@ func (s *Server) updateSession(w http.ResponseWriter, r *http.Request, id string
 	defer s.releaseRuntime(rt)
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
-	if !s.mutationAllowed(w, rt) {
+	// Model and cwd rebuild the runtime agent, and a manual title races the
+	// turn's auto-title, so those three still require an idle session. Pinned
+	// and archived are store-only flags, so they stay writable mid-turn.
+	if in.Model == nil && in.CWD == nil && in.Title == nil {
+		if !s.metadataAllowed(w, rt) {
+			return
+		}
+	} else if !s.mutationAllowed(w, rt) {
 		return
 	}
 	if in.Model != nil {
