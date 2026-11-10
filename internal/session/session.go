@@ -275,9 +275,18 @@ func (s *Store) Close() error {
 		close(s.summaries.notify)
 		s.summaries.notify = make(chan struct{})
 	}
+	leases := make([]*RunLease, 0, len(s.runLeases))
+	for _, held := range s.runLeases {
+		leases = append(leases, held.lease)
+	}
 	s.mu.Unlock()
 	if scannerDone != nil {
 		<-scannerDone
+	}
+	// 关闭仓库时交还仍持有的运行租约，不让锁文件句柄留到进程退出
+	// （Windows 上打开的句柄会阻止删除会话目录）。
+	for _, lease := range leases {
+		_ = lease.Release()
 	}
 	return s.lock.Close()
 }

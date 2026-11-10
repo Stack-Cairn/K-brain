@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"errors"
+	"os"
 	"testing"
 	"time"
 
@@ -227,7 +228,45 @@ func TestRunLeaseLeftoverOwnerFileIsNotARun(t *testing.T) {
 	if _, busy := backend.ExternalRun(id); busy {
 		t.Fatal("unlocked lease reported as running")
 	}
-	if _, err := backend.AcquireRun(id, "backend"); err != nil {
+	again, err := backend.AcquireRun(id, "backend")
+	if err != nil {
 		t.Fatalf("lease after crash = %v", err)
+	}
+	if err := again.Release(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestStoreCloseReleasesHeldRunLeases(t *testing.T) {
+	home := t.TempDir()
+	a, err := OpenProjectHome(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := OpenProjectHome(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = b.Close() })
+	id, err := a.Create(t.TempDir(), "model", "provider")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.AcquireRun(id, "kn"); err != nil {
+		t.Fatal(err)
+	}
+	if _, busy := b.ExternalRun(id); !busy {
+		t.Fatal("held lease not visible to the other store")
+	}
+	if err := a.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if run, busy := b.ExternalRun(id); busy {
+		t.Fatalf("lease still held after Close: %+v", run)
+	}
+	// 锁文件不再被打开，可以删除（Windows 上打开的句柄会让删除失败）。
+	lockPath, _ := b.runLeasePaths(id)
+	if err := os.Remove(lockPath); err != nil {
+		t.Fatalf("remove lock file after Close: %v", err)
 	}
 }
