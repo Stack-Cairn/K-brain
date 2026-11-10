@@ -24,25 +24,62 @@ type taskEventMsg struct {
 	s2   string
 }
 
+// sendTaskMsg queues one subagent event for the open view. Events gather in
+// the view's stream and the program hears once per batch, through the
+// program's mailbox.
 func sendTaskMsg(p *tea.Program, msg taskEventMsg) {
-	if p == nil {
+	post := uiPoster(p)
+	if post == nil {
 		return
 	}
 	if msg.view != nil {
 		if msg.view.stream.push(msg) {
-			go p.Send(taskStreamReadyMsg{view: msg.view})
+			post(taskStreamReadyMsg{view: msg.view})
 		}
 		return
 	}
-	go p.Send(msg)
+	post(msg)
 }
 
-func renderTaskEvent(buf *strings.Builder, kind int, s, s2 string) {
+// Journaled subagent event kinds: the agent package's journal uses 0–4; the
+// view adds thinking, which only streams live.
+const (
+	taskEventText = iota
+	taskEventToolStart
+	taskEventToolEnd
+	taskEventSteer
+	taskEventFollowupEnd
+	taskEventThink
+)
+
+// renderTaskEvent appends one subagent event to a child transcript; prev is
+// the kind of the event before it, so a thinking run gets one marker and the
+// answer after it starts on its own paragraph.
+func renderTaskEvent(buf *strings.Builder, prev, kind int, s, s2 string) {
+	if kind == taskEventThink {
+		if prev != taskEventThink {
+			buf.WriteString("\n" + thinkingStyle.Render("✻ "))
+		}
+		lines := strings.Split(s, "\n")
+		for i, l := range lines {
+			if l != "" {
+				lines[i] = thinkingStyle.Render(l)
+			}
+		}
+		buf.WriteString(strings.Join(lines, "\n"))
+		return
+	}
+	if prev == taskEventThink {
+		buf.WriteString("\n")
+		if kind == taskEventText {
+			buf.WriteString("\n")
+		}
+	}
 	switch kind {
 	case 0:
 		buf.WriteString(s)
 	case 1:
-		fmt.Fprintf(buf, "\n%s %s %s\n", toolStyle.Render("⚒"), s, dimStyle.Render(s2))
+		fmt.Fprintf(buf, "\n%s %s\n", toolStyle.Render("⚒"), subToolCall(s, s2, 120))
 	case 2:
 		preview := strings.Split(strings.TrimRight(s2, "\n"), "\n")
 		if len(preview) > 4 {
@@ -72,6 +109,26 @@ type taskView struct {
 	followCancel context.CancelFunc
 	unsubscribe  func()
 	stream       taskStream
+	// lastKind is the kind of the last event rendered into buf.
+	lastKind int
+}
+
+// reportStreamed reports whether the child's final text already ends with its
+// report, so the closing status line need not print the report twice.
+func reportStreamed(events []agent.JournaledEvent, report string) bool {
+	report = strings.TrimSpace(report)
+	if report == "" {
+		return false
+	}
+	i := len(events)
+	for i > 0 && events[i-1].Kind == taskEventText {
+		i--
+	}
+	var text strings.Builder
+	for _, e := range events[i:] {
+		text.WriteString(e.S)
+	}
+	return strings.HasSuffix(strings.TrimSpace(text.String()), report)
 }
 
 const tasksDockHeight = 6
@@ -147,15 +204,18 @@ func (m *model) dockTaskExpand(id string) []string {
 	if !ok {
 		return nil
 	}
-	events, truncated, _, _ := m.watchSub(id, agent.Events{})
+	events, truncated, _, unsubscribe := m.watchSub(id, agent.Events{})
+	unsubscribe()
 	var buf strings.Builder
 	switch {
 	case len(events) > 0:
 		if truncated {
 			buf.WriteString(dimStyle.Render("  [earlier output dropped]") + "\n")
 		}
+		prev := -1
 		for _, e := range events {
-			renderTaskEvent(&buf, e.Kind, e.S, e.S2)
+			renderTaskEvent(&buf, prev, e.Kind, e.S, e.S2)
+			prev = e.Kind
 		}
 	case t.Report != "":
 		buf.WriteString(t.Report)
@@ -189,7 +249,11 @@ func (m *model) tasksDock() string {
 		rows = append(rows, taskColumns(accentStyle.Render(label), dimStyle.Render(m.taskSummary(tasks)), m.width))
 	}
 
-	budget := tasksDockHeight - len(rows)
+	budget := tasksDockHeight
+	if m.dockBudget > 0 {
+		budget = m.dockBudget
+	}
+	budget -= len(rows)
 	var expanded []string
 	if m.tasksFocus && m.taskExpanded && m.taskSel < len(tasks) {
 		expanded = m.dockTaskExpand(tasks[m.taskSel].ID)
@@ -251,6 +315,9 @@ func (m *model) openTask(id string) {
 		OnText: func(s string) {
 			sendTaskMsg(p, taskEventMsg{view: tv, id: id, kind: 0, s: s})
 		},
+		OnThink: func(s string) {
+			sendTaskMsg(p, taskEventMsg{view: tv, id: id, kind: taskEventThink, s: s})
+		},
 		OnToolStart: func(_, n, a string) {
 			sendTaskMsg(p, taskEventMsg{view: tv, id: id, kind: 1, s: n, s2: a})
 		},
@@ -267,8 +334,10 @@ func (m *model) openTask(id string) {
 	if truncated {
 		fmt.Fprintf(&tv.buf, "\n%s\n", dimStyle.Render("  [earlier output dropped]"))
 	}
+	tv.lastKind = -1
 	for _, e := range events {
-		renderTaskEvent(&tv.buf, e.Kind, e.S, e.S2)
+		renderTaskEvent(&tv.buf, tv.lastKind, e.Kind, e.S, e.S2)
+		tv.lastKind = e.Kind
 	}
 	switch {
 	case live:
@@ -277,8 +346,19 @@ func (m *model) openTask(id string) {
 		}
 		fmt.Fprintf(&tv.buf, "\n%s\n", dimStyle.Render("  running…"))
 	case len(events) > 0:
-
-		fmt.Fprintf(&tv.buf, "\n%s %s\n", toolStyle.Render(string(t.Status)+":"), t.Report)
+		report := t.Report
+		switch {
+		case reportStreamed(events, report):
+			report = ""
+		case t.Status == agent.TaskError:
+			// The provider's raw response body says no more than its message.
+			report = subagentErrorSummary(report)
+		}
+		if report == "" {
+			fmt.Fprintf(&tv.buf, "\n\n%s\n", toolStyle.Render(string(t.Status)))
+		} else {
+			fmt.Fprintf(&tv.buf, "\n\n%s %s\n", toolStyle.Render(string(t.Status)+":"), report)
+		}
 		if a := m.subAct[id]; a != nil && a.tools > 0 && t.Report == "" {
 			tv.buf.WriteString(dimStyle.Render("  "+strings.Join(m.subActivityParts(t, false), " · ")) + "\n")
 		}

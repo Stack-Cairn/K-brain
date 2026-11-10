@@ -38,7 +38,7 @@ func (q *taskStream) push(msg taskEventMsg) bool {
 		q.dropped = true
 	}
 	n := len(q.pending)
-	if msg.kind == 0 && msg.s2 == "" && n > 0 && q.pending[n-1].kind == 0 && q.pending[n-1].s2 == "" && len(q.pending[n-1].s)+len(msg.s) <= taskStreamChunkSize {
+	if (msg.kind == taskEventText || msg.kind == taskEventThink) && msg.s2 == "" && n > 0 && q.pending[n-1].kind == msg.kind && q.pending[n-1].s2 == "" && len(q.pending[n-1].s)+len(msg.s) <= taskStreamChunkSize {
 		q.pending[n-1].s += msg.s
 	} else {
 		q.pending = append(q.pending, msg)
@@ -91,6 +91,7 @@ func (m *model) applyTaskEvent(msg taskEventMsg) bool {
 	if msg.kind == 4 {
 		tv.busy, tv.followCancel = false, nil
 	}
-	renderTaskEvent(&tv.buf, msg.kind, msg.s, msg.s2)
+	renderTaskEvent(&tv.buf, tv.lastKind, msg.kind, msg.s, msg.s2)
+	tv.lastKind = msg.kind
 	return true
 }

@@ -119,3 +119,10 @@ func (msg toolOutputMsg) supersedes(prev tea.Msg) bool {
 	p, ok := prev.(toolOutputMsg)
 	return ok && p.id == msg.id
 }
+
+// taskUpdateMsg only asks for a refresh from the registry, so a queued one
+// already covers the next.
+func (taskUpdateMsg) supersedes(prev tea.Msg) bool {
+	_, ok := prev.(taskUpdateMsg)
+	return ok
+}

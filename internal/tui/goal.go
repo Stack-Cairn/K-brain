@@ -3,6 +3,9 @@ package tui
 import (
 	"fmt"
 	"os"
+	"strings"
+
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Stack-Cairn/K-brain/internal/config"
 	"github.com/Stack-Cairn/K-brain/internal/goalloop"
@@ -101,4 +104,19 @@ func overriddenNote(proj int) string {
 		return fmt.Sprintf(" (this project overrides it with %d)", proj)
 	}
 	return ""
+}
+
+// goalCheckRow is the transcript's one quiet row for the prompt the goal loop
+// sends after an unfinished round, in place of the whole prompt as a user
+// message; the model still gets every word of it.
+func (m *model) goalCheckRow(text string, authored bool) (string, bool) {
+	goal, ok := goalloop.ContinueGoal(text)
+	if authored || !ok {
+		return "", false
+	}
+	row := "◎ " + m.tr("goal check")
+	if m.goal != "" && m.goalRounds > 0 {
+		row += " · " + fmt.Sprintf(m.tr("round %d/%d"), m.goalRounds+1, m.goalMaxRounds())
+	}
+	return dimStyle.Render(chromeGlyphs(row + " · " + ansi.Truncate(strings.TrimSpace(goal), 60, "…"))), true
 }

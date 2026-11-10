@@ -97,6 +97,7 @@ func (m *model) submitTurnAs(text string, authored, notice bool) (tea.Model, tea
 	}
 	m.turnSnapshotSeq = nil
 	m.busy = true
+	m.panelTurnStarted(authored)
 	m.turnStart = m.nowFn()
 	prepared, parts := m.prepareTurn(text)
 	if notice {
@@ -118,7 +119,9 @@ func (m *model) submitTurnAs(text string, authored, notice bool) (tea.Model, tea
 	m.discardFuture()
 
 	if authored && m.agent != nil {
-		var keep []string
+		// Finished subagents stay reachable from the top panel for the rest
+		// of the session; only the oldest beyond keptSettledSubagents go.
+		keep := m.recentSettled(keptSettledSubagents)
 		if m.taskVP != nil {
 			keep = append(keep, m.taskVP.id)
 		}
@@ -223,9 +226,12 @@ func (m *model) submitTurnAs(text string, authored, notice bool) (tea.Model, tea
 		}
 		stream.finish(turnDoneMsg{final: final, stopReason: m.agent.LastStopReason(), err: err, at: turnAt, snap: preSnap, clean: workspaceClean()})
 	}()
-	if notice {
+	switch row, ok := m.goalCheckRow(text, authored); {
+	case notice:
 		m.appendNotice(text)
-	} else {
+	case ok:
+		m.append(row)
+	default:
 		m.appendRaw(blockUser, linkifyFilePaths(text, realFileExists))
 	}
 	if authored {

@@ -25,6 +25,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -584,6 +585,8 @@ func renderToolBody(b *block, width int) string {
 		body = renderShellBody(b, text, width)
 	case toolKindOf(b.toolName) == tkMCP:
 		body = renderGenericBody(b, text, mcpPreviewLines, width)
+	case toolKindOf(b.toolName) == tkSubagent && !b.expanded:
+		body = renderSubagentBody(text, width)
 	default:
 		body = renderGenericBody(b, text, toolPreviewLines, width)
 	}
@@ -653,6 +656,57 @@ func renderGenericBody(b *block, text string, preview int, width int) string {
 		rows = append(rows, foldHint(hidden, "lines"))
 	}
 	return strings.Join(rows, "\n")
+}
+
+// renderSubagentBody is a finished subagent's result folded to one line: the
+// report's first line, or for a failure the error's message instead of the
+// provider's raw response body. ctrl+e opens the whole result.
+func renderSubagentBody(text string, width int) string {
+	elbow := textMutedStyle.Render("  " + glyphs.Result + " ")
+	lines := strings.Split(text, "\n")
+	first := strings.TrimSpace(lines[0])
+	for _, l := range lines {
+		if first = strings.TrimSpace(l); first != "" {
+			break
+		}
+	}
+	if strings.HasPrefix(text, "Error") {
+		first = subagentErrorSummary(text)
+	}
+	row := textSecondaryStyle.Render(first)
+	if strings.HasPrefix(text, "Error") {
+		row = errStyle.Render(chromeGlyphs(first))
+	}
+	out := ansi.Truncate(elbow+row, max(width, 1), "…")
+	if strings.TrimSpace(text) != first || lipgloss.Width(elbow+row) > width {
+		out += "\n" + foldHint(max(len(lines)-1, 1), "lines")
+	}
+	return out
+}
+
+var errMessageRE = regexp.MustCompile(`"message"\s*:\s*"((?:[^"\\]|\\.)*)"`)
+
+// subagentErrorSummary is a subagent failure in one line: "Error: 400 Bad
+// Request: {json}" becomes "400 Bad Request · <the message in the json>".
+func subagentErrorSummary(text string) string {
+	text = strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(text, "Error"), ":"))
+	head, _, _ := strings.Cut(text, "\n")
+	if i := strings.IndexAny(head, "{["); i >= 0 {
+		status := strings.TrimRight(strings.TrimSpace(head[:i]), ":")
+		if mm := errMessageRE.FindStringSubmatch(text); mm != nil {
+			if msg, err := strconv.Unquote(`"` + mm[1] + `"`); err == nil {
+				mm[1] = msg
+			}
+			if status == "" {
+				return mm[1]
+			}
+			return status + " · " + mm[1]
+		}
+		if status != "" {
+			return status
+		}
+	}
+	return head
 }
 
 // foldHint is the row standing in for n folded rows: "⋯ +14 lines · ctrl+e".

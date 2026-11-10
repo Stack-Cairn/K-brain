@@ -101,3 +101,18 @@ func TestMaxRoundsResolution(t *testing.T) {
 		t.Fatalf("empty dir skips project lookup: %d", n)
 	}
 }
+
+func TestContinueGoalRoundTrips(t *testing.T) {
+	goal := "Ship the panel\nwith two lines"
+	if got, ok := ContinueGoal(ContinuePrompt("Ship the panel")); !ok || got != "Ship the panel" {
+		t.Fatalf("ContinueGoal = %q, %v", got, ok)
+	}
+	if got, ok := ContinueGoal(ContinuePrompt(goal)); !ok || got != goal {
+		t.Fatalf("multi-line goal = %q, %v", got, ok)
+	}
+	for _, other := range []string{"", "hello", StartPrompt("x"), ReplyPrompt("x")} {
+		if _, ok := ContinueGoal(other); ok {
+			t.Fatalf("ContinueGoal(%q) matched", other)
+		}
+	}
+}

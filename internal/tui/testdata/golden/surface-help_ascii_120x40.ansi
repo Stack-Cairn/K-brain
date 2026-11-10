@@ -1,4 +1,4 @@
-[96m>[0m [1mKeyboard shortcuts[0m                                                                                               [37m1/82[0m
+[96m>[0m [1mKeyboard shortcuts[0m                                                                                               [37m1/83[0m
   [1;96m[Keys][0m [90m Commands [0m
   [96m/[0m [37mtype to filter[0m
 [90m------------------------------------------------------------------------------------------------------------------------[0m
@@ -6,6 +6,7 @@
 [1;96m> Shift+Tab                                 cycle the permission mode                                                  [0m
   Ctrl+K                                    [37mclear the conversation[0m[37m[0m
   Ctrl+T                                    [37mfocus the subagent dock[0m[37m[0m
+  Alt+T                                     [37mexpand or collapse the top panel (goal, plan, subagents); a click on it...[0m[37m[0m
   Ctrl+O                                    [37mshow or hide thinking tokens[0m[37m[0m
   Ctrl+E                                    [37mexpand the last tool result[0m[37m[0m
   Ctrl+G                                    [37medit the draft in an external editor[0m[37m[0m
@@ -30,8 +31,7 @@
   Ctrl+U                                    [37mcut to the start of the line[0m[37m[0m
   Alt+K                                     [37mcut to the end of the line[0m[37m[0m
   Alt+D                                     [37mcut the next word[0m[37m[0m
-  Ctrl+Y                                    [37mpaste the last cut text[0m[37m[0m
-[37m  Down 56 more[0m
+[37m  Down 57 more[0m
 [90m------------------------------------------------------------------------------------------------------------------------[0m
   [1mShift+Tab[0m  [37mcycle the permission mode[0m
   [37mShift+Tab - cycle Normal / Plan / Auto review / Always allow[0m

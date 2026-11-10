@@ -31,9 +31,21 @@ func MaxRounds(dir string, global int) int {
 	return config.DefaultGoalMaxRounds
 }
 
+const continueHead = "[goal check] The session goal is:\n"
+
 // ContinuePrompt is the user turn submitted after every unfinished round.
 func ContinuePrompt(goal string) string {
-	return fmt.Sprintf("[goal check] The session goal is:\n%s\n\n%s", goal, roundRules())
+	return continueHead + goal + "\n\n" + roundRules()
+}
+
+// ContinueGoal reports whether prompt is a ContinuePrompt and, if so, its goal.
+func ContinueGoal(prompt string) (string, bool) {
+	rest, ok := strings.CutPrefix(prompt, continueHead)
+	if !ok {
+		return "", false
+	}
+	goal, _, _ := strings.Cut(rest, "\n\n")
+	return goal, true
 }
 
 // StartPrompt is the request-only instruction of the round that sets a goal. It carries

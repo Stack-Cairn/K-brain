@@ -1,0 +1,6 @@
+-- v o Goal Idle -- = Plan 1/4 -- * 1 error - 1 done ------------------------------------------------- Alt+T collapse --
+   o Ship the v1.4 release checklist                                                         Idle - round 2/100 - 1m02s
+   = Plan 1/4 - [>] Step number 2
+   x sub-2  Verify build matrix                                                                              error - 9s
+   v sub-1  Audit changelog entries                                                                           done - 9s
+------------------------------------------------------------------------------------------------------------------------

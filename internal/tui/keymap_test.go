@@ -23,6 +23,7 @@ var legacyHelpKeys = []string{
 	"Shift+Tab — cycle Normal / Plan / Auto review / Always allow",
 	"Ctrl+K — clear the conversation",
 	"Ctrl+T — subagents dock: ↑/↓ select, Space preview, Enter open, Ctrl+X stop",
+	"Alt+T — expand or collapse the top panel (goal, plan, subagents); a click on its header does the same",
 	"in a subagent view: Enter steers or follows up, Ctrl+X stops, PgUp/PgDn scroll, Esc returns",
 	palHintThinking + " — toggle thinking tokens",
 	"Ctrl+E — expand the last tool result",

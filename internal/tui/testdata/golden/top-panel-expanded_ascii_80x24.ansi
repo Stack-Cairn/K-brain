@@ -1,0 +1,6 @@
+[90m-- [0m[96mv[0m [96mo[0m [37mGoal[0m [90mIdle[0m[90m -- [0m[96m=[0m [37mPlan[0m [90m1/4[0m[90m -- [0m[96m*[0m [37m1 error - 1 done[0m [90m---------[0m [37mAlt+T collapse[0m [90m--[0m
+   [96mo[0m [37mShip the v1.4 release checklist[0m                 [90mIdle[0m[90m - round 2/100 - 1m02s[0m 
+   [96m=[0m [37mPlan[0m [90m1/4[0m[90m - [0m[1;36m[>][0m [1mStep number 2[0m
+   [91mx[0m sub-2  Verify build matrix                                      [91merror[0m[90m - 9s[0m 
+   [92mv[0m sub-1  Audit changelog entries                                   [92mdone[0m[90m - 9s[0m 
+[90m--------------------------------------------------------------------------------[0m

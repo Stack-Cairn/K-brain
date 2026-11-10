@@ -1,4 +1,4 @@
-[96m❯[0m [1mKeyboard shortcuts[0m                                                       [37m1/82[0m
+[96m❯[0m [1mKeyboard shortcuts[0m                                                       [37m1/83[0m
   [1;96m[Keys][0m [90m Commands [0m
   [96m/[0m [37mtype to filter[0m
 [90m────────────────────────────────────────────────────────────────────────────────[0m
@@ -6,6 +6,7 @@
 [1;96m❯ Shift+Tab                   cycle the permission mode                        [0m
   Ctrl+K                      [37mclear the conversation[0m[37m[0m
   Ctrl+T                      [37mfocus the subagent dock[0m[37m[0m
+  Alt+T                       [37mexpand or collapse the top panel (goal, plan, s…[0m[37m[0m
   Ctrl+O                      [37mshow or hide thinking tokens[0m[37m[0m
   Ctrl+E                      [37mexpand the last tool result[0m[37m[0m
   Ctrl+G                      [37medit the draft in an external editor[0m[37m[0m
@@ -14,8 +15,7 @@
   Ctrl+C Ctrl+C               [37mquit[0m[37m[0m
   Ctrl+P                      [37mopen the command palette[0m[37m[0m
   F2                          [37mopen settings[0m[37m[0m
-  Alt+↑                       [37mfocus the transcript, a block at a time[0m[37m[0m
-[37m  ↓ 70 more[0m
+[37m  ↓ 71 more[0m
 [90m────────────────────────────────────────────────────────────────────────────────[0m
   [1mShift+Tab[0m  [37mcycle the permission mode[0m
   [37mShift+Tab — cycle Normal / Plan / Auto review / Always allow[0m

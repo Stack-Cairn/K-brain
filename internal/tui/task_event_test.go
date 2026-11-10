@@ -18,7 +18,7 @@ import (
 
 func TestTaskEventOmittedLineCount(t *testing.T) {
 	var buf strings.Builder
-	renderTaskEvent(&buf, 2, "read", "第一行\nsecond\nthird\nfourth\nfifth\nsixth\n")
+	renderTaskEvent(&buf, -1, 2, "read", "第一行\nsecond\nthird\nfourth\nfifth\nsixth\n")
 	if !strings.Contains(buf.String(), "… +2 lines") {
 		t.Fatalf("incorrect omitted line count: %q", buf.String())
 	}

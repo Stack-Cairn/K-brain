@@ -47,8 +47,11 @@ type subTickMsg struct{}
 
 const subTickInterval = time.Second
 
-func subToolLabel(name, args string) string {
-	return truncLine(toolHeaderName(name)+"("+toolSubject(name, args)+")", 48)
+func subToolLabel(name, args string) string { return subToolCall(name, args, 48) }
+
+// subToolCall is a subagent tool call as "Name(subject)", never its raw JSON.
+func subToolCall(name, args string, limit int) string {
+	return ansi.Truncate(toolHeaderName(name)+"("+toolSubject(name, args)+")", limit, "…")
 }
 
 // subagentBackgroundArg reports whether a subagent tool call asks for a
@@ -211,7 +214,8 @@ func (r *fgRegistry) ChildEvents(id string) agent.Events {
 		return agent.Events{}
 	}
 	return agent.Events{
-		OnText: func(s string) { r.record(id, 0, s, "") },
+		OnText:  func(s string) { r.record(id, 0, s, "") },
+		OnThink: func(s string) { r.record(id, taskEventThink, s, "") },
 		OnToolStart: func(_, n, a string) {
 			r.record(id, 1, n, a)
 			r.emit(subProgressMsg{id: id, tool: subToolLabel(n, a)})
@@ -230,7 +234,7 @@ func (r *fgRegistry) record(id string, kind int, s, s2 string) {
 		return
 	}
 	n := len(c.events)
-	if kind == 0 && n > 0 && c.events[n-1].Kind == 0 && len(c.events[n-1].S) < taskStreamChunkSize {
+	if (kind == taskEventText || kind == taskEventThink) && n > 0 && c.events[n-1].Kind == kind && len(c.events[n-1].S) < taskStreamChunkSize {
 		c.events[n-1].S += s
 	} else {
 		c.events = append(c.events, agent.JournaledEvent{Kind: kind, S: s, S2: s2})
@@ -264,6 +268,10 @@ func (r *fgRegistry) record(id string, kind int, s, s2 string) {
 			if ev.OnSteer != nil {
 				ev.OnSteer(s)
 			}
+		case taskEventThink:
+			if ev.OnThink != nil {
+				ev.OnThink(s)
+			}
 		}
 	}
 }
@@ -282,6 +290,11 @@ func (r *fgRegistry) watch(id string, ev agent.Events) (events []agent.Journaled
 		return
 	}
 	live = true
+	if ev.OnText == nil && ev.OnThink == nil && ev.OnToolStart == nil && ev.OnToolEnd == nil && ev.OnSteer == nil {
+		// A snapshot read (the dock's expanded row, once per frame) must not
+		// leave a subscriber behind for every frame it was drawn.
+		return
+	}
 	if c.subs == nil {
 		c.subs = map[int]agent.Events{}
 	}

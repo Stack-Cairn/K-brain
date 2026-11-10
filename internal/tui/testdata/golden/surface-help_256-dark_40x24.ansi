@@ -1,4 +1,4 @@
-[38;5;79m❯[0m [1mKeyboard shortcuts[0m               [38;5;247m1/82[0m
+[38;5;79m❯[0m [1mKeyboard shortcuts[0m               [38;5;247m1/83[0m
   [1;38;5;79m[Keys][0m [38;5;245m Commands [0m
   [38;5;79m/[0m [38;5;247mtype to filter[0m
 [38;5;238m────────────────────────────────────────[0m
@@ -6,6 +6,7 @@
 [1;38;5;79;48;5;236m❯ Shift+Tab      cycle the permission… [0m
   Ctrl+K         [38;5;252mclear the conversati…[0m[38;5;247m[0m
   Ctrl+T         [38;5;252mfocus the subagent d…[0m[38;5;247m[0m
+  Alt+T          [38;5;252mexpand or collapse t…[0m[38;5;247m[0m
   Ctrl+O         [38;5;252mshow or hide thinkin…[0m[38;5;247m[0m
   Ctrl+E         [38;5;252mexpand the last tool…[0m[38;5;247m[0m
   Ctrl+G         [38;5;252medit the draft in an…[0m[38;5;247m[0m
@@ -13,8 +14,7 @@
   PgUp / PgDn    [38;5;252mscroll the transcript[0m[38;5;247m[0m
   Ctrl+C Ctrl+C  [38;5;252mquit[0m[38;5;247m[0m
   Ctrl+P         [38;5;252mopen the command pal…[0m[38;5;247m[0m
-  F2             [38;5;252mopen settings[0m[38;5;247m[0m
-[38;5;247m  ↓ 71 more[0m
+[38;5;247m  ↓ 72 more[0m
 [38;5;238m────────────────────────────────────────[0m
   [1mShift+Tab[0m  [38;5;252mcycle the permission mode[0m
   [38;5;247mShift+Tab — cycle Normal / Plan /[0m

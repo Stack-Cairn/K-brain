@@ -148,15 +148,19 @@ func TestForegroundSubagentStreamsIntoRowDockAndView(t *testing.T) {
 			if n := len(m.dockTasks()); n != 1 || !strings.HasPrefix(m.dockTasks()[0].ID, "foreground-") {
 				t.Fatalf("dock should list the foreground child, got %+v", m.dockTasks())
 			}
-			if stats := m.footerStats(); !strings.Contains(stats, "⚙ 1 sub") {
-				t.Fatalf("footer should count the running foreground subagent, got %q", stats)
+			m.layout()
+			if panel := stripAll(m.topPanelView()); !strings.Contains(panel, "1 running") || !strings.Contains(panel, c.id) {
+				t.Fatalf("the top panel should list the running foreground subagent, got %q", panel)
+			}
+			if stats := m.footerStats(); strings.Contains(stats, "sub") {
+				t.Fatalf("the footer must not repeat the panel's subagent count, got %q", stats)
 			}
 			m.openTask(c.id)
 			if m.taskVP == nil || !m.taskVP.live {
 				t.Fatal("the subagent view should follow the running child")
 			}
 			view := stripAll(m.taskViewView())
-			for _, want := range []string{"Survey the loader", "foreground", "⚒ read", "read-only"} {
+			for _, want := range []string{"Survey the loader", "foreground", "⚒ Read(/nonexistent/k-brain-probe.txt)", "read-only", "Ctrl+X Cancel"} {
 				if !strings.Contains(view, want) {
 					t.Fatalf("subagent view missing %q:\n%s", want, view)
 				}
