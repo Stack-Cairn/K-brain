@@ -62,6 +62,11 @@ func (s *Server) deliverLoopResults(task *CronTask) {
 			s.releaseRuntime(parent)
 			return
 		}
+		if err = s.reloadStaleHistoryLocked(parent); err != nil {
+			parent.mu.Unlock()
+			s.releaseRuntime(parent)
+			return
+		}
 		previous := parent.agent.MessagesSnapshot()
 		id := "loop-result-" + run.ID
 		present := false

@@ -44,7 +44,7 @@ func rebuildErrorStatus(err error) int {
 
 func mutationError(w http.ResponseWriter, err error) {
 	status := http.StatusInternalServerError
-	if errors.Is(err, session.ErrRevision) {
+	if errors.Is(err, session.ErrRevision) || errors.Is(err, session.ErrRunElsewhere) || errors.Is(err, session.ErrHistoryStale) {
 		status = http.StatusConflict
 	}
 	if errors.Is(err, session.ErrAnchor) || errors.Is(err, session.ErrNotFound) {
@@ -60,6 +60,10 @@ func (s *Server) mutationAllowed(w http.ResponseWriter, rt *runtimeSession) bool
 	}
 	if rt.activeLocked() {
 		writeJSONError(w, 409, "session has an active turn")
+		return false
+	}
+	if run, busy := s.store.ExternalRun(rt.id); busy {
+		writeJSONError(w, 409, (&session.RunElsewhereError{Run: run}).Error())
 		return false
 	}
 	if rt.queue != nil && (len(rt.queue.Items) > 0 || len(rt.queue.Edits) > 0 || rt.queueDispatchID != "") {
@@ -165,7 +169,11 @@ func (s *Server) listSessions(w http.ResponseWriter, r *http.Request) {
 	}
 	out := protocol.SessionPage{Version: protocol.Version, TotalCount: result.Total, Sessions: []protocol.SessionSummary{}, Epoch: result.Epoch, Revision: strconv.FormatUint(result.Revision, 10)}
 	for i, meta := range result.Sessions {
-		out.Sessions = append(out.Sessions, summary(meta, result.MessageCounts[i]))
+		item := summary(meta, result.MessageCounts[i])
+		if i < len(result.ExternalRuns) {
+			item.ExternalRun = externalRunView(result.ExternalRuns[i])
+		}
+		out.Sessions = append(out.Sessions, item)
 	}
 	writeJSON(w, 200, out)
 }

@@ -177,6 +177,9 @@ func (s *Store) Delete(id string) error {
 		} else if err != nil {
 			return err
 		}
+		if err := s.guardExternalRunLocked(id); err != nil {
+			return err
+		}
 		// Keep deletion intent outside the transcript so automatic imports cannot revive it.
 		deletedDir := filepath.Join(s.filesDir, ".deleted-history")
 		if err := os.MkdirAll(deletedDir, 0700); err != nil {
@@ -196,6 +199,8 @@ func (s *Store) Delete(id string) error {
 			}
 		}
 		s.removeSummaryLocked(id)
+		s.removeRunLeaseFilesLocked(id)
+		s.bumpSyncBeacon()
 		return nil
 	})
 }

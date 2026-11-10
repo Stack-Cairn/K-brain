@@ -37,7 +37,12 @@ func (s *Store) TruncateHistory(id string, h *History, cut int) error {
 	if len(h.pending) > 0 || len(h.compactions) > 0 {
 		return fmt.Errorf("save history before rewinding")
 	}
-	err = s.update(id, func(d *sessionData) error {
+	var saved string
+	err = s.updateMessages(id, func(d *sessionData) error {
+		if h.revision != "" && h.revision != d.revision() {
+			return ErrHistoryStale
+		}
+		defer func() { saved = d.revision() }()
 		for seq := range d.Messages {
 			if seq >= boundary {
 				delete(d.Messages, seq)
@@ -61,13 +66,14 @@ func (s *Store) TruncateHistory(id string, h *History, cut int) error {
 	h.refs = slices.Clone(h.refs[:cut])
 	h.raw = slices.DeleteFunc(h.raw, func(seq int) bool { return seq >= boundary })
 	h.next = boundary
+	h.revision = saved
 	return nil
 }
 
 func (s *Store) UndoCompaction(id string, initial []ai.Message) (*History, []ai.Message, error) {
 	var h *History
 	var msgs []ai.Message
-	err := s.update(id, func(d *sessionData) error {
+	err := s.updateMessages(id, func(d *sessionData) error {
 		keys := sortedKeys(d.Compactions)
 		if len(keys) == 0 {
 			return fmt.Errorf("no compaction to undo")

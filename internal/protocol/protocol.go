@@ -86,6 +86,18 @@ type SessionSummary struct {
 	// ForkedFrom names the session this one was branched from; ForkSeq is the last copied message.
 	ForkedFrom string `json:"forked_from,omitempty"`
 	ForkSeq    int    `json:"fork_seq,omitempty"`
+	// ExternalRun is set while another process sharing the data root (the kn
+	// terminal UI, kn run, or another backend) is running a turn in this session
+	// (capability session_external_runs). This backend refuses runs and history
+	// edits for the session until it is cleared.
+	ExternalRun *SessionExternalRun `json:"external_run,omitempty"`
+}
+
+// SessionExternalRun describes a turn running in another process.
+type SessionExternalRun struct {
+	Client    string    `json:"client"`
+	PID       int       `json:"pid,omitempty"`
+	StartedAt time.Time `json:"started_at"`
 }
 
 type Session struct {

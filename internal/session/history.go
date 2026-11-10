@@ -15,6 +15,21 @@ type History struct {
 	next        int
 	pending     map[int]ai.Message
 	compactions []Compaction
+	// revision 是这个 History 最后一次与磁盘同步（加载或保存）时的记录版本。
+	// 另一个进程随后写入消息会让它过期，保存时据此拒绝覆盖。
+	revision string
+}
+
+// HistoryStale 报告磁盘上会话 id 的消息是否已被别处修改，与 h 最后一次加载或保存时不同。
+func (s *Store) HistoryStale(id string, h *History) (bool, error) {
+	if h == nil || h.revision == "" {
+		return false, nil
+	}
+	d, err := s.get(id)
+	if err != nil {
+		return false, err
+	}
+	return d.revision() != h.revision, nil
 }
 
 func (h *History) Clone() *History {
@@ -42,7 +57,7 @@ func (s *Store) History(id string, initial []ai.Message) (*History, []ai.Message
 }
 
 func (d *sessionData) history(initial []ai.Message) (*History, []ai.Message) {
-	h := &History{prefix: len(initial), raw: sortedKeys(d.Messages), pending: map[int]ai.Message{}}
+	h := &History{prefix: len(initial), raw: sortedKeys(d.Messages), pending: map[int]ai.Message{}, revision: d.revision()}
 	if len(h.raw) > 0 {
 		h.next = h.raw[len(h.raw)-1] + 1
 		h.start = h.raw[0]
@@ -127,9 +142,16 @@ func (s *Store) saveHistory(id string, h *History, msgs []ai.Message, model, pro
 	if err := h.Observe(msgs); err != nil {
 		return err
 	}
+	var saved string
 	err := s.update(id, func(d *sessionData) error {
 		if expectedRevision != "" && expectedRevision != d.revision() {
 			return ErrRevision
+		}
+		if err := s.guardExternalRunLocked(id); err != nil {
+			return err
+		}
+		if h.revision != "" && h.revision != d.revision() {
+			return ErrHistoryStale
 		}
 		if usage != nil {
 			d.Meta.setUsage(*usage)
@@ -147,11 +169,16 @@ func (s *Store) saveHistory(id string, h *History, msgs []ai.Message, model, pro
 			d.Compactions[n] = c
 		}
 		raw := d.rawMessages()
-		return saveMessages(d, len(raw), raw, model, provider)
+		if err := saveMessages(d, len(raw), raw, model, provider); err != nil {
+			return err
+		}
+		saved = d.revision()
+		return nil
 	})
 	if err == nil {
 		clear(h.pending)
 		h.compactions = nil
+		h.revision = saved
 	}
 	return err
 }

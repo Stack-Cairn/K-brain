@@ -67,7 +67,7 @@ func (s *Store) CheckpointReferences(id string) (map[int]string, error) {
 
 // TruncateAtSequence removes messages and snapshots at or after seq.
 func (s *Store) TruncateAtSequence(id string, seq int) error {
-	return s.update(id, func(d *sessionData) error {
+	return s.updateMessages(id, func(d *sessionData) error {
 		for current := range d.Messages {
 			if current >= seq {
 				delete(d.Messages, current)

@@ -212,6 +212,10 @@ type runtimeSession struct {
 	mu               sync.Mutex
 	agent            *agent.Agent
 	recorder         *recording.Recorder
+	// runLease is held while a turn or compaction runs, so the kn terminal UI
+	// and other processes sharing the data root cannot run in this session at
+	// the same time (session.Store.AcquireRun).
+	runLease         *session.RunLease
 	cancel           context.CancelFunc
 	checkpoint       *checkpointCapture
 	runID            string
@@ -895,6 +899,9 @@ func (s *Server) sessionViewLocked(rt *runtimeSession) (protocol.Session, error)
 func (s *Server) sessionSnapshotView(rt *runtimeSession, snap session.HistorySnapshot) (protocol.Session, error) {
 	out := protocol.Session{SessionSummary: summary(snap.Meta, len(snap.Messages)), LastSeq: rt.nextSeq, Revision: snap.Revision, Messages: []protocol.Message{}}
 	out.CreatedAt = snap.CreatedAt
+	if run, busy := s.store.ExternalRun(rt.id); busy {
+		out.ExternalRun = externalRunView(&run)
+	}
 	for _, msg := range snap.Messages {
 		out.Messages = append(out.Messages, protocol.FromAIMessage(msg))
 	}
@@ -924,6 +931,68 @@ func summary(meta session.Meta, count int) protocol.SessionSummary {
 		out.ForkedFrom, out.ForkSeq = meta.ForkedFrom, meta.ForkSeq
 	}
 	return out
+}
+
+// backendRunClient names this backend in run leases other processes see.
+const backendRunClient = "backend"
+
+// acquireRunLeaseLocked takes the cross-process run lease for rt and reloads a
+// cached history another process changed since this runtime last saved it, so
+// the run starts from (and later saves on top of) what is on disk.
+func (s *Server) acquireRunLeaseLocked(rt *runtimeSession) (*session.RunLease, int, error) {
+	lease, err := s.store.AcquireRun(rt.id, backendRunClient)
+	if err != nil {
+		if errors.Is(err, session.ErrRunElsewhere) {
+			return nil, http.StatusConflict, err
+		}
+		return nil, http.StatusInternalServerError, err
+	}
+	if err := s.reloadStaleHistoryLocked(rt); err != nil {
+		_ = lease.Release()
+		return nil, http.StatusInternalServerError, err
+	}
+	return lease, 0, nil
+}
+
+func (rt *runtimeSession) releaseRunLeaseLocked() {
+	if rt.runLease != nil {
+		_ = rt.runLease.Release()
+		rt.runLease = nil
+	}
+}
+
+// reloadStaleHistoryLocked replaces the cached conversation when another process
+// (kn) appended to or rewrote the transcript after this runtime loaded it.
+func (s *Server) reloadStaleHistoryLocked(rt *runtimeSession) error {
+	if rt.recorder == nil || rt.agent == nil {
+		return nil
+	}
+	stale, err := rt.recorder.Stale()
+	if err != nil || !stale {
+		return err
+	}
+	previous := rt.agent.MessagesSnapshot()
+	var system []ai.Message
+	for _, message := range previous {
+		if message.Role == protocol.RoleSystem || message.Role == protocol.RoleDeveloper {
+			system = append(system, message)
+		}
+	}
+	rt.agent.RestoreMessages(system)
+	rec, err := recording.Open(s.store, rt.id, rt.agent)
+	if err != nil {
+		rt.agent.RestoreMessages(previous)
+		return fmt.Errorf("reload history changed in another process: %w", err)
+	}
+	rt.recorder = rec
+	return nil
+}
+
+func externalRunView(run *session.ExternalRun) *protocol.SessionExternalRun {
+	if run == nil {
+		return nil
+	}
+	return &protocol.SessionExternalRun{Client: run.Client, PID: run.PID, StartedAt: run.StartedAt}
 }
 
 func (s *Server) loadRuntimeByID(id string) (*runtimeSession, error) {
@@ -1458,6 +1527,7 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, end func(),
 		end()
 		rt.runDone = true
 		rt.cancel = nil
+		rt.releaseRunLeaseLocked()
 		rt.closeJournalLocked()
 		if rec, ok := rt.runs[in.ClientRequestID]; ok {
 			rec.Terminal = true

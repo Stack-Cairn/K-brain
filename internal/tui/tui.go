@@ -157,6 +157,8 @@ type model struct {
 	historyEvents   []compactMsg
 	historyErr      error
 	turnSnapshotSeq *int
+	// runLease is held while a turn runs (session_sync.go).
+	runLease *session.RunLease
 
 	hist     []string
 	images   []pastedImage
@@ -694,6 +696,11 @@ func (m *model) persist() bool {
 	}
 	msgs := m.agent.MessagesSnapshot()
 	if m.sessionID == "" && len(msgs) <= 1 && len(m.historyEvents) == 0 {
+		return true
+	}
+	if m.unchangedHereButElsewhere(msgs) {
+		// Nothing new here, and another process owns or rewrote the messages:
+		// saving would only be refused (or overwrite theirs). The next turn reloads.
 		return true
 	}
 	if err := m.saveHistory(msgs); err != nil {
@@ -1286,6 +1293,9 @@ func (m *model) Update(msg tea.Msg) (_ tea.Model, statusCmd tea.Cmd) {
 
 	case turnDoneMsg:
 		return m.onTurnDone(msg)
+
+	case turnCheckpointMsg:
+		return m.onTurnCheckpoint(msg)
 
 	case catalogsMsg:
 		m.updateCatalogs(msg)

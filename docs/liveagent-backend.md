@@ -484,6 +484,17 @@ MCP 服务器可以在自己的工具运行期间请用户填写一张表单（M
 - 同一个变化游标可以用不同的 `archived` 读取，epoch/revision 与过滤无关；客户端应让快照与之后的 changes 使用同一个取值。
 - 旧后端忽略这个参数，只返回未归档会话；摘要里的 `archived` 在为 `false` 时被省略，客户端按 `false` 处理。
 
+### 其他进程中的回合（`capabilities.session_external_runs: 1`）
+
+`kn` 的 TUI、`kn run` 与后端共用同一个会话目录。同一个会话同一时刻只允许一个进程运行回合：运行期间持有 `sessions/.runs/<id>.lock` 上的操作系统文件锁（进程退出或崩溃时由系统释放），并写 `<id>.json` 说明持有者（`client`、`pid`、`started_at`）。
+
+- 后端的运行（`POST /v1/sessions/{id}/runs`、队列派发、`/compact`）在接受前取得租约；会话正在别处运行时返回 409，错误信息形如 `session is running in kn`。历史编辑、删除等改动消息的请求同样返回 409，存储层也拒绝非持有者的写入。
+- 另一个进程正在运行时，会话摘要（列表、快照、changes 的 `session`、会话详情）带 `external_run: {client, pid?, started_at}`；结束后该字段消失，这两次变化都是一次 `upsert`。后端自己的运行不出现在这个字段里，客户端照常用运行事件。`client` 目前是 `kn`（TUI）、`kn run` 或 `backend`。
+- TUI 在回合开始时（用户消息已在记录中）立即保存一次，之后在每一轮模型请求开始时保存检查点（至少间隔 2 秒），回合结束再完整保存；`kn run` 只在结束时保存。
+- 每次写入会话记录、删除会话、取得或释放租约时，写入进程更新 `sessions/.sync` 计数。有 changes 订阅者时扫描器每 500ms 检查它，变化后立即完整扫描，所以列表约一秒内看到 TUI 的会话和状态变化；不写 `.sync` 的旧版本写入者仍由 30 秒一次的完整扫描兜底。存在外部运行时扫描器每 2 秒探测一次租约，以发现崩溃的进程。
+- 后端缓存的会话运行时在接受新运行（以及写入命令记录、循环结果）前检查记录是否被别的进程改写，若是则从磁盘重新加载，回合接着磁盘上的记录继续；持有过期记录的保存被拒绝（`session history changed in another process`，409），不会覆盖另一个进程写入的消息。TUI 同样在回合开始前重新加载被 LiveAgent 改动过的会话，并重绘对话。
+- 旧后端不报告 `external_run`，只在 30 秒扫描（或 `rescan=1`）时看到 TUI 写入的会话，也不拒绝并发运行；客户端在能力缺失时不显示外部运行状态。
+
 ### 记忆整理计划（`capabilities.memory_organizer_settings: 1`）
 
 后端按计划运行记忆整理器（与 `POST /v1/memory/organizer` 的手动运行相同，trigger 为 `scheduled`）。计划放在 `/v1/settings`，与记忆开关 `memory` 并列：

@@ -37,7 +37,9 @@ type sessionHTTPSnapshot struct {
 }
 
 func summaryView(item session.SummaryItem) protocol.SessionSummary {
-	return summary(item.Meta, item.MessageCount)
+	out := summary(item.Meta, item.MessageCount)
+	out.ExternalRun = externalRunView(item.ExternalRun)
+	return out
 }
 
 func snapshotWorkdirs(items []session.SummaryItem) []protocol.SessionWorkdir {
@@ -317,6 +319,7 @@ func (s *Server) sessionChanges(w http.ResponseWriter, r *http.Request) {
 		item := protocol.SessionChange{ID: change.ID, Revision: strconv.FormatUint(change.Revision, 10), Kind: change.Kind, Listed: listed}
 		if change.Kind == "upsert" {
 			summary := summary(change.Meta, change.MessageCount)
+			summary.ExternalRun = externalRunView(change.ExternalRun)
 			item.Session = &summary
 		}
 		out.Changes = append(out.Changes, item)
