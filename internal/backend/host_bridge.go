@@ -259,7 +259,7 @@ func (b *hostBridge) call(ctx context.Context, tool, command string, args any, o
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := conn.client.Do(req)
 	if err != nil {
-		return hostBridgeTransportError(ctx, callCtx, command, err)
+		return hostBridgeTransportError(ctx, callCtx, conn.base, command, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -268,7 +268,7 @@ func (b *hostBridge) call(ctx context.Context, tool, command string, args any, o
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, hostBridgeMaxResponse+1))
 	if err != nil {
-		return hostBridgeTransportError(ctx, callCtx, command, err)
+		return hostBridgeTransportError(ctx, callCtx, conn.base, command, err)
 	}
 	if len(data) > hostBridgeMaxResponse {
 		return fmt.Errorf("LiveAgent desktop host bridge answer to %s exceeds %d MiB", command, hostBridgeMaxResponse>>20)
@@ -298,12 +298,18 @@ func (b *hostBridge) call(ctx context.Context, tool, command string, args any, o
 
 // hostBridgeTransportError describes a failed request without the URL that
 // net/http errors carry.
-func hostBridgeTransportError(ctx, callCtx context.Context, command string, err error) error {
+func hostBridgeTransportError(ctx, callCtx context.Context, base, command string, err error) error {
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return ctxErr
 	}
 	if errors.Is(callCtx.Err(), context.DeadlineExceeded) {
 		return fmt.Errorf("LiveAgent desktop did not answer %s within %s", command, hostBridgeCallTimeout)
+	}
+	// A desktop that exited while an idle keep-alive connection was pooled fails the
+	// next call with a reset or EOF instead of a dial error; tell it apart from a
+	// desktop that dropped one request by checking whether anything still listens.
+	if hostBridgeConnectionLost(err) && !hostBridgeListening(base) {
+		return fmt.Errorf("%s (host bridge unreachable)", hostBridgeNotConnected)
 	}
 	var urlErr *url.Error
 	if errors.As(err, &urlErr) {
@@ -318,4 +324,29 @@ func hostBridgeTransportError(ctx, callCtx context.Context, command string, err 
 		err = opErr.Err
 	}
 	return fmt.Errorf("LiveAgent desktop host bridge request %s failed: %v", command, err)
+}
+
+// hostBridgeConnectionLost reports a request that failed on an established connection
+// (a reset, broken pipe or early EOF; Windows reports these with its own error codes).
+func hostBridgeConnectionLost(err error) bool {
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+	var opErr *net.OpError
+	return errors.As(err, &opErr) && (opErr.Op == "read" || opErr.Op == "write")
+}
+
+// hostBridgeListening reports whether the registered loopback address still accepts
+// connections. The address is loopback-only (validateHostBridgeURL), so this is quick.
+func hostBridgeListening(base string) bool {
+	u, err := url.Parse(base)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	c, err := net.DialTimeout("tcp", u.Host, 500*time.Millisecond)
+	if err != nil {
+		return false
+	}
+	_ = c.Close()
+	return true
 }
