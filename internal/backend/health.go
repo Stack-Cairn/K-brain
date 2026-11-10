@@ -55,6 +55,12 @@ type healthCapabilities struct {
 	// memoryOrganizer {enabled, intervalHours} and saving it reschedules the
 	// running organizer.
 	MemoryOrganizerSettings int `json:"memory_organizer_settings"`
+	// SessionExternalRuns is 1 where processes sharing the data root (the kn
+	// terminal UI, kn run, this backend) hold a per-session run lease: session
+	// summaries carry external_run while another process runs a turn, runs and
+	// history edits for such a session are refused with 409, and the session
+	// list notices transcript writes from those processes within about a second.
+	SessionExternalRuns int `json:"session_external_runs"`
 }
 
 // healthRunSandboxV1 describes per-run sandboxing (options.sandbox). Clients
@@ -163,6 +169,7 @@ func (s *Server) health() healthResponse {
 			BackgroundTool:          1,
 			SessionArchive:          1,
 			MemoryOrganizerSettings: 1,
+			SessionExternalRuns:     1,
 		},
 		HostBridge: s.hostBridge.status(),
 	}

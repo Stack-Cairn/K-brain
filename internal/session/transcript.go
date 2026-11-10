@@ -247,5 +247,6 @@ func (s *Store) write(d *sessionData) error {
 	if err := os.Rename(f.Name(), path); err != nil {
 		return err
 	}
+	s.bumpSyncBeacon()
 	return s.updateSummaryAfterWriteLocked(d, path)
 }

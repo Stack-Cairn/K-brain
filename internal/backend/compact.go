@@ -102,6 +102,13 @@ func (s *Server) compactSession(w http.ResponseWriter, r *http.Request, id strin
 		writeJSONError(w, http.StatusConflict, "history revision conflict")
 		return
 	}
+	lease, leaseStatus, leaseErr := s.acquireRunLeaseLocked(rt)
+	if leaseErr != nil {
+		rt.mu.Unlock()
+		writeJSONError(w, leaseStatus, leaseErr.Error())
+		return
+	}
+	rt.runLease = lease
 	runID := newRunID()
 	rt.runID = runID
 	rt.runDone = false
@@ -115,6 +122,7 @@ func (s *Server) compactSession(w http.ResponseWriter, r *http.Request, id strin
 		delete(rt.runs, in.ClientRequestID)
 		rt.cancel = nil
 		rt.runDone = true
+		rt.releaseRunLeaseLocked()
 		rt.mu.Unlock()
 		cancel()
 		writeJSONError(w, http.StatusInternalServerError, "persist compaction request: "+err.Error())
@@ -326,6 +334,7 @@ func (s *Server) finishCompaction(rt *runtimeSession, runID, clientRequestID, st
 	}
 	rt.runDone = true
 	rt.cancel = nil
+	rt.releaseRunLeaseLocked()
 	rt.closeJournalLocked()
 	if record, ok := rt.runs[clientRequestID]; ok {
 		record.Terminal = true

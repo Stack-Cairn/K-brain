@@ -125,6 +125,7 @@ func (m *model) onTurnDone(msg turnDoneMsg) (tea.Model, tea.Cmd) {
 		m.appendTurnSummary()
 	}
 	m.persist()
+	m.endSessionRun()
 	m.maybeTitle()
 	m.recordTurnSnapshot(msg)
 

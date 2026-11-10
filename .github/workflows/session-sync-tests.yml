@@ -67,7 +67,11 @@ jobs:
         shell: pwsh
         run: |
           $files = @(
+            'internal/backend/compact.go',
+            'internal/backend/external_run_test.go',
+            'internal/backend/health.go',
             'internal/backend/history.go',
+            'internal/backend/run_start.go',
             'internal/backend/server.go',
             'internal/backend/session_sync.go',
             'internal/backend/session_sync_test.go',
@@ -76,13 +80,18 @@ jobs:
             'internal/privacy/gateway.go',
             'internal/privacy/gateway_stream_test.go',
             'internal/protocol/protocol.go',
+            'internal/session/history.go',
             'internal/session/metadata.go',
+            'internal/session/run_lease.go',
+            'internal/session/run_lease_test.go',
             'internal/session/page.go',
             'internal/session/session.go',
             'internal/session/summary.go',
             'internal/session/summary_test.go',
             'internal/session/summary_review_test.go',
             'internal/session/transcript.go',
+            'internal/tui/session_sync.go',
+            'internal/tui/session_sync_test.go',
             'internal/tui/tasks_test.go'
           )
           $bad = gofmt -l $files
@@ -102,13 +111,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           go test ./internal/privacy -count=1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          go test ./internal/backend -run 'TestSession(Snapshot|Changes)' -count=1
+          go test ./internal/backend -run 'TestSession(Snapshot|Changes)|TestBackendHonoursRunsInAnotherProcess' -count=1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           go test ./internal/acp -run 'Test(ListSessions|SessionListWirePaginationAndProjectFilter)$' -count=1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           go test ./cmd/kn -run 'TestSessionsCLI' -count=1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          go test ./internal/tui -run 'Test(CtrlCBusyInterruptsNotQuits|RunningTaskViewReplaysThenStreams(WithPrivacy)?)$' -count=1
+          go test ./internal/tui -run 'Test(CtrlCBusyInterruptsNotQuits|RunningTaskViewReplaysThenStreams(WithPrivacy)?|CheckpointEventsThrottleRoundStarts|TUITurnIsVisibleToAnotherProcessWhileRunning|TUIRefusesTurnWhileAnotherProcessRuns|TUIReloadsSessionChangedElsewhereBeforeTurn)$' -count=1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Prepare Linux browser sandbox and display
         if: runner.os == 'Linux'
@@ -204,7 +213,7 @@ jobs:
         run: python scripts/prepare-cua.py --target linux-amd64
       - name: Race session summaries (30x)
         if: ${{ !cancelled() }}
-        run: go test -race ./internal/session -run 'Test(Summary|TUIStore)' -count=30 -timeout 30m
+        run: go test -race ./internal/session -run 'Test(Summary|TUIStore|RunLease|HistoryStale)' -count=30 -timeout 30m
       - name: Race blocking task subscriber fixture (30x)
         if: ${{ !cancelled() }}
         run: go test -race ./internal/agent -run '^TestBroadcastBlockingSubscriberCannotDeadlock$' -count=30 -timeout 5m

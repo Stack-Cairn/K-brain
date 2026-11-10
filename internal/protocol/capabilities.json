@@ -202,6 +202,15 @@
       "firstRelease": "v0.107.28",
       "evidenceCommit": "pending",
       "missing": "Hide the organizer schedule setting and never send memoryOrganizer in PUT /v1/settings (an older backend rejects the request with 400 for the unknown field); the organizer runs on the backend's -memory-organizer-interval (default 24h) and changing it needs a restart."
+    },
+    {
+      "name": "session_external_runs",
+      "type": "integer",
+      "compare": "eq",
+      "value": 1,
+      "firstRelease": "v0.107.30",
+      "evidenceCommit": "pending",
+      "missing": "Session summaries never carry external_run and the session list notices sessions the kn terminal UI writes only on its 30-second full scan (or a rescan), after the turn ends; runs started by another process are not refused, so show no external-run indicator and expect no 409 for a session running elsewhere."
     }
   ]
 }

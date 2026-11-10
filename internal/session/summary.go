@@ -32,6 +32,8 @@ type summaryEntry struct {
 	modTime time.Time
 	meta    Meta
 	count   int
+	// external 非空表示另一个进程（kn 或另一个 backend）正在这个会话里运行回合。
+	external *ExternalRun
 }
 
 type summaryChangeEntry struct {
@@ -60,6 +62,11 @@ type summaryState struct {
 	lastRescan   time.Time
 	journalUntil time.Time
 	journalTimer *time.Timer
+	// beacon 是上一次完整扫描开始时 .sync 的状态；lastScan/lastProbe 是上一次
+	// 完整扫描和运行租约探测的时间。
+	beacon    beaconStamp
+	lastScan  time.Time
+	lastProbe time.Time
 }
 
 type SummaryCursor struct {
@@ -71,6 +78,7 @@ type SummaryCursor struct {
 type SummaryItem struct {
 	Meta         Meta
 	MessageCount int
+	ExternalRun  *ExternalRun
 }
 
 type SummarySnapshot struct {
@@ -85,6 +93,7 @@ type SummaryChange struct {
 	Listed       bool
 	Meta         Meta
 	MessageCount int
+	ExternalRun  *ExternalRun
 }
 
 type SummaryChangeRequest struct {
@@ -155,7 +164,35 @@ func summaryProjectionEqual(left, right summaryEntry) bool {
 		left.meta.ForkedFrom == right.meta.ForkedFrom &&
 		left.meta.ForkSeq == right.meta.ForkSeq &&
 		left.meta.TaskID == right.meta.TaskID &&
-		left.count == right.count
+		left.count == right.count &&
+		externalRunEqual(left.external, right.external)
+}
+
+func externalRunEqual(left, right *ExternalRun) bool {
+	if left == nil || right == nil {
+		return left == right
+	}
+	return left.Client == right.Client && left.PID == right.PID && left.StartedAt.Equal(right.StartedAt)
+}
+
+func cloneExternalRun(run *ExternalRun) *ExternalRun {
+	if run == nil {
+		return nil
+	}
+	copied := *run
+	return &copied
+}
+
+// applyExternalRuns 把探测到的外部运行写进条目。
+func applyExternalRuns(entries map[string]summaryEntry, runs map[string]ExternalRun) {
+	for id, entry := range entries {
+		if run, ok := runs[id]; ok {
+			entry.external = &run
+		} else {
+			entry.external = nil
+		}
+		entries[id] = entry
+	}
 }
 
 func newSummaryEpoch() (string, error) {
@@ -243,6 +280,7 @@ func (s *Store) ensureSummariesLocked(ctx context.Context) error {
 	if s.summaries != nil {
 		return nil
 	}
+	beacon := s.syncBeaconStamp()
 	files, err := s.scanSessionFiles()
 	if err != nil {
 		return err
@@ -258,11 +296,13 @@ func (s *Store) ensureSummariesLocked(ctx context.Context) error {
 		}
 		entries[file.id] = entry
 	}
+	applyExternalRuns(entries, s.externalRunsLocked())
 	epoch, err := newSummaryEpoch()
 	if err != nil {
 		return err
 	}
-	s.summaries = &summaryState{epoch: epoch, entries: entries, changes: map[string]summaryChangeEntry{}, notify: make(chan struct{})}
+	now := time.Now()
+	s.summaries = &summaryState{epoch: epoch, entries: entries, changes: map[string]summaryChangeEntry{}, notify: make(chan struct{}), beacon: beacon, lastScan: now, lastProbe: now}
 	return nil
 }
 
@@ -270,6 +310,7 @@ func (s *Store) syncSummariesLocked(ctx context.Context) error {
 	if err := s.ensureSummariesLocked(ctx); err != nil {
 		return err
 	}
+	beacon := s.syncBeaconStamp()
 	files, err := s.scanSessionFiles()
 	if err != nil {
 		return err
@@ -289,6 +330,7 @@ func (s *Store) syncSummariesLocked(ctx context.Context) error {
 		}
 		next[file.id] = entry
 	}
+	applyExternalRuns(next, s.externalRunsLocked())
 	old := s.summaries.entries
 	ids := make([]string, 0, len(old)+len(next))
 	seen := make(map[string]bool, len(old)+len(next))
@@ -310,7 +352,48 @@ func (s *Store) syncSummariesLocked(ctx context.Context) error {
 	s.summaries.entries = next
 	s.summaries.scanErr = nil
 	s.summaries.dirty = false
+	now := time.Now()
+	s.summaries.beacon, s.summaries.lastScan, s.summaries.lastProbe = beacon, now, now
 	return nil
+}
+
+// refreshExternalRunsLocked 只重新探测运行租约（不读会话文件），用于外部回合
+// 进行期间及时发现它结束或进程退出。
+func (s *Store) refreshExternalRunsLocked() {
+	state := s.summaries
+	if state == nil {
+		return
+	}
+	runs := s.externalRunsLocked()
+	ids := make([]string, 0, len(state.entries))
+	for id := range state.entries {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		before := state.entries[id]
+		after := before
+		if run, ok := runs[id]; ok {
+			after.external = &run
+		} else {
+			after.external = nil
+		}
+		if externalRunEqual(before.external, after.external) {
+			continue
+		}
+		s.recordSummaryChangeLocked(id, before, true, after, true)
+		state.entries[id] = after
+	}
+	state.lastProbe = time.Now()
+}
+
+func (state *summaryState) hasExternalRuns() bool {
+	for _, entry := range state.entries {
+		if entry.external != nil {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Store) recordSummaryChangeLocked(id string, before summaryEntry, hadBefore bool, after summaryEntry, hasAfter bool) {
@@ -428,7 +511,7 @@ func (s *Store) updateSummaryAfterWriteLocked(data *sessionData, path string) er
 		return nil
 	}
 	before, hadBefore := s.summaries.entries[data.Meta.ID]
-	after := summaryEntry{path: path, size: info.Size(), modTime: info.ModTime(), meta: cloneMeta(data.Meta), count: len(data.Messages)}
+	after := summaryEntry{path: path, size: info.Size(), modTime: info.ModTime(), meta: cloneMeta(data.Meta), count: len(data.Messages), external: before.external}
 	s.recordSummaryChangeLocked(data.Meta.ID, before, hadBefore, after, true)
 	s.summaries.entries[data.Meta.ID] = after
 	return nil
@@ -482,7 +565,7 @@ func (s *Store) SummarySnapshotFiltered(ctx context.Context, archive ArchiveFilt
 		snapshot.Cursor = summaryCursor(s.summaries)
 		for _, entry := range s.summaries.entries {
 			if archive.Listed(entry.meta, entry.count) {
-				snapshot.Items = append(snapshot.Items, SummaryItem{Meta: cloneMeta(entry.meta), MessageCount: entry.count})
+				snapshot.Items = append(snapshot.Items, SummaryItem{Meta: cloneMeta(entry.meta), MessageCount: entry.count, ExternalRun: cloneExternalRun(entry.external)})
 			}
 		}
 		return nil
@@ -563,7 +646,7 @@ func (s *Store) summaryChangesLocked(request SummaryChangeRequest, force bool) (
 	}
 	for _, candidate := range candidates {
 		change := candidate.change
-		result.Changes = append(result.Changes, SummaryChange{ID: candidate.id, Revision: change.revision, Kind: change.kind, Listed: change.listed, Meta: cloneMeta(change.entry.meta), MessageCount: change.entry.count})
+		result.Changes = append(result.Changes, SummaryChange{ID: candidate.id, Revision: change.revision, Kind: change.kind, Listed: change.listed, Meta: cloneMeta(change.entry.meta), MessageCount: change.entry.count, ExternalRun: cloneExternalRun(change.entry.external)})
 	}
 	result.NextSince = result.Changes[len(result.Changes)-1].Revision
 	return result, true
@@ -582,9 +665,17 @@ func (s *Store) startSummaryScannerLocked() {
 	go s.summaryScanner(stop, done)
 }
 
+// summaryScanner 在有订阅者时发现其他进程写入的会话变化。每个 summaryBeaconPoll
+// 只 stat 一次 .sync：它变了（另一个进程写入了会话或取放了运行租约）才完整扫描；
+// 有外部回合在运行时每 summaryRunProbe 探测一次租约，及时发现回合结束或进程退出；
+// 不写 .sync 的旧版本写入者由每 summaryScanInterval 一次的完整扫描兜底。
 func (s *Store) summaryScanner(stop <-chan struct{}, done chan<- struct{}) {
 	defer close(done)
-	timer := time.NewTimer(s.summaryScanInterval)
+	poll := s.summaryBeaconPoll
+	if poll <= 0 || poll > s.summaryScanInterval {
+		poll = s.summaryScanInterval
+	}
+	timer := time.NewTimer(poll)
 	defer timer.Stop()
 	for {
 		select {
@@ -605,17 +696,32 @@ func (s *Store) summaryScanner(stop <-chan struct{}, done chan<- struct{}) {
 			s.mu.Unlock()
 			return
 		}
+		now := time.Now()
+		full := !now.Before(state.lastScan.Add(s.summaryScanInterval)) || state.scanErr != nil || state.dirty
+		if beacon := s.syncBeaconStamp(); !beacon.equal(state.beacon) {
+			full = true
+		}
+		probe := !full && state.hasExternalRuns() && !now.Before(state.lastProbe.Add(s.summaryRunProbe))
 		s.mu.Unlock()
-		_ = s.withLock(func() error {
-			err := s.syncSummariesLocked(context.Background())
-			if err != nil && s.summaries != nil {
-				s.summaries.scanErr = err
-				close(s.summaries.notify)
-				s.summaries.notify = make(chan struct{})
-			}
-			return nil
-		})
-		timer.Reset(s.summaryScanInterval)
+		if full || probe {
+			_ = s.withLock(func() error {
+				if s.summaries == nil {
+					return nil
+				}
+				if !full {
+					s.refreshExternalRunsLocked()
+					return nil
+				}
+				err := s.syncSummariesLocked(context.Background())
+				if err != nil {
+					s.summaries.scanErr = err
+					close(s.summaries.notify)
+					s.summaries.notify = make(chan struct{})
+				}
+				return nil
+			})
+		}
+		timer.Reset(poll)
 	}
 }
 

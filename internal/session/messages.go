@@ -30,7 +30,7 @@ func saveMessages(d *sessionData, from int, msgs []ai.Message, model, provider s
 }
 
 func (s *Store) Save(id string, from int, msgs []ai.Message, model, provider string) error {
-	return s.update(id, func(d *sessionData) error { return saveMessages(d, from, msgs, model, provider) })
+	return s.updateMessages(id, func(d *sessionData) error { return saveMessages(d, from, msgs, model, provider) })
 }
 
 func (s *Store) Load(idOrPrefix string) (meta Meta, msgs []ai.Message, err error) {
@@ -95,11 +95,11 @@ func (s *Store) LastExchange(id string) (user, assistant string) {
 }
 
 func (s *Store) ClearMessages(id string) error {
-	return s.update(id, func(d *sessionData) error { clear(d.Messages); return nil })
+	return s.updateMessages(id, func(d *sessionData) error { clear(d.Messages); return nil })
 }
 
 func (s *Store) DeleteFrom(id string, from int) error {
-	return s.update(id, func(d *sessionData) error {
+	return s.updateMessages(id, func(d *sessionData) error {
 		for seq := range d.Messages {
 			if seq >= from {
 				delete(d.Messages, seq)
@@ -120,7 +120,7 @@ func (s *Store) ReplaceFrom(id string, from int, msgs []ai.Message, model, provi
 	if from < 0 {
 		return fmt.Errorf("invalid message offset %d", from)
 	}
-	return s.update(id, func(d *sessionData) error {
+	return s.updateMessages(id, func(d *sessionData) error {
 		for seq := range d.Messages {
 			if seq >= from {
 				delete(d.Messages, seq)

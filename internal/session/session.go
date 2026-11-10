@@ -99,11 +99,15 @@ type Store struct {
 	projectScoped        bool
 	summaries            *summaryState
 	summaryScanInterval  time.Duration
+	summaryBeaconPoll    time.Duration
+	summaryRunProbe      time.Duration
 	summaryScanLease     time.Duration
 	summaryCoalesce      time.Duration
 	summarySnapshotLease time.Duration
 	readObserver         func(string)
 	summaryWaitObserver  func()
+	// runLeases 是本进程持有的运行租约（见 run_lease.go）。
+	runLeases map[string]*heldRun
 }
 
 type sessionData struct {
@@ -175,6 +179,8 @@ func Open(dir string) (*Store, error) {
 		filesDir:             root,
 		lock:                 flock.New(filepath.Join(root, ".lock")),
 		summaryScanInterval:  30 * time.Second,
+		summaryBeaconPoll:    500 * time.Millisecond,
+		summaryRunProbe:      2 * time.Second,
 		summaryScanLease:     90 * time.Second,
 		summaryCoalesce:      500 * time.Millisecond,
 		summarySnapshotLease: 60 * time.Second,
@@ -269,9 +275,18 @@ func (s *Store) Close() error {
 		close(s.summaries.notify)
 		s.summaries.notify = make(chan struct{})
 	}
+	leases := make([]*RunLease, 0, len(s.runLeases))
+	for _, held := range s.runLeases {
+		leases = append(leases, held.lease)
+	}
 	s.mu.Unlock()
 	if scannerDone != nil {
 		<-scannerDone
+	}
+	// 关闭仓库时交还仍持有的运行租约，不让锁文件句柄留到进程退出
+	// （Windows 上打开的句柄会阻止删除会话目录）。
+	for _, lease := range leases {
+		_ = lease.Release()
 	}
 	return s.lock.Close()
 }
@@ -291,6 +306,17 @@ func (s *Store) update(id string, fn func(*sessionData) error) error {
 			return err
 		}
 		return s.write(d)
+	})
+}
+
+// updateMessages 是修改会话消息的 update：另一个进程正在这个会话里运行回合时拒绝，
+// 以免覆盖对方即将写入的消息。只改元数据（标题、置顶、归档等）的写入不受影响。
+func (s *Store) updateMessages(id string, fn func(*sessionData) error) error {
+	return s.update(id, func(d *sessionData) error {
+		if err := s.guardExternalRunLocked(d.Meta.ID); err != nil {
+			return err
+		}
+		return fn(d)
 	})
 }
 

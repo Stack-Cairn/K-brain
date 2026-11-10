@@ -36,10 +36,12 @@ type Page struct {
 	// MessageCounts[i] is the stored message count of Sessions[i], read with the
 	// page so callers never reload a transcript just to count its messages.
 	MessageCounts []int
-	Next          *PageCursor
-	Total         int
-	Epoch         string
-	Revision      uint64
+	// ExternalRuns[i] 非空表示另一个进程正在 Sessions[i] 里运行回合。
+	ExternalRuns []*ExternalRun
+	Next         *PageCursor
+	Total        int
+	Epoch        string
+	Revision     uint64
 }
 
 func (s *Store) ListPage(ctx context.Context, options PageOptions) (Page, error) {
@@ -68,8 +70,9 @@ func (s *Store) listPageContext(ctx context.Context, options PageOptions) (Page,
 		archive = ArchiveInclude
 	}
 	type entry struct {
-		meta  Meta
-		count int
+		meta     Meta
+		count    int
+		external *ExternalRun
 	}
 	entries := make([]entry, 0)
 	page := Page{}
@@ -107,7 +110,7 @@ func (s *Store) listPageContext(ctx context.Context, options PageOptions) (Page,
 					continue
 				}
 			}
-			entries = append(entries, entry{meta: cloneMeta(meta), count: cached.count})
+			entries = append(entries, entry{meta: cloneMeta(meta), count: cached.count, external: cloneExternalRun(cached.external)})
 		}
 		page.Epoch = s.summaries.epoch
 		page.Revision = s.summaries.revision
@@ -124,9 +127,10 @@ func (s *Store) listPageContext(ctx context.Context, options PageOptions) (Page,
 	entries = entries[:min(options.Limit, len(entries))]
 	page.Sessions = make([]Meta, len(entries))
 	page.MessageCounts = make([]int, len(entries))
+	page.ExternalRuns = make([]*ExternalRun, len(entries))
 	page.Total = total
 	for i, e := range entries {
-		page.Sessions[i], page.MessageCounts[i] = e.meta, e.count
+		page.Sessions[i], page.MessageCounts[i], page.ExternalRuns[i] = e.meta, e.count, e.external
 	}
 	if hasMore {
 		last := page.Sessions[len(page.Sessions)-1]

@@ -116,6 +116,16 @@ func (s *Server) startCanonicalRunWith(ctx context.Context, rt *runtimeSession, 
 	if rt.activeLocked() {
 		return fail(409, errSessionBusy)
 	}
+	lease, status, err := s.acquireRunLeaseLocked(rt)
+	if err != nil {
+		return fail(status, err.Error())
+	}
+	leaseHanded := false
+	defer func() {
+		if !leaseHanded {
+			_ = lease.Release()
+		}
+	}()
 	// Expand after the idempotency check so a retried request replays even if its
 	// template changed or disappeared in between.
 	if in.PromptCommand {
@@ -202,6 +212,7 @@ func (s *Server) startCanonicalRunWith(ctx context.Context, rt *runtimeSession, 
 	if err := rt.persistRuns(s.eventDir); err != nil {
 		return abort(err)
 	}
+	rt.runLease, leaseHanded = lease, true
 	rt.noteRunAcceptedLocked(ctx, in)
 	rt.leases.Add(1)
 	rt.runWorkers.Add(1)

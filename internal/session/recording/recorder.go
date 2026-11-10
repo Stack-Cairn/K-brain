@@ -82,6 +82,15 @@ func (r *Recorder) Events() agent.Events {
 	}
 }
 
+// Stale reports whether another process changed the transcript after this
+// recorder last loaded or saved it; saving would then be refused.
+func (r *Recorder) Stale() (bool, error) {
+	if r == nil {
+		return false, nil
+	}
+	return r.store.HistoryStale(r.id, r.history)
+}
+
 func (r *Recorder) Save() error {
 	return r.save("")
 }

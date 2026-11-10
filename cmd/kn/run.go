@@ -220,6 +220,13 @@ func runCLI(args []string) (runErr error) {
 				return fmt.Errorf("session initialize: %w", err)
 			}
 		}
+		// Hold the session's run lease for the whole turn so LiveAgent (or the TUI)
+		// does not run in the same session meanwhile.
+		lease, err := store.AcquireRun(sessionID, "kn run")
+		if err != nil {
+			return fmt.Errorf("-resume: %w", err)
+		}
+		defer func() { _ = lease.Release() }()
 		recorder, err = recording.Open(store, sessionID, ag)
 		if err != nil {
 			return fmt.Errorf("session restore: %w", err)

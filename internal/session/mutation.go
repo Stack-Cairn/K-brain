@@ -108,6 +108,11 @@ func (s *Store) MutateHistory(id, messageID, expectedRevision, title string, rep
 		if expectedRevision != "" && expectedRevision != d.revision() {
 			return ErrRevision
 		}
+		if replacement != nil {
+			if err := s.guardExternalRunLocked(id); err != nil {
+				return err
+			}
+		}
 		keys := sortedKeys(d.Messages)
 		anchor := -1
 		for i, seq := range keys {

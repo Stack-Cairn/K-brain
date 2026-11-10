@@ -60,6 +60,11 @@ func (s *Server) handleCommandNote(w http.ResponseWriter, r *http.Request, id st
 		writeJSONError(w, http.StatusConflict, "session runtime is unavailable")
 		return
 	}
+	if err := s.reloadStaleHistoryLocked(rt); err != nil {
+		rt.mu.Unlock()
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	now := time.Now()
 	note := ai.Message{ID: commandNoteID(), Role: "user", Content: command, Authored: true, SentAt: &now}
 	if !s.memoryEnabledNow(rt) {

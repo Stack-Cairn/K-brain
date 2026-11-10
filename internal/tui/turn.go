@@ -89,6 +89,12 @@ func (m *model) submitNotice(text string) (tea.Model, tea.Cmd) {
 func (m *model) submitTurnAs(text string, authored, notice bool) (tea.Model, tea.Cmd) {
 	m.cancelGoalFromContext()
 	m.prepareHistory()
+	if !m.beginSessionRun() {
+		if authored && !notice {
+			m.setComposer(text, len([]rune(text)))
+		}
+		return m, nil
+	}
 	m.turnSnapshotSeq = nil
 	m.busy = true
 	m.turnStart = m.nowFn()
@@ -136,6 +142,10 @@ func (m *model) submitTurnAs(text string, authored, notice bool) (tea.Model, tea
 		}
 	})
 	send := stream.emit
+	checkpointSession, checkpointAgent := m.sessionID, m.agent
+	if m.runLease == nil {
+		checkpointSession = ""
+	}
 
 	go func() {
 		var compactTook, compactKept int
@@ -195,6 +205,9 @@ func (m *model) submitTurnAs(text string, authored, notice bool) (tea.Model, tea
 		}
 		m.toolViewEvents(&events, send)
 		events = statusEvents(events, send)
+		if checkpointSession != "" {
+			events = checkpointEvents(events, checkpointSession, checkpointAgent.MessagesSnapshot, send, time.Now)
+		}
 		var final string
 		var err error
 		switch {
