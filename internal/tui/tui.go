@@ -266,6 +266,7 @@ type model struct {
 	dockOrder []string
 
 	fg         *fgRegistry
+	subRec     *subagentRecorder
 	subAct     map[string]*subActivity
 	subStop    map[string]bool
 	subTicking bool
@@ -401,6 +402,8 @@ func Run(cfg *config.Config, modelName, provName, sysPrompt, resumeID string, ca
 		if st, serr := session.OpenProjectHome(dir); serr == nil {
 			m.store = st
 			defer func() { _ = st.Close() }()
+			// The first agent was wired before the store opened.
+			m.wireTaskRecords()
 
 			if hist, herr := st.UserHistory(500); herr == nil && len(hist) > 0 {
 				for _, h := range slices.Backward(hist) {
@@ -610,9 +613,16 @@ func (m *model) resume(id string) error {
 
 	if tasks, terr := m.store.LoadTasks(meta.ID); terr == nil {
 		for _, st := range tasks {
+			if st.Foreground {
+				// Foreground subagents belong to their tool call, not the task list.
+				continue
+			}
 			status := agent.TaskStatus(st.Status)
 			if status == agent.TaskRunning {
 				status, st.Report = agent.TaskError, "interrupted — k-brain exited before this subagent finished"
+				if m.store.TaskRunningElsewhere(st) {
+					st.Report = "still running in another process when this session was opened"
+				}
 			}
 			m.agent.RestoreTask(agent.BackgroundTask{
 				ID: st.ID, Description: st.Description, Prompt: st.Prompt,
@@ -1552,30 +1562,7 @@ func (m *model) wireTasks() {
 	}
 	m.agent.SetPlanMode(m.permissionMode == "plan")
 
-	st := m.store
-	m.agent.Tasks().OnRecord = func(sessionID string, t *agent.BackgroundTask) {
-		if st == nil || sessionID == "" {
-			return
-		}
-		if err := st.SaveTask(sessionID, session.Task{
-			ID: t.ID, Description: t.Description, Prompt: t.Prompt,
-			Status: string(t.Status), Report: t.Report,
-			StartedAt: t.StartedAt, EndedAt: t.EndedAt,
-		}); err != nil {
-			config.LogEvent("session.task", "save failed: "+err.Error())
-		}
-
-		if t.Status != agent.TaskRunning && t.SubMessages != nil {
-			id, err := st.SaveSubagentTranscript(sessionID, t.ID, t.SubMessages, t.SubModel, "")
-			if err != nil {
-				config.LogEvent("session.task", "transcript save failed: "+err.Error())
-			} else if id != "" {
-
-				u := t.SubUsage
-				_ = st.SetUsage(id, ai.UsageSummary{Total: u, Models: t.SubModelUsage, Subagents: t.SubSubUsage})
-			}
-		}
-	}
+	m.wireTaskRecords()
 	m.agent.Tasks().SetSessionID(m.sessionID)
 	m.agent.SetSessionID(m.sessionID)
 	m.fgReg().clearSettled()
@@ -1604,11 +1591,12 @@ func (m *model) wireProgram() {
 		go m.prog.Send(taskUpdateMsg{})
 	}
 	post := m.poster()
+	rec := m.subRecorder()
 	m.agent.Tasks().OnEvents = func(id string) agent.Events {
-		return agent.Events{
+		return agent.FanIn(agent.Events{
 			OnToolStart: func(_, n, a string) { post(subProgressMsg{id: id, tool: subToolLabel(n, a)}) },
 			OnUsage:     func(u ai.Usage) { post(subProgressMsg{id: id, usage: u}) },
-		}
+		}, rec.events(id))
 	}
 	m.fgReg().setSend(post)
 	m.wireBackgrounding(post)

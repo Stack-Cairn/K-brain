@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Stack-Cairn/K-brain/internal/ai"
 	"github.com/Stack-Cairn/K-brain/internal/protocol"
@@ -132,4 +133,97 @@ func TestBackendHonoursRunsInAnotherProcess(t *testing.T) {
 		t.Fatalf("kn lease after the backend run = %v", err)
 	}
 	_ = again.Release()
+}
+
+// Subagents a kn turn starts are saved in the shared store while they run. The
+// backend lists them as running elsewhere, serves the saved transcript, keeps
+// them running when it loads the session, and reports them cut off once kn's
+// process is gone.
+func TestBackendServesSubagentsRunningInAnotherProcess(t *testing.T) {
+	store, err := session.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	srv, httpServer := newTestServer(t, store, t.TempDir(), &scriptedClient{response: "from backend"})
+	base := httpServer.URL
+	sess := createTestSession(t, base)
+
+	kn, err := session.Open(store.SessionsDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer kn.Close()
+	token, err := kn.TaskLease(sess.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	usage := ai.Usage{PromptTokens: 12, CompletionTokens: 5}
+	started := time.Now().Add(-time.Second)
+	for _, task := range []session.Task{
+		{ID: "foreground-1", Description: "Check the build", Prompt: "check it", Status: "running", StartedAt: started, ParentToolCallID: "call-fg", Foreground: true, ToolCount: 2, Usage: &usage, Lease: token, Model: "fixture-model"},
+		{ID: "survey-2", Description: "Survey docs", Prompt: "survey", Status: "running", StartedAt: started.Add(time.Millisecond), ParentToolCallID: "call-bg", Lease: token},
+	} {
+		if err := kn.SaveTask(sess.ID, task); err != nil {
+			t.Fatal(err)
+		}
+	}
+	child := []ai.Message{{Role: "system", Content: "sys"}, {Role: "user", Content: "check it"}, {Role: "assistant", Content: "looking"}}
+	if _, err := kn.SaveSubagentTranscript(sess.ID, "foreground-1", child, "fixture-model", ""); err != nil {
+		t.Fatal(err)
+	}
+
+	var list protocol.SubagentList
+	getJSON(t, base+"/v1/sessions/"+sess.ID+"/subagents", &list)
+	if len(list.Subagents) != 2 {
+		t.Fatalf("subagents = %+v", list.Subagents)
+	}
+	fg, bg := list.Subagents[0], list.Subagents[1]
+	if fg.ID != "foreground-1" || fg.Status != "running" || !fg.External || fg.Background || fg.ToolCount != 2 || fg.Usage == nil || fg.Usage.InputTokens != 12 || fg.ParentToolCallID != "call-fg" {
+		t.Fatalf("foreground view = %+v", fg)
+	}
+	if bg.ID != "survey-2" || bg.Status != "running" || !bg.External || !bg.Background {
+		t.Fatalf("background view = %+v", bg)
+	}
+	var transcript protocol.SubagentTranscript
+	getJSON(t, base+"/v1/sessions/"+sess.ID+"/subagents/foreground-1", &transcript)
+	if transcript.Live || !transcript.Subagent.External || len(transcript.Messages) != 2 || transcript.Messages[1].Role != protocol.RoleAssistant {
+		t.Fatalf("transcript = live %v %+v", transcript.Live, transcript.Messages)
+	}
+	transcript = protocol.SubagentTranscript{}
+	getJSON(t, base+"/v1/sessions/"+sess.ID+"/subagents/survey-2", &transcript)
+	if len(transcript.Messages) != 1 || transcript.Messages[0].Content[0].Text != "survey" {
+		t.Fatalf("unsaved transcript falls back to the prompt: %+v", transcript.Messages)
+	}
+	resp := postJSON(t, http.DefaultClient, base+"/v1/sessions/"+sess.ID+"/subagents/survey-2/cancel", map[string]any{}, nil)
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusConflict || !strings.Contains(string(body), "another process") {
+		t.Fatalf("cancel = %d %s", resp.StatusCode, body)
+	}
+
+	// Loading the session in the backend must not mark kn's subagents stale.
+	if err := srv.reconcileStaleTasks(sess.ID); err != nil {
+		t.Fatal(err)
+	}
+	tasks, err := store.LoadTasks(sess.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, task := range tasks {
+		if task.Status != "running" {
+			t.Fatalf("backend rewrote kn's running subagent: %+v", task)
+		}
+	}
+
+	if err := kn.Close(); err != nil {
+		t.Fatal(err)
+	}
+	list = protocol.SubagentList{}
+	getJSON(t, base+"/v1/sessions/"+sess.ID+"/subagents", &list)
+	for _, view := range list.Subagents {
+		if view.Status != "cancelled" || view.External {
+			t.Fatalf("subagent of an exited process = %+v", view)
+		}
+	}
 }

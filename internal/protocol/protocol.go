@@ -571,6 +571,10 @@ type Subagent struct {
 	StartedAt  *time.Time `json:"started_at,omitempty"`
 	UpdatedAt  *time.Time `json:"updated_at,omitempty"`
 	EndedAt    *time.Time `json:"ended_at,omitempty"`
+	// External is true while the subagent runs in another process sharing the
+	// session store (a kn terminal). Its events are not streamed; clients poll
+	// the list and the transcript, which that process saves as it goes.
+	External bool `json:"external,omitempty"`
 }
 
 type SubagentEvent struct {
