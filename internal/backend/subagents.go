@@ -366,7 +366,6 @@ func foldSubagents(events []protocol.Event, stored []session.Task) []protocol.Su
 	for _, task := range stored {
 		rec := get(task.ID)
 		view := storedSubagentView(task)
-		view.Background = true
 		if rec.seen {
 			// The journal knows the live details; the store adds what it alone keeps.
 			if rec.view.Description == "" {
@@ -375,7 +374,9 @@ func foldSubagents(events []protocol.Event, stored []session.Task) []protocol.Su
 			if rec.view.ParentToolCallID == "" {
 				rec.view.ParentToolCallID = view.ParentToolCallID
 			}
-			rec.view.Background = true
+			if view.Background {
+				rec.view.Background = true
+			}
 			continue
 		}
 		rec.view = view
@@ -529,13 +530,25 @@ func (s *Server) sessionSubagents(id string) ([]protocol.Event, []protocol.Subag
 		return nil, nil, nil, err
 	}
 	list := foldSubagents(events, stored)
+	elsewhere := map[string]bool{}
+	for _, task := range stored {
+		if s.store.TaskRunningElsewhere(task) {
+			elsewhere[task.ID] = true
+		}
+	}
 	rt := s.loadedRuntime(id)
 	for i := range list {
-		// A subagent only runs inside a loaded runtime; one the journal still
-		// shows running was cut off by a restart.
-		if list[i].Status == string(agent.TaskRunning) && (rt == nil || !rt.subagentLive(list[i].ID)) {
-			list[i].Status = string(agent.TaskCancelled)
+		if list[i].Status != string(agent.TaskRunning) || (rt != nil && rt.subagentLive(list[i].ID)) {
+			continue
 		}
+		if elsewhere[list[i].ID] {
+			// Another process (kn) runs it and saves its progress as it goes.
+			list[i].External = true
+			continue
+		}
+		// A subagent only runs inside a loaded runtime or a process holding its
+		// lease; one still shown running was cut off by a restart.
+		list[i].Status = string(agent.TaskCancelled)
 	}
 	return events, list, rt, nil
 }
@@ -615,7 +628,7 @@ func (s *Server) subagentTranscript(w http.ResponseWriter, id, task string) {
 		}
 	}
 	prompt := subagentPromptFromCall(events, view.ParentToolCallID)
-	if prompt == "" && view.Background {
+	if prompt == "" {
 		if tasks, loadErr := s.store.LoadTasks(id); loadErr == nil {
 			for _, t := range tasks {
 				if t.ID == task {
@@ -699,7 +712,7 @@ func (s *Server) cancelSubagent(w http.ResponseWriter, id, task string) {
 			writeSubagentError(w, err)
 			return
 		}
-		writeJSONError(w, http.StatusConflict, "subagent is not running")
+		writeJSONError(w, http.StatusConflict, s.notRunningHere(id, task))
 		return
 	}
 	defer s.releaseRuntime(rt)
@@ -710,6 +723,23 @@ func (s *Server) cancelSubagent(w http.ResponseWriter, id, task string) {
 	case known:
 		writeJSONError(w, http.StatusConflict, "subagent is not running")
 	default:
+		if msg := s.notRunningHere(id, task); msg != "subagent is not running" {
+			writeJSONError(w, http.StatusConflict, msg)
+			return
+		}
 		writeJSONError(w, http.StatusNotFound, "subagent not found")
 	}
+}
+
+// notRunningHere explains why a subagent this backend does not run cannot be
+// stopped from here.
+func (s *Server) notRunningHere(id, task string) string {
+	if tasks, err := s.store.LoadTasks(id); err == nil {
+		for _, t := range tasks {
+			if t.ID == task && s.store.TaskRunningElsewhere(t) {
+				return "subagent is running in another process; stop it there"
+			}
+		}
+	}
+	return "subagent is not running"
 }

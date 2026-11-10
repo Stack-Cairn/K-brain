@@ -1304,7 +1304,8 @@ func (s *Server) reconcileStaleTasks(id string) error {
 		return err
 	}
 	for _, task := range tasks {
-		if task.Status != string(agent.TaskRunning) {
+		if task.Status != string(agent.TaskRunning) || s.store.TaskRunningElsewhere(task) {
+			// A subagent another process (kn) still runs is not stale.
 			continue
 		}
 		task.Status, task.Report = string(agent.TaskError), staleTaskReport
@@ -1398,7 +1399,7 @@ func subagentView(t agent.BackgroundTask) protocol.Subagent {
 	return view
 }
 func storedSubagentView(t session.Task) protocol.Subagent {
-	view := protocol.Subagent{ID: t.ID, Description: t.Description, Status: t.Status, Report: t.Report, Model: protocol.ModelRef{Model: t.Model, Provider: t.Provider}, ParentToolCallID: t.ParentToolCallID, Background: true, StartedAt: ptrTime(t.StartedAt), EndedAt: ptrTime(t.EndedAt)}
+	view := protocol.Subagent{ID: t.ID, Description: t.Description, Status: t.Status, Report: t.Report, Model: protocol.ModelRef{Model: t.Model, Provider: t.Provider}, ParentToolCallID: t.ParentToolCallID, Background: !t.Foreground, ToolCount: t.ToolCount, Usage: protocol.FromAIUsage(t.Usage), StartedAt: ptrTime(t.StartedAt), EndedAt: ptrTime(t.EndedAt)}
 	if !t.StartedAt.IsZero() && !t.EndedAt.IsZero() {
 		view.DurationMS = t.EndedAt.Sub(t.StartedAt).Milliseconds()
 	}

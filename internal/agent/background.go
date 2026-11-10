@@ -429,6 +429,22 @@ func (r *taskRegistry) refreshTranscript(id string, sub *Agent) {
 	r.OnRecord(r.recordSession(), t)
 }
 
+// Progress returns a running background subagent's transcript and usage so
+// far; ok is false once it is unknown or has no live agent (restored).
+func (r *taskRegistry) Progress(id string) (msgs []ai.Message, usage ai.Usage, ok bool) {
+	r.mu.Lock()
+	t, exists := r.tasks[id]
+	var sub *Agent
+	if exists {
+		sub = t.sub
+	}
+	r.mu.Unlock()
+	if sub == nil {
+		return nil, ai.Usage{}, false
+	}
+	return sub.MessagesSnapshot(), sub.TotalUsage(), true
+}
+
 func (r *taskRegistry) SubscribeWithJournal(id string, ev Events) (events []JournaledEvent, truncated, ok bool) {
 	events, truncated, ok, _ = r.WatchTask(id, ev)
 	return

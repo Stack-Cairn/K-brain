@@ -70,6 +70,14 @@ type Task struct {
 	EndedAt     time.Time `json:"ended_at"`
 	// ParentToolCallID is the parent's subagent tool call that started it.
 	ParentToolCallID string `json:"parent_tool_call_id,omitempty"`
+	// Foreground 标记父回合等待其结束的前台子代理；旧记录没有这个字段，都是后台子代理。
+	Foreground bool `json:"foreground,omitempty"`
+	// ToolCount 和 Usage 是运行它的进程边运行边保存的进度。
+	ToolCount int       `json:"tool_count,omitempty"`
+	Usage     *ai.Usage `json:"usage,omitempty"`
+	// Lease 是运行它的进程持有的子代理租约（见 TaskLease）；backend 自己运行的为空。
+	// 状态为 running 时，租约仍被持有说明它确实还在另一个进程里运行。
+	Lease string `json:"lease,omitempty"`
 }
 
 type Schedule struct {
@@ -108,6 +116,8 @@ type Store struct {
 	summaryWaitObserver  func()
 	// runLeases 是本进程持有的运行租约（见 run_lease.go）。
 	runLeases map[string]*heldRun
+	// taskLeases 是本进程为运行子代理持有的租约，按会话（见 task_lease.go）。
+	taskLeases map[string]*taskLease
 }
 
 type sessionData struct {
@@ -279,6 +289,8 @@ func (s *Store) Close() error {
 	for _, held := range s.runLeases {
 		leases = append(leases, held.lease)
 	}
+	taskLeases := s.taskLeases
+	s.taskLeases = nil
 	s.mu.Unlock()
 	if scannerDone != nil {
 		<-scannerDone
@@ -287,6 +299,9 @@ func (s *Store) Close() error {
 	// （Windows 上打开的句柄会阻止删除会话目录）。
 	for _, lease := range leases {
 		_ = lease.Release()
+	}
+	for _, lease := range taskLeases {
+		lease.release()
 	}
 	return s.lock.Close()
 }

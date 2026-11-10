@@ -129,7 +129,7 @@ func (m *model) submitTurnAs(text string, authored, notice bool) (tea.Model, tea
 	ctx = sandbox.WithPolicy(ctx, m.sandboxPolicy)
 	ctx = m.withAIApproval(ctx, text)
 	fg := m.fgReg()
-	ctx = agent.WithRequestObserver(ctx, fg)
+	ctx = agent.WithRequestObserver(ctx, recordingObserver{fgRegistry: fg, rec: m.subRecorder(), sessionID: m.sessionID})
 	if notice {
 		ctx = agent.WithBackgroundNotice(ctx)
 	}

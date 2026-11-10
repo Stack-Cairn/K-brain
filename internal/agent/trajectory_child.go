@@ -21,6 +21,9 @@ type ChildInfo struct {
 	Model            string
 	Provider         string
 	ParentToolCallID string
+	// Progress returns the subagent's transcript and usage so far; it is safe to
+	// call while the subagent runs, so observers can save live progress.
+	Progress func() ([]ai.Message, ai.Usage)
 }
 
 // ChildResult is what a foreground subagent turn ended with.
@@ -39,7 +42,8 @@ type childRequestObserver interface {
 
 func (a *Agent) observedChildTurn(ctx context.Context, description, prompt string) (string, error) {
 	id := fmt.Sprintf("foreground-%d", taskIDCounter.Add(1))
-	info := ChildInfo{ID: id, Description: description, Prompt: prompt, Model: a.Model, Provider: a.Provider, ParentToolCallID: tools.ToolCallID(ctx)}
+	info := ChildInfo{ID: id, Description: description, Prompt: prompt, Model: a.Model, Provider: a.Provider, ParentToolCallID: tools.ToolCallID(ctx),
+		Progress: func() ([]ai.Message, ai.Usage) { return a.MessagesSnapshot(), a.TotalUsage() }}
 	ctx = withRequestTask(ctx, id)
 	parent := ctx
 	ctx, stop := context.WithCancelCause(ctx)
