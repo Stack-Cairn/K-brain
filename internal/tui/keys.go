@@ -79,6 +79,10 @@ func (m *model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return r, cmd
 	}
 
+	if msg.String() == "alt+t" {
+		m.toggleTopPanel()
+		return m, nil
+	}
 	switch msg.Type {
 	case tea.KeyCtrlG:
 		return m, m.openPromptEditor()

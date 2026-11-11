@@ -87,6 +87,7 @@ var asciiChrome = strings.NewReplacer(
 	"❯", ">", "◌", "~", "◇", "o", "◆", "*", "⋯", "...", "✓", "v", "✗", "x",
 	"…", "...", "·", "-", "—", "-", "→", "->", "←", "<-", "↑", "Up", "↓", "Down",
 	"│", "|", "└", "`", "▌", "|", "▰", "#", "▱", "-", "⇣", "v", "◐", "o", "−", "-", "×", "x", "○", "o",
+	"▸", ">", "▾", "v", "☰", "=", "✻", "*",
 )
 
 // chromeGlyphs is s with chrome glyphs swapped for ASCII when that mode is on.

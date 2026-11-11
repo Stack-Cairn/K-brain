@@ -15,7 +15,7 @@ func (m *model) layout() {
 	if m.taskVP != nil {
 		m.refreshTaskVP()
 	}
-	m.measureDock()
+	m.measureTopPanel()
 
 	chrome := m.fixedChrome()
 	// The live area (the reply or thinking still streaming) is not a chrome
@@ -28,20 +28,6 @@ func (m *model) layout() {
 	if m.vp.Width != w || m.vp.Height != h {
 		m.vp.Width, m.vp.Height = w, h
 		m.refreshVP()
-	}
-}
-
-// measureDock renders the subagent dock once to learn its height, which the
-// "dock" chrome section and dockTop read back.
-func (m *model) measureDock() {
-	m.dockRows = 0
-	if dock := m.tasksDock(); dock != "" {
-		m.dockRows = lipgloss.Height(dock)
-
-		m.dockSkip = 0
-		if m.tasksFocus {
-			m.dockSkip++
-		}
 	}
 }
 
@@ -98,8 +84,9 @@ var chromeSectionList = []chromeSection{
 		}
 		return lipgloss.Height(m.menuView()) + 1
 	}},
-	// Set by measureDock during layout.
-	{"dock", func(m *model) int { return m.dockRows }},
+	// The top panel above the transcript, subagent rows included; set by
+	// measureTopPanel during layout (top_panel.go).
+	{"topPanel", (*model).topPanelRows},
 	{"quitArm", func(m *model) int {
 		if !m.quit1 {
 			return 0
@@ -113,8 +100,6 @@ var chromeSectionList = []chromeSection{
 		return 1
 	}},
 	{"composerPanel", (*model).composerPanelRows},
-	// The plan pane above the composer (todo_pane.go).
-	{"todo", (*model).todoPaneRows},
 	{"transcriptBar", (*model).transcriptBarRows},
 	{"usage", (*model).usageCardRows},
 	// The plan review card (plan_view.go).
@@ -158,21 +143,20 @@ func (m *model) liveAreaRows() int {
 	return 0
 }
 
+// dockTop is the screen row of the first subagent row in the top panel.
 func (m *model) dockTop() int {
-	bottom := m.height
-	if m.viewH > 0 {
-		bottom = m.viewTop + m.viewH
-	}
-	return bottom - fixedFrameRows - m.dockRows + m.dockSkip
+	return m.viewTop + m.tp.dockOff + m.dockSkip
 }
 
-// padAboveTranscript inserts n blank rows at the very top of the frame, moving
-// every row offset down with it.
+// padAboveTranscript inserts n blank rows at the top of the transcript, under
+// the top panel, moving every row offset below it down.
 func (m *model) padAboveTranscript(v string, n int) string {
 	if n <= 0 {
 		return v
 	}
-	v = strings.Repeat("\n", n) + v
+	lines := strings.Split(v, "\n")
+	at := min(m.tp.drawn, len(lines))
+	v = strings.Join(slices.Concat(lines[:at], make([]string, n), lines[at:]), "\n")
 	m.composerTop += n
 	m.inputBodyOff += n
 	m.viewportTop += n
@@ -209,9 +193,15 @@ func (m *model) View() string {
 	v := m.viewBody()
 
 	// An empty transcript leaves blank rows at the top of the body. Drop them so
-	// the banner really is the first row on screen.
-	if lead := len(v) - len(strings.TrimLeft(v, "\n")); lead > 0 {
-		v = v[lead:]
+	// the banner really is the first row on screen (under the top panel).
+	panel, body := "", v
+	if m.tp.drawn > 0 {
+		if lines := strings.SplitAfterN(v, "\n", m.tp.drawn+1); len(lines) > m.tp.drawn {
+			panel, body = strings.Join(lines[:m.tp.drawn], ""), lines[m.tp.drawn]
+		}
+	}
+	if lead := len(body) - len(strings.TrimLeft(body, "\n")); lead > 0 {
+		v = panel + body[lead:]
 		m.inputBodyOff -= lead
 		m.composerTop -= lead
 		m.effortRow -= lead
@@ -226,7 +216,10 @@ func (m *model) View() string {
 		if dropped := m.viewH - m.height; dropped > 0 {
 			// Once the frame outgrows the terminal it clips from the top, which
 			// pins the composer to the bottom exactly as a full screen should.
-			v = strings.Join(strings.Split(v, "\n")[dropped:], "\n")
+			// The top panel stays; the rows go from just under it.
+			lines := strings.Split(v, "\n")
+			at := min(m.tp.drawn, max(len(lines)-dropped, 0))
+			v = strings.Join(slices.Concat(lines[:at], lines[at+dropped:]), "\n")
 			m.inputBodyOff -= dropped
 			m.composerTop -= dropped
 			m.effortRow -= dropped
@@ -294,6 +287,7 @@ func (m *model) View() string {
 
 func (m *model) viewBody() string {
 	var b strings.Builder
+	m.tp.drawn = 0
 	m.viewportTop, m.viewportRows = 0, 0
 	m.queueOff, m.queueShown = 0, false
 	m.effortRow, m.effortX = -1, 0
@@ -323,6 +317,9 @@ func (m *model) viewBody() string {
 		return s
 	}
 
+	panel := m.topPanelSection()
+	m.tp.drawn = strings.Count(panel, "\n")
+	b.WriteString(panel)
 	viewport := m.viewportView()
 	m.viewportTop = strings.Count(b.String(), "\n")
 	if viewport != "" {
@@ -348,7 +345,6 @@ func (m *model) viewBody() string {
 	}
 	b.WriteString(m.planSection())
 	b.WriteString(m.elicitSection())
-	b.WriteString(m.todoPaneSection())
 	b.WriteString(m.usageCardBlock())
 	if m.busy {
 		b.WriteString("\n" + m.busyRow() + "\n")
@@ -397,9 +393,6 @@ func (m *model) viewBody() string {
 	}
 	b.WriteString(m.composerPanel())
 
-	if dock := m.tasksDock(); dock != "" {
-		b.WriteString("\n" + dock)
-	}
 	hints, chipX := m.footerHintsAt()
 
 	b.WriteString("\n")

@@ -113,7 +113,7 @@ func (m *model) taskDockRow(task agent.BackgroundTask, selected bool) string {
 
 func (m *model) taskViewChromeRows() int {
 	const detailHeaderRows, composerRows, footerRows = 2, 1, 2
-	return m.vpTopRows() + detailHeaderRows + composerRows + kbrainPromptFrame().GetVerticalFrameSize() + footerRows
+	return detailHeaderRows + composerRows + kbrainPromptFrame().GetVerticalFrameSize() + footerRows
 }
 
 func (m *model) taskViewView() string {
@@ -150,6 +150,9 @@ func (m *model) taskViewView() string {
 	switch {
 	case foreground:
 		tv.input.Placeholder = m.tr("foreground subagent — read-only; its report returns to the turn")
+		if task.Status == agent.TaskRunning {
+			hint += m.tr(" · Ctrl+X Cancel")
+		}
 	case task.Restored:
 		tv.input.Placeholder = m.tr("restored session — read-only")
 	case task.FollowingUp:

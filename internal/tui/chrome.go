@@ -154,7 +154,7 @@ func (m *model) statusLeft() string {
 		return dimStyle.Render(line)
 	}
 	left := m.git.render()
-	if m.goal != "" {
+	if m.goal != "" && !m.topPanelShown() {
 		if left != "" {
 			left += "  "
 		}
@@ -185,7 +185,7 @@ func (m *model) footerStats() string {
 	if !m.follow && !m.vp.AtBottom() {
 		parts = append(parts, fmt.Sprintf("↑ %d%%", int(m.vp.ScrollPercent()*100)))
 	}
-	if n := m.runningSubagents(); n > 0 {
+	if n := m.runningSubagents(); n > 0 && !m.topPanelShown() {
 		parts = append(parts, fmt.Sprintf("⚙ %d sub", n))
 	}
 	return strings.Join(parts, " · ")

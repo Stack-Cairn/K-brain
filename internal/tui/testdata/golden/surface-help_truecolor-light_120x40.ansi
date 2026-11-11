@@ -1,4 +1,4 @@
-[38;2;21;127;104m❯[0m [1mKeyboard shortcuts[0m                                                                                               [38;2;92;97;105m1/82[0m
+[38;2;21;127;104m❯[0m [1mKeyboard shortcuts[0m                                                                                               [38;2;92;97;105m1/83[0m
   [1;38;2;21;127;104m[Keys][0m [38;2;104;110;118m Commands [0m
   [38;2;21;127;104m/[0m [38;2;92;97;105mtype to filter[0m
 [38;2;213;218;222m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
@@ -6,6 +6,7 @@
 [1;38;2;21;127;104;48;2;232;236;240m❯ Shift+Tab                          cycle the permission mode                                                         [0m
   Ctrl+K                             [38;2;58;63;70mclear the conversation[0m[38;2;92;97;105m[0m
   Ctrl+T                             [38;2;58;63;70mfocus the subagent dock[0m[38;2;92;97;105m[0m
+  Alt+T                              [38;2;58;63;70mexpand or collapse the top panel (goal, plan, subagents); a click on its header …[0m[38;2;92;97;105m[0m
   Ctrl+O                             [38;2;58;63;70mshow or hide thinking tokens[0m[38;2;92;97;105m[0m
   Ctrl+E                             [38;2;58;63;70mexpand the last tool result[0m[38;2;92;97;105m[0m
   Ctrl+G                             [38;2;58;63;70medit the draft in an external editor[0m[38;2;92;97;105m[0m
@@ -30,8 +31,7 @@
   Ctrl+U                             [38;2;58;63;70mcut to the start of the line[0m[38;2;92;97;105m[0m
   Alt+K                              [38;2;58;63;70mcut to the end of the line[0m[38;2;92;97;105m[0m
   Alt+D                              [38;2;58;63;70mcut the next word[0m[38;2;92;97;105m[0m
-  Ctrl+Y                             [38;2;58;63;70mpaste the last cut text[0m[38;2;92;97;105m[0m
-[38;2;92;97;105m  ↓ 56 more[0m
+[38;2;92;97;105m  ↓ 57 more[0m
 [38;2;213;218;222m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [1mShift+Tab[0m  [38;2;58;63;70mcycle the permission mode[0m
   [38;2;92;97;105mShift+Tab — cycle Normal / Plan / Auto review / Always allow[0m

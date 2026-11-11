@@ -1,4 +1,4 @@
-> Keyboard shortcuts                                                                                               1/82
+> Keyboard shortcuts                                                                                               1/83
   [Keys]  Commands
   / type to filter
 ------------------------------------------------------------------------------------------------------------------------
@@ -6,6 +6,7 @@
 > Shift+Tab                                 cycle the permission mode
   Ctrl+K                                    clear the conversation
   Ctrl+T                                    focus the subagent dock
+  Alt+T                                     expand or collapse the top panel (goal, plan, subagents); a click on it...
   Ctrl+O                                    show or hide thinking tokens
   Ctrl+E                                    expand the last tool result
   Ctrl+G                                    edit the draft in an external editor
@@ -30,8 +31,7 @@
   Ctrl+U                                    cut to the start of the line
   Alt+K                                     cut to the end of the line
   Alt+D                                     cut the next word
-  Ctrl+Y                                    paste the last cut text
-  Down 56 more
+  Down 57 more
 ------------------------------------------------------------------------------------------------------------------------
   Shift+Tab  cycle the permission mode
   Shift+Tab - cycle Normal / Plan / Auto review / Always allow

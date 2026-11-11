@@ -492,65 +492,6 @@ func todoList(statuses ...string) []agent.Todo {
 	return out
 }
 
-func TestTodoPaneShowsPlan(t *testing.T) {
-	m := compactCmdModel()
-	m.Update(mkWinSize(80, 40))
-	if m.todoPaneView() != "" || m.todoPaneRows() != 0 {
-		t.Fatal("no plan, no pane")
-	}
-	m.agent.Todos = todoList("completed", "completed", "in_progress", "pending", "pending", "pending", "pending")
-	pane := ansi.Strip(m.todoPaneView())
-	for _, want := range []string{"Plan  2/7", glyphs.OK + " Step number 2", "◐ Step number 3", "○ Step number 4", glyphs.Fold + " 1 more"} {
-		if !strings.Contains(pane, want) {
-			t.Fatalf("pane missing %q:\n%s", want, pane)
-		}
-	}
-	if strings.Contains(pane, "Step number 1") {
-		t.Fatalf("the pane should start one before the current step:\n%s", pane)
-	}
-	if got, want := m.todoPaneRows(), strings.Count(pane, "\n")+2; got != want {
-		t.Fatalf("rows = %d, want %d", got, want)
-	}
-	view := ansi.Strip(m.View())
-	if !strings.Contains(view, "Plan  2/7") {
-		t.Fatalf("the pane should be drawn above the composer:\n%s", view)
-	}
-	if lines := strings.Split(view, "\n"); len(lines) > 40 {
-		t.Fatalf("view is %d rows on a 40-row screen", len(lines))
-	}
-
-	// Short terminals get one row naming the current step.
-	m.Update(mkWinSize(80, 16))
-	if pane := ansi.Strip(m.todoPaneView()); strings.Contains(pane, "\n") || !strings.Contains(pane, "Plan  2/7 · Step number 3") {
-		t.Fatalf("short pane: %q", pane)
-	}
-
-	// All done: hidden between turns, kept for the rest of a turn.
-	m.agent.Todos = todoList("completed", "cancelled")
-	if m.todoPaneView() != "" {
-		t.Fatal("a finished plan should hide between turns")
-	}
-}
-
-func TestTodoPaneFollowsTodosMsg(t *testing.T) {
-	m := compactCmdModel()
-	m.Update(mkWinSize(80, 40))
-	m.busy = true
-	m.Update(todosMsg{agent: m.agent, items: todoList("in_progress", "pending")})
-	if pane := ansi.Strip(m.todoPaneView()); !strings.Contains(pane, "Plan  0/2") {
-		t.Fatalf("pane should follow the reported plan: %q", pane)
-	}
-	m.Update(todosMsg{agent: m.agent, items: todoList("completed", "completed")})
-	if pane := ansi.Strip(m.todoPaneView()); !strings.Contains(pane, "Plan  2/2") {
-		t.Fatalf("a finished plan stays for the rest of the turn: %q", pane)
-	}
-	// A message from a replaced agent is ignored.
-	m.Update(todosMsg{agent: &agent.Agent{}, items: todoList("pending")})
-	if pane := ansi.Strip(m.todoPaneView()); !strings.Contains(pane, "Plan  2/2") {
-		t.Fatalf("stale agent's plan should be ignored: %q", pane)
-	}
-}
-
 func TestTodoCallsHiddenFromTranscript(t *testing.T) {
 	m := compactCmdModel()
 	m.Update(mkWinSize(80, 30))
@@ -577,26 +518,6 @@ func TestTodoCallsHiddenFromTranscript(t *testing.T) {
 	for i := range m2.blocks {
 		if m2.blocks[i].toolName == "todowrite" {
 			t.Fatal("a resumed todowrite call should stay hidden")
-		}
-	}
-}
-
-func TestTodoPaneASCII(t *testing.T) {
-	restore := useProfile(t, goldenModes[5].profile, true)
-	defer restore()
-	setASCIIGlyphs(true)
-	m := compactCmdModel()
-	m.Update(mkWinSize(80, 40))
-	m.agent.Todos = todoList("completed", "in_progress", "pending", "cancelled")
-	pane := ansi.Strip(m.todoPaneView())
-	for _, want := range []string{"[x] Step number 1", "[>] Step number 2", "[ ] Step number 3", "[-] Step number 4"} {
-		if !strings.Contains(pane, want) {
-			t.Fatalf("ascii pane missing %q:\n%s", want, pane)
-		}
-	}
-	for _, r := range pane {
-		if r > 0x7e {
-			t.Fatalf("ascii pane contains %q", r)
 		}
 	}
 }

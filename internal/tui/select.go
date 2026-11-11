@@ -26,7 +26,7 @@ func (m *model) selPoint(x, y int, clamp bool) (selPos, bool) {
 	if len(m.blocks) == 0 || m.viewH == 0 || m.viewportRows == 0 {
 		return selPos{}, false
 	}
-	if !clamp && (y < max(m.viewportTop, 0) || y >= m.viewportTop+m.viewportRows || x < 0 || x >= m.width) {
+	if !clamp && (y < max(m.viewportTop, m.viewTop+m.vpTopRows(), 0) || y >= m.viewportTop+m.viewportRows || x < 0 || x >= m.width) {
 		return selPos{}, false
 	}
 	row := y - m.viewTop - m.vpTopRows() + m.vp.YOffset + m.vpLead

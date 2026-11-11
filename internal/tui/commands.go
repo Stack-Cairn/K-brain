@@ -64,6 +64,15 @@ func (m *model) command(text string) (tea.Model, tea.Cmd) {
 		m.imageSeq = 0
 		m.agent.Tasks().SetSessionID("")
 		m.agent.SetSessionID("")
+		// The new session starts without the old one's plan or finished
+		// subagents; running ones stay until they settle.
+		m.agent.Todos = nil
+		m.agent.Tasks().ClearSettled()
+		m.fgReg().clearSettled()
+		m.subAct, m.subStop = nil, nil
+		m.closeTaskView()
+		m.tasksFocus, m.taskExpanded = false, false
+		m.resetTopPanel()
 		m.saved = 1
 	case "/permissions":
 		m.permissionCommand(fields[1:])

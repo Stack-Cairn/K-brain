@@ -56,6 +56,7 @@ var keymap = []keyBinding{
 	{"space", keyDock, "dockPreview", ""},
 	{"enter", keyDock, "dockOpen", ""},
 	{"ctrl+x", keyDock, "dockStop", ""},
+	{"alt+t", keyGlobal, "topPanelToggle", "Alt+T — expand or collapse the top panel (goal, plan, subagents); a click on its header does the same"},
 	{"enter", keyTaskView, "taskSend", "in a subagent view: Enter steers or follows up, Ctrl+X stops, PgUp/PgDn scroll, Esc returns"},
 	{"ctrl+x", keyTaskView, "taskStop", ""},
 	{"pgup", keyTaskView, "taskScroll", ""},

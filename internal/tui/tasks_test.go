@@ -366,34 +366,26 @@ func TestDockClickSelectsClickedRow(t *testing.T) {
 	}
 
 	m.layout()
-	m2 := click(m.dockTop()).(*model)
-	if !m2.tasksFocus || m2.taskVP != nil {
-		t.Fatalf("first click should focus, not open: focus=%v vp=%+v", m2.tasksFocus, m2.taskVP)
+	m.View()
+	m2 := click(m.dockTop() + 1).(*model)
+	if m2.taskVP == nil || m2.taskSel != 1 || m2.taskVP.id != m2.dockList()[1].ID {
+		t.Fatalf("a click on a subagent row in the top panel should open that subagent: sel=%d vp=%+v", m2.taskSel, m2.taskVP)
 	}
 	m = m2
 
-	m.layout()
-	stripTop := m.height - fixedFrameRows - m.dockRows
-	m2 = click(stripTop + 2).(*model)
-	if m2.taskSel != 1 || !m2.taskExpanded {
-		t.Fatalf("clicking the second task row should select+expand it: sel=%d expanded=%v", m2.taskSel, m2.taskExpanded)
-	}
-	m = m2
-
-	tm, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	tm, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = tm.(*model)
-	if m.taskVP == nil || m.taskVP.id != t1.ID {
-		t.Fatalf("enter should open %s, got %+v", t1.ID, m.taskVP)
+	if m.taskVP != nil || !m.tasksFocus {
+		t.Fatalf("esc should return from the subagent to the focused panel: vp=%+v focus=%v", m.taskVP, m.tasksFocus)
 	}
-	m.taskVP = nil
-	m.tasksFocus = true
-
-	m2 = click(stripTop).(*model)
+	m.View()
+	m2 = click(m.viewTop + m.tp.drawn - 1).(*model)
 	if m2.taskVP != nil {
-		t.Fatal("clicking the hint row should not open a task")
+		t.Fatal("clicking the panel's closing rule should not open a task")
 	}
-	if !m2.tasksFocus {
-		t.Fatal("clicking near the dock keeps it focused")
+	m2 = click(m.viewTop).(*model)
+	if m2.panelExpanded() || m2.tasksFocus {
+		t.Fatalf("clicking the panel header should fold it: expanded=%v focus=%v", m2.panelExpanded(), m2.tasksFocus)
 	}
 }
 
@@ -458,10 +450,13 @@ func TestTaskViewReplaysJournal(t *testing.T) {
 		t.Fatal("a settled task's view should not subscribe to events")
 	}
 	view := stripAll(m.taskViewView())
-	for _, want := range []string{"⚒ read", "the final report", "done:"} {
+	for _, want := range []string{"⚒ Read(/tmp/x)", "the final report", "done"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("replayed view missing %q:\n%s", want, view)
 		}
+	}
+	if strings.Count(view, "the final report") != 1 || strings.Contains(view, `{"path"`) {
+		t.Fatalf("the report streamed as the last text must not repeat, nor the raw arguments show:\n%s", view)
 	}
 }
 
@@ -564,7 +559,7 @@ func TestTasksDockShowsSettledTasks(t *testing.T) {
 	}
 }
 
-func TestLayoutReservesDockHeight(t *testing.T) {
+func TestLayoutReservesTopPanelHeight(t *testing.T) {
 	srv := sseTextServer(t, "ok")
 	defer srv.Close()
 	m := tasksModel(srv.URL)
@@ -579,25 +574,27 @@ func TestLayoutReservesDockHeight(t *testing.T) {
 	if dockRows != 1 {
 		t.Fatalf("one unfocused task should be one dock row, got %d", dockRows)
 	}
-	if m.vp.Height != base-dockRows {
-		t.Fatalf("viewport should shrink by exactly the dock rows: base=%d now=%d dock=%d", base, m.vp.Height, dockRows)
+	// The running subagent opens the top panel: its header, the row, and the
+	// closing rule.
+	if m.tp.rows != dockRows+2 || m.vp.Height != base-m.tp.rows {
+		t.Fatalf("viewport should shrink by exactly the panel rows: base=%d now=%d panel=%d", base, m.vp.Height, m.tp.rows)
 	}
 
 	v := stripAll(m.View())
 	di := strings.Index(v, "probe")
 	ii := strings.Index(v, "Ask k-brain")
-	if di < 0 || ii < 0 || di < ii {
-		t.Fatalf("dock must render below the input: dock@%d input@%d\n%s", di, ii, v)
+	if di < 0 || ii < 0 || di > ii {
+		t.Fatalf("the subagent row must render in the top panel, above the input: row@%d input@%d\n%s", di, ii, v)
 	}
-	if m.dockTop() < 0 || m.dockTop() >= m.height {
-		t.Fatalf("dockTop out of screen: %d (height %d)", m.dockTop(), m.height)
+	if lines := strings.Split(v, "\n"); m.dockTop() < 0 || m.dockTop() >= len(lines) || !strings.Contains(lines[m.dockTop()], "probe") {
+		t.Fatalf("dockTop %d does not point at the painted row:\n%s", m.dockTop(), v)
 	}
 
 	m.tasksFocus = true
 	tm, _ = m.Update(taskUpdateMsg{})
 	m = tm.(*model)
-	if m.vp.Height != base-dockRows-1 {
-		t.Fatalf("focused dock should cost the hint row too: %d vs %d", m.vp.Height, base-dockRows-1)
+	if m.tp.rows != dockRows+3 || m.vp.Height != base-m.tp.rows {
+		t.Fatalf("focused rows should cost the hint row too: panel=%d viewport=%d base=%d", m.tp.rows, m.vp.Height, base)
 	}
 }
 
@@ -645,7 +642,7 @@ func TestDockScrollsWithSelection(t *testing.T) {
 	}
 }
 
-func TestDockMouseClickExpandsTask(t *testing.T) {
+func TestPanelClickOpensSubagent(t *testing.T) {
 	srv := sseTextServer(t, "ok")
 	defer srv.Close()
 	m := tasksModel(srv.URL)
@@ -660,34 +657,16 @@ func TestDockMouseClickExpandsTask(t *testing.T) {
 		t.Fatalf("want 2 dock tasks, got %d", n)
 	}
 
+	m.View()
 	tm, _ := m.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: 5, Y: top})
 	m = tm.(*model)
-	if !m.tasksFocus || m.taskSel != 0 {
-		t.Fatalf("first click should focus the dock on row 0: focus=%v sel=%d", m.tasksFocus, m.taskSel)
+	if m.taskVP == nil || m.taskVP.id != m.dockList()[0].ID {
+		t.Fatalf("a click on the first row should open that subagent, got %+v", m.taskVP)
 	}
-	if m.taskVP != nil {
-		t.Fatalf("first click must not open the detail view, got %+v", m.taskVP)
-	}
+	m.closeTaskView()
 
-	tm, _ = m.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: 5, Y: m.dockTop() + 1})
-	m = tm.(*model)
-	if m.taskSel != 1 || !m.taskExpanded {
-		t.Fatalf("second click should select+expand row 1: sel=%d expanded=%v", m.taskSel, m.taskExpanded)
-	}
-	if m.taskVP != nil {
-		t.Fatalf("click should expand inline, not open the detail view: %+v", m.taskVP)
-	}
-
-	if dock := stripAll(m.tasksDock()); !strings.Contains(dock, "first") {
-		t.Fatalf("expanded dock should render the selected task's detail, got %q", dock)
-	}
-
-	tm, _ = m.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: 5, Y: m.dockTop() + 1})
-	m = tm.(*model)
-	if m.taskExpanded {
-		t.Fatal("clicking the expanded row should collapse it")
-	}
-
+	m.tasksFocus = true
+	m.taskSel = 1
 	tm, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = tm.(*model)
 	if m.taskVP == nil || m.taskVP.id != t1.ID {
@@ -720,7 +699,7 @@ func TestTaskEventAppendsToOpenView(t *testing.T) {
 	m = tm.(*model)
 
 	buf := m.taskVP.buf.String()
-	for _, want := range []string{"streamed text", "⚒ bash", "file1"} {
+	for _, want := range []string{"streamed text", "⚒ Bash(ls)", "file1"} {
 		if !strings.Contains(stripAll(buf), want) {
 			t.Fatalf("open view transcript missing %q: %q", want, stripAll(buf))
 		}
@@ -865,7 +844,7 @@ func TestSteeredMessageRendersAsUser(t *testing.T) {
 	}
 }
 
-func TestSettledTasksLingerUntilUserMessage(t *testing.T) {
+func TestSettledTasksStayReachable(t *testing.T) {
 	srv := sseTextServer(t, "ok")
 	defer srv.Close()
 	m := tasksModel(srv.URL)
@@ -885,8 +864,8 @@ func TestSettledTasksLingerUntilUserMessage(t *testing.T) {
 	task2 := m2.agent.StartBackground("another probe", "p", agent.SubModel{})
 	waitSettled(t, task2)
 	m2.submitTurn("what's next?", true)
-	if len(m2.dockTasks()) != 0 {
-		t.Fatalf("a user message should sweep settled tasks, got %d", len(m2.dockTasks()))
+	if len(m2.dockTasks()) != 1 {
+		t.Fatalf("a finished subagent stays reachable from the panel after the next message, got %d", len(m2.dockTasks()))
 	}
 }
 
@@ -953,8 +932,16 @@ func TestDockTaskExpandContent(t *testing.T) {
 }
 
 func TestDockClickMapsThroughScrollWindow(t *testing.T) {
-	srv := sseTextServer(t, "ok")
+	// Hold every reply so the rows keep their order while the test clicks.
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	}))
 	defer srv.Close()
+	defer close(release)
 	m := tasksModel(srv.URL)
 	for i := range 8 {
 		tk := m.agent.StartBackground(fmt.Sprintf("probe-%d", i), "p", agent.SubModel{})
@@ -966,6 +953,7 @@ func TestDockClickMapsThroughScrollWindow(t *testing.T) {
 	if m.dockLo == 0 {
 		t.Fatalf("test setup: selection 6 should scroll the window, dockLo=%d", m.dockLo)
 	}
+	m.View()
 	lo := m.dockLo
 	top := m.dockTop()
 
@@ -975,11 +963,14 @@ func TestDockClickMapsThroughScrollWindow(t *testing.T) {
 	}
 
 	click(top)
-	if m.taskSel != lo {
-		t.Fatalf("clicking the top visible row should select task %d (window base), got %d", lo, m.taskSel)
+	if m.taskSel != lo || m.taskVP == nil || m.taskVP.id != m.dockList()[lo].ID {
+		t.Fatalf("clicking the top visible row should open task %d (window base), got sel=%d", lo, m.taskSel)
 	}
+	m.closeTaskView()
+	m.tasksFocus = true
 
 	m.layout()
+	m.View()
 	before := m.taskSel
 	dock := stripAll(m.tasksDock())
 	if !strings.Contains(dock, "More") {

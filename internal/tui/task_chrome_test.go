@@ -122,8 +122,8 @@ func TestTaskChromeDockClickMatchesPaintedRow(t *testing.T) {
 		t.Fatalf("dock hit origin %d does not match painted task: %s", top, strings.Join(lines, "\n"))
 	}
 	m.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: 5, Y: top + 1})
-	if m.taskSel != 1 || !m.taskExpanded {
-		t.Fatalf("painted second row selected %d, expanded=%v", m.taskSel, m.taskExpanded)
+	if m.taskSel != 1 || m.taskVP == nil || !strings.Contains(lines[top+1], m.taskVP.id) {
+		t.Fatalf("painted second row: selected %d, opened %+v", m.taskSel, m.taskVP)
 	}
 }
 

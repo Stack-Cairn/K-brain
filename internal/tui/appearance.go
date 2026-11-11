@@ -44,5 +44,6 @@ func viewportWindow(n, idx, budget int) (int, int) {
 	return max(hi-budget, 0), hi
 }
 
-func (m *model) vpTopRows() int { return 0 }
+// vpTopRows is the rows drawn above the transcript: the top panel.
+func (m *model) vpTopRows() int { return m.tp.drawn }
 func (m *model) vpXOff() int    { return 0 }

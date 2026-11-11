@@ -125,6 +125,10 @@ func (m *model) seedTranscript(msgs []ai.Message, base int) {
 				m.blocks = append(m.blocks, m.noticeBlocks(msg.TextContent())...)
 				break
 			}
+			if row, ok := m.goalCheckRow(msg.TextContent(), msg.Authored); ok {
+				m.blocks = append(m.blocks, block{kind: blockText, text: row})
+				break
+			}
 			m.blocks = append(m.blocks, block{kind: blockUser, text: linkifyFilePaths(msg.TextContent(), realFileExists)})
 		case "assistant":
 			if r := strings.TrimSpace(msg.Reasoning); r != "" && m.showThinking {

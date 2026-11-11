@@ -1,0 +1,1 @@
+-- > o Goal Idle -- = Plan 1/4 -- * 1 error - 1 done ----------- Alt+T expand --

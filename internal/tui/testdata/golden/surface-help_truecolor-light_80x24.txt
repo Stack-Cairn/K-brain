@@ -1,4 +1,4 @@
-❯ Keyboard shortcuts                                                       1/82
+❯ Keyboard shortcuts                                                       1/83
   [Keys]  Commands
   / type to filter
 ────────────────────────────────────────────────────────────────────────────────
@@ -6,6 +6,7 @@
 ❯ Shift+Tab                   cycle the permission mode
   Ctrl+K                      clear the conversation
   Ctrl+T                      focus the subagent dock
+  Alt+T                       expand or collapse the top panel (goal, plan, s…
   Ctrl+O                      show or hide thinking tokens
   Ctrl+E                      expand the last tool result
   Ctrl+G                      edit the draft in an external editor
@@ -14,8 +15,7 @@
   Ctrl+C Ctrl+C               quit
   Ctrl+P                      open the command palette
   F2                          open settings
-  Alt+↑                       focus the transcript, a block at a time
-  ↓ 70 more
+  ↓ 71 more
 ────────────────────────────────────────────────────────────────────────────────
   Shift+Tab  cycle the permission mode
   Shift+Tab — cycle Normal / Plan / Auto review / Always allow

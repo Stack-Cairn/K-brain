@@ -252,7 +252,11 @@ type model struct {
 	permissionMode string
 	permissionDone chan struct{}
 
-	tasksFocus   bool
+	tasksFocus bool
+	// tp is the top panel (top_panel.go); dockBudget is the rows it gives
+	// the subagent rows while it draws them.
+	tp           topPanelState
+	dockBudget   int
 	taskSel      int
 	taskExpanded bool
 	dockSkip     int
@@ -800,6 +804,13 @@ func (m *model) resetEffort(lv string) {
 
 func (m *model) setGoal(goal string) {
 	m.cancelGoalFromContext()
+	if goal != m.goal {
+		m.tp.goalSince = time.Time{}
+		if goal != "" {
+			m.tp.goalSince = m.nowFn()
+		}
+	}
+	m.tp.goalState = ""
 	m.goal = goal
 	m.goalRounds = 0
 	if m.store != nil && m.sessionID != "" {
@@ -1103,39 +1114,24 @@ func (m *model) Update(msg tea.Msg) (_ tea.Model, statusCmd tea.Cmd) {
 		}
 		if m.picker == nil && m.mpicker == nil && m.palette == nil {
 
-			if top, n := m.dockTop(), len(m.dockTasks()); n > 0 && msg.Y >= top && msg.Y < top+m.dockRows-m.dockSkip {
-				if msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown {
-					m.tasksFocus = true
-					m.taskExpanded = false
-					if msg.Button == tea.MouseButtonWheelUp {
-						m.taskSel = max(m.taskSel-1, 0)
-					} else {
-						m.taskSel = min(m.taskSel+1, n-1)
-					}
-					return m, nil
+			// The top panel: the wheel over its subagent rows moves the
+			// selection, a press toggles the panel (header) or opens a subagent.
+			if top, n := m.dockTop(), len(m.dockTasks()); n > 0 && m.dockRows > 0 && msg.Y >= top && msg.Y < top+m.dockRows-m.dockSkip &&
+				(msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown) {
+				m.tasksFocus = true
+				m.taskExpanded = false
+				if msg.Button == tea.MouseButtonWheelUp {
+					m.taskSel = max(m.taskSel-1, 0)
+				} else {
+					m.taskSel = min(m.taskSel+1, n-1)
 				}
-				if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
-					if m.tasksFocus && len(m.dockOffsets) > 0 {
-						row := msg.Y - top
-						if row >= m.dockTaskRows {
-
-							return m, nil
-						}
-
-						sel := m.taskSel
-						for i, off := range m.dockOffsets {
-							if off <= row {
-								sel = m.dockLo + i
-							}
-						}
-						m.taskSel = min(sel, n-1)
-						m.taskExpanded = !m.taskExpanded
-						return m, nil
-					}
-					m.tasksFocus = true
-					m.taskExpanded = false
-					return m, nil
-				}
+				return m, nil
+			}
+			if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft && m.topPanelClick(msg.Y) {
+				return m, nil
+			}
+			if m.tp.drawn > 0 && msg.Y >= m.viewTop && msg.Y < m.viewTop+m.tp.drawn {
+				return m, nil
 			}
 
 			if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft &&
@@ -1567,6 +1563,7 @@ func (m *model) wireTasks() {
 	m.agent.SetSessionID(m.sessionID)
 	m.fgReg().clearSettled()
 	m.subAct, m.subStop = nil, nil
+	m.resetTopPanel()
 	m.wireProgram()
 
 	if m.mcpMgr != nil {
@@ -1582,16 +1579,13 @@ func (m *model) wireProgram() {
 	if m.prog == nil {
 		return
 	}
-	m.agent.OnOrphanedSteer = func(text string) {
-
-		go m.prog.Send(orphanSteerMsg(text))
-	}
-	m.agent.Tasks().OnChange = func(*agent.BackgroundTask) {
-
-		go m.prog.Send(taskUpdateMsg{})
-	}
 	post := m.poster()
 	rec := m.subRecorder()
+	m.agent.OnOrphanedSteer = func(text string) { post(orphanSteerMsg(text)) }
+	// Every start, settle and usage update of a background task lands here;
+	// the mailbox keeps them in order with the tasks' progress and folds a
+	// burst into one refresh.
+	m.agent.Tasks().OnChange = func(*agent.BackgroundTask) { post(taskUpdateMsg{}) }
 	m.agent.Tasks().OnEvents = func(id string) agent.Events {
 		return agent.FanIn(agent.Events{
 			OnToolStart: func(_, n, a string) { post(subProgressMsg{id: id, tool: subToolLabel(n, a)}) },
@@ -1606,9 +1600,8 @@ func (m *model) wireWaits() {
 	if m.prog == nil {
 		return
 	}
-	m.agent.Waits().OnWake = func(text string) {
-		go m.prog.Send(waitWakeMsg(text))
-	}
+	post := m.poster()
+	m.agent.Waits().OnWake = func(text string) { post(waitWakeMsg(text)) }
 }
 
 func (m *model) runningTasks() int {
