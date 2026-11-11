@@ -51,14 +51,14 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: git config --global core.autocrlf false
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.x'
       - name: Prepare pinned Computer Use runtime
@@ -165,7 +165,7 @@ jobs:
           exit "$task_status"
       - name: Upload current Linux test evidence
         if: ${{ always() && runner.os == 'Linux' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: session-sync-linux-current-${{ github.run_id }}-${{ github.run_attempt }}
           if-no-files-found: warn
@@ -185,7 +185,7 @@ jobs:
           exit 0
       - name: Upload Linux verification evidence
         if: ${{ always() && runner.os == 'Linux' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: session-sync-linux-${{ github.run_id }}-${{ github.run_attempt }}
           if-no-files-found: warn
@@ -201,12 +201,12 @@ jobs:
     name: Session sync race (linux-amd64)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.x'
       - name: Prepare pinned Computer Use runtime
