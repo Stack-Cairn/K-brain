@@ -81,11 +81,7 @@ func renderTaskEvent(buf *strings.Builder, prev, kind int, s, s2 string) {
 	case 1:
 		fmt.Fprintf(buf, "\n%s %s\n", toolStyle.Render("⚒"), subToolCall(s, s2, 120))
 	case 2:
-		preview := strings.Split(strings.TrimRight(s2, "\n"), "\n")
-		if len(preview) > 4 {
-			preview = append(preview[:4], fmt.Sprintf("… +%d lines", len(preview)-4))
-		}
-		fmt.Fprintf(buf, "%s\n", dimStyle.Render("  "+strings.Join(preview, "\n  ")))
+		buf.WriteString(taskToolResult(s, s2))
 	case 3:
 
 		fmt.Fprintf(buf, "\n%s %s\n", youStyle.Render("you:"), s)
@@ -96,6 +92,31 @@ func renderTaskEvent(buf *strings.Builder, prev, kind int, s, s2 string) {
 			buf.WriteString("\n")
 		}
 	}
+}
+
+// taskToolResult renders a child's tool result. The first line names the tool,
+// so a result whose ⚒ call line has scrolled out of the view still says which
+// tool produced it; long output keeps a 4-line preview.
+func taskToolResult(name, result string) string {
+	preview := strings.Split(strings.TrimRight(result, "\n"), "\n")
+	if len(preview) == 1 && strings.TrimSpace(preview[0]) == "" {
+		preview = []string{"(no output)"}
+	}
+	if len(preview) > 4 {
+		preview = append(preview[:4], fmt.Sprintf("… +%d lines", len(preview)-4))
+	}
+	head := chromeGlyphs("  ⎿ " + toolHeaderName(name) + " · ")
+	indent := strings.Repeat(" ", ansi.StringWidth(head))
+	var out strings.Builder
+	for i, line := range preview {
+		if i == 0 {
+			line = head + line
+		} else {
+			line = indent + line
+		}
+		out.WriteString(dimStyle.Render(line) + "\n")
+	}
+	return out.String()
 }
 
 type taskView struct {

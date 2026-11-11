@@ -1017,3 +1017,55 @@ func TestTaskRowCarriesSubUsage(t *testing.T) {
 		t.Fatalf("parent ledger should hold the sub's spend: %+v", m.agent.SubUsage())
 	}
 }
+
+func TestTaskViewToolResultNamesToolWhenCallScrolledOff(t *testing.T) {
+	call := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		call++
+		switch call {
+		case 1:
+			fmt.Fprint(w, `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"t1","type":"function","function":{"name":"read","arguments":"{\"path\":\"/nonexistent/x\"}"}}]}}]}`+"\n\n")
+			fmt.Fprint(w, `data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}`+"\n\n")
+		default:
+			report := strings.Repeat("Report paragraph.\\n", 40)
+			fmt.Fprint(w, `data: {"choices":[{"delta":{"content":"`+report+`"},"finish_reason":"stop"}]}`+"\n\n")
+		}
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+	m := tasksModel(srv.URL)
+	m.width, m.height = 100, 24
+	task := m.agent.StartBackground("probe", "p", agent.SubModel{})
+	waitSettled(t, task)
+
+	m.openTask(task.ID)
+	m.taskVP.vp.GotoTop()
+	top := stripAll(m.taskVP.vp.View())
+	if !strings.Contains(top, "⚒ Read(") || !strings.Contains(top, "⎿ Read · ") {
+		t.Fatalf("the call line and the named result belong at the top:\n%s", top)
+	}
+	// Scroll so the ⚒ call line is just out of view: the result must still name the tool.
+	lines := strings.Split(m.taskVP.vp.View(), "\n")
+	for i, l := range lines {
+		if strings.Contains(stripAll(l), "⎿ Read · ") {
+			m.taskVP.vp.SetYOffset(m.taskVP.vp.YOffset + i)
+			break
+		}
+	}
+	view := stripAll(m.taskVP.vp.View())
+	if strings.Contains(view, "⚒ Read(") || !strings.HasPrefix(strings.TrimSpace(view), "⎿ Read · ") {
+		t.Fatalf("with the call line scrolled off, the result line must still name its tool:\n%s", view)
+	}
+}
+
+func TestTaskToolResultFormatting(t *testing.T) {
+	got := stripAll(taskToolResult("grep", "a\nb\nc\nd\ne\nf"))
+	want := "  ⎿ Grep · a\n" + "           b\n" + "           c\n" + "           d\n" + "           … +2 lines\n"
+	if got != want {
+		t.Fatalf("got %q\nwant %q", got, want)
+	}
+	if got := stripAll(taskToolResult("bash", "")); got != "  ⎿ Bash · (no output)\n" {
+		t.Fatalf("empty result = %q", got)
+	}
+}
