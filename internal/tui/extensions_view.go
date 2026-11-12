@@ -31,12 +31,79 @@ func (m *model) extensionsTabs() []surfaceTab {
 		{name: "MCP", rows: mcpSurfaceRows, empty: "no MCP servers configured — add one with `kn mcp add <name> -- <cmd...>`",
 			hints: "↑/↓ select · Enter enable/disable · Ctrl+R reconnect · Esc close"},
 		{name: "Skills", rows: skillTab, empty: "no skills found",
-			hints: "↑/↓ select · Esc close"},
+			hints: "↑/↓ select · Enter insert · Esc close"},
 		{name: "Hooks", rows: hookSurfaceRows, empty: "no hooks configured",
 			hints: "↑/↓ select · Esc close"},
 		{name: "Plugins", rows: pluginSurfaceRows, empty: "no plugins installed",
 			hints: "↑/↓ select · Enter enable/disable · Ctrl+R reload · Esc close"},
 	}
+}
+
+// skillsCommand is /skills [filter]: the skills list on its own, with the
+// filter prefilled. Enter puts `$name ` into the composer.
+func (m *model) skillsCommand(args []string) {
+	if m.height <= 0 {
+		var b strings.Builder
+		rows := skillSurfaceRows(m)
+		terms := strings.Fields(strings.ToLower(strings.Join(args, " ")))
+		n := 0
+		for _, r := range rows {
+			if !surfaceMatch(terms, r) {
+				continue
+			}
+			n++
+			line := "  $" + r.key
+			if r.value != "" {
+				line += "  " + r.value
+			}
+			if r.desc != "" {
+				line += "  " + r.desc
+			}
+			b.WriteString(line + "\n")
+		}
+		if n == 0 {
+			b.WriteString("  " + m.tr("no skills found") + "\n")
+		}
+		m.append(dimStyle.Render(fmt.Sprintf("Skills (%d)\n", n) + strings.TrimRight(b.String(), "\n")))
+		return
+	}
+	var rows []surfaceRow
+	scanned := false
+	m.openSurface(&surfaceModal{
+		kind:   "skills",
+		title:  "Skills",
+		filter: strings.Join(args, " "),
+		tabs: []surfaceTab{{
+			name: "Skills",
+			rows: func(m *model) []surfaceRow {
+				if !scanned {
+					rows, scanned = skillSurfaceRows(m), true
+				}
+				return rows
+			},
+			empty: "no skills found",
+			hints: "↑/↓ select · type to filter · Enter insert · Esc close",
+		}},
+	})
+}
+
+// insertSkillMention closes the surface and puts `$name ` into the composer
+// at the cursor, keeping whatever draft is already there.
+func (m *model) insertSkillMention(name string) {
+	m.closeSurface()
+	val := m.input.Value()
+	off := m.cursorOffset(val)
+	r := []rune(val)
+	head, tail := string(r[:off]), string(r[off:])
+	tok := "$" + name
+	if head != "" && !strings.HasSuffix(head, " ") && !strings.HasSuffix(head, "\n") {
+		tok = " " + tok
+	}
+	if !strings.HasPrefix(tail, " ") {
+		tok += " "
+	}
+	m.setComposer(head+tok+tail, off+len([]rune(tok)))
+	m.refreshMenu()
 }
 
 // extensionsCommand is /extensions [mcp|skills|hooks|plugins].
@@ -180,6 +247,10 @@ func skillSurfaceRows(m *model) []surfaceRow {
 			desc:    s.Description,
 			value:   value,
 			search:  s.Path,
+			enter: func(m *model) tea.Cmd {
+				m.insertSkillMention(s.Name)
+				return nil
+			},
 			preview: func(m *model) []string {
 				w, _ := m.surfaceSize()
 				out := []string{cardTitleStyle.Render(s.Name)}
@@ -193,9 +264,10 @@ func skillSurfaceRows(m *model) []surfaceRow {
 					out = append(out, warnStyle.Render(s.Warning))
 				}
 				if s.Pack != "" {
-					out = append(out, textHintStyle.Render("skill pack "+s.Pack+" · "+s.BaseDir))
+					out = append(out, textHintStyle.Render("skill pack "+s.Pack+" · "+shortSkillsDir(s.BaseDir)))
 				}
-				out = append(out, textMutedStyle.Render(s.Path))
+				out = append(out, textMutedStyle.Render(shortSkillsDir(s.Path)))
+				out = append(out, textHintStyle.Render(m.tr("Enter inserts")+" $"+s.Name))
 				return out
 			},
 		})
