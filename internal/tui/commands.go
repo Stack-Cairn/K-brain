@@ -27,7 +27,7 @@ func busyCmd(text string) bool {
 		return true
 	case "/goal":
 		return len(fields) == 1 || fields[1] == "clear" || fields[1] == "rounds"
-	case "/settings", "/extensions", "/memory":
+	case "/settings", "/extensions", "/skills", "/skill", "/memory":
 		return true
 	case "/find":
 		return true
@@ -340,6 +340,8 @@ func (m *model) command(text string) (tea.Model, tea.Cmd) {
 		m.settingsCommand(fields[1:])
 	case "/extensions":
 		m.extensionsCommand(fields[1:])
+	case "/skills", "/skill":
+		m.skillsCommand(fields[1:])
 	case "/auth":
 		m.append(errStyle.Render("auth was removed; configure baseUrl and apiKey in ~/.liveagent/config.json"))
 	case "/model", "/model-for-session":

@@ -76,6 +76,7 @@ var registry = []registryEntry{
 	{Name: "!cmd", Hint: "run a shell command; output joins the conversation", Category: "App"},
 	{Name: "/settings", Args: "[filter]", Hint: "browse and change settings", Keybind: "f2", Category: "App"},
 	{Name: "/extensions", Args: "[mcp|skills|hooks|plugins]", Hint: "MCP servers, skills, hooks and plugins", Category: "App"},
+	{Name: "/skills", Args: "[filter]", Hint: "browse skills; Enter inserts $name (alias: /skill)", Category: "Agent"},
 	{Name: "/find", Args: "[text]", Hint: "search the transcript (n/N step through matches)", Category: "Display"},
 	{Name: "/usage", Hint: "show tokens, cache, cost and the context window", Category: "Session"},
 }

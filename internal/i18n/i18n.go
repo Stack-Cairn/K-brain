@@ -283,6 +283,12 @@ var chinese = map[string]string{
 	"←→ move · Space picks · ↑↓ fields · Esc cancels":                  "←→ 移动 · 空格勾选 · ↑↓ 切换字段 · Esc 取消",
 	"type to edit · ↑↓ fields · Enter next · Esc cancels":              "直接输入 · ↑↓ 切换字段 · Enter 下一项 · Esc 取消",
 
+	// /skills.
+	"browse skills; Enter inserts $name (alias: /skill)":     "浏览技能，Enter 把 $名字 填入输入框（别名 /skill）",
+	"↑/↓ select · type to filter · Enter insert · Esc close": "↑/↓ 选择 · 输入以筛选 · Enter 插入 · Esc 关闭",
+	"Enter inserts":   "Enter 插入",
+	"no skills found": "没有找到技能",
+
 	// App surfaces: cheatsheet, settings, extensions, memory, session picker, rewind and model cascade.
 	"browse and change settings":             "浏览并修改设置",
 	"MCP servers, skills, hooks and plugins": "MCP 服务器、技能、钩子和插件",
@@ -604,6 +610,12 @@ var traditionalChinese = map[string]string{
 	"Space toggles · ↑↓ fields · Enter next · Esc cancels":             "空白鍵切換 · ↑↓ 切換欄位 · Enter 下一項 · Esc 取消",
 	"←→ move · Space picks · ↑↓ fields · Esc cancels":                  "←→ 移動 · 空白鍵勾選 · ↑↓ 切換欄位 · Esc 取消",
 	"type to edit · ↑↓ fields · Enter next · Esc cancels":              "直接輸入 · ↑↓ 切換欄位 · Enter 下一項 · Esc 取消",
+
+	// /skills.
+	"browse skills; Enter inserts $name (alias: /skill)":     "瀏覽技能，Enter 把 $名稱 填入輸入框（別名 /skill）",
+	"↑/↓ select · type to filter · Enter insert · Esc close": "↑/↓ 選擇 · 輸入以篩選 · Enter 插入 · Esc 關閉",
+	"Enter inserts":   "Enter 插入",
+	"no skills found": "找不到技能",
 
 	// App surfaces: cheatsheet, settings, extensions, memory, session picker, rewind and model cascade.
 	"browse and change settings":             "瀏覽并修改設定",

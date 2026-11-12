@@ -382,6 +382,15 @@ func (m *model) paletteItems() []paletteItem {
 			},
 		},
 		{
+			title: "Skills", category: "Agent",
+			dynDesc: func(m *model) string { return slashHint(m, "/skills") },
+			dynHint: func(m *model) string { return "/skills" },
+			run: func(m *model) (tea.Model, tea.Cmd) {
+				m.palette = nil
+				return m.command("/skills")
+			},
+		},
+		{
 			title: "Memory", category: "Session",
 			dynDesc: func(m *model) string { return slashHint(m, "/memory") },
 			dynHint: func(m *model) string { return "/memory" },
