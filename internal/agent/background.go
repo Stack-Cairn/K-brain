@@ -370,6 +370,24 @@ func (a *Agent) RegisterBackgroundContext(parent context.Context, description, p
 	return t
 }
 
+// WaitCancelledTasks waits for cancelled background tasks to finish publishing and
+// recording their terminal state. It neither cancels nor waits for live tasks:
+// their lifetime still belongs to the context passed at registration.
+func (a *Agent) WaitCancelledTasks() {
+	r := a.Tasks()
+	r.mu.Lock()
+	var done []<-chan struct{}
+	for _, t := range r.tasks {
+		if t.ctx != nil && t.ctx.Err() != nil && t.Done != nil {
+			done = append(done, t.Done)
+		}
+	}
+	r.mu.Unlock()
+	for _, ch := range done {
+		<-ch
+	}
+}
+
 func (a *Agent) LaunchBackground(t *BackgroundTask, worktreePath string) {
 	if worktreePath != "" {
 		a.bg.mu.Lock()
