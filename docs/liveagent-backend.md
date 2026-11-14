@@ -510,6 +510,25 @@ MCP 服务器可以在自己的工具运行期间请用户填写一张表单（M
 - TUI 的 `/memory` 列表与记忆面板显示同一份保存值（`organizer: every 6h (LiveAgent memory settings)`、`organizer: off ...`，没有保存值时为 `organizer: every 24h (backend default)`）；TUI 自己不运行整理器，也看不到后端的启动参数。
 - 旧后端的 PUT 遇到 `memoryOrganizer` 这个未知字段返回 400，客户端在能力缺失时不要发送它。
 
+### 联网搜索回退（`capabilities.web_search_fallback: 1`）
+
+运行的 `options.search: "enabled"` 原本只对能原生搜索的 API 有效：Responses、Anthropic Messages、官方 Gemini 端点。Chat Completions 开启搜索会让运行失败，Gemini 中转端点在有函数工具时静默丢掉搜索。有这项能力的后端在这些 provider 上改为提供 `web_search` 函数工具，调用 `/v1/settings` 里 `webSearch` 配置的第三方搜索服务（Tavily、Brave Search、SearXNG、博查、Jina）。宿主的运行请求不需要改动，仍然只发 `search`。
+
+- 生效条件（每次模型请求都重新判断）：`search` 为 `enabled`、当前模型的 API 不能原生搜索、`webSearch.available` 为 `true`。此时请求不再带原生搜索标记，工具列表里多出 `web_search`；`mode: "chat"` 的运行也会得到这一个工具。能原生搜索的 API 不受影响，不会同时收到 `web_search`。没有配置 `webSearch` 时行为与旧版本相同（Chat Completions 仍然报错，错误信息提示配置 `webSearch`）。
+- `options.tools.policies` 可以写 `web_search`（即使当前没有提供这个工具也不会报 unavailable）：`deny` 不提供工具，`allow` 不再询问，`ask` 或省略按权限模式询问。计划模式下 `web_search` 询问而不是拒绝。`permission.requested` 的 `tool` 为 `web_search`，`command` 为搜索词，建议的可记住规则是整个工具 `web_search`。工具事件里的参数是 `{query, max_results?, recency?, domains?}`，结果是文本：`provider=`、`query=`、`results=N` 等头部行后跟编号列表（标题、URL、`published:`、摘要），最多 12000 个字符。
+- 能力判断：`providers[].nativeWebSearchSupported`（只读，PUT 时可以原样带回，被忽略）说明该 provider 的 API 能否原生搜索，不是逐模型标记。Chat Completions 的 `deepseek-flash` 是模型级例外：即使 provider 标记为 `false`，也支持 DeepSeek 自有搜索，配置第三方服务不会取代它；同 provider 的其他模型仍使用回退。宿主在 `nativeWebSearchSupported || (api == "openai-completions" && model == "deepseek-flash") || webSearch.available` 时允许打开联网，否则提示用户配置搜索服务（模型名不区分大小写）。运行时与路由包装器按所选模型判断；联网关闭时两条搜索路径都不启用。Flash 开启思考时使用服务端网页工具；关闭或未指定思考且与本地工具并用时，使用 DeepSeek Search/Fetch API，不强制开启思考。
+
+GET `/v1/settings`（以及 PUT 的响应）总是带 `webSearch`：
+
+```json
+{"webSearch": {"provider": "tavily", "baseUrl": "", "maxResults": 5, "apiKeyConfigured": true, "apiKeySource": "config", "available": true, "reason": "", "providers": ["tavily", "brave", "searxng", "bocha", "jina"]}}
+```
+
+- `provider`、`baseUrl`、`maxResults` 是 config.json 里保存的值（`maxResults` 为 `0` 表示默认 5；`baseUrl` 与 provider 的 `baseUrl` 一样去掉了凭据）。其余字段反映环境变量覆盖之后的生效状态：`apiKeyConfigured` 与 `apiKeySource`（`config` 或 `env`）说明是否有密钥及其来源，`available` 为 `false` 时 `reason` 说明原因（没有选择服务、缺少密钥、SearXNG 缺少 `baseUrl` 等）。密钥本身永远不返回。环境变量 `K_BRAIN_WEB_SEARCH_PROVIDER`、`K_BRAIN_WEB_SEARCH_BASE_URL`、`K_BRAIN_WEB_SEARCH_API_KEY` 与 `TAVILY_API_KEY`、`BRAVE_SEARCH_API_KEY`、`BOCHA_API_KEY`、`JINA_API_KEY` 优先于保存值。
+- PUT 接受 `webSearch:{provider?, apiKey?, clearApiKey?, baseUrl?, maxResults?}`，省略的字段不变。`apiKey` 为空字符串表示保留已保存的密钥，`clearApiKey: true` 删除它，两者同时给出新密钥与 `clearApiKey` 返回 400；密钥可以是明文或 `$VAR`/`${VAR}` 引用，`!命令` 返回 400。`provider` 不在列表中、`maxResults` 不在 0–10、`baseUrl` 不是 http(s) 地址时返回 400，什么都不改。GET 返回的只读字段（`apiKeyConfigured`、`apiKeySource`、`available`、`reason`、`providers`）可以原样带回，会被忽略。
+- 保存后对已有会话的下一次模型请求生效，不需要重启或重建会话。
+- 旧后端的 PUT 遇到 `webSearch` 这个未知字段返回 400，旧版本读取含 `webSearch` 的 config.json 也会报未知字段；客户端在能力缺失时不要发送它。
+
 ### 记住的权限规则（`capabilities.permission_rules: 1`、`readonly_auto_allow: 1`）
 
 规则写法参照 Claude Code：`Bash(npm test:*)` 前缀、`Bash(git status)` 精确、`Edit(src/**)` 项目内路径（Write/Edit 共用）、`mcp__srv__tool` 整个工具；规则引擎在 `internal/permissions`，TUI、ACP 与 HTTP 后端共用。复合命令每一段都要被规则或只读判定覆盖才放行；命令替换、子 shell、写文件重定向、包装命令等看不清的命令不受 allow 规则影响。

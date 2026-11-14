@@ -442,3 +442,20 @@ func failoverEligible(err error) bool {
 }
 
 var _ ai.Client = (*FailoverClient)(nil)
+
+// SupportsNativeWebSearch follows the primary candidate, which serves the
+// request unless it fails over.
+func (c *FailoverClient) SupportsNativeWebSearch() bool {
+	if len(c.candidates) == 0 {
+		return false
+	}
+	return ai.SupportsNativeWebSearch(c.candidates[c.primary].client)
+}
+
+// Keep model-specific native search when the agent uses a routing wrapper.
+func (c *FailoverClient) SupportsNativeWebSearchForModel(model string) bool {
+	if len(c.candidates) == 0 {
+		return false
+	}
+	return ai.SupportsNativeWebSearchForModel(c.candidates[c.primary].client, model)
+}

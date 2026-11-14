@@ -1138,6 +1138,7 @@ func (s *Server) rebuildAgentLocked(rt *runtimeSession, selected protocol.ModelR
 		s.cron.attachTool(ag, selected)
 	}
 	s.attachPlanningTools(ag)
+	s.attachWebSearch(ag)
 	s.syncHostTools(ag)
 	ag.ModelName, ag.Provider = selected.Model, selected.Provider
 	if s.mcp != nil {
@@ -1221,6 +1222,7 @@ func (s *Server) loadRuntime(id string, model protocol.ModelRef, cwd string) (*r
 		s.cron.attachTool(ag, model)
 	}
 	s.attachPlanningTools(ag)
+	s.attachWebSearch(ag)
 	s.syncHostTools(ag)
 	ag.ModelName, ag.Provider = model.Model, model.Provider
 	if s.mcp != nil {

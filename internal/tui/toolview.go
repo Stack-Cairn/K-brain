@@ -63,7 +63,7 @@ func toolKindOf(name string) toolKind {
 		return tkRead
 	case "grep", "Grep", "glob", "Glob":
 		return tkSearch
-	case "web_fetch", "WebFetch":
+	case "web_fetch", "WebFetch", "web_search":
 		return tkFetch
 	case "subagent", "subagent_steer":
 		return tkSubagent

@@ -120,7 +120,7 @@ func normalizeRunOptions(in *protocol.RunOptions, cwd string, available []tools.
 				return fmt.Errorf("options.tools contains duplicate or empty tool")
 			}
 			seen[name] = true
-			if name != "ExitPlanMode" && name != tools.SSHManagerTool && !slices.ContainsFunc(available, func(t tools.Tool) bool { return t.Def.Function.Name == name }) {
+			if name != "ExitPlanMode" && name != tools.SSHManagerTool && name != tools.WebSearchToolName && !slices.ContainsFunc(available, func(t tools.Tool) bool { return t.Def.Function.Name == name }) {
 				return fmt.Errorf("options.tools references unavailable tool %q", name)
 			}
 			return nil
@@ -198,9 +198,17 @@ func applyRunOptionsWith(a *agent.Agent, options protocol.RunOptions, extra []to
 	if options.Mode == "chat" {
 		available = nil
 	}
+	a.NativeWebSearch = options.Search == "enabled"
+	// Where the model's API cannot search natively, the configured search
+	// service serves the run's web search through the web_search tool, in chat
+	// mode as well, unless a per-tool policy denies it. The tool asks the
+	// permission gate itself, which applies the allow and ask policies.
+	if search, ok := a.WebSearchFallbackTool(); ok && (options.Tools == nil || options.Tools.Policies[tools.WebSearchToolName] != "deny") &&
+		!slices.ContainsFunc(available, func(t tools.Tool) bool { return t.Def.Function.Name == tools.WebSearchToolName }) {
+		available = append(available, search)
+	}
 	a.RunTools = available
 	a.RunToolsSet = true
-	a.NativeWebSearch = options.Search == "enabled"
 	if options.Reasoning != "" {
 		a.Effort = options.Reasoning
 	}
@@ -255,7 +263,7 @@ var sandboxedCommandTools = map[string]bool{
 }
 
 func runToolGate(options protocol.RunOptions, req tools.GateRequest, rules permissions.Decision, ask func(tools.GateRequest) (tools.GateDecision, string)) (tools.GateDecision, string) {
-	if (options.PlanModeEnabled || options.PermissionMode == permissions.Plan) && req.Tool != "Read" && req.Tool != "Image" && req.Tool != "List" && req.Tool != "Glob" && req.Tool != "Grep" && req.Tool != "ExitPlanMode" && req.Tool != "read" && req.Tool != "lsp" && req.Tool != "question" && req.Tool != "AskUserQuestion" && req.Tool != "todowrite" {
+	if (options.PlanModeEnabled || options.PermissionMode == permissions.Plan) && req.Tool != "Read" && req.Tool != "Image" && req.Tool != "List" && req.Tool != "Glob" && req.Tool != "Grep" && req.Tool != "ExitPlanMode" && req.Tool != "read" && req.Tool != "lsp" && req.Tool != "question" && req.Tool != "AskUserQuestion" && req.Tool != "todowrite" && req.Tool != tools.WebSearchToolName {
 		return tools.GateReject, "plan mode blocks this tool until ExitPlanMode is approved"
 	}
 	if options.ApprovalPolicy == "deny" {

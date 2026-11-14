@@ -653,6 +653,9 @@ func (c *OpenAI) Stream(ctx context.Context, req Request, onText, onThink func(s
 	if deepSeekFunctionSearch(req) {
 		return c.streamDeepSeekFunctions(ctx, req, onText, onThink, onToolCall)
 	}
+	if req.NativeWebSearch && !deepSeekWebToolsModel(req.Model) {
+		return Message{}, Usage{}, fmt.Errorf("native web search is unsupported for Chat Completions model %q; use DeepSeek Flash, Responses, Anthropic Messages, or Gemini, or configure webSearch so the web_search tool can search instead", req.Model)
+	}
 	return c.streamChat(ctx, req, onText, onThink, onToolCall)
 }
 
