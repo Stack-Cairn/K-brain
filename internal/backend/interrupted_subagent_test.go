@@ -71,6 +71,15 @@ func TestInterruptedSubagentTerminalWaitsForSettlement(t *testing.T) {
 			defer server.Close()
 			defer func() { release(); _ = backend.Close() }()
 			sess := createTestSession(t, server.URL)
+			rt, err := backend.loadRuntimeByID(sess.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer backend.releaseRuntime(rt)
+			// This regression isolates cancellation settlement and the next user run.
+			// Automatic notice delivery is covered by wake_test.go; let the notice
+			// remain pending here rather than racing that next run with a wake run.
+			rt.agent.OnOrphanedSteer = nil
 			accepted := runRequest(t, server.URL, sess.ID, "interrupted", "delegate")
 			select {
 			case <-client.started:
@@ -87,11 +96,6 @@ func TestInterruptedSubagentTerminalWaitsForSettlement(t *testing.T) {
 			case <-time.After(5 * time.Second):
 				t.Fatal("child did not inherit cancellation")
 			}
-			rt, err := backend.loadRuntimeByID(sess.ID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer backend.releaseRuntime(rt)
 			// A terminal tells clients they may submit the next run. It must not
 			// escape while the cancelled child still keeps that run busy.
 			timer := time.NewTimer(150 * time.Millisecond)
