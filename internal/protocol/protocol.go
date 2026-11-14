@@ -185,6 +185,9 @@ type Message struct {
 	// continuation round, the new-context notice, the output-limit continuation
 	// reminder); it is absent on messages the user wrote.
 	Origin string `json:"origin,omitempty"`
+	// Authored exposes persisted user provenance for history display. It is
+	// output metadata; ToAIMessage does not trust clients to assign authorship.
+	Authored bool `json:"authored,omitempty"`
 }
 
 type ContentBlock struct {
@@ -928,7 +931,7 @@ func FromAIMessage(m ai.Message) Message {
 	if left, right, ok := strings.Cut(m.Model, " @ "); ok {
 		model, provider = left, right
 	}
-	out := Message{ID: m.ID, Role: m.Role, ToolCallID: m.ToolCallID, Name: m.Name, Model: model, Provider: provider, Usage: FromAIUsage(m.Usage), HostedSearch: fromAIHostedSearch(m.HostedSearch), StopReason: string(m.StopReason), CreatedAt: m.SentAt, Origin: m.Origin}
+	out := Message{ID: m.ID, Role: m.Role, ToolCallID: m.ToolCallID, Name: m.Name, Model: model, Provider: provider, Usage: FromAIUsage(m.Usage), HostedSearch: fromAIHostedSearch(m.HostedSearch), StopReason: string(m.StopReason), CreatedAt: m.SentAt, Origin: m.Origin, Authored: m.Role == RoleUser && m.Authored}
 	if m.Reasoning != "" {
 		out.Content = append(out.Content, ContentBlock{Type: ContentThinking, Text: m.Reasoning})
 	}

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Stack-Cairn/K-brain/internal/ai"
 )
@@ -39,13 +40,51 @@ func canonicalMessages(d *sessionData) []ai.Message {
 	keys := sortedKeys(d.Messages)
 	out := make([]ai.Message, 0, len(keys))
 	for _, seq := range keys {
-		msg := d.Messages[seq]
-		if msg.ID == "" {
-			msg.ID = canonicalAt(d.Meta.ID, seq, msg)
-		}
-		out = append(out, msg)
+		out = append(out, d.canonicalMessage(seq, d.Messages[seq]))
 	}
 	return out
+}
+
+// canonicalMessage computes identity before display-only provenance enrichment.
+// Forks persist this projection because their task records are not copied.
+func (d *sessionData) canonicalMessage(seq int, msg ai.Message) ai.Message {
+	id := canonicalAt(d.Meta.ID, seq, msg)
+	msg = d.withLegacyNoticeOrigin(msg)
+	msg.ID = id
+	return msg
+}
+
+// withLegacyNoticeOrigin enriches a display copy only. Old subagent reports had
+// neither identity nor authorship; require an exact persisted task match rather
+// than treating arbitrary user text with a familiar prefix as a runtime notice.
+func (d *sessionData) withLegacyNoticeOrigin(msg ai.Message) ai.Message {
+	if msg.ID != "" || msg.Role != "user" || msg.Authored || msg.Origin != "" || len(msg.Parts) != 0 {
+		return msg
+	}
+	for _, task := range d.Tasks {
+		if task.ID == "" || (task.Status != "done" && task.Status != "error" && task.Status != "cancelled") {
+			continue
+		}
+		if msg.Content == fmt.Sprintf("[subagent %s %s] %s\n\n%s", task.ID, task.Status, task.Description, legacyNoticeReport(task.Report)) {
+			msg.Origin = ai.OriginBackground
+			break
+		}
+	}
+	return msg
+}
+
+// Keep the legacy wire format fixed even if future runtime report limits change.
+// Old notices used capReport while the task record retained the full report.
+func legacyNoticeReport(report string) string {
+	const limit = 50_000
+	if len(report) <= limit {
+		return report
+	}
+	end := limit
+	for end > 0 && !utf8.RuneStart(report[end]) {
+		end--
+	}
+	return report[:end] + fmt.Sprintf("\n\n... [report truncated — %d bytes total; the investigation covered more than fits here]", len(report))
 }
 
 func canonicalAt(sessionID string, seq int, msg ai.Message) string {
@@ -89,8 +128,11 @@ func (s *Store) HistorySnapshot(id string) (out HistorySnapshot, err error) {
 		}
 		messages := canonicalMessages(d)
 		offsets := sortedKeys(d.Messages)
-		active := d.contextMessages()
-		active = canonicalList(active, d.Meta.ID)
+		rawActive := d.contextMessages()
+		active := canonicalList(rawActive, d.Meta.ID)
+		for i, msg := range rawActive {
+			active[i].Origin = d.withLegacyNoticeOrigin(msg).Origin
+		}
 		out = HistorySnapshot{Meta: d.Meta, CreatedAt: d.CreatedAt, Messages: messages, Offsets: offsets, ActiveMessages: active, Revision: d.revision()}
 		return nil
 	})
@@ -140,9 +182,8 @@ func (s *Store) MutateHistory(id, messageID, expectedRevision, title string, rep
 			}
 			branch := newData(Meta{CWD: m.CWD, Model: m.Model, Provider: m.Provider, Title: title, ForkedFrom: id, ForkSeq: keys[end-1], UpdatedAt: time.Now().UTC()})
 			for _, seq := range keys[:end] {
-				msg := d.Messages[seq]
-				msg.ID = canonicalAt(id, seq, msg)
-				branch.Messages[seq] = msg
+				// Preserve source identity and recovered provenance without task records.
+				branch.Messages[seq] = d.canonicalMessage(seq, d.Messages[seq])
 			}
 			resultID, e = s.create(branch)
 			return e
