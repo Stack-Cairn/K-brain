@@ -178,6 +178,10 @@ type Config struct {
 	memoryDisk     memoryDiskState
 	memoryDiskPath string
 
+	// WebSearch configures the third-party search service behind the web_search
+	// tool, used when web search is on but the model's API has no native search.
+	WebSearch WebSearchConfig `json:"webSearch,omitzero"`
+
 	AIApproval AIApprovalConfig  `json:"aiApproval,omitzero"`
 	Computer   ComputerConfig    `json:"computer,omitzero"`
 	Sandbox    SandboxConfig     `json:"sandbox,omitzero"`
@@ -431,6 +435,9 @@ func parseConfigJSONC(data []byte, cfg *Config) error {
 		}
 	}
 	if err := cfg.AIApproval.Validate(); err != nil {
+		return err
+	}
+	if err := cfg.WebSearch.Validate(); err != nil {
 		return err
 	}
 	if cfg.Sandbox.Mode != "" && cfg.Sandbox.Mode != "off" && cfg.Sandbox.Mode != "disabled" && cfg.Sandbox.Mode != "workspace" && cfg.Sandbox.Mode != "strict" {

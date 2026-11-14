@@ -97,7 +97,7 @@ func toolVerb(name string) string {
 	switch name {
 	case "read":
 		return "Reading"
-	case "grep", "glob", "list":
+	case "grep", "glob", "list", "web_search":
 		return "Searching"
 	case "web_fetch":
 		return "Fetching"

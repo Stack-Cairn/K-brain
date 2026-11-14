@@ -414,3 +414,12 @@ func TestDefaultScope(t *testing.T) {
 		}
 	}
 }
+
+func TestWebSearchWholeToolRule(t *testing.T) {
+	if got := Suggest(Request{Tool: "web_search", Command: "latest go release"}, Options{}); len(got) != 1 || got[0] != "web_search" {
+		t.Fatalf("suggestion = %v", got)
+	}
+	if got := Evaluate(Request{Tool: "web_search", Command: "anything"}, Options{}, allow("web_search")); got.Effect != Allow {
+		t.Fatalf("whole-tool rule: %+v", got)
+	}
+}

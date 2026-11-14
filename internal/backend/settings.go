@@ -43,6 +43,14 @@ func (s *SettingsStore) Revision() uint64 {
 	return s.revision
 }
 
+// WebSearch is the current webSearch section, read without copying the whole
+// configuration: the web_search tool checks it on every model request.
+func (s *SettingsStore) WebSearch() config.WebSearchConfig {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.cfg.WebSearch
+}
+
 func (s *SettingsStore) Snapshot() *config.Config {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -70,11 +78,15 @@ type settingsProvider struct {
 	PromptCacheHintMode    string                `json:"promptCacheHintMode,omitempty"`
 	PromptCacheRetention   string                `json:"promptCacheRetention,omitempty"`
 	NativeWebSearchEnabled bool                  `json:"nativeWebSearchEnabled"`
-	UseSystemProxy         bool                  `json:"useSystemProxy,omitempty"`
-	RetryPolicy            map[string]any        `json:"retryPolicy,omitempty"`
-	UsageQuery             map[string]any        `json:"usageQuery,omitempty"`
-	Metadata               map[string]any        `json:"metadata,omitempty"`
-	Models                 []settingsModel       `json:"models"`
+	// NativeWebSearchSupported is true when the provider's API searches natively
+	// (Responses, Anthropic Messages, the official Gemini endpoint); elsewhere
+	// web search needs webSearch.available (capability web_search_fallback).
+	NativeWebSearchSupported bool            `json:"nativeWebSearchSupported"`
+	UseSystemProxy           bool            `json:"useSystemProxy,omitempty"`
+	RetryPolicy              map[string]any  `json:"retryPolicy,omitempty"`
+	UsageQuery               map[string]any  `json:"usageQuery,omitempty"`
+	Metadata                 map[string]any  `json:"metadata,omitempty"`
+	Models                   []settingsModel `json:"models"`
 }
 type settingsModel struct {
 	Provider         string   `json:"provider"`
@@ -105,6 +117,7 @@ type settingsProjection struct {
 	AIApproval settingsAIApproval    `json:"aiApproval"`
 	Computer   config.ComputerConfig `json:"computer"`
 	Memory     settingsMemory        `json:"memory"`
+	WebSearch  settingsWebSearch     `json:"webSearch"`
 	// MemoryOrganizer is filled by the server (settingsView); nil elsewhere.
 	MemoryOrganizer *settingsMemoryOrganizer `json:"memoryOrganizer,omitempty"`
 	Version         string                   `json:"version"`
@@ -163,16 +176,19 @@ type settingsProviderUpdate struct {
 	PromptCacheHintMode    string                `json:"promptCacheHintMode,omitempty"`
 	PromptCacheRetention   string                `json:"promptCacheRetention,omitempty"`
 	NativeWebSearchEnabled *bool                 `json:"nativeWebSearchEnabled,omitempty"`
-	UseSystemProxy         *bool                 `json:"useSystemProxy,omitempty"`
-	RetryPolicy            map[string]any        `json:"retryPolicy,omitempty"`
-	UsageQuery             map[string]any        `json:"usageQuery,omitempty"`
-	Metadata               map[string]any        `json:"metadata,omitempty"`
-	Models                 []settingsModelUpdate `json:"models"`
+	// NativeWebSearchSupported is read-only; accepted so a GET payload can be PUT back.
+	NativeWebSearchSupported *bool                 `json:"nativeWebSearchSupported,omitempty"`
+	UseSystemProxy           *bool                 `json:"useSystemProxy,omitempty"`
+	RetryPolicy              map[string]any        `json:"retryPolicy,omitempty"`
+	UsageQuery               map[string]any        `json:"usageQuery,omitempty"`
+	Metadata                 map[string]any        `json:"metadata,omitempty"`
+	Models                   []settingsModelUpdate `json:"models"`
 }
 type settingsUpdate struct {
 	AIApproval *config.AIApprovalConfig `json:"aiApproval,omitempty"`
 	Computer   *config.ComputerConfig   `json:"computer,omitempty"`
 	Memory     *settingsMemoryUpdate    `json:"memory,omitempty"`
+	WebSearch  *settingsWebSearchUpdate `json:"webSearch,omitempty"`
 	// MemoryOrganizer is applied by handleSettings, not applySettings: it lives
 	// in its own file and reschedules the running organizer.
 	MemoryOrganizer *settingsMemoryOrganizerUpdate `json:"memoryOrganizer,omitempty"`
@@ -198,6 +214,7 @@ func projectSettings(cfg *config.Config) settingsProjection {
 	out := settingsProjection{Version: protocol.Version, Mode: "kbrain", DefaultModel: cfg.DefaultModel, DefaultProvider: cfg.DefaultProvider, Providers: []settingsProvider{}, Models: []settingsModel{}}
 	out.Computer = cfg.Computer
 	out.Memory = settingsMemory{Enabled: cfg.Memory.IsEnabled()}
+	out.WebSearch = projectWebSearch(cfg.WebSearch)
 	out.AIApproval = settingsAIApproval{AIApprovalConfig: cfg.AIApproval, PerRun: true}
 	if out.AIApproval.Mode == "" {
 		out.AIApproval.Mode = "off"
@@ -206,6 +223,7 @@ func projectSettings(cfg *config.Config) settingsProjection {
 		p := cfg.Providers[id]
 		pv := settingsProvider{ID: id, Name: p.Name, Type: p.Type, API: p.API, BaseURL: publicBaseURL(p.BaseURL), IsFullURL: p.IsFullURL, ModelsURL: publicModelsURL(p.ModelsURL), APIKeyConfigured: p.APIKey != "", CustomHeaders: publicHeaders(p.CustomHeaders), ModelOrder: slices.Clone(p.ModelOrder), ActiveModels: slices.Clone(p.ActiveModels), RequestFormat: p.RequestFormat, Reasoning: p.Reasoning, PromptCachingEnabled: p.PromptCachingEnabled, PromptCacheHintMode: p.PromptCacheHintMode, PromptCacheRetention: p.PromptCacheRetention, NativeWebSearchEnabled: p.NativeWebSearchEnabled, UseSystemProxy: p.UseSystemProxy, RetryPolicy: p.RetryPolicy, UsageQuery: publicMetadata(p.UsageQuery), Metadata: publicMetadata(p.Metadata), Models: []settingsModel{}}
 		pv.CacheCapabilities, pv.CacheSessionAffinity, pv.CacheControlFormat = p.CacheCapabilities, p.CacheSessionAffinity, p.CacheControlFormat
+		pv.NativeWebSearchSupported = ai.APISupportsNativeWebSearch(p.API, p.BaseURL)
 		for modelID, shared := range cfg.Models {
 			if !slices.Contains(shared.Providers, id) {
 				continue
@@ -364,6 +382,11 @@ func applySettings(cfg *config.Config, update settingsUpdate) error {
 		}
 		enabled := *update.Memory.Enabled
 		cfg.Memory.Enabled = &enabled
+	}
+	if update.WebSearch != nil {
+		if err := applyWebSearchUpdate(cfg, *update.WebSearch); err != nil {
+			return err
+		}
 	}
 	if cfg.Providers == nil {
 		cfg.Providers = map[string]config.Provider{}

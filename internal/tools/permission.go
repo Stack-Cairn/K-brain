@@ -65,7 +65,7 @@ var Gate func(GateRequest) (GateDecision, string)
 // locally but reach the network, so the user is asked instead of the call being
 // refused. The other gated tools are refused in Plan mode.
 func AsksInPlanMode(tool string) bool {
-	return tool == "web_fetch"
+	return tool == "web_fetch" || tool == WebSearchToolName
 }
 
 type gateContextKey struct{}
@@ -146,6 +146,13 @@ func GateRequestFor(ctx context.Context, tool string, args json.RawMessage) Gate
 				if u, err := parseFetchURL(f.URL); err == nil {
 					return webFetchGateRequest(ctx, u)
 				}
+			}
+		case WebSearchToolName:
+			var s struct {
+				Query string `json:"query"`
+			}
+			if json.Unmarshal(args, &s) == nil && strings.TrimSpace(s.Query) != "" {
+				return GateRequest{Context: ctx, Tool: tool, Command: strings.Join(strings.Fields(s.Query), " ")}
 			}
 		case "grep", "glob", "list":
 			// Like the tools, an omitted path searches the working directory.

@@ -103,9 +103,11 @@ func Suggest(req Request, opts Options) []string {
 		}
 		return []string{rule}
 	}
-	// Whole-tool rules only for MCP tools: built-in tools gate actions of very
-	// different weight under one name (cron create vs delete, process stop ids).
-	if strings.HasPrefix(req.Tool, "mcp__") {
+	// Whole-tool rules only for MCP tools and web_search: other built-in tools gate
+	// actions of very different weight under one name (cron create vs delete,
+	// process stop ids), while every web_search sends a query to the one
+	// configured search service.
+	if strings.HasPrefix(req.Tool, "mcp__") || req.Tool == "web_search" {
 		return []string{req.Tool}
 	}
 	return nil

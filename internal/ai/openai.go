@@ -648,7 +648,7 @@ func (c *OpenAI) applyCacheHeaders(req *http.Request) {
 
 func (c *OpenAI) Stream(ctx context.Context, req Request, onText, onThink func(string), onToolCall func(id, name, args string)) (Message, Usage, error) {
 	if req.NativeWebSearch {
-		return Message{}, Usage{}, fmt.Errorf("native web search is unsupported for Chat Completions; use Responses, Anthropic Messages, or Gemini")
+		return Message{}, Usage{}, fmt.Errorf("native web search is unsupported for Chat Completions; use Responses, Anthropic Messages, or Gemini, or configure webSearch so the web_search tool can search instead")
 	}
 	req.Stream = true
 	req.StreamOptions = &struct {

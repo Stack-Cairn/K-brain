@@ -605,6 +605,7 @@ func (m *model) resume(id string) error {
 		m.agent = agent.New(m.agent.Client, m.agent.Model, m.agent.MaxTokens, m.sysPrompt, agent.WithExperimental(m.agent.Experimental()), agent.WithComputerConfig(m.cfg.Computer), agent.WithMemoryEnabled(m.cfg.Memory.IsEnabled()), agent.WithOutputLimitContinuation())
 		m.agent.ModelName, m.agent.Provider = m.modelName, m.provName
 		m.agent.Vision = m.supportsVision()
+		m.agent.WebSearchFallback = webSearchFallback(m.cfg)
 		m.agent.ContextLimit = m.contextLimitFor(m.provName, m.agent.Model)
 	}
 	m.applyCompactModel()
@@ -818,6 +819,17 @@ func (m *model) setGoal(goal string) {
 	}
 }
 
+// webSearchFallback offers the web_search tool from cfg's webSearch section on
+// turns with web search on (the provider's nativeWebSearchEnabled) where the
+// model's API cannot search natively.
+func webSearchFallback(cfg *config.Config) func() (tools.Tool, bool) {
+	if cfg == nil {
+		return nil
+	}
+	settings := cfg.WebSearch
+	return tools.WebSearchFallback(func() config.WebSearchConfig { return settings })
+}
+
 func buildAgent(cfg *config.Config, modelName, provName, sysPrompt string) (*agent.Agent, string, string, error) {
 	route, err := routing.ResolveRoute(cfg, modelName, provName, true)
 	if err != nil {
@@ -829,6 +841,7 @@ func buildAgent(cfg *config.Config, modelName, provName, sysPrompt string) (*age
 		return nil, "", "", err
 	}
 	ag.WorkingDir = cwd()
+	ag.WebSearchFallback = webSearchFallback(cfg)
 	ag.Hooks = hooks.New(cfg.Hooks)
 	ag.WorktreeSubagents = cfg.WorktreeSubagents != nil && *cfg.WorktreeSubagents
 

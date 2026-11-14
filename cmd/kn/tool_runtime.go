@@ -73,5 +73,7 @@ func withToolAvailability(cfg *config.Config) agent.Option {
 		a.ComputerDisabled = cfg.Computer.Enabled != nil && !*cfg.Computer.Enabled
 		a.SetMemoryEnabled(cfg.Memory.IsEnabled())
 		agent.WithComputerConfig(cfg.Computer)(a)
+		webSearch := cfg.WebSearch
+		a.WebSearchFallback = tools.WebSearchFallback(func() config.WebSearchConfig { return webSearch })
 	}
 }

@@ -400,6 +400,8 @@ func (m *model) permTitle(req tools.GateRequest) string {
 		return m.tr("Run this command?")
 	case req.Tool == "web_fetch" || req.Tool == "WebFetch":
 		return m.tr("Fetch this URL?")
+	case req.Tool == tools.WebSearchToolName:
+		return m.tr("Search the web for this?")
 	case req.Preview != nil && req.Preview.NewFile:
 		return m.tr("Create this file?")
 	case req.Tool == "edit" || req.Tool == "Edit":
