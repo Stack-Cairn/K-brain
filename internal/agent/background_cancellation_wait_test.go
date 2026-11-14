@@ -7,7 +7,31 @@ import (
 	"time"
 
 	"github.com/Stack-Cairn/K-brain/internal/ai"
+	"github.com/Stack-Cairn/K-brain/internal/tools"
 )
+
+func TestWaitCancelledTasksDoesNotWaitForNormallyEndedTurn(t *testing.T) {
+	parent := New(ai.New("http://unused", "k"), "m", 100, "sys")
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(context.Canceled)
+	live := parent.RegisterBackgroundContext(ctx, "outlives turn", "keep working", SubModel{})
+	defer live.cancel()
+	cancel(tools.ErrTurnEnded)
+	waited := make(chan struct{})
+	go func() {
+		parent.WaitCancelledTasks()
+		close(waited)
+	}()
+	select {
+	case <-waited:
+	case <-time.After(5 * time.Second):
+		parent.Tasks().settle(live.ID, TaskDone, "release failed wait")
+		t.Fatal("normal turn completion must not wait for the live background task")
+	}
+	if err := live.ctx.Err(); err != nil {
+		t.Fatalf("normal turn completion cancelled background task: %v", err)
+	}
+}
 
 func TestWaitCancelledTasksWaitsForRecordingWithoutStoppingLiveTasks(t *testing.T) {
 	parent := New(ai.New("http://unused", "k"), "m", 100, "sys")
