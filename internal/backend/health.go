@@ -61,6 +61,13 @@ type healthCapabilities struct {
 	// history edits for such a session are refused with 409, and the session
 	// list notices transcript writes from those processes within about a second.
 	SessionExternalRuns int `json:"session_external_runs"`
+	// WebSearchFallback is 1 where a run with options.search "enabled" on a
+	// provider without native search (Chat Completions, Gemini relays) gets the
+	// web_search tool backed by the configured search service, provider
+	// settings carry nativeWebSearchSupported, and /v1/settings reads and
+	// writes webSearch {provider, apiKey, baseUrl, maxResults} with available
+	// and reason.
+	WebSearchFallback int `json:"web_search_fallback"`
 }
 
 // healthRunSandboxV1 describes per-run sandboxing (options.sandbox). Clients
@@ -170,6 +177,7 @@ func (s *Server) health() healthResponse {
 			SessionArchive:          1,
 			MemoryOrganizerSettings: 1,
 			SessionExternalRuns:     1,
+			WebSearchFallback:       1,
 		},
 		HostBridge: s.hostBridge.status(),
 	}

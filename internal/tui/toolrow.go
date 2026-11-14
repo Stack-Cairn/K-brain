@@ -29,6 +29,8 @@ func toolHeaderName(name string) string {
 		return "List"
 	case "web_fetch":
 		return "Fetch"
+	case "web_search":
+		return "Web search"
 	case "bash":
 		return "Bash"
 	case "subagent":
@@ -97,6 +99,10 @@ func toolSubject(name, args string) string {
 		}
 	case "web_fetch":
 		s = fetchSubject(get("url"))
+	case "web_search":
+		if q := strings.Join(strings.Fields(get("query")), " "); q != "" {
+			s = strconv.Quote(q)
+		}
 	case "subagent":
 		if s = get("description"); s == "" {
 			s = firstLine(get("prompt"))
@@ -312,7 +318,7 @@ func diffCountsCell(added, removed int) string {
 // the user; their results fold to a line count.
 func quietResultTool(name string) bool {
 	switch name {
-	case "read", "grep", "glob", "list", "web_fetch", "Read", "Grep", "Glob", "List", "WebFetch":
+	case "read", "grep", "glob", "list", "web_fetch", "web_search", "Read", "Grep", "Glob", "List", "WebFetch":
 		return true
 	}
 	return false
@@ -322,6 +328,7 @@ var (
 	searchMatchesRe = regexp.MustCompile(`(?m)^matches=(\d+)`)
 	searchTotalRe   = regexp.MustCompile(`(?m)total=(\d+)`)
 	fetchTotalRe    = regexp.MustCompile(`(?m)^total_chars=(\d+)$`)
+	webResultsRe    = regexp.MustCompile(`(?m)^results=(\d+)$`)
 )
 
 // quietResultSummary is the folded line for a read or search result. Searches
@@ -329,6 +336,16 @@ var (
 func quietResultSummary(name, text string, lines int) string {
 	if name == "web_fetch" || name == "WebFetch" {
 		return fetchResultSummary(text)
+	}
+	if name == "web_search" {
+		n := 0
+		if m := webResultsRe.FindStringSubmatch(text); m != nil {
+			n, _ = strconv.Atoi(m[1])
+		}
+		if n == 1 {
+			return "1 result"
+		}
+		return fmt.Sprintf("%d results", n)
 	}
 	name = strings.ToLower(name)
 	n := lines

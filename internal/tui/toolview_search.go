@@ -30,7 +30,7 @@ type groupMember struct {
 // groupableTool reports read-only tools whose calls fold into verb groups.
 func groupableTool(name string) bool {
 	switch name {
-	case "read", "Read", "list", "List", "grep", "Grep", "glob", "Glob", "web_fetch", "WebFetch", "Image":
+	case "read", "Read", "list", "List", "grep", "Grep", "glob", "Glob", "web_fetch", "WebFetch", "web_search", "Image":
 		return true
 	}
 	return false
@@ -172,6 +172,8 @@ func groupVerbOf(name string) (key string, v groupVerb) {
 		return "search", groupVerb{"searched", "pattern", "patterns"}
 	case "web_fetch", "WebFetch":
 		return "fetch", groupVerb{"fetched", "page", "pages"}
+	case "web_search":
+		return "websearch", groupVerb{"searched the web for", "query", "queries"}
 	case "Image":
 		return "image", groupVerb{"viewed", "image", "images"}
 	}

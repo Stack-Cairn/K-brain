@@ -105,6 +105,11 @@ type Agent struct {
 	Effort          string
 	Vision          bool
 	NativeWebSearch bool
+	// WebSearchFallback offers the web_search function tool when the configured
+	// third-party search service is usable. It stands in for native search on
+	// turns that ask for web search while the client cannot search natively;
+	// nil leaves such turns to the provider.
+	WebSearchFallback func() (tools.Tool, bool)
 
 	Temperature *float64
 	TopP        *float64
@@ -608,9 +613,34 @@ func (a *Agent) AllTools() []tools.Tool {
 	a.toolsMu.Lock()
 	defer a.toolsMu.Unlock()
 	if a.RunToolsSet {
+		// A run's tool set already holds the fallback search tool when the run
+		// enabled search and its policies allow the tool (applyRunOptions).
 		return a.withoutMemoryTools(a.withProcessToolLocked(append([]tools.Tool(nil), a.RunTools...)))
 	}
-	return a.withoutMemoryTools(a.modeTools(a.withProcessToolLocked(append(append(a.ownToolsLocked(), a.mcpTools...), a.pluginTools...))))
+	all := append(append(a.ownToolsLocked(), a.mcpTools...), a.pluginTools...)
+	if search, ok := a.WebSearchFallbackTool(); ok && !slices.ContainsFunc(all, func(t tools.Tool) bool { return t.Def.Function.Name == search.Def.Function.Name }) {
+		all = append(all, search)
+	}
+	return a.withoutMemoryTools(a.modeTools(a.withProcessToolLocked(all)))
+}
+
+// WebSearchFallbackTool returns the web_search tool when this turn asks for web
+// search, the client cannot search natively, and a search service is configured.
+func (a *Agent) WebSearchFallbackTool() (tools.Tool, bool) {
+	if !a.NativeWebSearch || a.WebSearchFallback == nil || ai.SupportsNativeWebSearch(a.Client) {
+		return tools.Tool{}, false
+	}
+	return a.WebSearchFallback()
+}
+
+// requestNativeSearch is the NativeWebSearch flag sent to the provider: off
+// while the fallback search tool serves the turn's web search instead.
+func (a *Agent) requestNativeSearch() bool {
+	if !a.NativeWebSearch {
+		return false
+	}
+	_, fallback := a.WebSearchFallbackTool()
+	return !fallback
 }
 
 func (a *Agent) Turn(ctx context.Context, input string, ev Events) (string, error) {
@@ -787,7 +817,7 @@ func (a *Agent) turnPending(ctx context.Context, input string, parts []ai.Conten
 			Tools:                tools.Defs(requestTools),
 			MaxTokens:            a.MaxTokens,
 			ReasoningEffort:      a.Effort,
-			NativeWebSearch:      a.NativeWebSearch,
+			NativeWebSearch:      a.requestNativeSearch(),
 			NativeSearchProvider: a.Provider,
 			Temperature:          a.Temperature,
 			TopP:                 a.TopP,
@@ -1152,7 +1182,7 @@ func (a *Agent) compact(ctx context.Context) (summary string, cutoff int, info C
 				ReasoningEffort:      a.Effort,
 				Temperature:          a.Temperature,
 				TopP:                 a.TopP,
-				NativeWebSearch:      a.NativeWebSearch,
+				NativeWebSearch:      a.requestNativeSearch(),
 				NativeSearchProvider: a.Provider,
 			}, a.summaryOutputCeiling(false), usageLabel)
 			addUsage(&usage, u)
@@ -1451,7 +1481,7 @@ func (a *Agent) finalAnswer(ctx context.Context, ev Events) (string, error) {
 		Messages:             a.requestMessages(msgs),
 		Tools:                nil,
 		ReasoningEffort:      a.Effort,
-		NativeWebSearch:      a.NativeWebSearch,
+		NativeWebSearch:      a.requestNativeSearch(),
 		NativeSearchProvider: a.Provider,
 		Temperature:          a.Temperature,
 		TopP:                 a.TopP,
