@@ -124,13 +124,15 @@ func TestWebSearchResolveKey(t *testing.T) {
 	}
 
 	// A failing command never echoes the key text.
-	secret := "!printf leaked-secret-value; exit 3"
+	// The command itself exits non-zero on every platform (or is missing on
+	// Windows); its argument stands in for secret text that must not leak.
+	secret := "!false leaked-secret-value"
 	e = WebSearchConfig{Provider: "tavily", APIKey: secret}.effective(envMap(nil))
 	_, err = e.ResolveKey(context.Background())
 	if err == nil {
 		t.Fatal("failing command resolved")
 	}
-	if strings.Contains(err.Error(), "leaked-secret-value") || strings.Contains(err.Error(), "printf") {
+	if strings.Contains(err.Error(), "leaked-secret-value") {
 		t.Fatalf("error leaks the key: %v", err)
 	}
 }
