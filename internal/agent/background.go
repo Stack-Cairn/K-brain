@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"sort"
@@ -42,8 +43,9 @@ type BackgroundTask struct {
 
 	Done chan struct{}
 
-	ctx    context.Context
-	cancel context.CancelFunc
+	ctx       context.Context
+	cancel    context.CancelFunc
+	cancelled func() bool
 
 	sub          *Agent
 	worktreePath string
@@ -352,6 +354,9 @@ func (a *Agent) RegisterBackgroundContext(parent context.Context, description, p
 		ID: id, Description: description, Prompt: prompt,
 		Status: TaskRunning, StartedAt: time.Now(), ParentToolCallID: tools.ToolCallID(base),
 		Done: make(chan struct{}), ctx: withRequestTask(taskCtx, id), cancel: cancel,
+		cancelled: func() bool {
+			return taskCtx.Err() != nil || (base.Err() != nil && !errors.Is(context.Cause(base), tools.ErrTurnEnded))
+		},
 		sub: sub,
 
 		SubModel: sub.Model,
@@ -368,6 +373,27 @@ func (a *Agent) RegisterBackgroundContext(parent context.Context, description, p
 		r.OnRecord(r.recordSession(), t)
 	}
 	return t
+}
+
+// WaitCancelledTasks waits for cancelled background tasks to finish publishing and
+// recording their terminal state. It neither cancels nor waits for live tasks:
+// their lifetime still belongs to the context passed at registration.
+func (a *Agent) WaitCancelledTasks() {
+	r := a.Tasks()
+	r.mu.Lock()
+	var done []<-chan struct{}
+	for _, t := range r.tasks {
+		// OutliveTurn propagates stop via AfterFunc. The parent can already be
+		// cancelled while the child's callback has not run yet. Normal completion
+		// deliberately leaves background work alive and must not join it.
+		if t.cancelled != nil && t.cancelled() && t.Done != nil {
+			done = append(done, t.Done)
+		}
+	}
+	r.mu.Unlock()
+	for _, ch := range done {
+		<-ch
+	}
 }
 
 func (a *Agent) LaunchBackground(t *BackgroundTask, worktreePath string) {

@@ -1851,6 +1851,12 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, end func(),
 		}
 		_, err = rt.agent.TurnParts(turnCtx, converted.Content, converted.Parts, ev)
 	}
+	// A terminal lets clients close the stream and submit another run. On
+	// cancellation, join children that inherited it before exposing that terminal,
+	// so their persisted results cannot arrive after the stream has ended.
+	if ctx.Err() != nil {
+		rt.agent.WaitCancelledTasks()
+	}
 	toolOutput.close()
 	progress.phase("persisting")
 	var failedAssistant *protocol.Message

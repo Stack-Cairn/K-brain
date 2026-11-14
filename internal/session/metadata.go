@@ -316,6 +316,11 @@ func (s *Store) Fork(srcID string, uptoSeq int, title string) (id string, err er
 			Title: title, ForkedFrom: srcID, ForkSeq: uptoSeq, UpdatedAt: time.Now().UTC()})
 		for seq, msg := range src.Messages {
 			if seq <= uptoSeq {
+				// Task records are not copied. Persist recovered notice identity
+				// without changing the raw navigation format of ordinary messages.
+				if src.withLegacyNoticeOrigin(msg).Origin == ai.OriginBackground {
+					msg = src.canonicalMessage(seq, msg)
+				}
 				d.Messages[seq] = msg
 			}
 		}
