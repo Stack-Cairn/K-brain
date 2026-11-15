@@ -5,10 +5,11 @@ import (
 	"strings"
 
 	"github.com/Stack-Cairn/K-brain/internal/ai"
+	"github.com/Stack-Cairn/K-brain/internal/config"
 )
 
 func (m *model) sessionCost() (float64, bool) {
-	if m.cfg != nil && m.cfg.Providers[m.provName].API == "openai-codex-responses" {
+	if m.cfg.SubscriptionBilled(m.provName) {
 		return 0, false
 	}
 	usage := m.agent.UsageSummary()
@@ -39,39 +40,7 @@ func (m *model) sessionCost() (float64, bool) {
 }
 
 func (m *model) usageCost(model, prov string, u ai.Usage) (float64, bool) {
-	if u.PromptTokens == 0 && u.CompletionTokens == 0 {
-		cost, valid := ai.CalculateCost(u, ai.TokenRates{})
-		return cost.Total, valid
-	}
-	if cat, ok := m.catalogs[prov]; ok {
-		if rates, ok := cat.Pricing(model); ok {
-			cost, valid := ai.CalculateCost(u, rates)
-			return cost.Total, valid
-		}
-		return 0, false
-	}
-	if prov != "" {
-		return 0, false
-	}
-	var cost float64
-	found := false
-	for _, cat := range m.catalogs {
-		if cat.Find(model) != nil {
-			if found {
-				return 0, false
-			}
-			rates, ok := cat.Pricing(model)
-			if !ok {
-				return 0, false
-			}
-			value, valid := ai.CalculateCost(u, rates)
-			if !valid {
-				return 0, false
-			}
-			cost, found = value.Total, true
-		}
-	}
-	return cost, found
+	return config.UsageCost(m.catalogs, model, prov, u)
 }
 
 func (m *model) turnCost(cut int) (float64, bool) {

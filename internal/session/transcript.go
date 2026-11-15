@@ -244,7 +244,8 @@ func (s *Store) write(d *sessionData) error {
 	if err := f.Close(); err != nil {
 		return err
 	}
-	if err := os.Rename(f.Name(), path); err != nil {
+	// 用量统计可能正开着旧文件读取（见 usage_stats.go），Windows 上改名要等它关闭。
+	if err := renameRetry(f.Name(), path); err != nil {
 		return err
 	}
 	s.bumpSyncBeacon()

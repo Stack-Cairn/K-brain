@@ -109,13 +109,14 @@ func (s *Store) SetCWD(id, cwd string) error {
 		if err := os.MkdirAll(filepath.Dir(newDir), 0700); err != nil {
 			return err
 		}
-		if err := os.Rename(oldDir, newDir); err != nil {
+		// 用量统计读文件时目录里有打开的句柄，Windows 上移动目录要等它关闭。
+		if err := renameRetry(oldDir, newDir); err != nil {
 			return err
 		}
 		d.Meta.CWD = cwd
 		d.Meta.UpdatedAt = time.Now().UTC()
 		if err := s.write(d); err != nil {
-			_ = os.Rename(newDir, oldDir)
+			_ = renameRetry(newDir, oldDir)
 			return err
 		}
 		oldProjectDir := filepath.Dir(oldDir)

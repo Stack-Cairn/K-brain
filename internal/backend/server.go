@@ -550,6 +550,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.permissionRules(w, r)
 		return
 	}
+	if r.URL.Path == "/v1/usage/stats" {
+		s.handleUsageStats(w, r)
+		return
+	}
 	if r.URL.Path == "/v1/settings" {
 		s.handleSettings(w, r)
 		return
