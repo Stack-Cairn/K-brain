@@ -68,6 +68,10 @@ type healthCapabilities struct {
 	// writes webSearch {provider, apiKey, baseUrl, maxResults} with available
 	// and reason.
 	WebSearchFallback int `json:"web_search_fallback"`
+	// UsageStats is 1 where GET /v1/usage/stats?days=N&tz=IANA returns token
+	// usage across every session of every workspace, by day and by model,
+	// with totals, streaks and costs where the model catalog prices them.
+	UsageStats int `json:"usage_stats"`
 }
 
 // healthRunSandboxV1 describes per-run sandboxing (options.sandbox). Clients
@@ -178,6 +182,7 @@ func (s *Server) health() healthResponse {
 			MemoryOrganizerSettings: 1,
 			SessionExternalRuns:     1,
 			WebSearchFallback:       1,
+			UsageStats:              1,
 		},
 		HostBridge: s.hostBridge.status(),
 	}

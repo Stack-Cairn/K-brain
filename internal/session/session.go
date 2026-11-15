@@ -118,6 +118,8 @@ type Store struct {
 	runLeases map[string]*heldRun
 	// taskLeases 是本进程为运行子代理持有的租约，按会话（见 task_lease.go）。
 	taskLeases map[string]*taskLease
+	// usageStats 缓存各会话文件的用量条目（见 usage_stats.go），有自己的锁。
+	usageStats usageStatsCache
 }
 
 type sessionData struct {

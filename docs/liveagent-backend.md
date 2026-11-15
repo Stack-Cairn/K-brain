@@ -57,6 +57,7 @@ VITE_KBRAIN_TOKEN=<backend-token>
 | GET | `/v1/models` | 当前后端模型路由目录 |
 | POST | `/v1/sandbox/setup` | 在 Windows 上通过 UAC 安装或修复沙箱账户（`sandbox-user`），返回 setup 状态与新的 `run_sandbox`；`capabilities.sandbox_setup` 表示支持 |
 | GET / PUT | `/v1/settings` | 读取脱敏配置 / 原子持久化供应商、模型与默认选择；记忆开关 `memory` 与记忆整理计划 `memoryOrganizer` 也在这里 |
+| GET | `/v1/usage/stats` | 所有工作区会话的跨会话用量统计（按天、按模型，含连续天数与费用）；`days`、`tz` 与口径见下文，`capabilities.usage_stats` 表示支持 |
 | GET / PUT | `/v1/mcp` | 读取脱敏 MCP 配置 / 原子持久化并 reload stdio/http servers |
 | POST | `/v1/mcp/reload` | 从 K-brain-owned MCP 配置重建 live manager |
 | GET | `/v1/mcp/tools` | 按 workspace 与 enabled server IDs 返回 discovered schemas |
@@ -528,6 +529,30 @@ GET `/v1/settings`（以及 PUT 的响应）总是带 `webSearch`：
 - PUT 接受 `webSearch:{provider?, apiKey?, clearApiKey?, baseUrl?, maxResults?}`，省略的字段不变。`apiKey` 为空字符串表示保留已保存的密钥，`clearApiKey: true` 删除它，两者同时给出新密钥与 `clearApiKey` 返回 400；密钥可以是明文或 `$VAR`/`${VAR}` 引用，`!命令` 返回 400。`provider` 不在列表中、`maxResults` 不在 0–10、`baseUrl` 不是 http(s) 地址时返回 400，什么都不改。GET 返回的只读字段（`apiKeyConfigured`、`apiKeySource`、`available`、`reason`、`providers`）可以原样带回，会被忽略。
 - 保存后对已有会话的下一次模型请求生效，不需要重启或重建会话。
 - 旧后端的 PUT 遇到 `webSearch` 这个未知字段返回 400，旧版本读取含 `webSearch` 的 config.json 也会报未知字段；客户端在能力缺失时不要发送它。
+
+### 跨会话用量统计（`capabilities.usage_stats: 1`）
+
+`GET /v1/usage/stats?days=N&tz=IANA` 汇总会话目录里所有工作区、所有会话（含归档会话与子代理转录）的 token 用量。`days` 默认 371（52 周加余量），取整到 1–1100，不是整数时返回 400；`tz` 是按天分组用的 IANA 时区名，默认为后端进程的本地时区（取不到名称时 `timezone` 为 `Local`），无效名称返回 400 `{version, error}`。所有数字只统计 `tz` 下最近 `days` 天（含今天）。
+
+```json
+{
+  "generatedAt": "2026-11-15T18:00:00+08:00",
+  "timezone": "Asia/Shanghai",
+  "days": 371,
+  "totals": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "total": 0, "turns": 0, "sessions": 0, "costUSD": null},
+  "summary": {"activeDays": 0, "currentStreak": 0, "longestStreak": 0, "topModel": "", "longestSession": null},
+  "daily": [{"date": "2026-11-15", "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "total": 0, "turns": 0, "models": {"<model>": 0}}],
+  "models": [{"model": "", "provider": "", "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "total": 0, "turns": 0, "costUSD": null}]
+}
+```
+
+- `input` 与 `usage.updated` 的 `input_tokens` 同义：每次请求的完整输入，已经包含缓存读取与写入；`cacheRead`、`cacheWrite` 是其中的部分。`total = input + output`。
+- `turns` 是带用量的模型回复数；只有元数据合计的旧会话计入 token，不计 `turns`。`sessions` 是范围内有用量的会话数，子代理的用量归到父会话。
+- `daily` 只列有用量的日子，按日期升序；`daily[].models` 以不含 provider 的模型名为键，值为当天 `total`。`models` 按 `(model, provider)` 分组、按 `total` 降序；`summary.topModel` 是各 provider 合计后 `total` 最高的模型名。
+- `currentStreak` 是截至今天的连续有用量天数，今天还没有用量时从昨天算起；`longestStreak` 只看范围内。`longestSession` 是范围内 `total` 最高的会话 `{id, title, total}`，没有用量时为 `null`。
+- `costUSD` 用模型目录价格计算（与 kn 的 `/usage` 卡片相同），按订阅计费的 provider 不计价；单个模型无价格时为 `null`，总计只加能计价的模型，一个都不能计价时为 `null`。
+- 时间与去重：回复按 `sent_at` 分日，旧回复没有时间时取它之前最近一条消息的时间，再没有就取会话创建时间；消息里没有用量的旧会话把元数据合计记在最后活动那天。子代理的转录会话与父会话的子代理合计是同一份用量，只计一次（父会话没有带用量的子代理转录时才用合计）；分支与复制出的会话里同 id 的回复只计一次。
+- 第一次请求要读一遍所有会话文件；之后按文件大小与修改时间缓存每个会话的用量，只重读变化的会话。统计不获取会话锁，不会阻塞正在进行的运行。
 
 ### 记住的权限规则（`capabilities.permission_rules: 1`、`readonly_auto_allow: 1`）
 

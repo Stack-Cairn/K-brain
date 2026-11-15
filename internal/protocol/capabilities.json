@@ -220,6 +220,15 @@
       "firstRelease": "v0.107.33",
       "evidenceCommit": "pending",
       "missing": "Web search is provider-native only: enable the search switch only for openai-responses, anthropic-messages and google-generative-ai providers (a Chat Completions run with options.search enabled fails), expect no nativeWebSearchSupported on providers, and never send webSearch in PUT /v1/settings (an older backend rejects the request with 400 for the unknown field)."
+    },
+    {
+      "name": "usage_stats",
+      "type": "integer",
+      "compare": "eq",
+      "value": 1,
+      "firstRelease": "v0.107.34",
+      "evidenceCommit": "pending",
+      "missing": "GET /v1/usage/stats is not served (the request returns 404); hide cross-session usage statistics and show only the per-session usage from session summaries and usage.updated."
     }
   ]
 }
