@@ -346,8 +346,11 @@ type delta struct {
 
 type chunk struct {
 	Choices []struct {
-		Delta        delta  `json:"delta"`
-		FinishReason string `json:"finish_reason"`
+		Delta           delta  `json:"delta"`
+		FinishReason    string `json:"finish_reason"`
+		ServerToolEvent struct {
+			Type string `json:"type"`
+		} `json:"server_tool_event"`
 	} `json:"choices"`
 	Error *apiError `json:"error"`
 	Usage *Usage    `json:"usage"`
@@ -647,9 +650,16 @@ func (c *OpenAI) applyCacheHeaders(req *http.Request) {
 }
 
 func (c *OpenAI) Stream(ctx context.Context, req Request, onText, onThink func(string), onToolCall func(id, name, args string)) (Message, Usage, error) {
-	if req.NativeWebSearch {
-		return Message{}, Usage{}, fmt.Errorf("native web search is unsupported for Chat Completions; use Responses, Anthropic Messages, or Gemini, or configure webSearch so the web_search tool can search instead")
+	if deepSeekFunctionSearch(req) {
+		return c.streamDeepSeekFunctions(ctx, req, onText, onThink, onToolCall)
 	}
+	if req.NativeWebSearch && !deepSeekWebToolsModel(req.Model) {
+		return Message{}, Usage{}, fmt.Errorf("native web search is unsupported for Chat Completions model %q; use DeepSeek Flash, Responses, Anthropic Messages, or Gemini, or configure webSearch so the web_search tool can search instead", req.Model)
+	}
+	return c.streamChat(ctx, req, onText, onThink, onToolCall)
+}
+
+func (c *OpenAI) streamChat(ctx context.Context, req Request, onText, onThink func(string), onToolCall func(id, name, args string)) (Message, Usage, error) {
 	req.Stream = true
 	req.StreamOptions = &struct {
 		IncludeUsage bool `json:"include_usage"`
@@ -708,6 +718,10 @@ func (c *OpenAI) streamOnce(ctx context.Context, body []byte, onText, onThink fu
 	defer resp.Body.Close()
 
 	msg := Message{Role: "assistant"}
+	search := newSearchStream(ctx, "deepseek")
+	searchCompleted := false
+	defer func() { search.finish(!searchCompleted) }()
+	var serverToolCalls json.RawMessage
 	var reasoning strings.Builder
 	var usage Usage
 	var calls []ToolCall
@@ -745,6 +759,12 @@ func (c *OpenAI) streamOnce(ctx context.Context, body []byte, onText, onThink fu
 		if len(ch.Choices) == 0 {
 			continue
 		}
+		if raw := search.acceptDeepSeekChat(data); len(raw) > 0 {
+			serverToolCalls = raw
+		}
+		if len(search.blocks) > 0 {
+			onUsage() // Search progress is externally visible; do not replay it on retry.
+		}
 		if fr := ch.Choices[0].FinishReason; fr != "" {
 			finish = fr
 		}
@@ -757,6 +777,11 @@ func (c *OpenAI) streamOnce(ctx context.Context, body []byte, onText, onThink fu
 			if onThink != nil {
 				onThink(thought)
 			}
+		}
+		if ch.Choices[0].ServerToolEvent.Type == "step_reasoning_done" {
+			// Earlier thinking belongs to server_tool_calls; only the final
+			// step is replayed as message.reasoning_content.
+			reasoning.Reset()
 		}
 		if d.Content != "" {
 			msg.Content = content.append(msg.Content, d.Content)
@@ -799,6 +824,16 @@ func (c *OpenAI) streamOnce(ctx context.Context, body []byte, onText, onThink fu
 		msg.Replay = &ProviderReplay{API: APIChatCompletions, Endpoint: c.Endpoint(), Blocks: []json.RawMessage{raw}}
 	}
 
+	if len(serverToolCalls) > 0 {
+		if msg.Replay == nil {
+			msg.Replay = &ProviderReplay{API: APIChatCompletions, Endpoint: c.Endpoint()}
+		}
+		raw, _ := json.Marshal(map[string]json.RawMessage{"server_tool_calls": serverToolCalls})
+		msg.Replay.Blocks = append(msg.Replay.Blocks, raw)
+	}
+	searchCompleted = true
+	search.finish(false)
+	msg.HostedSearch = search.blocks
 	if finish == "length" {
 		return finishMessage(msg, calls, finish, onText), usage, nil
 	}

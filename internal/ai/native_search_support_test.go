@@ -29,6 +29,21 @@ func TestSupportsNativeWebSearch(t *testing.T) {
 	}
 }
 
+func TestSupportsNativeWebSearchForModel(t *testing.T) {
+	for _, model := range []string{"deepseek-flash", "DEEPSEEK-FLASH", "deepseek-chat", "deepseek-pro", "deepseek-v4-flash", ""} {
+		want := strings.EqualFold(model, "deepseek-flash")
+		if got := SupportsNativeWebSearchForModel(&OpenAI{}, model); got != want {
+			t.Errorf("Chat Completions/%s: %t, want %t", model, got, want)
+		}
+		if !SupportsNativeWebSearchForModel(&Responses{}, model) {
+			t.Errorf("Responses/%s lost native search", model)
+		}
+		if SupportsNativeWebSearchForModel(nil, model) || SupportsNativeWebSearchForModel(plainClient{}, model) {
+			t.Errorf("unknown client/%s gained native search", model)
+		}
+	}
+}
+
 func TestAPISupportsNativeWebSearch(t *testing.T) {
 	cases := []struct {
 		api, base string

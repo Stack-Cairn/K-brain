@@ -627,7 +627,7 @@ func (a *Agent) AllTools() []tools.Tool {
 // WebSearchFallbackTool returns the web_search tool when this turn asks for web
 // search, the client cannot search natively, and a search service is configured.
 func (a *Agent) WebSearchFallbackTool() (tools.Tool, bool) {
-	if !a.NativeWebSearch || a.WebSearchFallback == nil || ai.SupportsNativeWebSearch(a.Client) {
+	if !a.NativeWebSearch || a.WebSearchFallback == nil || ai.SupportsNativeWebSearchForModel(a.Client, a.Model) {
 		return tools.Tool{}, false
 	}
 	return a.WebSearchFallback()

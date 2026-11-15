@@ -18,6 +18,24 @@ func SupportsNativeWebSearch(c Client) bool {
 	return false
 }
 
+// SupportsNativeWebSearchForModel includes model-specific extensions such as
+// DeepSeek Flash's Chat Completions tools. API-only settings remain conservative.
+func SupportsNativeWebSearchForModel(c Client, model string) bool {
+	// Responses embeds OpenAI; its API-wide support must win over the
+	// embedded Chat Completions model extension.
+	if SupportsNativeWebSearch(c) {
+		return true
+	}
+	if s, ok := c.(interface{ SupportsNativeWebSearchForModel(string) bool }); ok {
+		return s.SupportsNativeWebSearchForModel(model)
+	}
+	return false
+}
+
+func (c *OpenAI) SupportsNativeWebSearchForModel(model string) bool {
+	return deepSeekWebToolsModel(model)
+}
+
 // APISupportsNativeWebSearch is SupportsNativeWebSearch for a provider setting
 // that has no client yet: the API family and, for Gemini, the endpoint.
 func APISupportsNativeWebSearch(api, baseURL string) bool {
@@ -34,6 +52,8 @@ func APISupportsNativeWebSearch(api, baseURL string) bool {
 func (c *OpenAI) SupportsNativeWebSearch() bool { return false }
 
 func (c *Responses) SupportsNativeWebSearch() bool { return true }
+
+func (c *Responses) SupportsNativeWebSearchForModel(string) bool { return true }
 
 func (c *Anthropic) SupportsNativeWebSearch() bool { return true }
 

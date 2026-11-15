@@ -517,7 +517,7 @@ MCP 服务器可以在自己的工具运行期间请用户填写一张表单（M
 
 - 生效条件（每次模型请求都重新判断）：`search` 为 `enabled`、当前模型的 API 不能原生搜索、`webSearch.available` 为 `true`。此时请求不再带原生搜索标记，工具列表里多出 `web_search`；`mode: "chat"` 的运行也会得到这一个工具。能原生搜索的 API 不受影响，不会同时收到 `web_search`。没有配置 `webSearch` 时行为与旧版本相同（Chat Completions 仍然报错，错误信息提示配置 `webSearch`）。
 - `options.tools.policies` 可以写 `web_search`（即使当前没有提供这个工具也不会报 unavailable）：`deny` 不提供工具，`allow` 不再询问，`ask` 或省略按权限模式询问。计划模式下 `web_search` 询问而不是拒绝。`permission.requested` 的 `tool` 为 `web_search`，`command` 为搜索词，建议的可记住规则是整个工具 `web_search`。工具事件里的参数是 `{query, max_results?, recency?, domains?}`，结果是文本：`provider=`、`query=`、`results=N` 等头部行后跟编号列表（标题、URL、`published:`、摘要），最多 12000 个字符。
-- 能力判断：`providers[].nativeWebSearchSupported`（只读，PUT 时可以原样带回，被忽略）说明该 provider 的 API 能否原生搜索。宿主可以这样决定"联网"开关：`nativeWebSearchSupported || webSearch.available` 时允许打开；否则提示用户配置搜索服务。
+- 能力判断：`providers[].nativeWebSearchSupported`（只读，PUT 时可以原样带回，被忽略）说明该 provider 的 API 能否原生搜索，不是逐模型标记。Chat Completions 的 `deepseek-flash` 是模型级例外：即使 provider 标记为 `false`，也支持 DeepSeek 自有搜索，配置第三方服务不会取代它；同 provider 的其他模型仍使用回退。宿主在 `nativeWebSearchSupported || (api == "openai-completions" && model == "deepseek-flash") || webSearch.available` 时允许打开联网，否则提示用户配置搜索服务（模型名不区分大小写）。运行时与路由包装器按所选模型判断；联网关闭时两条搜索路径都不启用。Flash 开启思考时使用服务端网页工具；关闭或未指定思考且与本地工具并用时，使用 DeepSeek Search/Fetch API，不强制开启思考。
 
 GET `/v1/settings`（以及 PUT 的响应）总是带 `webSearch`：
 

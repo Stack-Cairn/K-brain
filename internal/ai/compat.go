@@ -2,6 +2,7 @@ package ai
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 )
 
@@ -55,6 +56,9 @@ func chatThinkingFormat(model string) string {
 }
 
 func (c *OpenAI) chatBody(req Request) ([]byte, error) {
+	if req.NativeWebSearch && !deepSeekWebToolsModel(req.Model) {
+		return nil, fmt.Errorf("native web search is unsupported for Chat Completions model %q; use DeepSeek Flash, Responses, Anthropic Messages, or Gemini", req.Model)
+	}
 	// chatMessages strips private replay metadata before JSON serialization.
 	history := req.Messages
 	messages, err := chatMessages(history)
@@ -126,6 +130,15 @@ func (c *OpenAI) chatBody(req Request) ([]byte, error) {
 			i++
 		}
 	}
+	if deepSeekFunctionSearch(req) {
+		tools := append([]Tool(nil), req.Tools...)
+		tools = append(tools, deepSeekSearchFunctions()...)
+		p["tools"] = tools
+	} else if req.NativeWebSearch {
+		p["tools"] = appendSearchTool(p["tools"], map[string]any{"type": "deepseek_web_search"})
+		p["tools"] = appendSearchTool(p["tools"], map[string]any{"type": "deepseek_read_url"})
+	}
+	applyDeepSeekChatReplay(p, history, c.Endpoint(), req.Model)
 	c.applyChatCacheControl(p)
 	return json.Marshal(p)
 }

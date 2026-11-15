@@ -6,6 +6,22 @@ import (
 	"github.com/Stack-Cairn/K-brain/internal/ai"
 )
 
+func TestFailoverClientModelNativeSearchFollowsPrimary(t *testing.T) {
+	c := &FailoverClient{candidates: []failoverCandidate{{client: &ai.OpenAI{}}, {client: &ai.Responses{}}}}
+	for _, model := range []string{"deepseek-flash", "deepseek-chat", "fixture-model"} {
+		if got := ai.SupportsNativeWebSearchForModel(c, model); got != (model == "deepseek-flash") {
+			t.Fatalf("Chat Completions/%s native search = %t", model, got)
+		}
+	}
+	c.primary = 1
+	if !ai.SupportsNativeWebSearchForModel(c, "fixture-model") {
+		t.Fatal("responses primary lost native search")
+	}
+	if ai.SupportsNativeWebSearchForModel(&FailoverClient{}, "deepseek-flash") {
+		t.Fatal("empty wrapper gained native search")
+	}
+}
+
 func TestFailoverClientNativeWebSearchFollowsPrimary(t *testing.T) {
 	c := &FailoverClient{candidates: []failoverCandidate{{client: &ai.OpenAI{}}, {client: &ai.Responses{}}}}
 	if c.SupportsNativeWebSearch() {

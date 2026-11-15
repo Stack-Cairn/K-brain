@@ -451,3 +451,11 @@ func (c *FailoverClient) SupportsNativeWebSearch() bool {
 	}
 	return ai.SupportsNativeWebSearch(c.candidates[c.primary].client)
 }
+
+// Keep model-specific native search when the agent uses a routing wrapper.
+func (c *FailoverClient) SupportsNativeWebSearchForModel(model string) bool {
+	if len(c.candidates) == 0 {
+		return false
+	}
+	return ai.SupportsNativeWebSearchForModel(c.candidates[c.primary].client, model)
+}
