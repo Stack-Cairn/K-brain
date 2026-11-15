@@ -20,7 +20,8 @@ package session
 //
 // 每个会话文件解析一次后按路径缓存它的用量条目（只保留数字，不保留消息内容），文件大小或修改时间
 // 变化才重新解析。统计不获取会话锁（s.mu）和会话目录的文件锁，正在运行的回合写会话不受影响；
-// 会话文件总是整体改名替换，打开的文件句柄读到的是一份完整的旧文件或新文件。
+// 会话文件总是整体改名替换，打开的文件句柄读到的是一份完整的旧文件或新文件；Windows 上用
+// openShared 打开，读的同时回合仍能把新文件改名替换过来。
 
 import (
 	"bufio"
@@ -31,7 +32,6 @@ import (
 	"errors"
 	"hash/fnv"
 	"io"
-	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -177,7 +177,8 @@ func (s *Store) usageSessions(ctx context.Context) ([]*sessionUsage, error) {
 // readSessionUsage 逐行解析一个会话文件，只留下用量条目。缓存键取自打开的文件句柄，
 // 与解析的内容一致；文件在解析期间被替换时，下次统计会看到新的大小或修改时间。
 func readSessionUsage(id, path string) usageFileEntry {
-	f, err := os.Open(path)
+	// 不持有会话锁，所以要用允许改名替换的方式打开，见 openShared。
+	f, err := openShared(path)
 	if err != nil {
 		return usageFileEntry{}
 	}

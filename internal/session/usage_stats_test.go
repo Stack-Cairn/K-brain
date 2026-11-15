@@ -1,10 +1,12 @@
 package session
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -266,5 +268,32 @@ func TestUsageStatsCacheFollowsFileSizeAndModTime(t *testing.T) {
 	}
 	if got := usageStats(t, st, 7, "UTC", "2026-11-15T10:00:00Z"); got.Totals.Total() != 0 || got.Sessions != 0 || got.LongestSession != nil || len(st.usageStats.files) != 0 {
 		t.Fatalf("after delete = %+v, cache %d", got, len(st.usageStats.files))
+	}
+}
+
+// On Windows a reader opened without FILE_SHARE_DELETE makes the save's rename
+// over the session file fail; the stats reader holds no store lock, so a turn
+// saving the session while stats reads it must still succeed.
+func TestUsageStatsReaderDoesNotBlockSaves(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("sharing modes only matter on Windows")
+	}
+	st := openUsageStore(t)
+	id := saveSession(t, st, "/w", prompt("2026-11-15T01:00:00Z"), reply("msg-1", "2026-11-15T01:00:05Z", 100, 10, "m @ p"))
+	f, err := openShared(st.TranscriptPath(id))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if err := st.Save(id, 2, []ai.Message{2: prompt("2026-11-15T02:00:00Z"), 3: reply("msg-2", "2026-11-15T02:00:05Z", 1, 1, "m @ p")}, "m", "p"); err != nil {
+		t.Fatalf("save while the stats reader holds the file: %v", err)
+	}
+	// The open handle still reads the old file whole.
+	usage, err := parseSessionUsage(id, bufio.NewReader(f))
+	if err != nil || len(usage.entries) != 1 {
+		t.Fatalf("old file = %+v, %v", usage, err)
+	}
+	if got := usageStats(t, st, 7, "UTC", "2026-11-15T10:00:00Z").Totals.Total(); got != 112 {
+		t.Fatalf("total after save = %d", got)
 	}
 }
