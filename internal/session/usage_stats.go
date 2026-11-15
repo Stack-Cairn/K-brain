@@ -20,8 +20,11 @@ package session
 //
 // 每个会话文件解析一次后按路径缓存它的用量条目（只保留数字，不保留消息内容），文件大小或修改时间
 // 变化才重新解析。统计不获取会话锁（s.mu）和会话目录的文件锁，正在运行的回合写会话不受影响；
-// 会话文件总是整体改名替换，打开的文件句柄读到的是一份完整的旧文件或新文件；Windows 上用
-// openShared 打开，读的同时回合仍能把新文件改名替换过来。
+// 会话文件总是整体改名替换，打开的文件句柄读到的是一份完整的旧文件或新文件。
+//
+// Windows 上，有句柄开着会话文件时保存的改名替换会失败（带 FILE_SHARE_DELETE 也一样），所以
+// 统计用 openShared 打开、一次读完原始字节就关闭句柄，解析在关闭之后进行：句柄只在读文件的
+// 那一下开着。保存那边的 renameRetry 在 Windows 上最多重试约四秒，等这次读取结束。
 
 import (
 	"bufio"
@@ -32,6 +35,7 @@ import (
 	"errors"
 	"hash/fnv"
 	"io"
+	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -174,25 +178,38 @@ func (s *Store) usageSessions(ctx context.Context) ([]*sessionUsage, error) {
 	return out, nil
 }
 
-// readSessionUsage 逐行解析一个会话文件，只留下用量条目。缓存键取自打开的文件句柄，
-// 与解析的内容一致；文件在解析期间被替换时，下次统计会看到新的大小或修改时间。
+// readSessionUsage 读入一个会话文件并逐行解析，只留下用量条目。缓存键取自同一个文件句柄，
+// 与解析的内容一致；文件随后被替换时，下次统计会看到新的大小或修改时间。
 func readSessionUsage(id, path string) usageFileEntry {
-	// 不持有会话锁，所以要用允许改名替换的方式打开，见 openShared。
-	f, err := openShared(path)
-	if err != nil {
-		return usageFileEntry{}
-	}
-	defer f.Close()
-	info, err := f.Stat()
+	data, info, err := readSessionFile(path)
 	if err != nil {
 		return usageFileEntry{}
 	}
 	entry := usageFileEntry{size: info.Size(), modTime: info.ModTime()}
-	usage, err := parseSessionUsage(id, bufio.NewReader(f))
+	usage, err := parseSessionUsage(id, bufio.NewReader(bytes.NewReader(data)))
 	if err == nil {
 		entry.usage = usage
 	}
 	return entry
+}
+
+// readSessionFile 不持有会话锁读取会话文件：以允许改名替换的方式打开（见 openShared），
+// 一次读完就关闭句柄，让句柄开着的时间尽量短（Windows 上它会让保存的改名重试）。
+func readSessionFile(path string) ([]byte, os.FileInfo, error) {
+	f, err := openShared(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, nil, err
+	}
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return nil, nil, err
+	}
+	return data, info, nil
 }
 
 type usageMessage struct {

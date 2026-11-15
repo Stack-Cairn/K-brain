@@ -5,9 +5,9 @@ import (
 	"syscall"
 )
 
-// openShared 以只读方式打开文件，并允许其他句柄同时改名或替换它。os.Open 不带
-// FILE_SHARE_DELETE，不持有会话锁的读者（用量统计）打开会话文件时，正在运行的回合
-// 保存会话的 os.Rename 会失败（Access is denied）。做法同 permissions/readfile_windows.go。
+// openShared 以只读方式打开文件，共享读、写和删除，做法同 permissions/readfile_windows.go。
+// 这只让其他句柄能删除这个文件；用 MoveFileEx 替换它仍要等这个句柄关闭，所以调用方应当
+// 读完就关（见 readSessionFile），保存那边用 renameRetry 重试。
 func openShared(path string) (*os.File, error) {
 	name, err := syscall.UTF16PtrFromString(path)
 	if err != nil {

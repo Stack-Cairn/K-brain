@@ -1,7 +1,6 @@
 package session
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"os"
@@ -271,12 +270,13 @@ func TestUsageStatsCacheFollowsFileSizeAndModTime(t *testing.T) {
 	}
 }
 
-// On Windows a reader opened without FILE_SHARE_DELETE makes the save's rename
-// over the session file fail; the stats reader holds no store lock, so a turn
-// saving the session while stats reads it must still succeed.
+// On Windows a save cannot rename over a session file while any handle has it
+// open, even one with FILE_SHARE_DELETE. The stats reader holds its handle only
+// for the raw read and the save retries the rename meanwhile, so a turn saving
+// the session while stats reads it still succeeds.
 func TestUsageStatsReaderDoesNotBlockSaves(t *testing.T) {
 	if runtime.GOOS != "windows" {
-		t.Skip("sharing modes only matter on Windows")
+		t.Skip("rename sharing only matters on Windows")
 	}
 	st := openUsageStore(t)
 	id := saveSession(t, st, "/w", prompt("2026-11-15T01:00:00Z"), reply("msg-1", "2026-11-15T01:00:05Z", 100, 10, "m @ p"))
@@ -284,14 +284,21 @@ func TestUsageStatsReaderDoesNotBlockSaves(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
-	if err := st.Save(id, 2, []ai.Message{2: prompt("2026-11-15T02:00:00Z"), 3: reply("msg-2", "2026-11-15T02:00:05Z", 1, 1, "m @ p")}, "m", "p"); err != nil {
-		t.Fatalf("save while the stats reader holds the file: %v", err)
+	saved := make(chan error, 1)
+	go func() {
+		saved <- st.Save(id, 2, []ai.Message{2: prompt("2026-11-15T02:00:00Z"), 3: reply("msg-2", "2026-11-15T02:00:05Z", 1, 1, "m @ p")}, "m", "p")
+	}()
+	time.Sleep(100 * time.Millisecond)
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
 	}
-	// The open handle still reads the old file whole.
-	usage, err := parseSessionUsage(id, bufio.NewReader(f))
-	if err != nil || len(usage.entries) != 1 {
-		t.Fatalf("old file = %+v, %v", usage, err)
+	select {
+	case err := <-saved:
+		if err != nil {
+			t.Fatalf("save while the stats reader held the file: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("save did not finish after the reader closed the file")
 	}
 	if got := usageStats(t, st, 7, "UTC", "2026-11-15T10:00:00Z").Totals.Total(); got != 112 {
 		t.Fatalf("total after save = %d", got)
