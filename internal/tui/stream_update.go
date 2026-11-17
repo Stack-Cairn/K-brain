@@ -48,7 +48,11 @@ func (m *model) onSteered(msg steeredMsg) (tea.Model, tea.Cmd) {
 		m.appendNotice(string(msg))
 		return m, nil
 	}
-	m.append(youStyle.Render(glyphUser) + linkifyFilePaths(string(msg), realFileExists) + dimStyle.Render("  (steered)"))
+	text := string(msg)
+	if shown, ok := m.takeSteering(text); ok {
+		text = shown
+	}
+	m.append(youStyle.Render(glyphUser) + linkifyFilePaths(text, realFileExists) + dimStyle.Render("  (steered)"))
 	return m, nil
 }
 

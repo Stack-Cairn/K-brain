@@ -193,6 +193,7 @@ func (m *model) statusAfter(cmd tea.Cmd) tea.Cmd {
 		cmd = tea.Batch(cmd, repaint())
 	}
 	st.wasBusy, st.hadPerm, st.hadAsk = m.busy, perm, ask
+	m.steerQueuedFlag().Store(m.busy && m.steerableQueued())
 	if !m.busy {
 		st.turnStart = time.Time{}
 	}

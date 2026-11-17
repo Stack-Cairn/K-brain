@@ -189,7 +189,7 @@ func (m *model) syncInputPlaceholder() {
 	case m.agent != nil && m.agent.WaitingOnSubagents():
 		m.input.Placeholder = m.tr("waiting on subagents — type to steer this turn")
 	default:
-		m.input.Placeholder = m.tr("busy — type to queue (sent when the turn ends)")
+		m.input.Placeholder = m.tr("busy — type to queue (sent after the current tool call)")
 	}
 	if m.cmp != nil && m.cmp.hs == nil && len(m.cmp.stash) > 0 {
 		m.input.Placeholder = m.tr("draft stashed — Ctrl+S restores it")

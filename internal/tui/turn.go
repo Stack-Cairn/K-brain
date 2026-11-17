@@ -145,6 +145,7 @@ func (m *model) submitTurnAs(text string, authored, notice bool) (tea.Model, tea
 		}
 	})
 	send := stream.emit
+	queued := m.steerQueuedFlag()
 	checkpointSession, checkpointAgent := m.sessionID, m.agent
 	if m.runLease == nil {
 		checkpointSession = ""
@@ -176,6 +177,7 @@ func (m *model) submitTurnAs(text string, authored, notice bool) (tea.Model, tea
 			OnSteer: func(s string) {
 				send(steeredMsg(s))
 			},
+			AtToolBoundary: steerPoint(ctx, queued, send),
 			OnCompactStart: func(took, est int) {
 				if rewoundFrom != "" {
 					m.agent.SetMessageRewoundFrom(turnAt, rewoundFrom)
