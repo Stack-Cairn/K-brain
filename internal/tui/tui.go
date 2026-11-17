@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -170,8 +171,13 @@ type model struct {
 
 	turnStart time.Time
 
-	queue      []string
-	queueSel   int
+	queue    []string
+	queueSel int
+	// steering lists the queued messages handed to the running turn that it
+	// has not echoed back yet; steerFlag tells the turn whether anything is
+	// queued that it could take (steer_queue.go).
+	steering   []steerEcho
+	steerFlag  *atomic.Bool
 	interrupt1 bool
 	quit1      bool
 
@@ -1262,6 +1268,11 @@ func (m *model) Update(msg tea.Msg) (_ tea.Model, statusCmd tea.Cmd) {
 	case steeredMsg:
 		return m.onSteered(msg)
 
+	case steerPointMsg:
+		m.steerQueued()
+		close(msg.done)
+		return m, nil
+
 	case shellDoneMsg:
 
 		m.flushThink()
@@ -1355,7 +1366,15 @@ func (m *model) Update(msg tea.Msg) (_ tea.Model, statusCmd tea.Cmd) {
 		return m, m.onSubagentsChanged()
 
 	case orphanSteerMsg:
-
+		if text, ok := m.takeSteering(string(msg)); ok {
+			// A queued message the turn ended before reading: it goes back to the
+			// front of the queue, or out as the next turn.
+			if m.busy {
+				m.queue = append([]string{text}, m.queue...)
+				return m, nil
+			}
+			return m.submit(text)
+		}
 		if !m.busy {
 			if _, ok := parseNotice(string(msg)); ok {
 				return m.submitNotice(string(msg))

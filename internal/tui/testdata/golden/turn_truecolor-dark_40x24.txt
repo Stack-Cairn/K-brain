@@ -20,5 +20,5 @@
 
   ⠋ Reading cmd/kn/status.go… 0:12 · Esc
 ────────────────────────────────────────
-  ❯ busy — type to queue (sent when the
+  ❯ busy — type to queue (sent after the
    Always allow     kimi-k3-fast · ✦ off

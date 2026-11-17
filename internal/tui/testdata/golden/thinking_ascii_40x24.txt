@@ -20,5 +20,5 @@
 
   | Thinking...         Esc to interrupt
 ----------------------------------------
-  > busy - type to queue (sent when the
+  > busy - type to queue (sent after the
    Normal           kimi-k3-fast - * off

@@ -20,5 +20,5 @@ queued (2) · Enter send now · Ctrl+E/click edit · Del remove · Esc back
 
 
 ────────────────────────────────────────────────────────────────────────────────
-  ❯ busy — type to queue (sent when the turn ends)
+  ❯ busy — type to queue (sent after the current tool call)
   [Always allow]                                            kimi-k3-fast · ✦ off

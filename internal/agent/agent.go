@@ -45,7 +45,12 @@ type Events struct {
 
 	OnToolOutput func(id, outputSoFar string)
 	OnSteer      func(text string)
-	OnCompact    func(took, kept int)
+	// AtToolBoundary runs after a round of tool calls has finished, before the
+	// turn reads the messages steered into it: a front end holding messages
+	// typed during the round hands them over here (Steer), so the model reads
+	// them right after the tool results instead of after the turn.
+	AtToolBoundary func()
+	OnCompact      func(took, kept int)
 
 	OnCompacted func(summary string, cutoff int, info CompactInfo)
 
@@ -278,10 +283,10 @@ type pendingSteer struct {
 	notice bool
 }
 
+// SteerImages is Steer with images. With no turn running the text alone goes
+// to OnOrphanedSteer, as Steer's does.
 func (a *Agent) SteerImages(text string, parts []ai.ContentPart) {
-	a.mu.Lock()
-	a.pending = append(a.pending, pendingSteer{text: text, parts: parts})
-	a.mu.Unlock()
+	a.steer(pendingSteer{text: text, parts: parts})
 }
 
 func (a *Agent) AppendUser(content string) {
@@ -908,6 +913,9 @@ func (a *Agent) turnPending(ctx context.Context, input string, parts []ai.Conten
 				if a.PlanMode() && call.Function.Name == "ExitPlanMode" && !results[i].Failed && !revise {
 					return results[i].Text, nil
 				}
+			}
+			if ev.AtToolBoundary != nil {
+				ev.AtToolBoundary()
 			}
 		}
 		steered := a.drainPending()

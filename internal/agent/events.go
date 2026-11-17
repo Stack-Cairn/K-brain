@@ -84,6 +84,13 @@ func FanIn(evs ...Events) Events {
 				}
 			}
 		},
+		AtToolBoundary: func() {
+			for _, e := range evs {
+				if e.AtToolBoundary != nil {
+					e.AtToolBoundary()
+				}
+			}
+		},
 		OnCompact: func(took, kept int) {
 			for _, e := range evs {
 				if e.OnCompact != nil {

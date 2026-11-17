@@ -20,5 +20,5 @@
 
   | Thinking...                                           v73 - Esc to interrupt
 --------------------------------------------------------------------------------
-  > busy - type to queue (sent when the turn ends)
+  > busy - type to queue (sent after the current tool call)
    Normal                                                   kimi-k3-fast - * off

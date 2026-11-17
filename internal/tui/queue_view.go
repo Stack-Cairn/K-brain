@@ -55,7 +55,7 @@ func (m *model) queueView() string {
 		header = fmt.Sprintf(m.tr("queued (%d)"), len(m.queue))
 		hints = []string{m.tr("↑/click select"), m.tr("Alt+E edit last"), m.tr("Enter on empty input sends now")}
 	default:
-		header = fmt.Sprintf(m.tr("queued (%d) · sent when the turn ends"), len(m.queue))
+		header = fmt.Sprintf(m.tr("queued (%d) · sent after the current tool call"), len(m.queue))
 		if m.busy && len(m.queue) > 0 {
 			hints = []string{m.tr("Alt+E edit last")}
 		}
