@@ -1,4 +1,4 @@
-> Keyboard shortcuts               1/83
+> Keyboard shortcuts               1/84
   [Keys]  Commands
   / type to filter
 ----------------------------------------
@@ -11,10 +11,10 @@
   Ctrl+E         expand the last to...
   Ctrl+G         edit the draft in ...
   Ctrl+V         paste an image
+  Ctrl+L         redraw the screen
   PgUp / PgDn    scroll the transcript
   Ctrl+C Ctrl+C  quit
-  Ctrl+P         open the command p...
-  Down 72 more
+  Down 73 more
 ----------------------------------------
   Shift+Tab  cycle the permission mode
   Shift+Tab - cycle Normal / Plan /

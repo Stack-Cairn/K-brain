@@ -1,4 +1,4 @@
-[38;2;21;127;104m❯[0m [1mKeyboard shortcuts[0m                                                                                               [38;2;92;97;105m1/83[0m
+[38;2;21;127;104m❯[0m [1mKeyboard shortcuts[0m                                                                                               [38;2;92;97;105m1/84[0m
   [1;38;2;21;127;104m[Keys][0m [38;2;104;110;118m Commands [0m
   [38;2;21;127;104m/[0m [38;2;92;97;105mtype to filter[0m
 [38;2;213;218;222m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
@@ -11,6 +11,7 @@
   Ctrl+E                             [38;2;58;63;70mexpand the last tool result[0m[38;2;92;97;105m[0m
   Ctrl+G                             [38;2;58;63;70medit the draft in an external editor[0m[38;2;92;97;105m[0m
   Ctrl+V                             [38;2;58;63;70mpaste an image[0m[38;2;92;97;105m[0m
+  Ctrl+L                             [38;2;58;63;70mredraw the screen[0m[38;2;92;97;105m[0m
   PgUp / PgDn                        [38;2;58;63;70mscroll the transcript[0m[38;2;92;97;105m[0m
   Ctrl+C Ctrl+C                      [38;2;58;63;70mquit[0m[38;2;92;97;105m[0m
   Ctrl+P                             [38;2;58;63;70mopen the command palette[0m[38;2;92;97;105m[0m
@@ -30,8 +31,7 @@
   Ctrl+W / Alt+Backspace             [38;2;58;63;70mcut the word before the cursor[0m[38;2;92;97;105m[0m
   Ctrl+U                             [38;2;58;63;70mcut to the start of the line[0m[38;2;92;97;105m[0m
   Alt+K                              [38;2;58;63;70mcut to the end of the line[0m[38;2;92;97;105m[0m
-  Alt+D                              [38;2;58;63;70mcut the next word[0m[38;2;92;97;105m[0m
-[38;2;92;97;105m  ↓ 57 more[0m
+[38;2;92;97;105m  ↓ 58 more[0m
 [38;2;213;218;222m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [1mShift+Tab[0m  [38;2;58;63;70mcycle the permission mode[0m
   [38;2;92;97;105mShift+Tab — cycle Normal / Plan / Auto review / Always allow[0m

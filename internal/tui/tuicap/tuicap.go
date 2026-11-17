@@ -227,6 +227,14 @@ func (s *Session) Paste(text string) {
 	s.write("\x1b[200~" + text + "\x1b[201~")
 }
 
+// Inject puts output on the screen that kn did not write, as another process
+// sharing the terminal would.
+func (s *Session) Inject(output string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, _ = s.term.Write([]byte(output))
+}
+
 func (s *Session) write(b string) {
 	s.t.Helper()
 	if _, err := io.WriteString(s.pty, b); err != nil {

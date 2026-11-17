@@ -1,4 +1,4 @@
-❯ Keyboard shortcuts                                                                                               1/83
+❯ Keyboard shortcuts                                                                                               1/84
   [Keys]  Commands
   / type to filter
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -11,6 +11,7 @@
   Ctrl+E                             expand the last tool result
   Ctrl+G                             edit the draft in an external editor
   Ctrl+V                             paste an image
+  Ctrl+L                             redraw the screen
   PgUp / PgDn                        scroll the transcript
   Ctrl+C Ctrl+C                      quit
   Ctrl+P                             open the command palette
@@ -30,8 +31,7 @@
   Ctrl+W / Alt+Backspace             cut the word before the cursor
   Ctrl+U                             cut to the start of the line
   Alt+K                              cut to the end of the line
-  Alt+D                              cut the next word
-  ↓ 57 more
+  ↓ 58 more
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   Shift+Tab  cycle the permission mode
   Shift+Tab — cycle Normal / Plan / Auto review / Always allow

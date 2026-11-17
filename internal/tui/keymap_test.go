@@ -30,6 +30,7 @@ var legacyHelpKeys = []string{
 	"Ctrl+J / Shift+Enter — newline",
 	"Ctrl+G — edit the current draft in an external editor",
 	"Ctrl+V — paste image",
+	"Ctrl+L — redraw the screen",
 	"Esc — interrupt the agent",
 	"Esc Esc (idle) — " + palDescRewind + " (↑/↓ browse, Enter rewinds, f forks)",
 	"while busy with queued messages: ↑/↓ select, Del removes",

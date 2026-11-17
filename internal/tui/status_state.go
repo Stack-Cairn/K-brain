@@ -119,7 +119,7 @@ func (m *model) statusBefore(msg tea.Msg) (tea.Cmd, bool) {
 	switch msg := msg.(type) {
 	case tea.FocusMsg:
 		st.note.setFocus(true)
-		return nil, true
+		return repaint(), true
 	case tea.BlurMsg:
 		st.note.setFocus(false)
 		return nil, true
@@ -188,6 +188,9 @@ func (m *model) statusAfter(cmd tea.Cmd) tea.Cmd {
 		m.notifyApproval()
 	case ask && !st.hadAsk:
 		m.notifyQuestion()
+	}
+	if st.wasBusy && !m.busy {
+		cmd = tea.Batch(cmd, repaint())
 	}
 	st.wasBusy, st.hadPerm, st.hadAsk = m.busy, perm, ask
 	if !m.busy {
