@@ -74,6 +74,7 @@ var keymap = []keyBinding{
 	{"alt+enter", keyComposer, "newline", ""},
 	{"ctrl+g", keyGlobal, "editor", "Ctrl+G — edit the current draft in an external editor"},
 	{"ctrl+v", keyGlobal, "pasteImage", "Ctrl+V — paste image"},
+	{"ctrl+l", keyGlobal, "redraw", "Ctrl+L — redraw the screen"},
 	{"esc", keyBusy, "interrupt", "Esc — interrupt the agent"},
 	{"esc", keyIdle, "rewind", "Esc Esc (idle) — " + palDescRewind + " (↑/↓ browse, Enter rewinds, f forks)"},
 	{"esc", keyComposer, "clearDraft", ""},

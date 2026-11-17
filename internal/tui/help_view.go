@@ -52,6 +52,7 @@ var helpActionDesc = map[string]string{
 	"newline":         "insert a newline",
 	"editor":          "edit the draft in an external editor",
 	"pasteImage":      "paste an image",
+	"redraw":          "redraw the screen",
 	"interrupt":       "interrupt the agent",
 	"rewind":          "rewind to an earlier message",
 	"clearDraft":      "clear the draft",
