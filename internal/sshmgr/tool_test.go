@@ -43,7 +43,7 @@ func TestToolDefinitionMatchesV1(t *testing.T) {
 		props = append(props, name)
 	}
 	slices.Sort(props)
-	want := []string{"action", "cols", "command", "content", "cwd", "data", "from_path", "host_id", "limit", "local_path", "max_bytes", "offset", "overwrite", "path", "recursive", "remote_path", "rows", "session_id", "session_strategy", "sftp_enabled", "timeout_ms", "title", "to_path", "transfer_id"}
+	want := []string{"action", "cols", "command", "content", "cwd", "data", "expected_content_hash", "expected_mtime_ms", "from_path", "full", "host_id", "limit", "local_path", "max_bytes", "offset", "overwrite", "path", "recursive", "remote_path", "rows", "session_id", "session_strategy", "sftp_enabled", "timeout_ms", "title", "to_path", "transfer_id"}
 	if !slices.Equal(props, want) || !slices.Equal(schema.Required, []string{"action"}) {
 		t.Fatalf("properties = %v required = %v", props, schema.Required)
 	}
