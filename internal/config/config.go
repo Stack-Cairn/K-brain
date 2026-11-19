@@ -128,7 +128,7 @@ func (m Model) ContextWindow() int {
 
 const DefaultCompactModel = "model1"
 
-const DefaultCompactPct = 50
+const DefaultCompactPct = 90
 
 type Config struct {
 	imageConfigRaw     json.RawMessage

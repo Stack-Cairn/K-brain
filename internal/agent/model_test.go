@@ -17,7 +17,7 @@ func TestSetModelRetainsSessionAndAccountsUsage(t *testing.T) {
 	a.SetSessionID("session-id")
 	a.SetCacheKey("explicit-cache")
 	a.AddUsage(ai.Usage{PromptTokens: 100, CompletionTokens: 10})
-	a.notePrompt(ai.Usage{PromptTokens: 999999})
+	a.notePrompt(ai.Usage{PromptTokens: 999999}, 1)
 	a.Messages = append(a.Messages, ai.Message{Role: "user", Content: "keep history"})
 	a.LoadTodosJSON(`[{"id":"t1","content":"keep plan","status":"pending"}]`)
 	a.Steer("queued guidance")

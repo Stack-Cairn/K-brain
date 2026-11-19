@@ -17,7 +17,7 @@
 
   [2mSession[0m
   Compaction model  model that summarises long conversations                                           [2mdefault (model1)[0m
-  Compaction level  auto-compact at this share of the context window                                                [2m50%[0m
+  Compaction level  auto-compact at this share of the context window                                                [2m90%[0m
   [2mGoal rounds     [0m  [2mrounds a /goal may run before it stops[0m                                                          [2m100[0m
   Privacy gateway   mask secrets in requests, restore them in replies                                               [2moff[0m
 

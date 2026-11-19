@@ -1540,7 +1540,7 @@ func compactThresholdFor(cfg *config.Config) float64 {
 	if pct == 0 {
 		pct = config.DefaultCompactPct
 	}
-	return float64(min(max(pct, 10), 90)) / 100
+	return float64(clampCompactPct(pct)) / 100
 }
 
 func (m *model) applyCompactModel() {
