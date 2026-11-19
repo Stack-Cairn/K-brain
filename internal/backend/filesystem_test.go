@@ -24,7 +24,9 @@ func TestFilesystemRootConfinementAndText(t *testing.T) {
 	// Creating a symlink on Windows needs a privilege most accounts lack. The other cases still
 	// apply, so only the ones that need the link drop out.
 	listed := uint32(3)
+	previewOffset := int64(0)
 	escapes := []filesystemInput{
+		{Action: "read_text", Workdir: project, Path: "escape", PreviewOffset: &previewOffset},
 		{Action: "read_text", Workdir: project, Path: "escape"},
 		{Action: "read_preview", Workdir: project, Path: "escape"},
 	}
@@ -47,6 +49,8 @@ func TestFilesystemRootConfinementAndText(t *testing.T) {
 	}
 	for _, input := range append(escapes, []filesystemInput{
 		{Action: "read_text", Workdir: project, Path: "../outside.txt"},
+		{Action: "read_text", Workdir: project, Path: "../outside.txt", PreviewOffset: &previewOffset},
+		{Action: "read_preview", Workdir: project, Path: "readme.txt", PreviewOffset: &previewOffset},
 		{Action: "read_preview", Workdir: project, Path: "../outside.txt"},
 		{Action: "read_text", Workdir: project, Path: "binary"},
 		{Action: "read_text", Workdir: project, Path: root},

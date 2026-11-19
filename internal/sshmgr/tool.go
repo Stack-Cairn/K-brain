@@ -46,9 +46,12 @@ const toolSchema = `{
     "path": {"type": "string", "description": "Remote SFTP path."},
     "from_path": {"type": "string", "description": "Source path for rename."},
     "to_path": {"type": "string", "description": "Target path for rename."},
-    "content": {"type": "string", "description": "Text content for sftp_write_text."},
-    "offset": {"type": "number", "description": "Byte offset for sftp_read_text."},
-    "limit": {"type": "number", "description": "Byte limit for sftp_read_text."},
+    "content": {"type": "string", "description": "UTF-8 text content for sftp_write_text, at most 16 MiB."},
+    "offset": {"type": "number", "description": "Byte offset for paged sftp_read_text. Returned offset aligns forward to a UTF-8 rune boundary."},
+    "limit": {"type": "number", "description": "Byte limit for paged sftp_read_text, clamped to 4–256 KiB; default 200 KiB. Continue from returned offset + bytesRead."},
+    "full": {"type": "boolean", "description": "For sftp_read_text, explicitly read the entire file as strict UTF-8, at most 16 MiB, returning contentHash (SHA-256) and entry.mtime (milliseconds, second precision). Cannot combine with offset, limit or max_bytes. Defaults to false (paged read)."},
+    "expected_mtime_ms": {"type": "number", "description": "Optional sftp_write_text conflict check: entry.mtime from a full read. Supply together with expected_content_hash and overwrite=true. SFTP checks before an in-place write; concurrent external writes can still race it."},
+    "expected_content_hash": {"type": "string", "description": "SHA-256 contentHash from a full read, supplied together with expected_mtime_ms for sftp_write_text."},
     "overwrite": {"type": "boolean", "description": "Whether upload/download/write may overwrite existing files."},
     "recursive": {"type": "boolean", "description": "Recursive directory transfer/delete."},
     "local_path": {"type": "string", "description": "Local workspace path for upload/download. Accepts workspace-relative paths exactly as returned by file tools, absolute paths inside the workspace, ~/..., or file:// values."},
@@ -585,7 +588,44 @@ func (c *call) exec() (string, error) {
 	return strings.Join(lines, "\n"), nil
 }
 
+// textWriteOptions keeps version fields strict while legacy SSHManager numbers
+// (offset/limit) retain their existing coercion and clamping semantics.
+func (a args) textWriteOptions() (SFTPWriteOptions, error) {
+	var opts SFTPWriteOptions
+	if value, ok := a["expected_mtime_ms"]; ok && value != nil {
+		n, ok := value.(float64)
+		if !ok || math.IsNaN(n) || math.IsInf(n, 0) || n < 0 || n > 1<<53-1 || math.Trunc(n) != n {
+			return opts, errors.New("expected_mtime_ms must be a nonnegative safe integer")
+		}
+		mtime := int64(n)
+		opts.ExpectedMtime = &mtime
+	}
+	if value, ok := a["expected_content_hash"]; ok && value != nil {
+		hash, ok := value.(string)
+		if !ok {
+			return opts, errors.New("expected_content_hash must be a SHA-256 string")
+		}
+		opts.ExpectedContentHash = &hash
+	}
+	return opts, validateTextWrite(a.raw("content"), a.boolean("overwrite", true), opts)
+}
+
 func (c *call) sftp() (string, error) {
+	var writeOpts SFTPWriteOptions
+	if c.action == "sftp_write_text" {
+		var err error
+		writeOpts, err = c.a.textWriteOptions()
+		if err != nil {
+			return "", err
+		}
+	}
+	if c.action == "sftp_read_text" && c.a.boolean("full", false) {
+		for _, key := range []string{"offset", "limit", "max_bytes"} {
+			if value, ok := c.a[key]; ok && value != nil {
+				return "", errors.New("full remote text read cannot be combined with offset, limit or max_bytes")
+			}
+		}
+	}
 	r, err := c.resolve(true)
 	if err != nil {
 		return "", err
@@ -598,6 +638,10 @@ func (c *call) sftp() (string, error) {
 	case "sftp_stat":
 		result, err = s.Stat(ctx, a.str("path"))
 	case "sftp_read_text":
+		if a.boolean("full", false) {
+			result, err = s.ReadFullText(ctx, a.str("path"))
+			break
+		}
 		offset := 0
 		if n, ok := a.optionalClamp("offset", 0, math.MaxInt32); ok {
 			offset = n
@@ -612,7 +656,7 @@ func (c *call) sftp() (string, error) {
 		}
 		result, err = s.ReadText(ctx, a.str("path"), int64(offset), maxBytes)
 	case "sftp_write_text":
-		result, err = s.WriteText(ctx, a.str("path"), a.raw("content"), a.boolean("overwrite", true), true)
+		result, err = s.WriteTextWithOptions(ctx, a.str("path"), a.raw("content"), a.boolean("overwrite", true), true, writeOpts)
 	case "sftp_mkdir":
 		result, err = s.Mkdir(ctx, a.str("path"))
 	case "sftp_delete":

@@ -1,3 +1,8 @@
+---
+title: K-brain 与 LiveAgent 的会话协议
+tags: [backend, protocol]
+---
+
 # K-brain 与 LiveAgent 的会话协议
 
 ## 边界
@@ -399,6 +404,9 @@ MCP 服务器可以在自己的工具运行期间请用户填写一张表单（M
 - 会话按项目隔离：只能使用当前项目关联的主机，只能看到、使用当前项目打开的会话。`session_strategy` 为 `reuse`（缺省，复用该主机正在运行的会话）、`new`（另开一条连接，不能与 `session_id` 同用）、`require_existing`（没有会话就失败）。会话在后端进程里跨运行保持，空闲 30 分钟、连接断开或后端关闭时结束；不自动重连。
 - `exec` 缺省超时 30 秒（最大 300 秒），stdout/stderr 各保留末尾 64 KiB（4–256 KiB 可调）；超时或运行被停止时发 `TERM` 信号并关闭通道，最多再等 3 秒。`cwd` 用 `cd '<cwd>' && ` 前缀实现。
 - `read_session`/`send_input`/`resize` 第一次使用时在会话上开启交互式 shell（PTY），缓冲最近 256 KiB 输出。
+- `sftp_read_text` 默认仍为 200 KiB 字节分页；`limit`（兼容 `max_bytes`）限定在 4–256 KiB。返回的 `offset` 向前对齐至 UTF-8 字符起点，`bytesRead` 为返回文本的实际字节数，下一页从 `offset + bytesRead` 开始。非法 UTF-8 和 EOF 处不完整字符报错，不再用替换字符掩盖错误。完整读取显式传 `full: true`，不可同时传非 null 的 `offset`、`limit` 或 `max_bytes`；实际读取受 16 MiB 上限约束，超限失败。完整读取额外返回 SHA-256 `contentHash`，分页不返回该字段。
+- `sftp_write_text` 的 UTF-8 内容上限为 16 MiB。可同时携带完整读取的 `entry.mtime` → `expected_mtime_ms` 与 `contentHash` → `expected_content_hash`，仅用于允许覆盖时的版本校验；时间只有秒精度，哈希检测同秒修改。版本不匹配或目标消失时拒绝截断。旧调用不传版本字段时保留 `overwrite` 语义，`overwrite: false` 使用独占创建。远端写入仍为原位写入，不提供原子替换或跨进程事务，失败可能留下部分内容。
+- 上述 SFTP 能力由原生 `SSHManager` 工具提供，本仓库没有独立的 SFTP 文件资源 HTTP 路由。Gateway 的 SSH relay 需要配套转发这些字段和限制；本地文件 HTTP 请求体和范围预览契约见 [[2026-10-24-filesystem-resources]]。
 - `sftp_upload`/`sftp_download` 在后台执行，立即返回 `transfer_id`，用 `sftp_transfer_status` 查询、`sftp_cancel_transfer` 取消；每个会话最多 32 个进行中的传输，目录最多 100000 个文件。`local_path` 按文件工具的规则解析（工作区相对路径、绝对路径、`~/...`、`file://`），必须在运行的工作区根内，上传要求可读、下载要求可写。不跟随本地符号链接；`sftp_delete` 不跟随远端符号链接。
 - 代理：`proxy.url` 非空时按 `proxy.type` 走 SOCKS5 或 HTTP CONNECT；`useSystemProxy` 时与供应商请求使用同一个代理（LiveAgent 管理的应用代理，否则 `HTTPS_PROXY`/`HTTP_PROXY`/`NO_PROXY`）。
 

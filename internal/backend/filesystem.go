@@ -17,7 +17,14 @@ import (
 	"unicode/utf8"
 )
 
-const filesystemReadLimit = 2 << 20
+const (
+	filesystemReadLimit        = 16 << 20
+	filesystemTextPreviewLimit = 256 << 10
+	filesystemAssetReadLimit   = 2 << 20
+	// A UTF-8 byte can require six JSON bytes (for example, \u0001).
+	// Leave 64 KiB for paths, version tokens and the request envelope.
+	filesystemRequestLimit = 6*filesystemReadLimit + (64 << 10)
+)
 
 type filesystemInput struct {
 	Action        string  `json:"action"`
@@ -25,6 +32,7 @@ type filesystemInput struct {
 	Path          string  `json:"path"`
 	Depth         uint32  `json:"depth"`
 	Offset        uint32  `json:"offset"`
+	PreviewOffset *int64  `json:"preview_offset,omitempty"`
 	MaxResults    uint32  `json:"max_results"`
 	ShowHidden    bool    `json:"show_hidden"`
 	Content       string  `json:"content"`
@@ -62,7 +70,7 @@ func (s *Server) handleFilesystem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var input filesystemInput
-	if err := decodeJSON(w, r, &input); err != nil {
+	if err := decodeJSONLimit(w, r, &input, filesystemRequestLimit); err != nil {
 		return
 	}
 	result, err := s.filesystem(r, input)
@@ -74,6 +82,9 @@ func (s *Server) handleFilesystem(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) filesystem(r *http.Request, in filesystemInput) (any, error) {
+	if in.PreviewOffset != nil && (in.Action != "read_text" || *in.PreviewOffset < 0) {
+		return nil, errors.New("preview_offset requires read_text and a nonnegative byte offset")
+	}
 	if in.Action == "roots" {
 		roots := []map[string]string{}
 		for i, path := range s.filesystemRoots {
@@ -138,15 +149,25 @@ func (s *Server) filesystem(r *http.Request, in filesystemInput) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		if !info.Mode().IsRegular() || info.Size() > filesystemReadLimit {
-			return nil, errors.New("file is not regular text or exceeds 2 MiB")
+		if !info.Mode().IsRegular() {
+			return nil, errors.New("file is not regular text")
 		}
-		body, err := io.ReadAll(io.LimitReader(file, filesystemReadLimit+1))
+		if in.PreviewOffset != nil {
+			return filesystemTextPreview(file, info, in.Path, *in.PreviewOffset)
+		}
+		limit := filesystemReadLimit
+		if in.Action == "read_preview" {
+			limit = filesystemAssetReadLimit
+		}
+		if info.Size() > int64(limit) {
+			return nil, fmt.Errorf("file exceeds %d MiB", limit>>20)
+		}
+		body, err := io.ReadAll(io.LimitReader(file, int64(limit)+1))
 		if err != nil {
 			return nil, err
 		}
-		if len(body) > filesystemReadLimit {
-			return nil, errors.New("file exceeds 2 MiB")
+		if len(body) > limit {
+			return nil, fmt.Errorf("file exceeds %d MiB", limit>>20)
 		}
 		hash := sha256.Sum256(body)
 		if in.Action == "read_preview" {
@@ -157,7 +178,7 @@ func (s *Server) filesystem(r *http.Request, in filesystemInput) (any, error) {
 			return map[string]any{"path": filepath.ToSlash(filepath.Clean(in.Path)), "data": base64.StdEncoding.EncodeToString(body), "mime_type": contentType, "mtime_ms": info.ModTime().UnixMilli(), "content_hash": hex.EncodeToString(hash[:]), "size_bytes": len(body)}, nil
 		}
 		if !utf8.Valid(body) || strings.ContainsRune(string(body), 0) {
-			return nil, errors.New("file is not UTF-8 text or exceeds 2 MiB")
+			return nil, errors.New("file is not UTF-8 text")
 		}
 		lines := 0
 		if len(body) > 0 {

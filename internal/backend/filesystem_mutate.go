@@ -57,7 +57,7 @@ func mutateFilesystem(root *os.Root, path string, in filesystemInput) (any, erro
 			return nil, errors.New("write mode only supports rewrite")
 		}
 		if !utf8.ValidString(in.Content) || strings.ContainsRune(in.Content, 0) || len(in.Content) > filesystemReadLimit {
-			return nil, errors.New("write requires UTF-8 text within 2 MiB")
+			return nil, errors.New("write requires UTF-8 text within 16 MiB")
 		}
 		if (in.ExpectedHash == nil) != (in.ExpectedMtime == nil) {
 			return nil, errors.New("expected modification time and content hash must be supplied together")

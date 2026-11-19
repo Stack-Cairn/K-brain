@@ -2,6 +2,8 @@ package sshmgr
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -18,11 +20,12 @@ import (
 	"github.com/pkg/sftp"
 )
 
-// SFTP limits, as LiveAgent v1.
+// SFTP text limits. Default tool calls remain bounded pages; full reads are explicit.
 const (
 	DefaultReadTextBytes = 200 << 10
 	MinReadTextBytes     = 4 << 10
-	MaxReadTextBytes     = 1 << 20
+	MaxReadTextBytes     = 256 << 10
+	MaxFullTextBytes     = 16 << 20
 	sftpStartTimeout     = 30 * time.Second
 	// maxTransferFiles bounds one recursive transfer.
 	maxTransferFiles = 100000
@@ -59,6 +62,16 @@ type SFTPReadText struct {
 	SizeBytes int64      `json:"sizeBytes"`
 	Truncated bool       `json:"truncated"`
 	Entry     *SFTPEntry `json:"entry,omitempty"`
+	// ContentHash is SHA-256 of the complete bytes, present only for full reads.
+	ContentHash string `json:"contentHash,omitempty"`
+}
+
+// SFTPWriteOptions optionally checks the version returned by a full read.
+// SFTP has no compare-and-swap: external writers can still race this check,
+// and writes truncate in place, so a failed write can leave partial content.
+type SFTPWriteOptions struct {
+	ExpectedMtime       *int64
+	ExpectedContentHash *string
 }
 
 // SFTPAction is the result of a write, mkdir, rename or delete.
@@ -395,15 +408,30 @@ func (s *Session) Stat(ctx context.Context, p string) (SFTPStat, error) {
 	})
 }
 
-// ReadText reads up to maxBytes of a remote file from offset as text.
+// ReadText reads a UTF-8 page, aligning offset forward to a rune boundary.
+// maxBytes is capped at 256 KiB. The default SSHManager call remains a page.
 func (s *Session) ReadText(ctx context.Context, p string, offset int64, maxBytes int) (SFTPReadText, error) {
+	if offset < 0 || offset > 1<<63-1-int64(MaxReadTextBytes)-utf8.UTFMax {
+		return SFTPReadText{}, errors.New("remote text offset is out of range")
+	}
+	return s.readText(ctx, p, offset, max(1, min(maxBytes, MaxReadTextBytes)), false)
+}
+
+// ReadFullText reads the entire file or fails, without lossy UTF-8 conversion.
+func (s *Session) ReadFullText(ctx context.Context, p string) (SFTPReadText, error) {
+	return s.readText(ctx, p, 0, MaxFullTextBytes, true)
+}
+
+func (s *Session) readText(ctx context.Context, p string, offset int64, maxBytes int, full bool) (SFTPReadText, error) {
 	return withSFTP(ctx, s, func(c *sftp.Client) (SFTPReadText, error) {
-		p := NormalizeRemotePath(p)
-		info, err := c.Stat(p)
+		p = NormalizeRemotePath(p)
+		// Preserve directory/stat errors before opening; use handle metadata for
+		// the actual read so replacing the path does not switch its identity.
+		entry, err := c.Stat(p)
 		if err != nil {
 			return SFTPReadText{}, fmt.Errorf("remote stat failed: %v", err)
 		}
-		if info.IsDir() {
+		if entry.IsDir() {
 			return SFTPReadText{}, errors.New("remote path is a directory")
 		}
 		f, err := c.Open(p)
@@ -411,32 +439,119 @@ func (s *Session) ReadText(ctx context.Context, p string, offset int64, maxBytes
 			return SFTPReadText{}, fmt.Errorf("failed to open remote file: %v", err)
 		}
 		defer f.Close()
-		if offset > 0 {
-			if _, err := f.Seek(offset, io.SeekStart); err != nil {
-				return SFTPReadText{}, fmt.Errorf("failed to seek remote file: %v", err)
-			}
-		}
-		buf, err := io.ReadAll(io.LimitReader(contextReader{ctx, f}, int64(maxBytes)+1))
+		info, err := f.Stat()
 		if err != nil {
-			return SFTPReadText{}, fmt.Errorf("failed to read remote file: %v", err)
+			return SFTPReadText{}, fmt.Errorf("remote stat failed: %v", err)
 		}
-		over := len(buf) > maxBytes
-		buf = buf[:min(len(buf), maxBytes)]
-		size := info.Size()
-		truncated := over || offset+int64(len(buf)) < size
-		content := string(buf)
-		if !utf8.ValidString(content) {
-			content = strings.ToValidUTF8(content, "�")
+		if info.IsDir() {
+			return SFTPReadText{}, errors.New("remote path is a directory")
 		}
-		e := entryOf(p, remoteBase(p), info)
-		return SFTPReadText{Path: p, Content: content, Offset: offset, BytesRead: len(buf), SizeBytes: size, Truncated: truncated, Entry: &e}, nil
+		if !info.Mode().IsRegular() {
+			return SFTPReadText{}, errors.New("remote path is not a regular file")
+		}
+		if _, err := f.Seek(offset, io.SeekStart); err != nil {
+			return SFTPReadText{}, fmt.Errorf("failed to seek remote file: %v", err)
+		}
+		var buf []byte
+		var more bool
+		if full {
+			buf, err = readFullUTF8(contextReader{ctx, f})
+		} else {
+			buf, offset, more, err = readUTF8Page(contextReader{ctx, f}, offset, maxBytes)
+		}
+		if err != nil {
+			return SFTPReadText{}, err
+		}
+		after, err := f.Stat()
+		if err != nil {
+			return SFTPReadText{}, fmt.Errorf("remote stat failed: %v", err)
+		}
+		if full && (info.Size() != after.Size() || !info.ModTime().Equal(after.ModTime())) {
+			return SFTPReadText{}, errors.New("remote file changed while reading; reload before saving")
+		}
+		e := entryOf(p, remoteBase(p), after)
+		size := after.Size()
+		if full {
+			size = int64(len(buf))
+		} else if len(buf) > 0 || more {
+			observed := offset + int64(len(buf))
+			if more {
+				observed++
+			}
+			size = max(size, observed)
+		}
+		e.SizeBytes = size
+		result := SFTPReadText{Path: p, Content: string(buf), Offset: offset, BytesRead: len(buf), SizeBytes: size, Truncated: !full && (more || offset+int64(len(buf)) < size), Entry: &e}
+		if full {
+			hash := sha256.Sum256(buf)
+			result.ContentHash = hex.EncodeToString(hash[:])
+		}
+		return result, nil
 	})
 }
 
-// WriteText writes content to a remote file.
+// readFullUTF8 bounds actual I/O independently of remote size metadata.
+func readFullUTF8(r io.Reader) ([]byte, error) {
+	buf, err := io.ReadAll(io.LimitReader(r, MaxFullTextBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read remote file: %v", err)
+	}
+	if len(buf) > MaxFullTextBytes {
+		return nil, errors.New("remote text exceeds 16 MiB")
+	}
+	if !utf8.Valid(buf) {
+		return nil, errors.New("remote text is not valid UTF-8")
+	}
+	return buf, nil
+}
+
+func readUTF8Page(r io.Reader, offset int64, maxBytes int) ([]byte, int64, bool, error) {
+	maxBytes = max(1, min(maxBytes, MaxReadTextBytes))
+	// Three possible leading continuation bytes plus one byte of lookahead.
+	buf, err := io.ReadAll(io.LimitReader(r, int64(maxBytes)+utf8.UTFMax))
+	if err != nil {
+		return nil, offset, false, fmt.Errorf("failed to read remote file: %v", err)
+	}
+	start := 0
+	if offset > 0 {
+		for start < len(buf) && start < utf8.UTFMax-1 && buf[start]&0xc0 == 0x80 {
+			start++
+		}
+	}
+	offset += int64(start)
+	buf = buf[start:]
+	end := min(len(buf), maxBytes)
+	// Keep complete runes only; malformed interior bytes are errors.
+	validEnd := 0
+	for validEnd < end {
+		if !utf8.FullRune(buf[validEnd:end]) {
+			break
+		}
+		_, n := utf8.DecodeRune(buf[validEnd:end])
+		if n == 1 && buf[validEnd] >= utf8.RuneSelf {
+			return nil, offset, false, errors.New("remote text is not valid UTF-8")
+		}
+		validEnd += n
+	}
+	if validEnd < end && len(buf) <= end {
+		return nil, offset, false, errors.New("remote text ends with incomplete UTF-8")
+	}
+	return buf[:validEnd], offset, validEnd < len(buf), nil
+}
+
+// WriteText preserves the existing overwrite API, with a 16 MiB UTF-8 cap.
 func (s *Session) WriteText(ctx context.Context, p, content string, overwrite, createParents bool) (SFTPAction, error) {
+	return s.WriteTextWithOptions(ctx, p, content, overwrite, createParents, SFTPWriteOptions{})
+}
+
+// WriteTextWithOptions checks an optional full-read version before truncating.
+// This is best-effort conflict detection, not atomic remote replacement.
+func (s *Session) WriteTextWithOptions(ctx context.Context, p, content string, overwrite, createParents bool, opts SFTPWriteOptions) (SFTPAction, error) {
+	if err := validateTextWrite(content, overwrite, opts); err != nil {
+		return SFTPAction{}, err
+	}
 	return withSFTP(ctx, s, func(c *sftp.Client) (SFTPAction, error) {
-		p := NormalizeRemotePath(p)
+		p = NormalizeRemotePath(p)
 		if !overwrite {
 			exists, err := remoteExists(c, p)
 			if err != nil {
@@ -451,12 +566,37 @@ func (s *Session) WriteText(ctx context.Context, p, content string, overwrite, c
 				return SFTPAction{}, err
 			}
 		}
-		f, err := c.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_TRUNC)
+		flags := os.O_WRONLY | os.O_CREATE | os.O_TRUNC
+		if !overwrite {
+			// The server, rather than the precheck, arbitrates concurrent creators.
+			flags = os.O_WRONLY | os.O_CREATE | os.O_EXCL
+		} else if opts.ExpectedContentHash != nil {
+			// Do not create/truncate until the same open handle passes its check.
+			flags = os.O_RDWR
+		}
+		f, err := c.OpenFile(p, flags)
 		if err != nil {
+			if opts.ExpectedContentHash != nil && isNotExist(err) {
+				return SFTPAction{}, errors.New("remote file changed since read: target was removed")
+			}
 			return SFTPAction{}, fmt.Errorf("failed to create remote file: %v", err)
 		}
+		defer f.Close()
+		if opts.ExpectedContentHash != nil {
+			if err := checkRemoteTextVersion(ctx, f, opts); err != nil {
+				return SFTPAction{}, err
+			}
+			if err := ctx.Err(); err != nil {
+				return SFTPAction{}, err
+			}
+			if err := f.Truncate(0); err != nil {
+				return SFTPAction{}, fmt.Errorf("failed to truncate remote file: %v", err)
+			}
+			if _, err := f.Seek(0, io.SeekStart); err != nil {
+				return SFTPAction{}, err
+			}
+		}
 		if _, err := io.Copy(f, contextReader{ctx, strings.NewReader(content)}); err != nil {
-			f.Close()
 			return SFTPAction{}, fmt.Errorf("failed to write remote file: %v", err)
 		}
 		if err := f.Close(); err != nil {
@@ -468,6 +608,52 @@ func (s *Session) WriteText(ctx context.Context, p, content string, overwrite, c
 		}
 		return SFTPAction{Action: "write_text", Path: p, Entry: e}, nil
 	})
+}
+
+func validateTextWrite(content string, overwrite bool, opts SFTPWriteOptions) error {
+	if len(content) > MaxFullTextBytes || !utf8.ValidString(content) {
+		return errors.New("remote write requires valid UTF-8 text within 16 MiB")
+	}
+	if (opts.ExpectedMtime == nil) != (opts.ExpectedContentHash == nil) {
+		return errors.New("expected modification time and content hash must be supplied together")
+	}
+	if opts.ExpectedContentHash != nil {
+		hash, err := hex.DecodeString(*opts.ExpectedContentHash)
+		if err != nil || len(hash) != sha256.Size || *opts.ExpectedMtime < 0 {
+			return errors.New("invalid expected remote file version")
+		}
+		if !overwrite {
+			return errors.New("expected remote file version requires overwrite")
+		}
+	}
+	return nil
+}
+
+func checkRemoteTextVersion(ctx context.Context, f *sftp.File, opts SFTPWriteOptions) error {
+	conflict := errors.New("remote file changed since read; reload before saving")
+	info, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() || info.ModTime().Unix()*1000 != *opts.ExpectedMtime {
+		return conflict
+	}
+	buf, err := readFullUTF8(contextReader{ctx, f})
+	if err != nil {
+		return err
+	}
+	hash := sha256.Sum256(buf)
+	if !strings.EqualFold(hex.EncodeToString(hash[:]), *opts.ExpectedContentHash) {
+		return conflict
+	}
+	after, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	if info.Size() != after.Size() || !info.ModTime().Equal(after.ModTime()) {
+		return conflict
+	}
+	return nil
 }
 
 // Mkdir creates one remote directory.
