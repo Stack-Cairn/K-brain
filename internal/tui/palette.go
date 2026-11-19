@@ -259,8 +259,8 @@ func (m *model) paletteItems() []paletteItem {
 				return "auto-compact at this share of the context window"
 			},
 			dynHint:  func(m *model) string { return "←/→" },
-			stepBack: func(m *model) { m.setCompactPct(m.compactPct() - 10) },
-			stepFwd:  func(m *model) { m.setCompactPct(m.compactPct() + 10) },
+			stepBack: func(m *model) { m.setCompactPct(stepCompactPct(m.compactPct(), -1)) },
+			stepFwd:  func(m *model) { m.setCompactPct(stepCompactPct(m.compactPct(), 1)) },
 		},
 		{
 			title: "Goal", category: "Session",

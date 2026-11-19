@@ -17,7 +17,7 @@
 
   Session
   Compaction model  model that summarises long conversations                                           default (model1)
-  Compaction level  auto-compact at this share of the context window                                                50%
+  Compaction level  auto-compact at this share of the context window                                                90%
   Goal rounds       rounds a /goal may run before it stops                                                          100
   Privacy gateway   mask secrets in requests, restore them in replies                                               off
 

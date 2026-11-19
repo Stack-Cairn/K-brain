@@ -456,16 +456,31 @@ func catalogAdvertises(cfg *config.Config, name string) bool {
 	return false
 }
 
+// The compaction level runs from 10% to 95% of the context window. It steps
+// by 10%, with 95% one step above 90%: the last 5% still holds the reply,
+// and requests shrink their output limit to fit what is left.
+const minCompactPct, maxCompactPct = 10, 95
+
+func clampCompactPct(pct int) int { return min(max(pct, minCompactPct), maxCompactPct) }
+
+// stepCompactPct moves the level d steps: 80 → 90 → 95, and back 95 → 90.
+func stepCompactPct(pct, d int) int {
+	if pct > 90 && d < 0 {
+		return 90
+	}
+	return clampCompactPct(pct + 10*d)
+}
+
 func (m *model) compactPct() int {
 	pct := m.cfg.CompactPct
 	if pct == 0 {
 		pct = config.DefaultCompactPct
 	}
-	return min(max(pct, 10), 90)
+	return clampCompactPct(pct)
 }
 
 func (m *model) setCompactPct(pct int) {
-	pct = min(max(pct, 10), 90)
+	pct = clampCompactPct(pct)
 	m.agent.CompactThreshold = float64(pct) / 100
 	m.cfg.CompactPct = pct
 	if err := m.cfg.Save(); err != nil {

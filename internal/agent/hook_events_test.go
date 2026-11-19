@@ -167,6 +167,7 @@ func TestCompactHooksAutoAndFailure(t *testing.T) {
 	defer srv.Close()
 	ag := New(ai.New(srv.URL, "k"), "m", 100, "sys")
 	ag.ContextLimit = 1000
+	ag.CompactThreshold = 0.5
 	for range 8 {
 		ag.Messages = append(ag.Messages, ai.Message{Role: "user", Content: strings.Repeat("x", 120)})
 	}

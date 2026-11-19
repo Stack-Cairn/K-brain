@@ -157,7 +157,7 @@ func settingDefs() []settingDef {
 		{
 			section: "Session", name: "Compaction level", desc: "auto-compact at this share of the context window", command: "←/→",
 			value: func(m *model) string { return fmt.Sprintf("%d%%", m.compactPct()) },
-			step:  func(m *model, d int) { m.setCompactPct(m.compactPct() + 10*d) },
+			step:  func(m *model, d int) { m.setCompactPct(stepCompactPct(m.compactPct(), d)) },
 		},
 		{
 			section: "Session", name: "Goal rounds", desc: "rounds a /goal may run before it stops", command: "/goal rounds <n>",

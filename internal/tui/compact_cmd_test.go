@@ -228,10 +228,11 @@ func TestCompactThresholdFor(t *testing.T) {
 		pct  int
 		want float64
 	}{
-		{0, 0.5},
+		{0, 0.9},
 		{70, 0.7},
 		{5, 0.1},
-		{99, 0.9},
+		{95, 0.95},
+		{99, 0.95},
 		{-30, 0.1},
 	}
 	for _, tc := range cases {
@@ -252,8 +253,8 @@ func TestSetCompactPct(t *testing.T) {
 	}
 
 	m.setCompactPct(120)
-	if m.agent.CompactThreshold != 0.9 || m.cfg.CompactPct != 90 {
-		t.Fatalf("setCompactPct(120) should clamp to 90: agent=%v cfg=%d", m.agent.CompactThreshold, m.cfg.CompactPct)
+	if m.agent.CompactThreshold != 0.95 || m.cfg.CompactPct != 95 {
+		t.Fatalf("setCompactPct(120) should clamp to 95: agent=%v cfg=%d", m.agent.CompactThreshold, m.cfg.CompactPct)
 	}
 	m.setCompactPct(0)
 	if m.agent.CompactThreshold != 0.1 || m.cfg.CompactPct != 10 {

@@ -64,8 +64,8 @@ func TestLastPromptIgnoresFannedInUsage(t *testing.T) {
 	if ag.lastPrompt != 0 {
 		t.Fatalf("AddUsage must not set lastPrompt, got %d", ag.lastPrompt)
 	}
-	ag.notePrompt(ai.Usage{PromptTokens: 1234})
-	ag.notePrompt(ai.Usage{})
+	ag.notePrompt(ai.Usage{PromptTokens: 1234}, 1)
+	ag.notePrompt(ai.Usage{}, 1)
 	if ag.lastPrompt != 1234 {
 		t.Fatalf("notePrompt should set lastPrompt to 1234, got %d", ag.lastPrompt)
 	}

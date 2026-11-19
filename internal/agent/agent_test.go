@@ -519,7 +519,7 @@ func TestEstimateTokens(t *testing.T) {
 	}
 }
 
-func TestProactiveCompactAtFiftyPercent(t *testing.T) {
+func TestProactiveCompactAtThreshold(t *testing.T) {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req ai.Request
@@ -541,6 +541,7 @@ func TestProactiveCompactAtFiftyPercent(t *testing.T) {
 
 	ag := New(ai.New(srv.URL, "k"), "m", 100, "sys")
 	ag.ContextLimit = 1000
+	ag.CompactThreshold = 0.5
 
 	for range 8 {
 		ag.Messages = append(ag.Messages, ai.Message{Role: "user", Content: strings.Repeat("x", 120)})
@@ -553,7 +554,7 @@ func TestProactiveCompactAtFiftyPercent(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !compacted {
-		t.Fatal("expected proactive compaction above 50% of the context limit")
+		t.Fatal("expected proactive compaction above the 50% threshold")
 	}
 	if final != "ok" {
 		t.Fatalf("first request should have used compacted history, got %q", final)
@@ -606,11 +607,12 @@ func TestCompactThresholdExplicitOverride(t *testing.T) {
 	srv := textServer(t, func(n int, req ai.Request) string { return "done" })
 	defer srv.Close()
 
+	// About 92% of the window: above the 90% default, below a 95% override.
 	ag := New(ai.New(srv.URL, "m"), "m", 100, "sys")
-	ag.ContextLimit = 1000
-	ag.CompactThreshold = 0.8
+	ag.ContextLimit = 10000
+	ag.CompactThreshold = 0.95
 	for range 8 {
-		ag.Messages = append(ag.Messages, ai.Message{Role: "user", Content: strings.Repeat("x", 360)})
+		ag.Messages = append(ag.Messages, ai.Message{Role: "user", Content: strings.Repeat("x", 4600)})
 	}
 	if _, err := ag.Turn(context.Background(), "hi", Events{}); err != nil {
 		t.Fatal(err)
@@ -622,12 +624,12 @@ func TestCompactThresholdExplicitOverride(t *testing.T) {
 	c2 := ai.New(srv.URL, "m")
 	c2.MaxRetries = 1
 	ag2 := New(c2, "m", 100, "sys")
-	ag2.ContextLimit = 1000
+	ag2.ContextLimit = 10000
 	for range 8 {
-		ag2.Messages = append(ag2.Messages, ai.Message{Role: "user", Content: strings.Repeat("x", 360)})
+		ag2.Messages = append(ag2.Messages, ai.Message{Role: "user", Content: strings.Repeat("x", 4600)})
 	}
 	if err := ag2.maybeCompact(context.Background(), Events{}); err == nil {
-		t.Fatal("the same history should compact at the default 50% threshold")
+		t.Fatal("the same history should compact at the default 90% threshold")
 	}
 }
 

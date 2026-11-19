@@ -251,6 +251,9 @@ type Agent struct {
 	usageSink func(model string, u ai.Usage)
 
 	lastPrompt int
+	// lastPromptMsgs is how many transcript messages the request lastPrompt
+	// reports on carried; messages after it are not in that count yet.
+	lastPromptMsgs int
 }
 
 func (a *Agent) TurnRunning() bool { return a.running.Load() }
@@ -334,13 +337,33 @@ func (a *Agent) drainPending() []pendingSteer {
 	return p
 }
 
-func (a *Agent) notePrompt(u ai.Usage) {
+// notePrompt records the prompt tokens the provider reported for a request
+// that carried the first sent transcript messages.
+func (a *Agent) notePrompt(u ai.Usage, sent int) {
 	if u.PromptTokens <= 0 {
 		return
 	}
 	a.usageMu.Lock()
-	a.lastPrompt = u.PromptTokens
+	a.lastPrompt, a.lastPromptMsgs = u.PromptTokens, sent
 	a.usageMu.Unlock()
+}
+
+// contextTokens is how much of the context window messages fill: the prompt
+// tokens the provider reported for the last request, plus an estimate of only
+// the messages added after it. The reported count includes the system prompt
+// and tool definitions and is exact for text the estimate gets wrong (CJK
+// text counts about one token per character, not per four bytes), so the
+// footer, the auto-compaction threshold and the overflow check all read the
+// same number. Without a report since the history was last replaced, it falls
+// back to the estimate.
+func (a *Agent) contextTokens(messages []ai.Message) int {
+	a.usageMu.Lock()
+	reported, sent := a.lastPrompt, a.lastPromptMsgs
+	a.usageMu.Unlock()
+	if reported > 0 && sent > 0 && sent <= len(messages) {
+		return reported + EstimateTokens(messages[sent:])
+	}
+	return EstimateTokens(messages)
 }
 
 func (a *Agent) AddUsage(u ai.Usage) {
@@ -518,7 +541,7 @@ func (a *Agent) MessagesSnapshot() []ai.Message {
 }
 
 func (a *Agent) ContextTokens() int {
-	n := EstimateTokens(a.MessagesSnapshot())
+	n := a.contextTokens(a.MessagesSnapshot())
 	a.lastContextTokens.Store(int64(n))
 	return n
 }
@@ -533,7 +556,7 @@ func (a *Agent) ContextTokensNow() int {
 	}
 	messages := append([]ai.Message(nil), a.Messages...)
 	a.msgsMu.Unlock()
-	n := EstimateTokens(messages)
+	n := a.contextTokens(messages)
 	a.lastContextTokens.Store(int64(n))
 	return n
 }
@@ -542,6 +565,10 @@ func (a *Agent) RestoreMessages(messages []ai.Message) {
 	a.msgsMu.Lock()
 	a.Messages = append([]ai.Message(nil), messages...)
 	a.msgsMu.Unlock()
+	// The last reported prompt described the history this replaces.
+	a.usageMu.Lock()
+	a.lastPrompt = 0
+	a.usageMu.Unlock()
 }
 
 func (a *Agent) SetMessageRewoundFrom(index int, value string) {
@@ -812,6 +839,7 @@ func (a *Agent) turnPending(ctx context.Context, input string, parts []ai.Conten
 			a.msgsMu.Unlock()
 		}
 		msgs := a.Messages
+		sent := len(msgs)
 		requestTools := a.AllTools()
 		if a.RequestToolFilter != nil {
 			requestTools = a.RequestToolFilter(requestTools)
@@ -820,7 +848,7 @@ func (a *Agent) turnPending(ctx context.Context, input string, parts []ai.Conten
 			Model:                a.Model,
 			Messages:             a.requestMessages(msgs),
 			Tools:                tools.Defs(requestTools),
-			MaxTokens:            a.MaxTokens,
+			MaxTokens:            a.requestOutputTokens(msgs),
 			ReasoningEffort:      a.Effort,
 			NativeWebSearch:      a.requestNativeSearch(),
 			NativeSearchProvider: a.Provider,
@@ -828,7 +856,7 @@ func (a *Agent) turnPending(ctx context.Context, input string, parts []ai.Conten
 			TopP:                 a.TopP,
 		}, ev)
 		a.AddUsage(usage)
-		a.notePrompt(usage)
+		a.notePrompt(usage, sent)
 		if ev.OnUsage != nil {
 			ev.OnUsage(usage)
 		}
@@ -994,7 +1022,25 @@ const (
 	compactTailFraction  = 0.25
 )
 
-const defaultCompactThreshold = 0.5
+const defaultCompactThreshold = 0.9
+
+// minOutputReserve is the least room for the reply a request keeps before the
+// conversation is compacted to make more. Above it, a request whose full
+// output limit no longer fits asks for the room that is left instead.
+const minOutputReserve = 16_384
+
+func (a *Agent) outputReserve() int { return min(a.MaxTokens, minOutputReserve) }
+
+// requestOutputTokens is the output limit for a request carrying messages: the
+// model's own, or the room the context window has left when that is smaller.
+// The thinking budgets derived from it shrink with it.
+func (a *Agent) requestOutputTokens(messages []ai.Message) int {
+	if a.MaxTokens <= 0 || a.ContextLimit <= 0 {
+		return a.MaxTokens
+	}
+	room := a.ContextLimit - a.contextTokens(messages)
+	return min(a.MaxTokens, max(room, a.outputReserve()))
+}
 
 func (a *Agent) threshold() float64 {
 	if a.CompactThreshold > 0 {
@@ -1008,15 +1054,7 @@ func (a *Agent) maybeCompact(ctx context.Context, ev Events) error {
 		return nil
 	}
 	limit := int(a.threshold() * float64(a.ContextLimit))
-	a.usageMu.Lock()
-	reported := a.lastPrompt
-	a.usageMu.Unlock()
-	if reported > 0 {
-
-		if reported < limit {
-			return nil
-		}
-	} else if EstimateTokens(a.Messages) < limit {
+	if a.contextTokens(a.MessagesSnapshot()) < limit {
 		return nil
 	}
 	took := len(a.Messages)
@@ -1041,9 +1079,11 @@ func (a *Agent) maybeCompact(ctx context.Context, ev Events) error {
 	return nil
 }
 
-// maybeCompactForRequest handles the pre-send overflow trigger. A normal
-// threshold check can be disabled or set high enough that the output reserve
-// still makes the next request too large.
+// maybeCompactForRequest handles the pre-send overflow trigger: it compacts
+// when the context window no longer has outputReserve left for the reply.
+// Short of that, requestOutputTokens lowers the request's output limit to the
+// room that is left, so a model with a large output limit does not compact
+// long before the threshold.
 func (a *Agent) maybeCompactForRequest(ctx context.Context, ev Events) error {
 	if a.compacted || a.ContextLimit <= 0 || a.MaxTokens <= 0 {
 		return nil
@@ -1052,7 +1092,7 @@ func (a *Agent) maybeCompactForRequest(ctx context.Context, ev Events) error {
 	if len(messages) <= 3 {
 		return nil
 	}
-	if EstimateTokens(messages)+a.MaxTokens <= a.ContextLimit {
+	if a.contextTokens(messages)+a.outputReserve() <= a.ContextLimit {
 		return nil
 	}
 	if ev.OnCompactStart != nil {
@@ -1495,7 +1535,7 @@ func (a *Agent) finalAnswer(ctx context.Context, ev Events) (string, error) {
 		TopP:                 a.TopP,
 	}, ev)
 	a.AddUsage(usage)
-	a.notePrompt(usage)
+	a.notePrompt(usage, len(msgs)-1)
 	if ev.OnUsage != nil {
 		ev.OnUsage(usage)
 	}

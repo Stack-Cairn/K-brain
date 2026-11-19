@@ -105,7 +105,7 @@ func TestSettingsF2StepsAndToggles(t *testing.T) {
 	}
 	before := m.compactPct()
 	pressAll(t, m, tea.KeyMsg{Type: tea.KeyRight})
-	if m.compactPct() != before+10 {
+	if want := stepCompactPct(before, 1); want <= before || m.compactPct() != want {
 		t.Fatalf("→ should raise the compaction level: %d → %d", before, m.compactPct())
 	}
 	if !strings.Contains(surfScreen(m), "%") {
@@ -128,7 +128,7 @@ func TestSettingsF2StepsAndToggles(t *testing.T) {
 	if m.surfaceOpen() {
 		t.Fatal("Esc closes settings")
 	}
-	if cfg, err := config.Load(); err != nil || cfg.CompactPct != before+10 {
+	if cfg, err := config.Load(); err != nil || cfg.CompactPct != stepCompactPct(before, 1) {
 		t.Fatalf("the change should go through the existing setter and persist: %v %+v", err, cfg.CompactPct)
 	}
 }

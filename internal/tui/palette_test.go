@@ -482,16 +482,21 @@ func TestPaletteCompactionLevelSteps(t *testing.T) {
 	if it.stepFwd == nil || it.stepBack == nil {
 		t.Fatal("Compaction level should be ←/→ steppable")
 	}
+	// From the 90% default, 95% is one step up and 80% two steps down.
 	it.stepFwd(m)
-	if m.agent.CompactThreshold != 0.6 {
-		t.Fatalf("→ should step to 60%%, got %v", m.agent.CompactThreshold)
+	if m.agent.CompactThreshold != 0.95 {
+		t.Fatalf("→ should step to 95%%, got %v", m.agent.CompactThreshold)
+	}
+	it.stepFwd(m)
+	if m.agent.CompactThreshold != 0.95 {
+		t.Fatalf("→ at 95%% should stay there, got %v", m.agent.CompactThreshold)
 	}
 	it.stepBack(m)
 	it.stepBack(m)
-	if m.agent.CompactThreshold != 0.4 {
-		t.Fatalf("← ← should step to 40%%, got %v", m.agent.CompactThreshold)
+	if m.agent.CompactThreshold != 0.8 {
+		t.Fatalf("← ← should step to 80%%, got %v", m.agent.CompactThreshold)
 	}
-	if state := paletteState(m, *it); !strings.Contains(state, "40%") {
+	if state := paletteState(m, *it); !strings.Contains(state, "80%") {
 		t.Fatalf("the row badge should show the live level, got %q", state)
 	}
 }

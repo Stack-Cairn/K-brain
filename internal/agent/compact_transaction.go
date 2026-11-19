@@ -12,7 +12,7 @@ func (a *Agent) ManualCompactCommit(ctx context.Context, ev Events, commit func(
 	before := a.MessagesSnapshot()
 	usage := a.UsageSummary()
 	a.usageMu.Lock()
-	lastPrompt := a.lastPrompt
+	lastPrompt, lastPromptMsgs := a.lastPrompt, a.lastPromptMsgs
 	a.usageMu.Unlock()
 	defer func() {
 		if err == nil {
@@ -23,7 +23,7 @@ func (a *Agent) ManualCompactCommit(ctx context.Context, ev Events, commit func(
 		a.msgsMu.Unlock()
 		a.RestoreUsage(usage)
 		a.usageMu.Lock()
-		a.lastPrompt = lastPrompt
+		a.lastPrompt, a.lastPromptMsgs = lastPrompt, lastPromptMsgs
 		a.usageMu.Unlock()
 	}()
 	if err = ctx.Err(); err != nil {

@@ -17,7 +17,7 @@
 
   [90mSession[0m
   Compaction model  [37mmodel that summarises long conversations[0m                                           [37mdefault (model1)[0m
-  Compaction level  [37mauto-compact at this share of the context window[0m                                                [37m50%[0m
+  Compaction level  [37mauto-compact at this share of the context window[0m                                                [37m90%[0m
   [90mGoal rounds     [0m  [90mrounds a /goal may run before it stops[0m                                                          [90m100[0m
   Privacy gateway   [37mmask secrets in requests, restore them in replies[0m                                               [37moff[0m
 
