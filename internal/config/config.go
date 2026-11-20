@@ -266,6 +266,9 @@ type Hook struct {
 	Command string `json:"command"`
 	Shell   string `json:"shell,omitempty"`
 	Timeout int    `json:"timeout,omitempty"`
+	// Matcher selects the tools a PreToolUse, PostToolUse or PostToolUseFailure
+	// hook runs for; see CompileHookMatcher. Other events reject it.
+	Matcher string `json:"matcher,omitempty"`
 }
 
 type ComputerConfig struct {
@@ -426,11 +429,8 @@ func parseConfigJSONC(data []byte, cfg *Config) error {
 			return fmt.Errorf("unsupported hook event %q", event)
 		}
 		for i, hook := range hooks {
-			if strings.TrimSpace(hook.Command) == "" {
-				return fmt.Errorf("hook %s[%d] command cannot be empty", event, i)
-			}
-			if hook.Timeout < 0 {
-				return fmt.Errorf("hook %s[%d] timeout must be non-negative", event, i)
+			if err := ValidateHook(event, i, hook); err != nil {
+				return err
 			}
 		}
 	}

@@ -104,7 +104,7 @@ Computer-use helper 使用 `k-brain-computer-<os>-<arch>` 命名，重命名为 
 
 完整用户指南位于 [`docs/user-guide/`](docs/user-guide/README.md)，涵盖提示词文件、配置、会话、扩展、沙箱和 ACP。
 
-可以为 Agent 生命周期事件配置本地 Hook。命令通过 `K_BRAIN_HOOK_EVENT` 环境变量接收 JSON 事件；`PreToolUse` Hook 返回非零状态时会拒绝本次工具调用。
+可以为 Agent 生命周期事件配置本地 Hook。命令通过标准输入和 `K_BRAIN_HOOK_EVENT` 环境变量接收 JSON 事件；`PreToolUse` Hook 返回非零状态时会拒绝本次工具调用。
 
 ```json
 {

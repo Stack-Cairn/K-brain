@@ -109,16 +109,22 @@ func (a *Agent) runTools(ctx context.Context, calls []ai.ToolCall, ev Events) []
 			result := tools.ExecuteResult(callCtx, a.AllTools(), name, json.RawMessage(args), a.Vision)
 			out := result.Text
 			if a.Hooks != nil || a.PluginHook != nil {
-				if err := a.runHook(ctx, hooks.Event{Name: hooks.PostToolUse, ToolID: tc.ID, ToolName: name, ToolArgs: args, ToolResult: out}); err != nil {
+				var extra []string
+				outcome, err := a.runHookOutcome(ctx, hooks.Event{Name: hooks.PostToolUse, ToolID: tc.ID, ToolName: name, ToolArgs: args, ToolResult: out})
+				if err != nil {
 					out += "\nHook PostToolUse failed: " + err.Error()
 				}
+				extra = append(extra, outcome.AdditionalContext)
 				// PostToolUseFailure adds to PostToolUse for a tool that returned an
 				// error; an interrupted call is not a tool failure.
 				if result.Failed && !result.Cancelled {
-					if err := a.runHook(ctx, hooks.Event{Name: hooks.PostToolUseFailure, ToolID: tc.ID, ToolName: name, ToolArgs: args, ToolResult: result.Text}); err != nil {
+					outcome, err := a.runHookOutcome(ctx, hooks.Event{Name: hooks.PostToolUseFailure, ToolID: tc.ID, ToolName: name, ToolArgs: args, ToolResult: result.Text})
+					if err != nil {
 						out += "\nHook PostToolUseFailure failed: " + err.Error()
 					}
+					extra = append(extra, outcome.AdditionalContext)
 				}
+				out = appendHookContext(out, extra...)
 			}
 			if len(a.Reminders) > 0 && !result.Cancelled {
 				result.Text = out
