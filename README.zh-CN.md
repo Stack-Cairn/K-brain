@@ -135,7 +135,7 @@ CLI、TUI 和 ACP 共用配置钩子与已启用插件钩子的事件入口。�
 
 使用 `kn sessions` 查看按项目分组的会话，使用 `kn sessions search <query>` 搜索，或用 `archive/delete` 管理；使用 `kn --resume <session-id>` 恢复会话。系统提示词保存在 `~/.liveagent/system.md`，通过 `/system` 编辑；用户级常驻指令保存在 `~/.liveagent/brain.md`，通过 `/brain` 编辑；项目级指令放在 `AGENTS.md` 或 `.liveagent/brain.md`。TUI 中 `/status` 显示当前会话文件路径。JSONL 记录包含元数据、消息、任务、压缩、定时任务和回退快照引用。不再支持 SQLite 存储或旧库迁移，也不会读取或修改已有数据库文件。
 
-项目授权使用 TOML 格式，保存于 `~/.liveagent/trusted_folders.toml`（Windows：`~\.liveagent\trusted_folders.toml`），每个目录使用 `[folders."<绝对路径>"]`，并记录 `trusted` 与 `decided_at`。
+项目授权使用 TOML 格式，保存于 `~/.liveagent/trusted_folders.toml`（Windows：`~\.liveagent\trusted_folders.toml`），每个目录使用 `[folders."<绝对路径>"]`，并记录 `trusted` 与 `decided_at`。LiveAgent 通过后端的 `/v1/trust` 接口读取、授予和撤销同一份记录（见 `docs/liveagent-backend.md`）。
 
 ### OS 级沙箱
 

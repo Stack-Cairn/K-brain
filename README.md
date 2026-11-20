@@ -135,7 +135,7 @@ Sessions live under `~/.liveagent/sessions/<project-id>/<session-id>/session.jso
 
 Run `kn sessions` to list project-grouped session IDs. Use `kn sessions search <query>`, `kn sessions archive <id>`, or `kn sessions delete <id>` for navigation. Resume with `kn --resume <session-id>`; `/status` shows the current session file. The system prompt is stored in `~/.liveagent/system.md` and edited with `/system`; user standing instructions are stored in `~/.liveagent/brain.md` and edited with `/brain`. JSONL records include metadata, messages, tasks, compactions, schedules, and rewind snapshot references. SQLite storage and migration are no longer supported; existing database files are not read or modified.
 
-Project trust decisions use TOML at `~/.liveagent/trusted_folders.toml` (Windows: `~\.liveagent\trusted_folders.toml`), with one `[folders."<absolute-path>"]` table containing `trusted` and `decided_at` fields.
+Project trust decisions use TOML at `~/.liveagent/trusted_folders.toml` (Windows: `~\.liveagent\trusted_folders.toml`), with one `[folders."<absolute-path>"]` table containing `trusted` and `decided_at` fields. LiveAgent reads, grants and revokes the same records through the backend `/v1/trust` routes (see `docs/liveagent-backend.md`).
 
 ### OS sandbox
 

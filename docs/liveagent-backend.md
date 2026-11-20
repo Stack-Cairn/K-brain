@@ -101,6 +101,7 @@ VITE_KBRAIN_TOKEN=<backend-token>
 | GET | `/v1/skills/files` / `/v1/skills/file?path=` | 列出各技能的 SKILL.md 相对路径 / 按相对路径读取根目录下的文件（技能包里的嵌套路径同样可读） |
 | PUT | `/v1/skills/settings` | 保存启用设置（全局或按 `workdir` 的项目设置）；`packs` 见下文，`capabilities.skill_packs` 表示支持 |
 | POST | `/v1/skills/manage` | SkillsManager 操作：`list`、`read`、`validate`、`delete`、`create`、`install`、`install_start` 等 |
+| GET / POST / DELETE | `/v1/trust` | 读取 / 授予 / 撤销项目目录信任；见下文，`capabilities.folder_trust` 表示支持 |
 
 列表支持 `page`、`page_size`、`cwd`、`cwd_empty`、`shared`、`pinned`、`archived`，返回 `sessions`、`total_count`、`epoch` 和字符串 `revision`。`/v1/health` 的 `capabilities.session_changes: 2` 表示同时支持不可变快照、增量、pinned、workdirs、字符串游标和过期 reset；客户端必须探测完整契约后才能放宽旧轮询。
 
@@ -561,6 +562,24 @@ GET `/v1/settings`（以及 PUT 的响应）总是带 `webSearch`：
 - `costUSD` 用模型目录价格计算（与 kn 的 `/usage` 卡片相同），按订阅计费的 provider 不计价；单个模型无价格时为 `null`，总计只加能计价的模型，一个都不能计价时为 `null`。
 - 时间与去重：回复按 `sent_at` 分日，旧回复没有时间时取它之前最近一条消息的时间，再没有就取会话创建时间；消息里没有用量的旧会话把元数据合计记在最后活动那天。子代理的转录会话与父会话的子代理合计是同一份用量，只计一次（父会话没有带用量的子代理转录时才用合计）；分支与复制出的会话里同 id 的回复只计一次。
 - 第一次请求要读一遍所有会话文件；之后按文件大小与修改时间缓存每个会话的用量，只重读变化的会话。统计不获取会话锁，不会阻塞正在进行的运行。
+
+### 项目目录信任（`capabilities.folder_trust: 1`）
+
+项目级 Markdown 提示词模板（`<项目>/.liveagent/prompts/`）只在项目目录受信任时才出现在 `/v1/prompts` 的 `files`、`/v1/prompts/templates/{name}/expand` 和 `/v1/commands` 里。信任记录与 TUI 共用 `trusted_folders.toml`（格式见 README），桌面端用下面的接口读取和修改，接口需要后端令牌，与其他接口相同：
+
+| 方法 | 请求 | 作用 |
+|---|---|---|
+| GET | `/v1/trust?workdir=<绝对路径>` | 读取信任状态 |
+| POST | `/v1/trust`，请求体 `{"workdir":"<绝对路径>","trusted"?:true}` | 信任该目录；`trusted:false` 等同撤销 |
+| DELETE | `/v1/trust?workdir=<绝对路径>` | 撤销该目录的信任 |
+
+三种请求都返回 `{"version","workdir","trusted","source"?}`：`workdir` 是解析符号链接后的规范路径（与提示词、斜杠命令查找使用同一规范化），信任记录按它保存；`trusted` 是该目录当前是否受信任；`source` 是做出这个判断的记录（目录自身或最近的祖先目录），没有记录覆盖时省略。
+
+- `workdir` 为空、不是绝对路径、不存在或不是目录时返回 400 `{version, error}`，不写任何记录；请求体有未知字段同样返回 400；其他方法返回 405。
+- 信任目录同时覆盖它的子目录。撤销删除该目录自己的记录；若某个祖先目录仍会让它受信任，则改为写入该目录的 `trusted = false` 记录，撤销对它和它的子目录生效，祖先目录的信任不变。撤销没有记录的目录是空操作。
+- 每次请求都重新读取 `trusted_folders.toml`，修改后下一次 `/v1/prompts`、`/v1/commands` 或提示词命令运行立即反映，不需要重启后端；TUI 在下次启动时看到同一结果。
+- 同一后端进程内的修改串行写入（临时文件加重命名）；与同时运行的 TUI 之间没有跨进程锁。
+- 旧后端没有这个接口（返回 404），客户端在能力缺失时应隐藏信任开关，提示用户在 `kn` 终端界面中打开一次该目录来信任它。
 
 ### 记住的权限规则（`capabilities.permission_rules: 1`、`readonly_auto_allow: 1`）
 
