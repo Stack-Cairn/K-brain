@@ -240,6 +240,7 @@ func (m *model) switchToForked(id string) {
 	m.agent.LoadTodosJSON(m.store.Todos(meta.ID))
 	m.goal = meta.Goal
 	m.goalRounds = 0
+	m.goalVerifyRejects = 0
 	m.titled = true
 	m.rebuildTranscript()
 	m.append(dimStyle.Render(fmt.Sprintf("⑂ switched to the fork %q (%s) — the original %s kept the finished turn and is under /resume", meta.Title, meta.ID, oldID)))

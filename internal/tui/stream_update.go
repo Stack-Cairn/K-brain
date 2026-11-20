@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -152,9 +151,7 @@ func (m *model) onTurnDone(msg turnDoneMsg) (tea.Model, tea.Cmd) {
 
 	if m.goal != "" && msg.err == nil {
 		if msg.stopReason != ai.StopReasonLength && goalMet(msg.final) {
-			m.append(dimStyle.Render("◎ goal met after " + strconv.Itoa(m.goalRounds) + " round(s)"))
-			m.setGoal("")
-			return m, nil
+			return m.claimGoal()
 		}
 		if msg.stopReason != ai.StopReasonLength && goalNeedsInput(msg.final) {
 			// Another round cannot get the answer; the user's reply is the next turn,

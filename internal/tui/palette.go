@@ -794,6 +794,7 @@ func (m *model) commitGoal(pp *ppanel) {
 	if goal == m.goal {
 		if goal != "" && !m.busy {
 			m.goalRounds = 0
+			m.goalVerifyRejects = 0
 			m.append(dimStyle.Render("◎ resuming goal: " + goal))
 			m.submitGoal(goalContinuePrompt(goal))
 		}

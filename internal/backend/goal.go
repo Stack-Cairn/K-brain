@@ -12,6 +12,7 @@ import (
 
 	"github.com/Stack-Cairn/K-brain/internal/agent"
 	"github.com/Stack-Cairn/K-brain/internal/ai"
+	"github.com/Stack-Cairn/K-brain/internal/config"
 	"github.com/Stack-Cairn/K-brain/internal/goalloop"
 	"github.com/Stack-Cairn/K-brain/internal/protocol"
 )
@@ -53,12 +54,19 @@ type goalRuntime struct {
 	// cleared is the text of a goal the user cleared, until a new goal is set; plain
 	// runs remind the model not to pick it back up. It does not survive a reload.
 	cleared string
+	// verifyRejects counts the verifier's rejections of GOAL_MET claims since the goal
+	// was set or resumed; verification is the latest verdict.
+	verifyRejects int
+	verification  *protocol.GoalVerification
 }
 
 type goalContinuation struct {
 	afterRunID      string
 	clientRequestID string
 	prompt          string
+	// verifierReason is set when the verifier turned down a GOAL_MET claim; the next
+	// round's request-only text carries it.
+	verifierReason string
 }
 
 // goalBusyRetries and goalBusyDelay bound how long the next goal round waits for a
@@ -125,6 +133,7 @@ func (s *Server) goalStateLocked(rt *runtimeSession) protocol.GoalState {
 	if !rt.goal.started.IsZero() && rt.goal.text != "" {
 		state.StartedAt = rt.goal.started.UTC().Format(time.RFC3339)
 	}
+	state.Verification = rt.goal.verification
 	if next := rt.goal.next; next != nil {
 		state.Status = "continuing"
 		state.NextClientRequestID, state.NextPrompt = next.clientRequestID, next.prompt
@@ -374,7 +383,7 @@ func (s *Server) startGoal(w http.ResponseWriter, rt *runtimeSession, in protoco
 
 // evaluateGoal runs inside executeRun before the terminal event, so a client streaming
 // the run sees the decision first. outcome is completed, cancelled or failed.
-func (s *Server) evaluateGoal(rt *runtimeSession, runID, outcome string) {
+func (s *Server) evaluateGoal(ctx context.Context, rt *runtimeSession, runID, outcome string) {
 	rt.mu.Lock()
 	s.ensureGoalLoadedLocked(rt)
 	// Only the goal's own round decides it; a cron or user run that took the idle
@@ -386,17 +395,35 @@ func (s *Server) evaluateGoal(rt *runtimeSession, runID, outcome string) {
 	// A reply written for an older goal text cannot complete the updated goal; the
 	// next round checks the new text instead.
 	current := rt.goal.runRevision == rt.goal.revision
+	claimed := outcome == "completed" && current && goalReplyLeads(rt, goalloop.Met)
+	rejected := ""
+	if claimed {
+		verdict, ok := s.verifyGoalClaimLocked(ctx, rt, runID)
+		if !ok {
+			// A pause, clear, update or new goal landed while the verifier ran; that
+			// action already decided the goal.
+			rt.mu.Unlock()
+			return
+		}
+		if ctx.Err() != nil {
+			outcome = "cancelled"
+		}
+		if verdict != nil && verdict.Verdict == "not_met" {
+			claimed, rejected = false, verdict.Reason
+		}
+	}
 	switch {
 	case outcome != "completed":
 		// A stopped or failed round pauses the goal; only an explicit resume restarts it.
 		rt.goal.status, rt.goal.reason = "paused", outcome
-	case current && goalReplyLeads(rt, goalloop.Met):
+	case claimed:
 		_ = s.store.SetGoal(rt.id, "")
 		rt.goal.status, rt.goal.reason = "met", ""
 	case current && goalReplyLeads(rt, goalloop.NeedsInput):
 		// Another round cannot get the user's answer; wait for their next message.
 		rt.goal.status, rt.goal.reason = "paused", goalReasonAwaitingInput
 	case rt.goal.round >= s.goalMaxRoundsLocked(rt):
+		// A claim the verifier turned down counts as an unfinished round too.
 		rt.goal.status, rt.goal.reason = "paused", "max_rounds"
 	default:
 		rt.goal.round++
@@ -404,6 +431,7 @@ func (s *Server) evaluateGoal(rt *runtimeSession, runID, outcome string) {
 			afterRunID:      runID,
 			clientRequestID: fmt.Sprintf("goal-%s-%s-%d", rt.id, rt.goal.nonce, rt.goal.round),
 			prompt:          goalRoundPrompt(rt.goal.text, rt.goal.round, s.goalMaxRoundsLocked(rt)),
+			verifierReason:  rejected,
 		}
 	}
 	state := s.goalStateLocked(rt)
@@ -413,6 +441,47 @@ func (s *Server) evaluateGoal(rt *runtimeSession, runID, outcome string) {
 	}
 	rt.mu.Unlock()
 	_, _ = rt.publish(protocol.EventGoalUpdated, state, "")
+}
+
+// verifyGoalClaimLocked checks the round's GOAL_MET claim with the hidden
+// verification request. It releases rt.mu while the request runs and holds it again on
+// return. ok is false when the goal moved on meanwhile. A nil verdict means the
+// verifier is off; an "error" or "cap" verdict accepts the claim.
+func (s *Server) verifyGoalClaimLocked(ctx context.Context, rt *runtimeSession, runID string) (verdict *protocol.GoalVerification, ok bool) {
+	var cfg *config.Config
+	if s.settings != nil {
+		cfg = s.settings.Snapshot()
+	}
+	if !goalloop.VerifyEnabled(cfg) || rt.agent == nil {
+		return nil, true
+	}
+	if rt.goal.verifyRejects >= goalloop.VerifyMaxRejections(cfg) {
+		rt.goal.verification = &protocol.GoalVerification{
+			Verdict:    "cap",
+			Reason:     fmt.Sprintf("the verifier already rejected %d claim(s); accepted without another check", rt.goal.verifyRejects),
+			Rejections: rt.goal.verifyRejects,
+		}
+		return rt.goal.verification, true
+	}
+	ag, goal := rt.agent, rt.goal.text
+	nonce, round, revision := rt.goal.nonce, rt.goal.round, rt.goal.revision
+	rt.mu.Unlock()
+	result, err := ag.VerifyGoal(ctx, goal)
+	rt.mu.Lock()
+	if rt.goal.status != "active" || rt.goal.nonce != nonce || rt.goal.round != round || rt.goal.revision != revision || !rt.goalRoundLocked(runID) {
+		return nil, false
+	}
+	v := &protocol.GoalVerification{Verdict: "met", Reason: result.Reason}
+	switch {
+	case err != nil:
+		v.Verdict, v.Reason = "error", err.Error()
+	case !result.Met:
+		rt.goal.verifyRejects++
+		v.Verdict = "not_met"
+	}
+	v.Rejections = rt.goal.verifyRejects
+	rt.goal.verification = v
+	return v, true
 }
 
 // goalReplyLeads applies a leading-token check to the round's final reply. A reply cut
@@ -505,6 +574,9 @@ func (s *Server) continueGoal(rt *runtimeSession, runID string, previous protoco
 			ConversationID: rt.id, ClientRequestID: next.clientRequestID, Prompt: next.prompt,
 			Options: previous.Options, HookPolicy: previous.HookPolicy, HookScopeID: previous.HookScopeID,
 			Snapshot: goalloop.ContinuePrompt(goal),
+		}
+		if next.verifierReason != "" {
+			run.Snapshot = goalloop.RejectedPrompt(goal, next.verifierReason)
 		}
 		// The round claims the goal only when it is accepted, and only if no pause, clear,
 		// new goal or update landed since the snapshot above was built.

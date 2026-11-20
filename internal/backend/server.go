@@ -1930,13 +1930,13 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, end func(),
 		}
 	}
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		s.evaluateGoal(rt, runID, "cancelled")
+		s.evaluateGoal(ctx, rt, runID, "cancelled")
 		finish(protocol.EventRunCancelled, protocol.RunTerminal{State: "cancelled"})
 	} else if err != nil {
 		if failedAssistant != nil {
 			_, _ = rt.publish(protocol.EventAssistantMessage, *failedAssistant, "")
 		}
-		s.evaluateGoal(rt, runID, "failed")
+		s.evaluateGoal(ctx, rt, runID, "failed")
 		finish(protocol.EventRunFailed, protocol.RunTerminal{State: "failed", Error: err.Error()})
 	} else {
 		messages := rt.agent.MessagesSnapshot()
@@ -1949,7 +1949,7 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, end func(),
 			}
 			break
 		}
-		s.evaluateGoal(rt, runID, "completed")
+		s.evaluateGoal(ctx, rt, runID, "completed")
 		finish(protocol.EventRunCompleted, protocol.RunTerminal{State: "completed"})
 	}
 }

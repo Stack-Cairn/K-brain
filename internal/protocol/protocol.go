@@ -770,6 +770,18 @@ type GoalState struct {
 	// desktop goal bar shows the elapsed time from it.
 	StartedAt string       `json:"started_at,omitempty"`
 	Run       *RunAccepted `json:"run,omitempty"`
+	// Verification is the latest independent check of a GOAL_MET claim for this goal.
+	Verification *GoalVerification `json:"verification,omitempty"`
+}
+
+// GoalVerification is the outcome of the hidden request that checks a GOAL_MET claim.
+// Verdict is "met", "not_met", "error" (the verifier failed and the claim was accepted)
+// or "cap" (the verifier already rejected too many claims and this one was accepted
+// unchecked). Rejections counts the verifier's rejections for the goal so far.
+type GoalVerification struct {
+	Verdict    string `json:"verdict"`
+	Reason     string `json:"reason,omitempty"`
+	Rejections int    `json:"rejections"`
 }
 
 // SlashCommand is one entry of the desktop slash command catalog. Kind "action" is
