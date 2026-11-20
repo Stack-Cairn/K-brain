@@ -19,6 +19,19 @@ import (
 
 var runReasoning = []string{"off", "minimal", "low", "medium", "high", "xhigh", "max"}
 
+// alwaysKnownTools may carry a policy whether or not this session registers
+// them. remember and forget are replaced by memory_manager while a memory
+// runtime is attached, which the desktop backend always does; clients keep
+// policies for them from sessions without one, and a policy for a missing
+// tool changes nothing.
+var alwaysKnownTools = map[string]bool{
+	"ExitPlanMode":          true,
+	tools.SSHManagerTool:    true,
+	tools.WebSearchToolName: true,
+	"remember":              true,
+	"forget":                true,
+}
+
 func normalizeRunOptions(in *protocol.RunOptions, cwd string, available []tools.Tool) (protocol.RunOptions, error) {
 	out := protocol.RunOptions{Mode: "agent", Search: "disabled", ApprovalPolicy: "ask"}
 	if in != nil {
@@ -120,7 +133,7 @@ func normalizeRunOptions(in *protocol.RunOptions, cwd string, available []tools.
 				return fmt.Errorf("options.tools contains duplicate or empty tool")
 			}
 			seen[name] = true
-			if name != "ExitPlanMode" && name != tools.SSHManagerTool && name != tools.WebSearchToolName && !slices.ContainsFunc(available, func(t tools.Tool) bool { return t.Def.Function.Name == name }) {
+			if !alwaysKnownTools[name] && !slices.ContainsFunc(available, func(t tools.Tool) bool { return t.Def.Function.Name == name }) {
 				return fmt.Errorf("options.tools references unavailable tool %q", name)
 			}
 			return nil
