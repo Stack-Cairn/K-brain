@@ -751,15 +751,21 @@ func (a *Agent) turnPending(ctx context.Context, input string, parts []ai.Conten
 		}
 	}
 	prompt := ai.Message{Content: input, Parts: parts}
-	if err := a.runHook(ctx, hooks.Event{Name: hooks.UserPromptSubmit, Prompt: prompt.TextContent()}); err != nil {
+	promptHook, err := a.runHookOutcome(ctx, hooks.Event{Name: hooks.UserPromptSubmit, Prompt: prompt.TextContent()})
+	if err != nil {
 		return "", err
 	}
 
 	if n := a.decay(); n > 0 && ev.OnDecay != nil {
 		ev.OnDecay(n)
 	}
+	// A completed turn runs the Stop hooks itself, where they may block the
+	// stop; every other exit runs them here, where a block is ignored.
+	stopRan := false
 	defer func() {
-		_ = a.runHook(context.WithoutCancel(ctx), hooks.Event{Name: hooks.Stop})
+		if !stopRan {
+			_ = a.runHook(context.WithoutCancel(ctx), hooks.Event{Name: hooks.Stop})
+		}
 	}()
 	messageID := newMessageID()
 	if requestedID, ok := ctx.Value(userMessageIDKey{}).(string); ok && requestedID != "" {
@@ -776,6 +782,7 @@ func (a *Agent) turnPending(ctx context.Context, input string, parts []ai.Conten
 	if memoryOffAuthored(ctx) && !isMemoryOffMessage(userMessage) {
 		userMessage.PromptSnapshots = append(userMessage.PromptSnapshots, MemoryOffSnapshot())
 	}
+	hookSnapshot := promptHookSnapshot(promptHook.AdditionalContext)
 	// The snapshot and the notice mark belong to this turn only; subagents, workflow
 	// agents and background tasks started by its tools inherit ctx and must not get them.
 	ctx = withoutBackgroundNotice(withoutTurnSnapshot(ctx))
@@ -787,9 +794,15 @@ func (a *Agent) turnPending(ctx context.Context, input string, parts []ai.Conten
 	msg.SentAt = &now
 	a.msgsMu.Lock()
 	if resumeID == "" {
+		if hookSnapshot.Text != "" {
+			msg.PromptSnapshots = append(msg.PromptSnapshots, hookSnapshot)
+		}
 		a.Messages = append(a.Messages, msg)
 	} else {
 		markResumedMessage(&a.Messages[len(a.Messages)-1], userMessage.PromptSnapshots, a.MemoryEnabled())
+		if hookSnapshot.Text != "" {
+			a.Messages[len(a.Messages)-1].PromptSnapshots = append(a.Messages[len(a.Messages)-1].PromptSnapshots, hookSnapshot)
+		}
 		msg = a.Messages[len(a.Messages)-1]
 	}
 	a.msgsMu.Unlock()
@@ -811,6 +824,7 @@ func (a *Agent) turnPending(ctx context.Context, input string, parts []ai.Conten
 	}
 	rounds := 0
 	continuations := 0
+	stopBlocks := 0
 	for {
 		lifecycle.startRound()
 		if a.MaxTurns > 0 && rounds >= a.MaxTurns {
@@ -949,6 +963,17 @@ func (a *Agent) turnPending(ctx context.Context, input string, parts []ai.Conten
 		steered := a.drainPending()
 		a.appendSteered(steered, ev)
 		if len(msg.ToolCalls) == 0 && len(steered) == 0 && !resume {
+			if reason, again := a.stopGate(ctx, &stopBlocks, &stopRan); again {
+				if ev.OnText != nil {
+					// Keep the next round's text off this round's in streamed output.
+					ev.OnText("\n\n")
+				}
+				now := time.Now()
+				a.msgsMu.Lock()
+				a.Messages = append(a.Messages, ai.Message{Role: "user", Content: WrapReminder(stopBlockText(reason)), Origin: ai.OriginBackground, SentAt: &now})
+				a.msgsMu.Unlock()
+				continue
+			}
 
 			if !a.compacted {
 				if cerr := a.maybeCompact(ctx, ev); cerr != nil {

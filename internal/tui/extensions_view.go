@@ -290,12 +290,16 @@ func hookSurfaceRows(m *model) []surfaceRow {
 				if h.Timeout > 0 {
 					value = fmt.Sprintf("%ds", h.Timeout)
 				}
+				key := e
+				if h.Matcher != "" {
+					key = e + " (" + h.Matcher + ")"
+				}
 				rows = append(rows, surfaceRow{
 					section: "config",
-					key:     e,
+					key:     key,
 					desc:    h.Command,
 					value:   value,
-					search:  h.Shell,
+					search:  strings.TrimSpace(h.Shell + " " + h.Matcher),
 					preview: func(m *model) []string {
 						w, _ := m.surfaceSize()
 						out := []string{cardTitleStyle.Render(e)}
@@ -304,6 +308,9 @@ func hookSurfaceRows(m *model) []surfaceRow {
 						}
 						if h.Shell != "" {
 							out = append(out, textMutedStyle.Render("shell: "+h.Shell))
+						}
+						if h.Matcher != "" {
+							out = append(out, textMutedStyle.Render("matcher: "+h.Matcher))
 						}
 						return out
 					},

@@ -66,6 +66,11 @@ type Options struct {
 
 	Env []string
 
+	// Stdin, when set, is fed to a non-interactive command's standard input;
+	// otherwise the command reads from the null device. Interactive commands
+	// ignore it.
+	Stdin io.Reader
+
 	Sandbox *sandbox.Policy
 
 	// Detach, once it fires, makes Run return the running command as
@@ -154,6 +159,9 @@ func Run(ctx context.Context, opts Options) Result {
 	if opts.Interactive {
 		return runInteractive(ctx, cmd, opts)
 	}
+	if opts.Stdin != nil {
+		cmd.Stdin = opts.Stdin
+	}
 	res := runDetachable(ctx, cmd, opts.OnUpdate, opts.Detach, detach, release)
 	handedOver = res.Detached != nil
 	return res
@@ -240,7 +248,22 @@ func runDetachable(ctx context.Context, cmd *exec.Cmd, onUpdate func(string), de
 	}
 	cmd.Stdout = outW
 	cmd.Stderr = errW
-	if devNull := openDevNull(); devNull != nil {
+	// Input is copied through a pipe this function owns rather than left to
+	// exec, whose Wait would block on the copy while a descendant that never
+	// reads keeps the pipe open.
+	input := cmd.Stdin
+	var inR, inW *os.File
+	if input != nil {
+		if inR, inW, err = os.Pipe(); err != nil {
+			_ = stdout.Close()
+			_ = outW.Close()
+			_ = stderr.Close()
+			_ = errW.Close()
+			return Result{Exit: "pipe: " + err.Error()}
+		}
+		cmd.Stdin = inR
+		defer inW.Close()
+	} else if devNull := openDevNull(); devNull != nil {
 		cmd.Stdin = devNull
 		defer devNull.Close()
 	}
@@ -252,11 +275,24 @@ func runDetachable(ctx context.Context, cmd *exec.Cmd, onUpdate func(string), de
 		_ = outW.Close()
 		_ = stderr.Close()
 		_ = errW.Close()
+		if inR != nil {
+			_ = inR.Close()
+		}
 		return Result{Exit: exitString(err)}
 	}
 
 	_ = outW.Close()
 	_ = errW.Close()
+	if inR != nil {
+		_ = inR.Close()
+		go func() {
+			// A command that exits without reading ends the copy with EPIPE;
+			// one whose descendants hold the pipe is cut off when this
+			// function returns and closes inW.
+			_, _ = io.Copy(inW, input)
+			_ = inW.Close()
+		}()
+	}
 	r := &pipedRun{cmd: cmd, started: time.Now(), state: track(cmd), stdout: stdout, stderr: stderr, waited: make(chan struct{})}
 	r.wg.Add(2)
 	go r.drain(stdout)

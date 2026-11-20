@@ -1,13 +1,16 @@
 package hooks
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Stack-Cairn/K-brain/internal/config"
 	"github.com/Stack-Cairn/K-brain/internal/tools/bashrun"
@@ -49,7 +52,14 @@ type Event struct {
 	Summary string `json:"summary,omitempty"`
 	// Reason says why a session ended (SessionEnd): "exit", "close" or "switch".
 	Reason string `json:"reason,omitempty"`
+	// StopHookActive is set on a Stop event when an earlier Stop hook of the
+	// same turn blocked the stop and the agent is continuing because of it.
+	StopHookActive bool `json:"stopHookActive,omitempty"`
 }
+
+// MaxAdditionalContext bounds the additionalContext text one event delivers to
+// the model, summed over its hooks.
+const MaxAdditionalContext = 10 << 10
 
 // DeniedError is a PreToolUse hook's structured refusal: it exited 0 and printed
 // {"decision":"deny","reason":"..."} as its output or as the last output line.
@@ -64,36 +74,157 @@ func (e *DeniedError) Error() string {
 	return e.Reason
 }
 
+// Outcome is what the hooks of one event asked for beyond success or failure.
+type Outcome struct {
+	// Block is set when a Stop hook replied {"decision":"block"}; Reason is its
+	// reason. Hooks after the blocking one do not run.
+	Block  bool
+	Reason string
+	// AdditionalContext joins the additionalContext replies of UserPromptSubmit,
+	// PostToolUse and PostToolUseFailure hooks, in order, capped at
+	// MaxAdditionalContext bytes.
+	AdditionalContext string
+}
+
+type hook struct {
+	config.Hook
+	match *regexp.Regexp
+}
+
 type Runner struct {
-	items map[string][]config.Hook
+	items map[string][]hook
 }
 
 func New(items map[string][]config.Hook) *Runner {
-	copyItems := make(map[string][]config.Hook, len(items))
+	copyItems := make(map[string][]hook, len(items))
 	for name, list := range items {
-		copyItems[name] = append([]config.Hook(nil), list...)
+		for _, h := range list {
+			// Configuration is validated when it loads. A matcher that still
+			// fails to compile matches every tool, so a guard hook is never
+			// silently skipped.
+			match, _ := config.CompileHookMatcher(h.Matcher)
+			copyItems[name] = append(copyItems[name], hook{Hook: h, match: match})
+		}
 	}
 	return &Runner{items: copyItems}
 }
 
+// matches reports whether h runs for event: a matcher selects tool names on
+// tool events and is ignored elsewhere.
+func (h hook) matches(event Event) bool {
+	if h.match == nil || !slices.Contains(config.HookToolEvents, event.Name) {
+		return true
+	}
+	return h.match.MatchString(event.ToolName)
+}
+
 func (r *Runner) Run(ctx context.Context, event Event) error {
+	_, err := r.RunOutcome(ctx, event)
+	return err
+}
+
+// RunOutcome runs the hooks configured for event in order, stopping at the
+// first failure, PreToolUse denial or Stop block. The outcome collected up to
+// that point is returned with the error.
+func (r *Runner) RunOutcome(ctx context.Context, event Event) (Outcome, error) {
+	var outcome Outcome
 	if r == nil {
-		return nil
+		return outcome, nil
 	}
 	list := r.items[event.Name]
 	if len(list) == 0 {
-		return nil
+		return outcome, nil
 	}
 	payload, err := json.Marshal(event)
 	if err != nil {
-		return err
+		return outcome, err
 	}
-	for _, hook := range list {
-		if err := runOne(ctx, hook, payload, event); err != nil {
-			return err
+	var extra []string
+	done := func(err error) (Outcome, error) {
+		outcome.AdditionalContext = boundContext(strings.Join(extra, "\n\n"))
+		return outcome, err
+	}
+	for _, h := range list {
+		if !h.matches(event) {
+			continue
+		}
+		output, err := runOne(ctx, h.Hook, payload, event)
+		if err != nil {
+			return done(err)
+		}
+		rep, ok := parseReply(output)
+		if !ok {
+			continue
+		}
+		switch event.Name {
+		case PreToolUse:
+			if strings.EqualFold(rep.Decision, "deny") {
+				return done(&DeniedError{Reason: rep.Reason})
+			}
+		case Stop:
+			if strings.EqualFold(rep.Decision, "block") {
+				outcome.Block, outcome.Reason = true, rep.Reason
+				return done(nil)
+			}
+		case UserPromptSubmit, PostToolUse, PostToolUseFailure:
+			if text := strings.TrimSpace(rep.AdditionalContext); text != "" {
+				extra = append(extra, text)
+			}
 		}
 	}
-	return nil
+	return done(nil)
+}
+
+// MaxEnvPayload bounds the event JSON copied into K_BRAIN_HOOK_EVENT. Systems
+// cap a single environment string (Linux at 128 KiB), and an oversized one makes
+// the hook fail to start; stdin always carries the full event.
+const MaxEnvPayload = 64 << 10
+
+// envPayload returns the event JSON for the environment variable, cutting the
+// large text fields when the whole event would not fit. The cut copy carries
+// "truncated": true so a hook can tell it should read stdin instead.
+func envPayload(event Event, payload []byte) string {
+	if len(payload) <= MaxEnvPayload {
+		return string(payload)
+	}
+	fields := []*string{&event.ToolResult, &event.ToolArgs, &event.Prompt, &event.Summary}
+	for limit := 16 << 10; limit >= 256; limit /= 4 {
+		for _, f := range fields {
+			*f = cutText(*f, limit)
+		}
+		cut, err := json.Marshal(struct {
+			Event
+			Truncated bool `json:"truncated"`
+		}{event, true})
+		if err == nil && len(cut) <= MaxEnvPayload {
+			return string(cut)
+		}
+	}
+	data, _ := json.Marshal(map[string]any{"event": event.Name, "sessionId": event.SessionID, "cwd": event.CWD, "toolName": event.ToolName, "truncated": true})
+	return string(data)
+}
+
+func cutText(text string, limit int) string {
+	if len(text) <= limit {
+		return text
+	}
+	for limit > 0 && !utf8.RuneStart(text[limit]) {
+		limit--
+	}
+	return text[:limit] + "…[truncated]"
+}
+
+// boundContext cuts text to MaxAdditionalContext bytes on a rune boundary.
+func boundContext(text string) string {
+	if len(text) <= MaxAdditionalContext {
+		return text
+	}
+	const marker = "\n[additional context truncated]"
+	cut := MaxAdditionalContext - len(marker)
+	for cut > 0 && !utf8.RuneStart(text[cut]) {
+		cut--
+	}
+	return text[:cut] + marker
 }
 
 func hookError(result bashrun.Result) string {
@@ -112,7 +243,9 @@ func hookError(result bashrun.Result) string {
 	return "unknown error"
 }
 
-func runOne(ctx context.Context, hook config.Hook, payload []byte, event Event) error {
+// runOne runs one hook with the event JSON in K_BRAIN_HOOK_EVENT and on stdin,
+// and returns its output.
+func runOne(ctx context.Context, hook config.Hook, payload []byte, event Event) (string, error) {
 	timeout := 10 * time.Second
 	if hook.Timeout > 0 {
 		timeout = time.Duration(hook.Timeout) * time.Second
@@ -122,23 +255,30 @@ func runOne(ctx context.Context, hook config.Hook, payload []byte, event Event) 
 	}
 	hctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	command := hook.Command
-	result := bashrun.Run(hctx, bashrun.Options{Command: command, Shell: hook.Shell, Dir: event.CWD, Timeout: timeout, Env: []string{"K_BRAIN_HOOK_EVENT=" + string(payload)}})
+	result := bashrun.Run(hctx, bashrun.Options{
+		Command: hook.Command,
+		Shell:   hook.Shell,
+		Dir:     event.CWD,
+		Timeout: timeout,
+		Env:     []string{"K_BRAIN_HOOK_EVENT=" + envPayload(event, payload)},
+		Stdin:   bytes.NewReader(payload),
+	})
 	if result.Exit != "" || result.TimedOut || result.Killed {
-		return fmt.Errorf("hook %s failed: %s", event.Name, hookError(result))
+		return "", fmt.Errorf("hook %s failed: %s", event.Name, hookError(result))
 	}
-	if event.Name == PreToolUse {
-		if reason, denied := deniedBy(result.Output); denied {
-			return &DeniedError{Reason: reason}
-		}
-	}
-	return nil
+	return result.Output, nil
 }
 
-// deniedBy reads a structured PreToolUse reply. Output that is not such a JSON
-// object, or whose decision is anything but "deny", allows the call, so hooks that
-// print plain text keep working.
-func deniedBy(output string) (string, bool) {
+type reply struct {
+	Decision          string `json:"decision"`
+	Reason            string `json:"reason"`
+	AdditionalContext string `json:"additionalContext"`
+}
+
+// parseReply reads a structured hook reply: a JSON object that is the whole
+// output or its last line. Output that is not such an object is no reply, so
+// hooks that print plain text keep working.
+func parseReply(output string) (reply, bool) {
 	output = strings.TrimSpace(output)
 	candidates := []string{output}
 	if i := strings.LastIndexByte(output, '\n'); i >= 0 {
@@ -148,15 +288,13 @@ func deniedBy(output string) (string, bool) {
 		if !strings.HasPrefix(text, "{") {
 			continue
 		}
-		var reply struct {
-			Decision string `json:"decision"`
-			Reason   string `json:"reason"`
-		}
-		if json.Unmarshal([]byte(text), &reply) == nil {
-			return strings.TrimSpace(reply.Reason), strings.EqualFold(reply.Decision, "deny")
+		var rep reply
+		if json.Unmarshal([]byte(text), &rep) == nil {
+			rep.Reason = strings.TrimSpace(rep.Reason)
+			return rep, true
 		}
 	}
-	return "", false
+	return reply{}, false
 }
 
 func Parse(data []byte) (map[string][]config.Hook, error) {
@@ -175,8 +313,8 @@ func Parse(data []byte) (map[string][]config.Hook, error) {
 			return nil, fmt.Errorf("unsupported hook event %q", name)
 		}
 		for i, h := range list {
-			if strings.TrimSpace(h.Command) == "" {
-				return nil, fmt.Errorf("hook %s[%d] command cannot be empty", name, i)
+			if err := config.ValidateHook(name, i, h); err != nil {
+				return nil, err
 			}
 		}
 	}

@@ -104,7 +104,7 @@ Browser and Computer-use screenshots are attached to the originating tool result
 
 The complete user guide is in [`docs/user-guide/`](docs/user-guide/README.md), including prompt files, configuration, sessions, extensions, sandbox, and ACP.
 
-Optional lifecycle hooks can run a local command for an agent event. The command receives a JSON event in `K_BRAIN_HOOK_EVENT`; a non-zero `PreToolUse` hook denies that tool call.
+Optional lifecycle hooks can run a local command for an agent event. The command receives a JSON event on stdin and in `K_BRAIN_HOOK_EVENT`; a non-zero `PreToolUse` hook denies that tool call.
 
 ```json
 {
