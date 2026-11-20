@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -39,22 +40,43 @@ func trustedPath() (string, error) {
 
 func TrustedPath() (string, error) { return trustedPath() }
 
+// trustMu serializes read-modify-write updates of trusted_folders.toml within
+// this process; the backend can serve several trust requests at once.
+var trustMu sync.Mutex
+
 func Trusted(dir string) bool {
+	trusted, _ := TrustDecision(dir)
+	return trusted
+}
+
+// TrustDecision reports whether dir is trusted and which recorded folder (dir
+// itself or its nearest recorded ancestor) decided it. source is empty when no
+// record covers dir.
+func TrustDecision(dir string) (trusted bool, source string) {
+	folders, err := loadTrustedFolders()
+	if err != nil {
+		return false, ""
+	}
+	return decideTrust(folders, dir)
+}
+
+func loadTrustedFolders() (map[string]trustedFolder, error) {
 	p, err := trustedPath()
 	if err != nil {
-		return false
+		return nil, err
 	}
 	data, err := os.ReadFile(p)
 	if err != nil {
-		return false
+		return nil, err
 	}
-	folders, err := parseTrustedFolders(string(data))
-	if err != nil {
-		return false
-	}
+	return parseTrustedFolders(string(data))
+}
+
+func decideTrust(folders map[string]trustedFolder, dir string) (bool, string) {
 	query := filepath.Clean(dir)
 	bestDepth := -1
 	trusted := false
+	source := ""
 	for folder, record := range folders {
 		rel, relErr := filepath.Rel(folder, query)
 		if relErr != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
@@ -71,12 +93,43 @@ func Trusted(dir string) bool {
 		if depth >= bestDepth {
 			bestDepth = depth
 			trusted = record.Trusted
+			source = folder
 		}
 	}
-	return trusted
+	return trusted, source
 }
 
 func Trust(dir string) error {
+	if err := updateTrustedFolders(func(folders map[string]trustedFolder) {
+		folders[filepath.Clean(dir)] = trustedFolder{Trusted: true, DecidedAt: time.Now().Unix()}
+	}); err != nil {
+		return err
+	}
+	LogEvent("trust.grant", dir)
+	return nil
+}
+
+// Untrust revokes trust for dir. Its own record is removed; when an ancestor
+// record would still grant trust, an explicit trusted = false record is kept
+// for dir instead so the revocation sticks. Records of descendants are left as
+// they are.
+func Untrust(dir string) error {
+	key := filepath.Clean(dir)
+	if err := updateTrustedFolders(func(folders map[string]trustedFolder) {
+		delete(folders, key)
+		if inherited, _ := decideTrust(folders, key); inherited {
+			folders[key] = trustedFolder{Trusted: false, DecidedAt: time.Now().Unix()}
+		}
+	}); err != nil {
+		return err
+	}
+	LogEvent("trust.revoke", dir)
+	return nil
+}
+
+func updateTrustedFolders(change func(map[string]trustedFolder)) error {
+	trustMu.Lock()
+	defer trustMu.Unlock()
 	p, err := trustedPath()
 	if err != nil {
 		return err
@@ -89,7 +142,7 @@ func Trust(dir string) error {
 	} else if !errors.Is(readErr, os.ErrNotExist) {
 		return readErr
 	}
-	folders[filepath.Clean(dir)] = trustedFolder{Trusted: true, DecidedAt: time.Now().Unix()}
+	change(folders)
 	tmp := p + ".tmp"
 	if err := os.WriteFile(tmp, []byte(formatTrustedFolders(folders)), 0o600); err != nil {
 		return err
@@ -98,7 +151,6 @@ func Trust(dir string) error {
 		_ = os.Remove(tmp)
 		return err
 	}
-	LogEvent("trust.grant", dir)
 	return nil
 }
 

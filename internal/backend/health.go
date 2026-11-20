@@ -72,6 +72,10 @@ type healthCapabilities struct {
 	// usage across every session of every workspace, by day and by model,
 	// with totals, streaks and costs where the model catalog prices them.
 	UsageStats int `json:"usage_stats"`
+	// FolderTrust is 1 where GET/POST/DELETE /v1/trust read, grant and
+	// revoke project folder trust, which gates project prompt templates and
+	// project slash commands.
+	FolderTrust int `json:"folder_trust"`
 }
 
 // healthRunSandboxV1 describes per-run sandboxing (options.sandbox). Clients
@@ -183,6 +187,7 @@ func (s *Server) health() healthResponse {
 			SessionExternalRuns:     1,
 			WebSearchFallback:       1,
 			UsageStats:              1,
+			FolderTrust:             1,
 		},
 		HostBridge: s.hostBridge.status(),
 	}

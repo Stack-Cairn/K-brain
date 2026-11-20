@@ -542,6 +542,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handlePrompts(w, r)
 		return
 	}
+	if r.URL.Path == "/v1/trust" {
+		s.handleTrust(w, r)
+		return
+	}
 	if r.Method == http.MethodGet && r.URL.Path == "/v1/commands" {
 		s.handleSlashCommands(w, r)
 		return
