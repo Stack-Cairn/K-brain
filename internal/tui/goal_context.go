@@ -84,6 +84,9 @@ func (m *model) startGoalFromContext(fields []string) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) cancelGoalFromContext() {
+	// A pending goal verification is a hidden goal request too; whatever replaces or
+	// ends the goal, or starts a turn, drops it with the formulation request.
+	m.cancelGoalVerify()
 	if m.goalRequest == nil {
 		return
 	}

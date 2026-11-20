@@ -665,7 +665,7 @@ func TestGoalIgnoresRunsThatAreNotItsRounds(t *testing.T) {
 	defer server.releaseRuntime(rt)
 	// A cron or user run that took the session between rounds finishes.
 	for _, outcome := range []string{"completed", "failed", "cancelled"} {
-		server.evaluateGoal(rt, "run-foreign", outcome)
+		server.evaluateGoal(context.Background(), rt, "run-foreign", outcome)
 		rt.mu.Lock()
 		status, round, next := rt.goal.status, rt.goal.round, rt.goal.next
 		rt.mu.Unlock()

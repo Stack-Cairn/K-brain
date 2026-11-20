@@ -150,6 +150,10 @@ type Config struct {
 	Thinking        *bool                  `json:"thinking,omitempty"`
 	CollapsePaste   *bool                  `json:"collapsePaste,omitempty"`
 	GoalMaxRounds   int                    `json:"goalMaxRounds,omitempty"`
+	// GoalVerify turns the independent check of a GOAL_MET claim on or off; nil is on.
+	GoalVerify *bool `json:"goalVerify,omitempty"`
+	// GoalVerifyMaxRejections caps verifier rejections per goal; 0 uses the default.
+	GoalVerifyMaxRejections int `json:"goalVerifyMaxRejections,omitempty"`
 
 	WorktreeSubagents *bool `json:"worktreeSubagents,omitempty"`
 	MaxRetries        int   `json:"maxRetries,omitempty"`

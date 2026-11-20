@@ -26,7 +26,7 @@ func busyCmd(text string) bool {
 	case "/auth":
 		return true
 	case "/goal":
-		return len(fields) == 1 || fields[1] == "clear" || fields[1] == "rounds"
+		return len(fields) == 1 || fields[1] == "clear" || fields[1] == "rounds" || fields[1] == "verify"
 	case "/settings", "/extensions", "/skills", "/skill", "/memory":
 		return true
 	case "/find":
@@ -255,12 +255,15 @@ func (m *model) command(text string) (tea.Model, tea.Cmd) {
 			m.setGoal("")
 		case fields[1] == "rounds":
 			m.goalRoundsCommand(fields[2:])
+		case fields[1] == "verify":
+			m.goalVerifyCommand(fields[2:])
 		case fields[1] == "resume":
 			if m.goal == "" {
 				m.append(errStyle.Render("no goal to resume — set one with /goal <text>"))
 				break
 			}
 			m.goalRounds = 0
+			m.goalVerifyRejects = 0
 			m.append(dimStyle.Render("◎ resuming goal: " + m.goal))
 			return m.submitGoal(goalContinuePrompt(m.goal))
 		default:

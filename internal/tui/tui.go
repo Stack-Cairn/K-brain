@@ -147,6 +147,7 @@ type model struct {
 	palette      *palette
 	cancel       context.CancelFunc
 	goalRequest  *goalFormulation
+	goalVerify   *goalVerification
 	prog         *tea.Program
 
 	store           *session.Store
@@ -183,7 +184,10 @@ type model struct {
 
 	goal       string
 	goalRounds int
-	titled     bool
+	// goalVerifyRejects counts the verifier's rejections of GOAL_MET claims for the
+	// current goal; past the cap a claim is accepted without another check.
+	goalVerifyRejects int
+	titled            bool
 
 	pendingForkID string
 
@@ -679,6 +683,7 @@ func (m *model) resume(id string) error {
 	m.future = nil
 	m.goal = meta.Goal
 	m.goalRounds = 0
+	m.goalVerifyRejects = 0
 	m.append(dimStyle.Render(fmt.Sprintf("resumed %s · %s · %s @ %s", meta.ID, meta.Title, m.modelName, m.provName)))
 	interrupted := 0
 	for _, msg := range msgs {
@@ -820,6 +825,7 @@ func (m *model) setGoal(goal string) {
 	m.tp.goalState = ""
 	m.goal = goal
 	m.goalRounds = 0
+	m.goalVerifyRejects = 0
 	if m.store != nil && m.sessionID != "" {
 		_ = m.store.SetGoalMemory(m.sessionID, goal, !m.cfg.Memory.IsEnabled())
 	}
@@ -1311,6 +1317,9 @@ func (m *model) Update(msg tea.Msg) (_ tea.Model, statusCmd tea.Cmd) {
 
 	case goalFromContextMsg:
 		return m.finishGoalFromContext(msg)
+
+	case goalVerifyMsg:
+		return m.finishGoalVerify(msg)
 
 	case compactStartMsg:
 		return m.onCompactStart(msg)

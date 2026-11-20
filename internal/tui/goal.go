@@ -99,6 +99,45 @@ func (m *model) goalRoundsCommand(args []string) {
 	m.append(dimStyle.Render(fmt.Sprintf("◎ project goal rounds cleared — using %d", m.goalMaxRounds())))
 }
 
+// goalVerifyCommand shows or sets (in the global config) whether a GOAL_MET claim is
+// checked by the hidden verification request before the goal completes.
+func (m *model) goalVerifyCommand(args []string) {
+	if len(args) > 1 || m.cfg == nil {
+		m.append(errStyle.Render("usage: /goal verify [on|off]"))
+		return
+	}
+	if len(args) == 0 {
+		state := "off"
+		if goalloop.VerifyEnabled(m.cfg) {
+			state = "on"
+		}
+		m.append(dimStyle.Render(fmt.Sprintf("◎ goal verifier: %s (up to %d rejections per goal) — /goal verify on|off", state, goalloop.VerifyMaxRejections(m.cfg))))
+		return
+	}
+	var on bool
+	switch args[0] {
+	case "on":
+		on = true
+	case "off":
+	default:
+		m.append(errStyle.Render("usage: /goal verify [on|off]"))
+		return
+	}
+	prev := m.cfg.GoalVerify
+	if on {
+		// On is the default; drop the key instead of writing it.
+		m.cfg.GoalVerify = nil
+	} else {
+		m.cfg.GoalVerify = &on
+	}
+	if err := m.cfg.Save(); err != nil {
+		m.cfg.GoalVerify = prev
+		m.append(errStyle.Render("couldn't save config: " + err.Error()))
+		return
+	}
+	m.append(dimStyle.Render("◎ goal verifier: " + args[0]))
+}
+
 func overriddenNote(proj int) string {
 	if proj > 0 {
 		return fmt.Sprintf(" (this project overrides it with %d)", proj)
