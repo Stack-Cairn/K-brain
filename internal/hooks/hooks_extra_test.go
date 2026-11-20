@@ -191,3 +191,28 @@ func TestStopHookActivePayload(t *testing.T) {
 		t.Fatalf("payload %s", data)
 	}
 }
+
+func TestLargeEventStillRunsHookAndStdinIsComplete(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses sh")
+	}
+	dir := t.TempDir()
+	out := filepath.Join(dir, "stdin.json")
+	big := strings.Repeat("x", 1<<20)
+	r := New(map[string][]config.Hook{PostToolUse: {{Command: "cat > " + out + " && printf %s \"$K_BRAIN_HOOK_EVENT\" | wc -c > " + out + ".env"}}})
+	if err := r.Run(context.Background(), Event{Name: PostToolUse, CWD: dir, ToolName: "bash", ToolResult: big}); err != nil {
+		t.Fatalf("hook with a 1 MiB event failed: %v", err)
+	}
+	data, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got Event
+	if err := json.Unmarshal(data, &got); err != nil || got.ToolResult != big {
+		t.Fatalf("stdin event incomplete: err=%v len=%d", err, len(got.ToolResult))
+	}
+	env := envPayload(Event{Name: PostToolUse, ToolResult: big}, data)
+	if len(env) > MaxEnvPayload || !strings.Contains(env, `"truncated":true`) {
+		t.Fatalf("env payload len=%d, want <= %d with truncated flag", len(env), MaxEnvPayload)
+	}
+}

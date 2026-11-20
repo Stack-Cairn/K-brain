@@ -175,6 +175,45 @@ func (r *Runner) RunOutcome(ctx context.Context, event Event) (Outcome, error) {
 	return done(nil)
 }
 
+// MaxEnvPayload bounds the event JSON copied into K_BRAIN_HOOK_EVENT. Systems
+// cap a single environment string (Linux at 128 KiB), and an oversized one makes
+// the hook fail to start; stdin always carries the full event.
+const MaxEnvPayload = 64 << 10
+
+// envPayload returns the event JSON for the environment variable, cutting the
+// large text fields when the whole event would not fit. The cut copy carries
+// "truncated": true so a hook can tell it should read stdin instead.
+func envPayload(event Event, payload []byte) string {
+	if len(payload) <= MaxEnvPayload {
+		return string(payload)
+	}
+	fields := []*string{&event.ToolResult, &event.ToolArgs, &event.Prompt, &event.Summary}
+	for limit := 16 << 10; limit >= 256; limit /= 4 {
+		for _, f := range fields {
+			*f = cutText(*f, limit)
+		}
+		cut, err := json.Marshal(struct {
+			Event
+			Truncated bool `json:"truncated"`
+		}{event, true})
+		if err == nil && len(cut) <= MaxEnvPayload {
+			return string(cut)
+		}
+	}
+	data, _ := json.Marshal(map[string]any{"event": event.Name, "sessionId": event.SessionID, "cwd": event.CWD, "toolName": event.ToolName, "truncated": true})
+	return string(data)
+}
+
+func cutText(text string, limit int) string {
+	if len(text) <= limit {
+		return text
+	}
+	for limit > 0 && !utf8.RuneStart(text[limit]) {
+		limit--
+	}
+	return text[:limit] + "…[truncated]"
+}
+
 // boundContext cuts text to MaxAdditionalContext bytes on a rune boundary.
 func boundContext(text string) string {
 	if len(text) <= MaxAdditionalContext {
@@ -221,7 +260,7 @@ func runOne(ctx context.Context, hook config.Hook, payload []byte, event Event) 
 		Shell:   hook.Shell,
 		Dir:     event.CWD,
 		Timeout: timeout,
-		Env:     []string{"K_BRAIN_HOOK_EVENT=" + string(payload)},
+		Env:     []string{"K_BRAIN_HOOK_EVENT=" + envPayload(event, payload)},
 		Stdin:   bytes.NewReader(payload),
 	})
 	if result.Exit != "" || result.TimedOut || result.Killed {
