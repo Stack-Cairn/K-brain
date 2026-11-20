@@ -6,10 +6,11 @@ import (
 	"strings"
 
 	"github.com/Stack-Cairn/K-brain/internal/config"
+	"github.com/Stack-Cairn/K-brain/internal/routing"
 	"github.com/charmbracelet/x/ansi"
 )
 
-var defaultEfforts = []string{"", "low", "medium", "high"}
+var defaultEfforts = routing.DefaultEfforts
 
 var effortCands = []cand{
 	{"off", "No reasoning effort parameter sent"},
@@ -23,12 +24,7 @@ func (m *model) effortsFor() []string {
 }
 
 func effortsIn(catalogs map[string]config.Catalog, provName, modelID string) []string {
-	if c, ok := catalogs[provName]; ok {
-		if levels := c.Efforts(modelID); len(levels) > 1 {
-			return levels
-		}
-	}
-	return defaultEfforts
+	return routing.EffortsFor(catalogs, provName, modelID)
 }
 
 func nextEffort(levels []string, cur string) string {
@@ -117,15 +113,7 @@ func (m *model) effortPanelView(pp *ppanel) string {
 }
 
 func parseEffort(levels []string, s string) (string, bool) {
-	if s == "off" {
-		return "", true
-	}
-	for _, e := range levels[1:] {
-		if s == e {
-			return e, true
-		}
-	}
-	return "", false
+	return routing.ParseEffort(levels, s)
 }
 
 func effortCandsFor(levels []string) []cand {

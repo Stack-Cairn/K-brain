@@ -1,8 +1,6 @@
 package tui
 
 import (
-	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -82,31 +80,25 @@ func expandMentions(text string) string {
 		" — contents are not inlined; inspect with your tools as needed]"
 }
 
-var imageExtsForMention = map[string]bool{
-	".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".webp": true, ".bmp": true,
-}
+var imageExtsForMention = ai.ImageFileExts
 
 func imageParts(text string) ([]ai.ContentPart, string) {
 	var parts []ai.ContentPart
 	var names []string
 	for _, m := range mentionPaths(text) {
 		abs := m[0]
-		if !imageExtsForMention[strings.ToLower(filepath.Ext(abs))] {
+		if !ai.IsImageFile(abs) {
 			continue
 		}
-		data, err := os.ReadFile(abs)
+		part, err := ai.LoadImageFile(abs)
 		if err != nil {
 			continue
 		}
-		ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(abs)), ".")
-
-		ext, data = ai.NormalizeImage(ext, data)
-		parts = append(parts, ai.ImagePart(ext, data))
+		parts = append(parts, part)
 		names = append(names, abs)
 	}
 	if len(parts) == 0 {
 		return nil, ""
 	}
-	return parts, "\n\n[note: the user attached image(s): " + strings.Join(names, "; ") +
-		" — they are inlined above as vision input]"
+	return parts, ai.ImageAttachmentNote(names)
 }

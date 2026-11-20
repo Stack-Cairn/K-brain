@@ -27,3 +27,31 @@ func DefaultEffortFor(catalogs map[string]config.Catalog, provName, modelID, pin
 	}
 	return "low"
 }
+
+// DefaultEfforts are the reasoning effort levels offered when the catalog lists none
+// for a model; "" is off (no effort parameter is sent).
+var DefaultEfforts = []string{"", "low", "medium", "high"}
+
+// EffortsFor lists the reasoning effort levels the model supports, "" (off) first.
+func EffortsFor(catalogs map[string]config.Catalog, provName, modelID string) []string {
+	if c, ok := catalogs[provName]; ok {
+		if levels := c.Efforts(modelID); len(levels) > 1 {
+			return levels
+		}
+	}
+	return DefaultEfforts
+}
+
+// ParseEffort matches s against levels as returned by EffortsFor; "off" selects no
+// reasoning effort.
+func ParseEffort(levels []string, s string) (string, bool) {
+	if s == "off" {
+		return "", true
+	}
+	for _, e := range levels[1:] {
+		if s == e {
+			return e, true
+		}
+	}
+	return "", false
+}

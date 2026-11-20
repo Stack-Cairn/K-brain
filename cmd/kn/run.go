@@ -71,8 +71,19 @@ func runCLI(args []string) (runErr error) {
 	noSessionFlag := fs.Bool("no-session", false, "run without persisting a session (one-off jobs don't clutter k-brain sessions)")
 	cacheKeyFlag := fs.String("cache-key", "", "prompt_cache_key for provider prefix caching; defaults to the session id, else a per-run key. Pass a STABLE value (e.g. repo/reviewer) to reuse the cached system prefix across runs.")
 	permissionModeFlag := fs.String("permission-mode", "", "normal, plan, auto_edit, full_access, always, or auto_review; unapproved actions fail in non-interactive runs")
+	allowedToolsFlag := fs.String("allowed-tools", "", "comma-separated tools this run may use (default: all); unknown names are an error")
+	disallowedToolsFlag := fs.String("disallowed-tools", "", "comma-separated tools withheld from this run")
+	var allowRules, denyRules, imageFlags repeatedFlag
+	fs.Var(&allowRules, "allow", "permission `rule` allowed for this run only, e.g. 'bash(go test:*)' (repeatable; not saved)")
+	fs.Var(&denyRules, "deny", "permission `rule` denied for this run only, e.g. 'bash(rm:*)' (repeatable; not saved; wins over -allow and -permission-mode)")
+	cwdFlag := fs.String("cwd", "", "run in this working `dir` instead of the current directory")
+	var continueFlag bool
+	fs.BoolVar(&continueFlag, "c", false, "continue the most recent session in the working directory")
+	fs.BoolVar(&continueFlag, "continue", false, "same as -c")
+	fs.Var(&imageFlags, "image", "attach an image `path` (png, jpg, jpeg, gif, webp, bmp) to the prompt (repeatable; the model must accept images)")
+	effortFlag := fs.String("effort", "", "reasoning effort `level` for this run (off, or a level the model supports, e.g. low, medium, high)")
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: kn run [--format text|json] [-m model] [-p provider] [-resume id] [-system text | -system-file path] [-max-turns N] [-timeout dur] [-quiet] [-no-session] \"prompt\"")
+		fmt.Fprintln(os.Stderr, "usage: kn run [--format text|json] [-m model] [-p provider] [-resume id | -c] [-cwd dir] [-system text | -system-file path] [-effort level] [-image path]... [-allowed-tools a,b] [-disallowed-tools a,b] [-allow rule]... [-deny rule]... [-permission-mode mode] [-max-turns N] [-timeout dur] [-quiet] [-no-session] \"prompt\"")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -100,6 +111,27 @@ func runCLI(args []string) (runErr error) {
 	}
 	if *noSessionFlag && *resumeFlag != "" {
 		return errors.New("--resume cannot be combined with --no-session")
+	}
+	if continueFlag && *resumeFlag != "" {
+		return errors.New("--continue cannot be combined with --resume")
+	}
+	if continueFlag && *noSessionFlag {
+		return errors.New("--continue cannot be combined with --no-session")
+	}
+	runRules, err := runRuleSet(allowRules, denyRules)
+	if err != nil {
+		return err
+	}
+	imagePaths, err := absImagePaths(imageFlags)
+	if err != nil {
+		return err
+	}
+	if *cwdFlag != "" {
+		leave, err := enterRunDir(*cwdFlag)
+		if err != nil {
+			return err
+		}
+		defer leave()
 	}
 	ctx, stop := signal.NotifyContext(outputCtx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -181,7 +213,17 @@ func runCLI(args []string) (runErr error) {
 	ag.ComputerDisabled = true
 	ag.ContextLimit = route.ContextLimit
 
-	ag.Effort = routing.DefaultEffortFor(config.LoadCatalogs(), route.ProviderName, ag.Model, cfg.DefaultEffort)
+	catalogs := config.LoadCatalogs()
+	ag.Effort = routing.DefaultEffortFor(catalogs, route.ProviderName, ag.Model, cfg.DefaultEffort)
+	if *effortFlag != "" {
+		if ag.Effort, err = runEffort(catalogs, route.ProviderName, ag.Model, *effortFlag); err != nil {
+			return err
+		}
+	}
+	images, err := loadRunImages(imagePaths, route.Vision, route.ModelName)
+	if err != nil {
+		return err
+	}
 	ag.MaxTurns = *maxTurnsFlag
 	if project, perr := os.Getwd(); perr == nil {
 		if pm, _ := plugins.New(project); pm != nil {
@@ -191,6 +233,9 @@ func runCLI(args []string) (runErr error) {
 		}
 	}
 	ag.SandboxPolicy = cfg.Sandbox.Policy(cwd())
+	if err := restrictRunTools(ag, splitToolList(*allowedToolsFlag), splitToolList(*disallowedToolsFlag)); err != nil {
+		return err
+	}
 
 	var store *session.Store
 	var sessionID string
@@ -209,6 +254,15 @@ func runCLI(args []string) (runErr error) {
 			meta, _, err := store.Load(*resumeFlag)
 			if err != nil {
 				return fmt.Errorf("-resume: %w", err)
+			}
+			sessionID = meta.ID
+		} else if continueFlag {
+			meta, err := store.LatestInDir(ag.WorkingDir)
+			if errors.Is(err, session.ErrNotFound) {
+				return fmt.Errorf("-continue: no previous session in %s", ag.WorkingDir)
+			}
+			if err != nil {
+				return fmt.Errorf("-continue: %w", err)
 			}
 			sessionID = meta.ID
 		} else {
@@ -233,8 +287,9 @@ func runCLI(args []string) (runErr error) {
 		}
 	}
 	ctx = sandbox.WithPolicy(ctx, ag.SandboxPolicy)
+	var modeGate func(tools.GateRequest) (tools.GateDecision, string)
 	if *permissionModeFlag != "" {
-		ctx = tools.WithGate(ctx, func(req tools.GateRequest) (tools.GateDecision, string) {
+		modeGate = func(req tools.GateRequest) (tools.GateDecision, string) {
 			switch *permissionModeFlag {
 			case permissions.Always, permissions.FullAccess:
 				return tools.GateAllowOnce, "explicit permission mode"
@@ -248,7 +303,12 @@ func runCLI(args []string) (runErr error) {
 				}
 			}
 			return tools.GateReject, "permission mode requires interactive approval; resume in TUI or LiveAgent"
-		})
+		}
+	}
+	if len(runRules.Rules) > 0 {
+		ctx = tools.WithGate(ctx, runRulesGate(runRules, ag.WorkingDir, modeGate))
+	} else if modeGate != nil {
+		ctx = tools.WithGate(ctx, modeGate)
 	}
 	ag.SetSessionID(sessionID)
 	if err := ag.StartSession(ctx); err != nil {
@@ -290,7 +350,11 @@ func runCLI(args []string) (runErr error) {
 			return tools.GateAllowOnce, "AI approved this action once"
 		}))
 	}
-	final, err = ag.Turn(ctx, prompt, ev)
+	if len(images) > 0 {
+		final, err = ag.TurnWithImages(ctx, prompt+ai.ImageAttachmentNote(imagePaths), images, ev)
+	} else {
+		final, err = ag.Turn(ctx, prompt, ev)
+	}
 	stopReason = ag.LastStopReason()
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		err = &runTimeoutError{*timeoutFlag, errors.Join(context.DeadlineExceeded, err)}
