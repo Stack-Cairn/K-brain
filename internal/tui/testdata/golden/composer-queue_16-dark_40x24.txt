@@ -16,9 +16,9 @@
   Then run the package tests.
 
   ⠋ Writing…                    7s · Esc
-queued (2) · Enter send now
- ❯ 1 then run the linter
- → 2 and update the changelog with …  ✗
+  queued (2) · Enter send now
+    1 then run the linter
+  ❯ 2 and update the changelog with…  ✗
 ────────────────────────────────────────
   ❯ busy — type to queue (sent after th…
    Always allow     kimi-k3-fast · ✦ off

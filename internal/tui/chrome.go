@@ -45,11 +45,11 @@ func (m *model) footerHints() string {
 // or -1 when the row does not carry one (task focus, or the chip truncated away).
 func (m *model) footerHintsAt() (string, int) {
 	if m.tasksFocus && len(m.dockTasks()) > 0 {
-		hint := m.tr("Ctrl+T Input · ↑/↓ Select · Space Preview · Enter Open")
+		hint := m.tr("Ctrl+T input · ↑/↓ select · Space preview · Enter open")
 		if m.taskExpanded {
-			hint = m.tr("Ctrl+T Input · ↑/↓ Select · Space Collapse · Enter Open")
+			hint = m.tr("Ctrl+T input · ↑/↓ select · Space collapse · Enter open")
 		}
-		hint += m.tr(" · Ctrl+X Stop")
+		hint += m.tr(" · Ctrl+X stop")
 		return ansi.Truncate(strings.Repeat(" ", min(chromeIndent, max(m.width, 0)))+shortcutStyle.Render(hint), max(m.width, 0), "…"), -1
 	}
 	return m.infoRowAt()

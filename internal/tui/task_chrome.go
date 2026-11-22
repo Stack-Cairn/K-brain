@@ -146,26 +146,26 @@ func (m *model) taskViewView() string {
 		position = fmt.Sprintf("↑ %d%%", int(tv.vp.ScrollPercent()*100))
 	}
 	meta = taskColumns(dimStyle.Render(meta), dimStyle.Render(position), m.width)
-	hint := m.tr("Esc Back")
+	hint := m.tr("Esc back")
 	switch {
 	case foreground:
 		tv.input.Placeholder = m.tr("foreground subagent — read-only; its report returns to the turn")
 		if task.Status == agent.TaskRunning {
-			hint += m.tr(" · Ctrl+X Cancel")
+			hint += m.tr(" · Ctrl+X cancel")
 		}
 	case task.Restored:
 		tv.input.Placeholder = m.tr("restored session — read-only")
 	case task.FollowingUp:
 		tv.input.Placeholder = m.tr("replying — your draft is kept until ready")
-		hint += m.tr(" · Ctrl+X Cancel")
+		hint += m.tr(" · Ctrl+X cancel")
 	case task.Status == agent.TaskRunning:
 		tv.input.Placeholder = m.tr("send instructions to this running subagent")
-		hint += m.tr(" · Enter steer · Ctrl+X Cancel")
+		hint += m.tr(" · Enter steer · Ctrl+X cancel")
 	default:
 		tv.input.Placeholder = m.tr("message this subagent (Enter to send)")
-		hint += m.tr(" · Enter Send")
+		hint += m.tr(" · Enter send")
 	}
-	hint += m.tr(" · PgUp/PgDn Scroll · Ctrl+End Latest")
+	hint += m.tr(" · PgUp/PgDn scroll · Ctrl+End latest")
 	input := tv.input.View()
 	if task.Restored || foreground {
 		input = dimStyle.Render(tv.input.Placeholder)

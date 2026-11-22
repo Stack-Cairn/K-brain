@@ -16,7 +16,7 @@
 
 [90m────────────────────────────────────────[0m
   [1;96m❯ [0m/mo[7m [0m                                [0m
-[1;96m› /model              switch model (ref…[0m
+[1;96m❯ /model              switch model (ref…[0m
   /model-for-session  [90mswitch model for …[0m
   /mouse              [90mtoggle mouse capt…[0m
   /memory             [90mlist saved memori…[0m

@@ -540,7 +540,7 @@ func (m *model) permTail(d *permDialog, w int, compact bool) []string {
 	levels := d.scopes()
 	if d.rejecting {
 		tail = append(append(tail, gap...), accentFgStyle.Render(m.tr("reject with message: "))+d.rejectIn+"█",
-			textHintStyle.Render(chromeGlyphs(m.tr("Enter sends · Esc Back"))))
+			textHintStyle.Render(chromeGlyphs(m.tr("Enter sends · Esc back"))))
 	} else {
 		always := m.tr("Yes, always allow")
 		if rules := d.chosenRules(); len(rules) > 0 {
