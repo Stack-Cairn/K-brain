@@ -82,6 +82,10 @@ func (m *model) applyCfgSync(msg cfgSyncMsg) {
 		m.cfg.Density = msg.loaded.Density
 		m.applyDensity()
 	}
+	if _, pinned := m.cfgExtra["maxContentWidth"]; !pinned && msg.loaded != nil && m.cfg != nil && msg.loaded.MaxContentWidth != m.cfg.MaxContentWidth {
+		m.cfg.MaxContentWidth = msg.loaded.MaxContentWidth
+		m.refreshVP()
+	}
 	if _, pinned := m.cfgExtra["theme"]; pinned {
 		return
 	}

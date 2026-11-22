@@ -695,12 +695,13 @@ func (m *model) flushCurrent() {
 func (m *model) currentView() string {
 	s := m.current
 
+	width := m.contentWidth(m.width)
 	if m.busy {
-		w := max(m.width-2, 1)
+		w := max(width-2, 1)
 		body := indentPlain(wrap(s, w), 2)
 		return botStyle.Render(glyphAssistant) + dropLeadSpaces(body, 2)
 	}
-	return wrap(s, m.width)
+	return wrap(s, width)
 }
 
 func indentPlain(s string, n int) string {

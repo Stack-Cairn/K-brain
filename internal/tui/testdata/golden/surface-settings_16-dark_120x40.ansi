@@ -1,9 +1,10 @@
-[96m❯[0m [1mSettings[0m                                                                                                         [37m1/15[0m
+[96m❯[0m [1mSettings[0m                                                                                                         [37m1/16[0m
   [96m/[0m [37mtype to filter[0m
 [90m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [90mDisplay[0m
 [1;96m❯ Theme             colour scheme for the transcript and chrome                                                    auto[0m
   Density           [37mcompact folds tool output and drops blank rows[0m                                          [37mcomfortable[0m
+  Content width     [37mwidest the transcript is laid out[0m                                                               [37moff[0m
   Language          [37minterface language[0m                                                                               [37men[0m
   Thinking tokens   [37mshow model reasoning in the transcript[0m                                                          [37moff[0m
   Mouse capture     [37mwheel scroll and click-to-copy inside kn[0m                                                         [37mon[0m
@@ -21,7 +22,6 @@
   Compaction level  [37mauto-compact at this share of the context window[0m                                                [37m90%[0m
   [90mGoal rounds     [0m  [90mrounds a /goal may run before it stops[0m                                                          [90m100[0m
   Privacy gateway   [37mmask secrets in requests, restore them in replies[0m                                               [37moff[0m
-
 
 
 

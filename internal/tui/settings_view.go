@@ -75,6 +75,11 @@ func settingDefs() []settingDef {
 			step:  func(m *model, d int) { m.setDensity(cycle(densityChoices, m.densityName(), d)) },
 		},
 		{
+			section: "Display", name: "Content width", desc: "widest the transcript is laid out", command: "config maxContentWidth",
+			value: func(m *model) string { return m.contentWidthLabel() },
+			step:  func(m *model, d int) { m.stepContentWidth(d) },
+		},
+		{
 			section: "Display", name: "Language", desc: "interface language", command: "/language",
 			value: func(m *model) string { return m.language() },
 			step: func(m *model, d int) {

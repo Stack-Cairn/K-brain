@@ -329,6 +329,10 @@ var chinese = map[string]string{
 
 	"density: ": "密度：",
 
+	"Content width":                     "内容宽度",
+	"widest the transcript is laid out": "对话记录排版的最大宽度",
+	"%d columns":                        "%d 列",
+
 	"Enter toggles":  "Enter 切换",
 	"read-only here": "此处只读",
 	"type to filter · searches titles and message text":          "输入以筛选 · 搜索标题和消息内容",
@@ -671,6 +675,10 @@ var traditionalChinese = map[string]string{
 	"layout density": "版面密度",
 
 	"density: ": "密度：",
+
+	"Content width":                     "內容寬度",
+	"widest the transcript is laid out": "對話記錄排版的最大寬度",
+	"%d columns":                        "%d 欄",
 
 	"Enter toggles":  "Enter 切換",
 	"read-only here": "此處唯讀",

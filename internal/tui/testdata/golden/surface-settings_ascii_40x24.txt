@@ -1,9 +1,10 @@
-> Settings                         1/15
+> Settings                         1/16
   / type to filter
 ----------------------------------------
   Display
 > Theme          colour scheme ... auto
   Density        compact... comfortable
+  Content width  widest the tran... off
   Language       interface language  en
   Thinking t...  show model reas... off
   Mouse capture  wheel scroll and... on
@@ -13,8 +14,7 @@
   Agent
   Model           kimi-k3-fast@inference
   Reasoning ...  how hard the mo... off
-  Permission...  what t... Always allow
-  Down 5 more
+  Down 6 more
 ----------------------------------------
   Theme  auto
   colour scheme for the transcript and

@@ -1,9 +1,10 @@
-> Settings                                                                                                         1/15
+> Settings                                                                                                         1/16
   / type to filter
 ------------------------------------------------------------------------------------------------------------------------
   Display
 > Theme             colour scheme for the transcript and chrome                                                    auto
   Density           compact folds tool output and drops blank rows                                          comfortable
+  Content width     widest the transcript is laid out                                                               off
   Language          interface language                                                                               en
   Thinking tokens   show model reasoning in the transcript                                                          off
   Mouse capture     wheel scroll and click-to-copy inside kn                                                         on
@@ -21,7 +22,6 @@
   Compaction level  auto-compact at this share of the context window                                                90%
   Goal rounds       rounds a /goal may run before it stops                                                          100
   Privacy gateway   mask secrets in requests, restore them in replies                                               off
-
 
 
 

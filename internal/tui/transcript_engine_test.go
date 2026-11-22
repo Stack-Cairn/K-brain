@@ -13,7 +13,7 @@ import (
 // line index: every block rendered and joined into one string, glued blocks
 // on adjacent rows and the rest a blank row apart.
 func referenceRows(m *model) []string {
-	width := max(m.width, minRenderWidth)
+	width := m.layoutWidth()
 	var b strings.Builder
 	wrote := false
 	for i := range m.blocks {

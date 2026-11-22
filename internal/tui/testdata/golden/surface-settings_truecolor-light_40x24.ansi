@@ -1,9 +1,10 @@
-[38;2;21;127;104m❯[0m [1mSettings[0m                         [38;2;92;97;105m1/15[0m
+[38;2;21;127;104m❯[0m [1mSettings[0m                         [38;2;92;97;105m1/16[0m
   [38;2;21;127;104m/[0m [38;2;92;97;105mtype to filter[0m
 [38;2;213;218;222m────────────────────────────────────────[0m
   [38;2;104;110;118mDisplay[0m
 [1;38;2;21;127;104;48;2;232;236;240m❯ Theme          colour scheme fo… auto[0m
   Density        [38;2;58;63;70mcompact f…[0m [38;2;92;97;105mcomfortable[0m
+  Content width  [38;2;58;63;70mwidest the transc…[0m [38;2;92;97;105moff[0m
   Language       [38;2;58;63;70minterface language[0m  [38;2;92;97;105men[0m
   Thinking tok…  [38;2;58;63;70mshow model reason…[0m [38;2;92;97;105moff[0m
   Mouse capture  [38;2;58;63;70mwheel scroll and c…[0m [38;2;92;97;105mon[0m
@@ -13,8 +14,7 @@
   [38;2;104;110;118mAgent[0m
   Model          [38;2;58;63;70m[0m [38;2;92;97;105mkimi-k3-fast@inference[0m
   Reasoning ef…  [38;2;58;63;70mhow hard the mode…[0m [38;2;92;97;105moff[0m
-  Permission m…  [38;2;58;63;70mwhat too…[0m [38;2;92;97;105mAlways allow[0m
-[38;2;92;97;105m  ↓ 5 more[0m
+[38;2;92;97;105m  ↓ 6 more[0m
 [38;2;213;218;222m────────────────────────────────────────[0m
   [1mTheme[0m  [38;2;21;127;104mauto[0m
   [38;2;58;63;70mcolour scheme for the transcript and[0m

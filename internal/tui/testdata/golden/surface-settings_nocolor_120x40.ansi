@@ -1,9 +1,10 @@
-[1m❯[0m [1mSettings[0m                                                                                                         [2m1/15[0m
+[1m❯[0m [1mSettings[0m                                                                                                         [2m1/16[0m
   [1m/[0m [2mtype to filter[0m
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   [2mDisplay[0m
 [1;7m❯ Theme             colour scheme for the transcript and chrome                                                    auto[0m
   Density           compact folds tool output and drops blank rows                                          [2mcomfortable[0m
+  Content width     widest the transcript is laid out                                                               [2moff[0m
   Language          interface language                                                                               [2men[0m
   Thinking tokens   show model reasoning in the transcript                                                          [2moff[0m
   Mouse capture     wheel scroll and click-to-copy inside kn                                                         [2mon[0m
@@ -21,7 +22,6 @@
   Compaction level  auto-compact at this share of the context window                                                [2m90%[0m
   [2mGoal rounds     [0m  [2mrounds a /goal may run before it stops[0m                                                          [2m100[0m
   Privacy gateway   mask secrets in requests, restore them in replies                                               [2moff[0m
-
 
 
 

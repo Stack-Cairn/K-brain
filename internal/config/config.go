@@ -146,7 +146,8 @@ type Config struct {
 	TaskModel       string                 `json:"taskModel,omitempty"`
 	TaskProvider    string                 `json:"taskProvider,omitempty"`
 	Theme           string                 `json:"theme,omitempty"`
-	Density         string                 `json:"density,omitempty"` // "comfortable" (default) or "compact"
+	Density         string                 `json:"density,omitempty"`         // "comfortable" (default) or "compact"
+	MaxContentWidth int                    `json:"maxContentWidth,omitempty"` // TUI transcript width cap in columns; 0 is off
 	Mouse           *bool                  `json:"mouse,omitempty"`
 	Thinking        *bool                  `json:"thinking,omitempty"`
 	CollapsePaste   *bool                  `json:"collapsePaste,omitempty"`
