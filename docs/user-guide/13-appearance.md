@@ -73,7 +73,7 @@
 | 底色与分隔线 | `surface.band`（用户消息、代码块底色）、`surface.raised`（选中行、面板）、`line.rule` |
 | 强调与角色 | `accent`（光标、选中项、焦点）、`role.assistant` |
 | 状态 | `state.running`、`state.ok`、`state.warn`、`state.error` |
-| diff | `diff.add.bg`、`diff.del.bg` |
+| diff | `diff.add.bg`、`diff.del.bg`（新增行、删除行底色），`diff.add.emph.bg`、`diff.del.emph.bg`（配对行中改动的词） |
 | 代码高亮 | `syn.keyword`、`syn.string`、`syn.number`、`syn.func`、`syn.type`、`syn.comment` |
 | 其他 | `chip.ink`（模式标签上的文字）、`logo.stem`、`logo.upper`、`logo.lower` |
 

@@ -406,7 +406,8 @@ func contrastRatio(a, b string) float64 {
 // themeContrastWarnings checks a custom theme against the rules the built-in
 // themes are tested by (theme_palette_test.go): text at 4.5:1 and other
 // signals at 3:1 on a typical background of the variant's polarity (7:1 and
-// 4.5:1 for a high-contrast base), and secondary text on the band surface.
+// 4.5:1 for a high-contrast base), and secondary text on the band surface
+// and on the diff word-emphasis tints.
 func themeContrastWarnings(t *themeDef) []string {
 	var out []string
 	for _, v := range []struct {
@@ -436,6 +437,11 @@ func themeContrastWarnings(t *themeDef) []string {
 		for _, id := range []tokenID{tokTextSecondary, tokTextMuted} {
 			if got := contrastRatio(v.p[id].hex, v.p[tokSurfaceBand].hex); got < 4.5 {
 				out = append(out, fmt.Sprintf("%s %s is %.1f:1 on surface.band (want 4.5:1)", v.label, defaultTokens[id].name, got))
+			}
+		}
+		for _, bg := range []tokenID{tokDiffAddEmphBG, tokDiffDelEmphBG} {
+			if got := contrastRatio(v.p[tokTextSecondary].hex, v.p[bg].hex); got < 4.5 {
+				out = append(out, fmt.Sprintf("%s text.secondary is %.1f:1 on %s (want 4.5:1)", v.label, got, defaultTokens[bg].name))
 			}
 		}
 	}

@@ -77,6 +77,55 @@ func TestParseThemeFile(t *testing.T) {
 	}
 }
 
+// The word-emphasis tints of paired diff rows are ordinary surface tokens:
+// a file can set them per variant, and the rest come from the base.
+func TestCustomThemeDiffEmphasis(t *testing.T) {
+	th, err := parseThemeFile("tinted", []byte(`{
+		"base": "harbor",
+		"dark": {"diff.add.emph.bg": "#20603a", "diff.del.emph.bg": {"hex": "#702830", "x256": 88}}
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	harbor := lookupTheme("harbor")
+	if got := th.dark[tokDiffAddEmphBG]; got.hex != "#20603a" || got.x256 == "" || got.ansi != "" {
+		t.Errorf("diff.add.emph.bg: %+v", got)
+	}
+	if got := th.dark[tokDiffDelEmphBG]; got != (themeColor{"#702830", "88", ""}) {
+		t.Errorf("diff.del.emph.bg: %+v", got)
+	}
+	if th.light[tokDiffAddEmphBG] != harbor.light[tokDiffAddEmphBG] || th.light[tokDiffDelEmphBG] != harbor.light[tokDiffDelEmphBG] {
+		t.Error("the light variant should keep the base's emphasis tints")
+	}
+	if w := themeContrastWarnings(th); len(w) != 0 {
+		t.Errorf("readable tints should not warn: %q", w)
+	}
+	pale, err := parseThemeFile("pale", []byte(`{"dark": {"diff.del.emph.bg": "#c0a0a0"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w := strings.Join(themeContrastWarnings(pale), "\n"); !strings.Contains(w, "dark text.secondary is") || !strings.Contains(w, "on diff.del.emph.bg") {
+		t.Errorf("a pale tint under light text should warn, got %q", w)
+	}
+	if _, err := parseThemeFile("tinted", []byte(`{"dark": {"diff.add.emph.bg": {"hex": "#20603a", "ansi": 2}}}`)); err == nil || !strings.Contains(err.Error(), "a surface takes no ansi value") {
+		t.Errorf("an ansi value on an emphasis tint: %v", err)
+	}
+
+	defer activateTheme(builtinThemes[0])
+	defer SetLightTheme(false)
+	restore := useProfile(t, termenv.TrueColor, true)
+	defer restore()
+	activateTheme(th)
+	SetLightTheme(false)
+	rows := strings.Split(renderDiff("4 - \tv := cache.Get(key, width)\n4 + \tv := cache.Get(key, height)", "main.go", 80), "\n")
+	for _, c := range []struct{ row, word, hex string }{{rows[0], "width", "#702830"}, {rows[1], "height", "#20603a"}} {
+		i := strings.Index(c.row, c.word)
+		if i < 0 || !sgrBGNear(c.row[strings.LastIndex(c.row[:i], "\x1b["):i], c.hex) {
+			t.Errorf("%q should sit on %s in %q", c.word, c.hex, c.row)
+		}
+	}
+}
+
 func TestParseThemeFileErrors(t *testing.T) {
 	for _, tc := range []struct{ body, want string }{
 		{`{"dark": {"accent": "#4fc3f7"}`, "invalid JSON"},
