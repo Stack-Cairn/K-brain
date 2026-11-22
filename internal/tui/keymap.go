@@ -165,6 +165,7 @@ var keymap = []keyBinding{
 	{"e", keyTranscript, "toggleFold", ""},
 	{"E", keyTranscript, "foldAll", ""},
 	{"v", keyTranscript, "view", ""},
+	{"m", keyTranscript, "openDiagram", ""},
 	{"/", keyTranscript, "find", ""},
 	{"n", keyTranscript, "findOlder", ""},
 	{"N", keyTranscript, "findNewer", ""},

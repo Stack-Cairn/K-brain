@@ -1,0 +1,6 @@
+flowchart LR
+  A[Client] -- request --> B(API gateway)
+  B --> C[Auth]
+  B --> D[Orders]
+  C -.-> E[(DB)]
+  D ==> E

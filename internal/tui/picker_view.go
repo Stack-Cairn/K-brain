@@ -19,10 +19,12 @@ import (
 type appSurfaceState struct {
 	// modal is the open surface, or nil.
 	modal *surfaceModal
+	// dash is the open session dashboard (dashboard.go), or nil.
+	dash *dashboard
 }
 
 // surfaceOpen reports whether an app-surface modal covers the screen.
-func (m *model) surfaceOpen() bool { return m.app != nil && m.app.modal != nil }
+func (m *model) surfaceOpen() bool { return m.app != nil && (m.app.modal != nil || m.app.dash != nil) }
 
 // surfaceRow is one selectable row of a surface.
 type surfaceRow struct {
@@ -79,13 +81,14 @@ func (m *model) ensureApp() *appSurfaceState {
 // openSurface shows s with its first matching tab selected.
 func (m *model) openSurface(s *surfaceModal) {
 	m.ensureApp().modal = s
+	m.app.dash = nil
 	m.menu = nil
 	s.refresh(m)
 }
 
 func (m *model) closeSurface() {
 	if m.app != nil {
-		m.app.modal = nil
+		m.app.modal, m.app.dash = nil, nil
 	}
 }
 
@@ -148,6 +151,9 @@ func (s *surfaceModal) switchTab(m *model, delta int) {
 
 // surfaceKey handles a key while a surface is open.
 func (m *model) surfaceKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.dashOpen() {
+		return m.dashKey(msg)
+	}
 	s := m.app.modal
 	page := max(m.surfaceListRows()-1, 1)
 	switch msg.Type {
@@ -242,6 +248,9 @@ func lastRune(s string) (rune, int) {
 // surfaceMouse turns the wheel into selection moves; clicks are ignored so
 // they never reach the hidden transcript.
 func (m *model) surfaceMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if m.dashOpen() {
+		return m.dashMouse(msg)
+	}
 	s := m.app.modal
 	switch msg.Button {
 	case tea.MouseButtonWheelUp:
@@ -261,6 +270,8 @@ func (m *model) surfaceMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 	case pickerSearchMsg:
 		m.pickerSearchDone(msg)
 		return m, nil, true
+	case dashTickMsg:
+		return m, m.dashTick(msg), true
 	case tea.MouseMsg:
 		if m.surfaceOpen() {
 			r, cmd := m.surfaceMouse(msg)
@@ -289,7 +300,7 @@ func (m *model) surfaceSize() (int, int) {
 
 // surfaceListRows is how many list lines the open surface has room for.
 func (m *model) surfaceListRows() int {
-	if !m.surfaceOpen() {
+	if !m.surfaceOpen() || m.app.modal == nil {
 		return 1
 	}
 	_, h := m.surfaceSize()
@@ -300,6 +311,9 @@ func (m *model) surfaceListRows() int {
 
 // surfaceView draws the open surface.
 func (m *model) surfaceView() string {
+	if m.dashOpen() {
+		return m.dashView()
+	}
 	w, h := m.surfaceSize()
 	return m.surfaceFrameFor(m.app.modal).render(w, h)
 }

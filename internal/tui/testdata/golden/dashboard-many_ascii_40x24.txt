@@ -1,0 +1,24 @@
+> Dashboard                  6 sessions
+  / press / and type a title, workspa...
+----------------------------------------
+    session                      active
+  This session's subagents
+  * scan the store for stal... just now
+  x summarize test failures      5m ago
+
+  This workspace
+> * (current) Refactor the ...   2m ago
+  o Fix flaky terminal capt...   3h ago
+  o (untitled)                   2d ago
+
+  Other workspaces
+  * Gateway rate limiter 限...   1m ago
+  Down 2 more
+----------------------------------------
+  c0ffee01 - kimi-k3-fast@inference - ~
+  * running - this session - running ...
+  191.4k tokens - 41 messages
+  o goal: ship the multi-session dash...
+  * running = a turn in progress here...
+----------------------------------------
+  Enter open - n new - d delete - / f...

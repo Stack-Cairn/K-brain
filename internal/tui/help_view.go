@@ -108,6 +108,7 @@ var helpActionDesc = map[string]string{
 	"toggleFold":      "fold or open the block",
 	"foldAll":         "fold or open every tool output and thinking run",
 	"view":            "open the block full screen",
+	"openDiagram":     "open the reply's mermaid diagrams in the system viewer",
 	"find":            "search the transcript",
 	"findOlder":       "previous match, up the transcript",
 	"findNewer":       "next match, down the transcript",

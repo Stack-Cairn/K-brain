@@ -1,0 +1,40 @@
+|> draw the request path
+
+* mermaid sequence
+  +------+   +----+
+  | User |   | kn |
+  +--+---+   +-+--+
+     |         |
+     |  prompt |
+     +-------->|
+     |  reply  |
+     |<........+
+     |         |
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+------------------------------------------------------------------------------------------------------------------------
+  > Ask k-brain anything...  ? help - / commands - Shift+Tab mode - Ctrl+P menu
+   Normal                                                                                           kimi-k3-fast - * off

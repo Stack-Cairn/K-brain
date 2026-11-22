@@ -1,0 +1,11 @@
+graph RL; A-->B; B---C
+  C-.->D
+  D == heavy ==> E
+  E -- plain --- F
+  F --o G
+  G <--> H
+  H:::hot --x I["Quoted (text)"]
+  api-gw --> v1.2
+  classDef hot fill:#f00
+  click A callback
+  A --> A

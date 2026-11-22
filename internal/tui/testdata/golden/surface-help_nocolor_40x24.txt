@@ -1,4 +1,4 @@
-❯ Keyboard shortcuts              1/108
+❯ Keyboard shortcuts              1/109
   [Keys]  Commands
   / type to filter
 ────────────────────────────────────────
@@ -14,7 +14,7 @@
   PgUp / PgDn    scroll the transcript
   Ctrl+C Ctrl+C  quit
   Ctrl+P         open the command pal…
-  ↓ 97 more
+  ↓ 98 more
 ────────────────────────────────────────
   Shift+Tab  cycle the permission mode
   Shift+Tab — cycle Normal / Plan /

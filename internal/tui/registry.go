@@ -28,6 +28,7 @@ var registry = []registryEntry{
 	{Name: "/compact", Args: "[model]|fresh|off|retry|log", Hint: "compact the conversation now", Category: "Session"},
 	{Name: "/computer-use", Args: "[task]", Hint: "drive the desktop; allow|deny <app>", Category: "Agent"},
 	{Name: "/context", Hint: "show context sources and token estimates", Category: "Session"},
+	{Name: "/dashboard", Hint: "full-screen list of sessions across workspaces and their status", Category: "Session"},
 	{Name: "/context-doctor", Hint: "audit fresh-session injections and their token cost", Category: "Session"},
 	{Name: "/doctor", Hint: "inspect terminal and session diagnostics", Category: "App"},
 	{Name: "/editor", Hint: "edit a prompt in $VISUAL / $EDITOR", Keybind: "ctrl+g", Category: "App"},

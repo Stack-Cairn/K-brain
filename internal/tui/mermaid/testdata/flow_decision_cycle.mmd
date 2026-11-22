@@ -1,0 +1,6 @@
+graph TD
+  A[Start] --> B{Is it ok?}
+  B -->|yes| C[Ship it]
+  B -->|no| D[Fix bugs]
+  D --> B
+  C --> E((Done))
