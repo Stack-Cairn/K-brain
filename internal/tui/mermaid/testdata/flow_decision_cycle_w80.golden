@@ -10,7 +10,7 @@ kind=flowchart width=25
           │ │ ▲
      ╭────╯ │ ╰────╮
      │      ╰────╮ │
-    yes         no │
+     │ yes    no │ │
      ▼           ▼ │
 ┌─────────┐  ┌─────┴────┐
 │ Ship it │  │ Fix bugs │

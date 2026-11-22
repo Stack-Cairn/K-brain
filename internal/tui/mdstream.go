@@ -267,7 +267,7 @@ func unitRows(s string, u mdUnit, width int) []string {
 		if u.open {
 			return (&mdCache{}).openFenceRows(s, u, width)
 		}
-		return markdownPost(renderCodeBlock(u.codeBody(s), u.lang, width), width)
+		return markdownPost(renderFenceBlock(u.codeBody(s), u.lang, false, width), width)
 	}
 	text := s[u.start:u.end]
 	out, ok := renderProse(text, width)

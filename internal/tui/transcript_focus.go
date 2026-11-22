@@ -188,6 +188,8 @@ func (m *model) transcriptFocusKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.revealBlock(m.focusIndex())
 	case k == "v":
 		m.openBlockViewer(bi)
+	case k == "m":
+		m.openBlockMermaid(bi)
 	case k == "/":
 		f.typing, f.draft = true, ""
 	case k == "n":
@@ -647,6 +649,9 @@ func (m *model) transcriptBarView() string {
 			left += dimStyle.Render(chromeGlyphs(" · ") + m.tr(blockLabel(&m.blocks[bi])))
 		}
 		right = m.tr("j/k move · e fold · E all · v view · / find · Esc back")
+		if bi >= 0 && len(blockMermaid(&m.blocks[bi])) > 0 {
+			right = m.tr("m open diagram") + chromeGlyphs(" · ") + right
+		}
 		if fd := f.find; fd != nil {
 			state := m.tr("no match")
 			if len(fd.hits) > 0 {

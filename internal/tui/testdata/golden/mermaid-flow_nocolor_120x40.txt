@@ -1,0 +1,40 @@
+▌❯ draw the request path
+
+● The request path:
+
+  mermaid flowchart
+      ┌────────┐
+      │ Client │
+      └────┬───┘
+           │
+           ▼
+      ╱─────────╲
+      │ Gateway │
+      ╲───┬─┬───╱
+          │ │
+       ╭──╯ ╰──╮
+       │ miss  │
+       ▼       │
+  ┌─────────┐  │
+  │ Service │  │
+  └────┬────┘  │
+       │       │
+       ╰──╮ ╭──╯
+          │ │ cached
+          ▼ ▼
+       ╭───────╮
+       │ Cache │
+       ╰───────╯
+
+  The cache sits behind the gateway.
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ❯ Ask k-brain anything…  ? help · / commands · Shift+Tab mode · Ctrl+P menu
+  [Normal]                                                                                          kimi-k3-fast · ✦ off

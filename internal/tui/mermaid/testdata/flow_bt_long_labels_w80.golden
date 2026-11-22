@@ -1,4 +1,4 @@
-kind=flowchart width=36
+kind=flowchart width=45
                ┌─────┐
                │  D  │
                └─────┘
@@ -9,7 +9,7 @@ kind=flowchart width=36
       │ short │  │ C │  │
       └───────┘  └───┘  │
           ▲        ▲    │
-       a long edge label that …
+          │        │ a long edge label that …
           │      ╭─╯    │
           ╰────╮ │ ╭────╯
                │ │ │

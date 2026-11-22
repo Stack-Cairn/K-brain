@@ -1,4 +1,4 @@
-[38;5;79m❯[0m [1mKeyboard shortcuts[0m               [38;5;247m1/86[0m
+[38;5;79m❯[0m [1mKeyboard shortcuts[0m               [38;5;247m1/87[0m
   [1;38;5;79m[Keys][0m [38;5;245m Commands [0m
   [38;5;79m/[0m [38;5;247mtype to filter[0m
 [38;5;238m────────────────────────────────────────[0m
@@ -14,7 +14,7 @@
   Ctrl+L         [38;5;252mredraw the screen[0m[38;5;247m[0m
   PgUp / PgDn    [38;5;252mscroll the transcript[0m[38;5;247m[0m
   Ctrl+C Ctrl+C  [38;5;252mquit[0m[38;5;247m[0m
-[38;5;247m  ↓ 75 more[0m
+[38;5;247m  ↓ 76 more[0m
 [38;5;238m────────────────────────────────────────[0m
   [1mShift+Tab[0m  [38;5;252mcycle the permission mode[0m
   [38;5;247mShift+Tab — cycle Normal / Plan /[0m

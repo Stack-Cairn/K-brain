@@ -31,7 +31,7 @@ func renderMarkdownWhole(s string, width int) string {
 	var parts []string
 	for _, seg := range splitFences(s) {
 		if seg.code {
-			parts = append(parts, renderCodeBlock(seg.text, seg.lang, width))
+			parts = append(parts, renderFenceBlock(seg.text, seg.lang, seg.open, width))
 			continue
 		}
 		if strings.TrimSpace(seg.text) == "" {
@@ -76,6 +76,8 @@ func glamourProse(r *glamour.TermRenderer, text string) (string, error) {
 type mdSegment struct {
 	text, lang string
 	code       bool
+	// open marks a fence that runs to the end without its closing line.
+	open bool
 }
 
 var fenceOpenRE = regexp.MustCompile("^(`{3,}|~{3,})[ \\t]*([^`\\s]*)[^`]*$")
@@ -111,7 +113,7 @@ func splitFences(s string) []mdSegment {
 			code = append(code, lines[j])
 		}
 		flush()
-		segs = append(segs, mdSegment{text: strings.Join(code, "\n"), lang: m[2], code: true})
+		segs = append(segs, mdSegment{text: strings.Join(code, "\n"), lang: m[2], code: true, open: j >= len(lines)})
 		i = j
 	}
 	flush()

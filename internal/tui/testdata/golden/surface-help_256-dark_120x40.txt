@@ -1,4 +1,4 @@
-❯ Keyboard shortcuts                                                                                               1/86
+❯ Keyboard shortcuts                                                                                               1/87
   [Keys]  Commands
   / type to filter
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -31,7 +31,7 @@
   Alt+Z                              redo the draft edit
   Ctrl+W / Alt+Backspace             cut the word before the cursor
   Ctrl+U                             cut to the start of the line
-  ↓ 60 more
+  ↓ 61 more
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   Shift+Tab  cycle the permission mode
   Shift+Tab — cycle Normal / Plan / Auto review / Always allow

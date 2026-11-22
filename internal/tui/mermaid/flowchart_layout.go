@@ -42,6 +42,7 @@ type lseg struct {
 	p, q         int // order-axis ports on the upper and lower node
 	track        int
 	level        int // label row in TD, unused in LR
+	labelLo      int // first order-axis cell of a TD label
 	label        string
 }
 
@@ -772,6 +773,26 @@ func (l *layout) assignPorts() {
 		spread(n, outs[v], func(s lseg) int { return s.lower }, func(s *lseg, x int) { s.p = x })
 		spread(n, ins[v], func(s lseg) int { return s.upper }, func(s *lseg, x int) { s.q = x })
 	}
+	// A lone segment between two nodes that overlap runs straight: one
+	// port moves over the other when it stays inside its node.
+	inside := func(n *lnode, x int) bool {
+		if n.dummy() {
+			return x == n.pos
+		}
+		return x > n.pos && x < n.end()
+	}
+	for i := range l.segs {
+		s := &l.segs[i]
+		if s.p == s.q || len(outs[s.upper]) != 1 || len(ins[s.lower]) != 1 {
+			continue
+		}
+		switch {
+		case inside(l.nodes[s.upper], s.q):
+			s.p = s.q
+		case inside(l.nodes[s.lower], s.p):
+			s.q = s.p
+		}
+	}
 }
 
 // assignTracks gives each bending segment a row (TD) or column (LR) of its
@@ -814,6 +835,7 @@ func (l *layout) assignTracks() {
 		if l.horiz {
 			continue
 		}
+		l.placeLabels(segs)
 		var labelled []int
 		for _, i := range segs {
 			if l.segs[i].label != "" {
@@ -846,9 +868,36 @@ func overlaps(a0, a1, b0, b1 int) bool {
 	return min(a0, a1) <= max(b0, b1) && min(b0, b1) <= max(a0, a1)
 }
 
-// labelSpan is a TD label's order-axis span, centred on its port.
+// labelSpan is a TD label's order-axis span, beside the edge's last
+// vertical run.
 func (l *layout) labelSpan(s *lseg) (int, int) {
-	w := width(s.label)
-	lo := s.q - w/2
-	return lo, lo + w - 1
+	return s.labelLo, s.labelLo + width(s.label) - 1
+}
+
+// placeLabels puts each TD label of a gap beside its edge: right of it, or
+// left when the right would cover another edge's line.
+func (l *layout) placeLabels(segs []int) {
+	var xs []int
+	for _, i := range segs {
+		xs = append(xs, l.segs[i].q)
+	}
+	clear := func(own, lo, hi int) bool {
+		for _, x := range xs {
+			if x != own && x >= lo-1 && x <= hi+1 {
+				return false
+			}
+		}
+		return true
+	}
+	for _, i := range segs {
+		s := &l.segs[i]
+		if s.label == "" {
+			continue
+		}
+		w := width(s.label)
+		s.labelLo = s.q + 2
+		if !clear(s.q, s.q+2, s.q+1+w) && clear(s.q, s.q-1-w, s.q-2) {
+			s.labelLo = s.q - 1 - w
+		}
+	}
 }

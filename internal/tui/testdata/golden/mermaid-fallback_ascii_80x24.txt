@@ -1,0 +1,24 @@
+|> draw the request path
+
+* ```mermaid
+    pie title Pets
+      "Dogs" : 3
+  ```
+  mermaid: pie diagrams are not drawn in the terminal - shown as code
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+--------------------------------------------------------------------------------
+  > Ask k-brain anything...  ? help - / commands - Shift+Tab mode - Ctrl+P menu
+   Normal                                                   kimi-k3-fast - * off
