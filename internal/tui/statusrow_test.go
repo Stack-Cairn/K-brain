@@ -61,6 +61,7 @@ func TestStatusRowPhases(t *testing.T) {
 	if got := stRow(m); !strings.Contains(got, "Preparing…") || !strings.Contains(got, "Esc to interrupt") {
 		t.Fatalf("turn start: %q", got)
 	}
+	*clock = clock.Add(time.Second)
 	m.Update(phaseMsg(phaseWaiting))
 	*clock = clock.Add(3 * time.Second)
 	if got := stRow(m); !strings.Contains(got, "Waiting for the model…  3s") {
@@ -77,8 +78,14 @@ func TestStatusRowPhases(t *testing.T) {
 	}
 	m.Update(toolStartMsg{id: stTool("r1"), name: "read", args: `{"path":"cmd/kn/status.go"}`})
 	*clock = clock.Add(2 * time.Second)
-	if got := stRow(m); !strings.Contains(got, "status.go") || !strings.Contains(got, "2.0s") {
+	// The tool's own row names it; the status row counts and times it, in
+	// the same form as the turn clock.
+	if got := stRow(m); strings.Contains(got, "status.go") || !strings.Contains(got, "Running a tool…  2s") || !strings.Contains(got, "  6s") {
 		t.Fatalf("tool timer: %q", got)
+	}
+	m.Update(toolStartMsg{id: stTool("r2"), name: "read", args: `{"path":"cmd/kn/main.go"}`})
+	if got := stRow(m); !strings.Contains(got, "Running 2 tools…") {
+		t.Fatalf("two tools: %q", got)
 	}
 }
 
@@ -108,10 +115,19 @@ func TestStatusRowRetry(t *testing.T) {
 func TestStatusRowCompactingAndWaits(t *testing.T) {
 	m, clock := stClock(t)
 	stBegin(m, clock)
+	*clock = clock.Add(5 * time.Second)
 	m.Update(compactStartMsg{took: 18, est: 300})
 	*clock = clock.Add(7 * time.Second)
-	if got := stRow(m); !strings.Contains(got, "Compacting context…  7s") {
+	if got := stRow(m); !strings.Contains(got, "Compacting context…  7s") || !strings.Contains(got, " 12s ") {
 		t.Fatalf("compacting: %q", got)
+	}
+	// A phase as old as the turn shows one clock, not the same one twice.
+	m2, clock2 := stClock(t)
+	stBegin(m2, clock2)
+	m2.Update(compactStartMsg{took: 18, est: 300})
+	*clock2 = clock2.Add(7 * time.Second)
+	if got := stRow(m2); strings.Count(got, "7s") != 1 {
+		t.Fatalf("compacting from the turn start: %q", got)
 	}
 	m.Update(compactMsg{took: 8, kept: 10, summary: "sum", before: []ai.Message{{Role: "user", Content: strings.Repeat("a", 4000)}},
 		after: []ai.Message{{Role: "user", Content: strings.Repeat("a", 400)}}})
@@ -171,7 +187,7 @@ func TestStatusRowStaysOneRow(t *testing.T) {
 			if strings.Contains(row, "\n") || lipgloss.Width(row) > w {
 				t.Errorf("%s at %d: %d cells, %q", name, w, lipgloss.Width(row), ansi.Strip(row))
 			}
-			if !strings.Contains(ansi.Strip(row), "1:15") {
+			if !strings.Contains(ansi.Strip(row), "1m15s") {
 				t.Errorf("%s at %d lost the turn clock: %q", name, w, ansi.Strip(row))
 			}
 			if w == 120 && name != "approval" && !strings.Contains(ansi.Strip(row), "Esc to interrupt") {

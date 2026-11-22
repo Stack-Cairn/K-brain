@@ -18,7 +18,7 @@
 ◌ Read  cmd/kn/status.go
 ◇ Grep  asJSON                                                            queued
 
-  ⠋ Reading cmd/kn/status.go  3.0s                 0:12 · ⇣48 · Esc to interrupt
+  ⠋ Running a tool…  3s                             12s · ⇣48 · Esc to interrupt
 ────────────────────────────────────────────────────────────────────────────────
   ❯ busy — type to queue (sent after the current tool call)
   [Always allow]                                            kimi-k3-fast · ✦ off

@@ -10,13 +10,14 @@ import (
 
 // busyRow is the one status row above the composer while a turn runs. The
 // left cell says what is happening now and for how long: the phase (preparing,
-// waiting for the model, thinking, writing), the running tool, a provider
-// retry, a compaction, or what the turn is waiting on. The right cell is the
-// turn clock, the live output-token counter and the stop key. It stays one row
-// at any width: the right cell sheds the counter and shortens the hint before
-// the activity loses its room. It is hidden when idle.
+// waiting for the model, thinking, writing), running tools, a provider retry,
+// a compaction, or what the turn is waiting on. The right cell is the turn
+// clock, the live output-token counter and the stop key. Both clocks read the
+// same way (fmtSpan). It stays one row at any width: the right cell sheds the
+// counter and shortens the hint before the activity loses its room, then the
+// activity drops its clock before it is cut. It is hidden when idle.
 func (m *model) busyRow() string {
-	left := m.busyLeft()
+	left, bare := m.busyLeftParts()
 	rights := m.busyRights()
 	if m.width <= 0 {
 		return left + " " + rights[0]
@@ -30,32 +31,53 @@ func (m *model) busyRow() string {
 			break
 		}
 	}
+	// Two cells between the cells, so the activity's clock and the turn's
+	// never run together ("2s 44s").
+	if room := m.width - chromeIndent - lipgloss.Width(chromeGlyphs(right)) - 2; lipgloss.Width(chromeGlyphs(left)) > room {
+		// A clock cut to "…" after a label that already ends in one reads
+		// as "…  …": drop the clock, and cut the label itself only if it
+		// still does not fit.
+		left = bare
+	}
 	return chromeColumns(left, right, m.width)
 }
 
 // busyLeft is the glyph and the activity.
 func (m *model) busyLeft() string {
+	left, _ := m.busyLeftParts()
+	return left
+}
+
+// busyLeftParts is busyLeft, and the same without its clock.
+func (m *model) busyLeftParts() (string, string) {
+	left, clock := m.busyActivity()
+	return left + clock, left
+}
+
+// busyActivity is the glyph and the activity, and apart from it how long
+// the activity has run.
+func (m *model) busyActivity() (string, string) {
 	st := m.status()
 	now := m.nowFn()
 	switch {
 	case m.permDialog != nil:
-		return warnStyle.Bold(true).Render(glyphs.ToolQueued) + " " + warnStyle.Render(m.tr("Waiting for your approval"))
+		return warnStyle.Bold(true).Render(glyphs.ToolQueued) + " " + warnStyle.Render(m.tr("Waiting for your approval")), ""
 	case m.askDialog != nil:
-		return accentFgStyle.Bold(true).Render(glyphs.ToolQueued) + " " + accentFgStyle.Render(m.tr("Waiting for your answer"))
+		return accentFgStyle.Bold(true).Render(glyphs.ToolQueued) + " " + accentFgStyle.Render(m.tr("Waiting for your answer")), ""
 	case m.planOpen():
-		return m.planWaiting()
+		return m.planWaiting(), ""
 	case m.elicitOpen():
-		return accentFgStyle.Bold(true).Render(glyphs.ToolQueued) + " " + accentFgStyle.Render(m.tr("Waiting for your answer"))
+		return accentFgStyle.Bold(true).Render(glyphs.ToolQueued) + " " + accentFgStyle.Render(m.tr("Waiting for your answer")), ""
 	case st.retry != nil:
-		return warnStyle.Bold(true).Render(glyphs.Warn) + " " + warnStyle.Render(st.retry.label(m, now))
+		return warnStyle.Bold(true).Render(glyphs.Warn) + " " + warnStyle.Render(st.retry.label(m, now)), ""
 	case st.compacting:
-		return m.spin.View() + " " + runningStyle.Render(m.tr("Compacting context…")) + phaseClock(now.Sub(st.compactSince))
+		return m.spin.View() + " " + runningStyle.Render(m.tr("Compacting context…")), m.phaseClock(now.Sub(st.compactSince))
 	}
-	if act, ok := m.runningToolActivity(); ok {
-		return m.spin.View() + " " + runningStyle.Render(act)
+	if act, d, ok := m.runningToolActivity(); ok {
+		return m.spin.View() + " " + runningStyle.Render(act), m.phaseClock(d)
 	}
 	if m.agent != nil && m.agent.WaitingOnSubagents() {
-		return m.spin.View() + " " + runningStyle.Render(m.tr("Waiting for subagents"))
+		return m.spin.View() + " " + runningStyle.Render(m.tr("Waiting for subagents")), ""
 	}
 	label := strings.TrimPrefix(m.tr(" thinking…"), " ")
 	switch st.phase {
@@ -70,14 +92,19 @@ func (m *model) busyLeft() string {
 	}
 	out := m.spin.View() + " " + runningStyle.Render(label)
 	if !st.phaseSince.IsZero() && st.phase != "" && st.phase != phaseTools {
-		out += phaseClock(now.Sub(st.phaseSince))
+		return out, m.phaseClock(now.Sub(st.phaseSince))
 	}
-	return out
+	return out, ""
 }
 
-// phaseClock is the time spent in the current phase, once it is worth showing.
-func phaseClock(d time.Duration) string {
+// phaseClock is the time spent in the current phase, once it is worth
+// showing and while it says something the turn clock does not: a phase as
+// old as the turn would show the same number twice.
+func (m *model) phaseClock(d time.Duration) string {
 	if d < time.Second {
+		return ""
+	}
+	if !m.turnStart.IsZero() && fmtSpan(d) == fmtSpan(m.nowFn().Sub(m.turnStart)) {
 		return ""
 	}
 	return textMutedStyle.Render("  " + fmtSpan(d))
@@ -145,24 +172,29 @@ func (m *model) busyRights() []string {
 	}
 }
 
-// runningToolActivity names the newest running tool call and how long it has
-// been going.
-func (m *model) runningToolActivity() (string, bool) {
+// runningToolActivity counts the running tool calls and says how long the
+// newest has been going. It does not name them: each has its own row in the
+// transcript, so the status row would only repeat it.
+func (m *model) runningToolActivity() (string, time.Duration, bool) {
+	n := 0
+	var d time.Duration
 	for i := len(m.blocks) - 1; i >= 0; i-- {
 		b := m.blocks[i]
 		if b.kind != blockToolRun || !b.toolRunning || b.toolName == "" {
 			continue
 		}
-		s := toolVerb(b.toolName)
-		if subj := rowSubject(b.toolName, b.toolArgs); subj != "" {
-			s += " " + truncLine(subj, 48)
+		if n == 0 {
+			d, _ = toolTimer.running(b.toolID)
 		}
-		if d, ok := toolTimer.running(b.toolID); ok {
-			s += "  " + fmtToolDuration(d)
-		}
-		return s, true
+		n++
 	}
-	return "", false
+	switch n {
+	case 0:
+		return "", 0, false
+	case 1:
+		return m.tr("Running a tool…"), d, true
+	}
+	return fmt.Sprintf(m.tr("Running %d tools…"), n), d, true
 }
 
 // turnSummaryMin is how long a turn without tool calls must run before it
