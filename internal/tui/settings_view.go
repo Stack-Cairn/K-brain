@@ -94,6 +94,11 @@ func settingDefs() []settingDef {
 			step:  func(m *model, _ int) { m.setVim(!m.vimEnabled()) },
 		},
 		{
+			section: "Display", name: "Option as Alt", desc: "read macOS Option+letter characters as Alt shortcuts", command: "/doctor",
+			value: func(m *model) string { return onOff(m.optionAsAlt()) },
+			step:  func(m *model, _ int) { m.setOptionAsAlt(!m.optionAsAlt()) },
+		},
+		{
 			section: "Display", name: "Ancient mode", desc: "classical vertical layout for replies", command: "/ancient",
 			value: func(m *model) string { return onOff(m.ancientMode) },
 			step:  func(m *model, _ int) { m.ancientCommand([]string{"toggle"}) },

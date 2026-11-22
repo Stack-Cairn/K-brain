@@ -94,7 +94,7 @@ func TestSettingsF2StepsAndToggles(t *testing.T) {
 	if !m.surfaceOpen() || m.app.modal.kind != "settings" {
 		t.Fatal("F2 should open settings")
 	}
-	for _, want := range []string{"Display", "Agent", "Theme", "Permission mode", "↓ 4 more"} {
+	for _, want := range []string{"Display", "Agent", "Theme", "Permission mode", "↓ 5 more"} {
 		if !strings.Contains(surfScreen(m), want) {
 			t.Fatalf("settings lacks %q:\n%s", want, surfScreen(m))
 		}

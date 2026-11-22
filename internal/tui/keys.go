@@ -35,6 +35,7 @@ func (m *model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.iactive != nil {
 		return m.iactiveKey(msg)
 	}
+	msg = m.optionKey(msg)
 	// Ctrl+L redraws over any dialog or overlay; an interactive command above
 	// gets it instead, as a shell would.
 	if msg.Type == tea.KeyCtrlL {

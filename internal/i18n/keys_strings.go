@@ -38,6 +38,9 @@ var keysChinese = map[string]string{
 	"insert: before / after the cursor, at line start / end": "插入：光标前 / 后，行首 / 行尾",
 	"open a line below / above and insert":                   "在下方 / 上方新开一行并插入",
 	"send, back in insert mode":                              "发送，并回到插入模式",
+	"%s is what Option+%s types unless the terminal sends Option as Meta; for Alt shortcuts see /doctor": "终端没有把 Option 当作 Meta 键时，Option+%[2]s 输入的是 %[1]s；要用 Alt 快捷键请看 /doctor",
+	"Option as Alt": "Option 当作 Alt",
+	"read macOS Option+letter characters as Alt shortcuts": "把 macOS 上 Option+字母输入的字符当作 Alt 快捷键",
 }
 
 var keysTraditionalChinese = map[string]string{
@@ -77,6 +80,9 @@ var keysTraditionalChinese = map[string]string{
 	"insert: before / after the cursor, at line start / end": "插入：游標前 / 後，行首 / 行尾",
 	"open a line below / above and insert":                   "在下方 / 上方新開一行並插入",
 	"send, back in insert mode":                              "送出，並回到插入模式",
+	"%s is what Option+%s types unless the terminal sends Option as Meta; for Alt shortcuts see /doctor": "終端機沒有把 Option 當作 Meta 鍵時，Option+%[2]s 輸入的是 %[1]s；要用 Alt 快捷鍵請看 /doctor",
+	"Option as Alt": "Option 當作 Alt",
+	"read macOS Option+letter characters as Alt shortcuts": "把 macOS 上 Option+字母輸入的字元當作 Alt 快捷鍵",
 }
 
 func init() {

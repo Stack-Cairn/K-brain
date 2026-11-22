@@ -1,4 +1,4 @@
-> Settings                         1/15
+> Settings                         1/16
   / type to filter
 ----------------------------------------
   Display
@@ -7,14 +7,14 @@
   Thinking t...  show model reas... off
   Mouse capture  wheel scroll and... on
   Vim mode       modal editing i... off
+  Option as Alt  read macOS Opti... off
   Ancient mode   classical verti... off
   Browser dr...  automation engi... rod
 
   Agent
   Model           kimi-k3-fast@inference
   Reasoning ...  how hard the mo... off
-  Permission...  what t... Always allow
-  Down 5 more
+  Down 6 more
 ----------------------------------------
   Theme  auto
   colour scheme for the transcript and

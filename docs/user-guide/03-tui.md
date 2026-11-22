@@ -158,6 +158,8 @@ subagent 面板和 subagent 视图的按键见下文。
 
 在 tmux 里，`Shift+Enter` 需要 tmux 打开 `extended-keys`。`kn` 不会替你修改这个服务器级选项；没打开时启动会给出提示，`/doctor` 的 Terminal 一节也会显示当前状态。在 `~/.tmux.conf` 里加上 `set -s extended-keys on` 并执行 `tmux source ~/.tmux.conf` 即可；在此之前可以用 `Ctrl+J` 或 `Alt+Enter` 换行。
 
+在 macOS 上，`Alt` 快捷键要求终端把 Option 键当作 Meta 键发送：Terminal 在“设置 › 描述文件 › 键盘”里勾选“将 Option 键用作 Meta 键”，iTerm2 在“Settings › Profiles › Keys”里把 Left Option key 设为 `Esc+`。没有设置时 Option+O 输入的是 `ø`、Option+T 输入的是 `†`，`kn` 无法把它们和正常输入的外文字符区分开，所以默认照常输入这些字符，只在它们第一次出现在空输入框时提示一次，`/doctor` 的 Terminal 一节给出设置方法。不想改终端设置的话，可以在 `/settings` 里打开 “Option as Alt”（默认关闭）：打开后美式键盘布局下 Option+A/B/D/F/K/M/O/T/Y/Z 输入的字符会被当作对应的 `Alt` 快捷键，这些字符也就无法再输入。Option+E 在美式布局下是死键，无法映射，请用 Meta 设置。
+
 ### 把命令移到后台（Ctrl+B）
 
 `bash` 调用运行时，工具行右侧显示 `ctrl+b 后台运行`（英文界面为 `ctrl+b to background`）。此时按 `Ctrl+B`：
