@@ -1,7 +1,7 @@
-    tus) error {
+  ↪ tus) error {
         // one object per call
         return json.NewEncoder(w).Enco
-    de(s)
+  ↪ de(s)
     }
 
   Then run the package tests.

@@ -21,6 +21,7 @@ type glyphSet struct {
 	Rail       string // live output and quote rail
 	Band       string // the user band's left rail when there is no tint
 	Fold       string
+	Wrap       string // leads the later rows of a wrapped code line
 	Notice     string // system notices
 	Warn       string
 	Effort     string
@@ -44,6 +45,7 @@ var unicodeGlyphs = glyphSet{
 	Rail:       "│",
 	Band:       "▌",
 	Fold:       "⋯",
+	Wrap:       "↪",
 	Notice:     "◎",
 	Warn:       "!",
 	Effort:     "✦",
@@ -67,6 +69,7 @@ var asciiGlyphs = glyphSet{
 	Rail:       "|",
 	Band:       "|",
 	Fold:       "...",
+	Wrap:       ">",
 	Notice:     "o",
 	Warn:       "!",
 	Effort:     "*",

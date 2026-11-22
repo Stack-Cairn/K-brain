@@ -167,9 +167,16 @@ func (cb codeBand) head() string {
 func (cb codeBand) body(code string) []string {
 	lead := strings.Repeat(" ", codeMargin)
 	var out []string
+	pad := cb.base.Render(strings.Repeat(" ", codePad))
+	// A wrapped line's later rows lead with a muted mark in the pad, so a
+	// break the terminal width forced reads apart from a real line break.
+	mark := withBG(textMutedStyle, cb.base).Render(glyphs.Wrap) + cb.base.Render(strings.Repeat(" ", codePad-1))
 	for _, l := range highlightLines(code, codeLexer(cb.lang, ""), cb.base) {
-		for _, piece := range strings.Split(ansi.Hardwrap(l, cb.inner, true), "\n") {
-			row := cb.base.Render(strings.Repeat(" ", codePad)) + piece
+		for i, piece := range strings.Split(ansi.Hardwrap(l, cb.inner, true), "\n") {
+			row := pad + piece
+			if i > 0 {
+				row = mark + piece
+			}
 			if cb.band {
 				gap := max(cb.width-codeMargin-lipgloss.Width(row), 0)
 				out = append(out, lead+row+cb.base.Render(strings.Repeat(" ", gap)))
@@ -182,13 +189,57 @@ func (cb codeBand) body(code string) []string {
 }
 
 // foot is the closing fence row, drawn only without a band. The band ends
-// with the code: a blank band row would be dropped as an empty line by the
-// transcript's indenting anyway.
+// with the code.
 func (cb codeBand) foot() string {
 	if cb.band {
 		return ""
 	}
 	return strings.Repeat(" ", codeMargin) + textMutedStyle.Render("```")
+}
+
+// blankRow reports whether a drawn row shows nothing: no text and no
+// background. A code band's empty line shows its background and is kept,
+// so the band has no holes.
+func blankRow(l string) bool {
+	return strings.TrimSpace(ansi.Strip(l)) == "" && !paintsBackground(l)
+}
+
+// paintsBackground reports whether l sets a background colour in an SGR
+// sequence (40–47, 48;…, 100–107), skipping the arguments of extended
+// foreground and underline colours.
+func paintsBackground(l string) bool {
+	for {
+		i := strings.Index(l, "\x1b[")
+		if i < 0 {
+			return false
+		}
+		l = l[i+2:]
+		end := strings.IndexFunc(l, func(r rune) bool { return r < '0' && r != ';' || r > '9' && r != ';' })
+		if end < 0 {
+			return false
+		}
+		params, final := l[:end], l[end]
+		l = l[end:]
+		if final != 'm' {
+			continue
+		}
+		ps := strings.Split(params, ";")
+		for j := 0; j < len(ps); j++ {
+			switch p := ps[j]; {
+			case p == "48":
+				return true
+			case p == "38" || p == "58":
+				if j+1 < len(ps) && ps[j+1] == "5" {
+					j += 2
+				} else if j+1 < len(ps) && ps[j+1] == "2" {
+					j += 4
+				}
+			case len(p) == 2 && p[0] == '4' && p[1] >= '0' && p[1] <= '7',
+				len(p) == 3 && p[:2] == "10" && p[2] >= '0' && p[2] <= '7':
+				return true
+			}
+		}
+	}
 }
 
 // withBG lays a foreground style over a base's background.

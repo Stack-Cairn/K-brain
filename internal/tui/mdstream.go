@@ -23,7 +23,6 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/x/ansi"
 	"github.com/muesli/termenv"
 )
 
@@ -254,7 +253,7 @@ func appendUnitRows(rows, unit []string, first, blank bool) []string {
 		rows = append(rows, "")
 	}
 	for _, r := range unit {
-		if blank && r != "" && strings.TrimSpace(ansi.Strip(r)) == "" {
+		if blank && r != "" && blankRow(r) {
 			r = ""
 		}
 		rows = append(rows, r)

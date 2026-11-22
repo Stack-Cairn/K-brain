@@ -626,7 +626,7 @@ func indentLines(s string, n int) string {
 	const docMargin = 2
 	lines := strings.Split(s, "\n")
 	for i, l := range lines {
-		if strings.TrimSpace(ansi.Strip(l)) == "" {
+		if blankRow(l) {
 			lines[i] = ""
 			continue
 		}
