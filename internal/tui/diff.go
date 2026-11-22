@@ -96,7 +96,8 @@ func (m *model) diffCommand(flags []string) tea.Cmd {
 // the code coloured by the syntax of path's extension. Added and removed rows
 // keep their sign and, where the terminal has background colour, a tint
 // under the syntax colours; elsewhere the sign and a line colour carry the
-// meaning. Long rows wrap under the code, not under the gutter.
+// meaning. Within a removed row paired with an added one the changed words
+// stand out (diff_words.go). Long rows wrap under the code, not under the gutter.
 func renderDiff(diff, path string, width int) string {
 	return renderDiffFolded(diff, path, width, 0, false)
 }
@@ -208,7 +209,36 @@ func highlightDiff(rows []diffRow, lexer chroma.Lexer, tinted bool) [][]diffSpan
 			}
 		}
 	}
+	emphasizeDiff(rows, out, tinted)
 	return out
+}
+
+// emphasizeDiff marks the changed words of paired -/+ rows (diff_words.go).
+func emphasizeDiff(rows []diffRow, out [][]diffSpan, tinted bool) {
+	code := func(i int) string { return strings.ReplaceAll(rows[i].code, "\t", "    ") }
+	marks := intralineMarks(rows, code)
+	emph := map[*lipgloss.Style]*lipgloss.Style{}
+	for i, ms := range marks {
+		if len(ms) == 0 {
+			continue
+		}
+		var drawn strings.Builder
+		for _, sp := range out[i] {
+			drawn.WriteString(sp.text)
+		}
+		if drawn.String() != code(i) {
+			continue
+		}
+		strong := diffEmphasis(rows[i].kind, tinted)
+		out[i] = emphasizeSpans(out[i], ms, func(st *lipgloss.Style) *lipgloss.Style {
+			if e, ok := emph[st]; ok {
+				return e
+			}
+			e := strong(*st)
+			emph[st] = &e
+			return &e
+		})
+	}
 }
 
 type lexTok struct {

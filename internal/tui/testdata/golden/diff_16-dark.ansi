@@ -1,0 +1,28 @@
+== highlighted ==
+[90m  10  [0m  [95mfunc[0m [96mmain[0m() {
+[90m  11  [0m[91m-[0m [91m    fmt.Println("hello")[0m
+[90m  11  [0m[92m+[0m [92m    fmt.Println("hello[0m[7;92m, world[0m[92m"[0m[7;92m, strings.Repeat("=", 40[0m[92m)[0m[7;92m, os.Args[1:])[0m
+[90m  12  [0m  }
+[37m    ⋯ +3 more lines[0m
+== wrapped ==
+[90m  10  [0m  [95mfunc[0m [96mmain[0m() {
+[90m  11  [0m[91m-[0m [91m    fmt.Println("hello")[0m
+[90m  11  [0m[92m+[0m [92m    fmt.Println("hello[0m[7;92m, world[0m[92m"[0m[7;92m, [0m
+        [7;92mstrings.Repeat("=", 40[0m[92m)[0m[7;92m, [0m
+        [7;92mos.Args[1:])[0m
+[90m  12  [0m  }
+[37m    ⋯ +3 more lines[0m
+== folded ==
+[90m  10  [0m  [95mfunc[0m [96mmain[0m() {
+[90m  11  [0m[91m-[0m [91m    fmt.Println("hello")[0m
+[37m    ⋯ +3 lines · alt+o[0m
+== unnumbered ==
+[90m     [0m[92m+[0m [92madded[0m
+[90m     [0m[91m-[0m [91mremoved[0m
+[90m     [0m  same
+== words ==
+[90m  4  [0m[91m-[0m [91m    v, ok := cache.Get(key, [0m[7;91mwidth[0m[91m)[0m
+[90m  5  [0m[91m-[0m [91m    if !ok {[0m
+[90m  4  [0m[92m+[0m [92m    v, ok := cache.Get(key, [0m[7;92mheight[0m[92m)[0m
+[90m  5  [0m[92m+[0m [92m    if !ok [0m[7;92m|| v.stale [0m[92m{[0m
+[90m  6  [0m          [95mreturn[0m [93mnil[0m

@@ -5,14 +5,14 @@
 [1m│[0m [2m  48  [0m      line 1 stays                                                                                             [1m│[0m
 [1m│[0m [2m  49  [0m      line 2 stays                                                                                             [1m│[0m
 [1m│[0m [2m  50  [0m      line 3 stays                                                                                             [1m│[0m
-[1m│[0m [2m  51  [0m[1m-[0m [1m    verbose := flags.Bool("v1", false, "verbose")[0m                                                            [1m│[0m
-[1m│[0m [2m  51  [0m+     asJSON1 := flags.Bool("json1", false, "print JSON")                                                      [1m│[0m
-[1m│[0m [2m  52  [0m[1m-[0m [1m    verbose := flags.Bool("v2", false, "verbose")[0m                                                            [1m│[0m
-[1m│[0m [2m  52  [0m+     asJSON2 := flags.Bool("json2", false, "print JSON")                                                      [1m│[0m
-[1m│[0m [2m  53  [0m[1m-[0m [1m    verbose := flags.Bool("v3", false, "verbose")[0m                                                            [1m│[0m
-[1m│[0m [2m  53  [0m+     asJSON3 := flags.Bool("json3", false, "print JSON")                                                      [1m│[0m
-[1m│[0m [2m  54  [0m[1m-[0m [1m    verbose := flags.Bool("v4", false, "verbose")[0m                                                            [1m│[0m
-[1m│[0m [2m  54  [0m+     asJSON4 := flags.Bool("json4", false, "print JSON")                                                      [1m│[0m
+[1m│[0m [2m  51  [0m[1m-[0m [1m    [0m[1;7mverbose[0m[1m := flags.Bool("[0m[1;7mv1[0m[1m", false, "[0m[1;7mverbose[0m[1m")[0m                                                            [1m│[0m
+[1m│[0m [2m  51  [0m+     [7masJSON1[0m := flags.Bool("[7mjson1[0m", false, "[7mprint JSON[0m")                                                      [1m│[0m
+[1m│[0m [2m  52  [0m[1m-[0m [1m    [0m[1;7mverbose[0m[1m := flags.Bool("[0m[1;7mv2[0m[1m", false, "[0m[1;7mverbose[0m[1m")[0m                                                            [1m│[0m
+[1m│[0m [2m  52  [0m+     [7masJSON2[0m := flags.Bool("[7mjson2[0m", false, "[7mprint JSON[0m")                                                      [1m│[0m
+[1m│[0m [2m  53  [0m[1m-[0m [1m    [0m[1;7mverbose[0m[1m := flags.Bool("[0m[1;7mv3[0m[1m", false, "[0m[1;7mverbose[0m[1m")[0m                                                            [1m│[0m
+[1m│[0m [2m  53  [0m+     [7masJSON3[0m := flags.Bool("[7mjson3[0m", false, "[7mprint JSON[0m")                                                      [1m│[0m
+[1m│[0m [2m  54  [0m[1m-[0m [1m    [0m[1;7mverbose[0m[1m := flags.Bool("[0m[1;7mv4[0m[1m", false, "[0m[1;7mverbose[0m[1m")[0m                                                            [1m│[0m
+[1m│[0m [2m  54  [0m+     [7masJSON4[0m := flags.Bool("[7mjson4[0m", false, "[7mprint JSON[0m")                                                      [1m│[0m
 [1m│[0m [2m  55  [0m[1m-[0m [1m    verbose := flags.Bool("v5", false, "verbose")[0m                                                            [1m│[0m
 [1m│[0m [2m    ⋯ +11 lines · alt+o[0m                                                                                              [1m│[0m
 [1m│[0m                                                                                                                      [1m│[0m

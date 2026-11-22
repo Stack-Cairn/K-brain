@@ -133,6 +133,8 @@ subagent 面板和 subagent 视图的按键见下文。
 
 `/theme light|dark|auto` 切换配色，`/language zh_cn|zh_Hant|en` 切换界面语言。
 
+编辑、写入工具的结果和审批卡片里的差异中，相邻的删除行和新增行逐行配对，配对行里改动的词用更深的底色标出；终端只有 16 色或使用单色主题时改用反色显示，纯文本输出不加任何标记。两行差别太大（共同部分不足四成）时不标出词级改动。
+
 在 tmux 里，`Shift+Enter` 需要 tmux 打开 `extended-keys`。`kn` 不会替你修改这个服务器级选项；没打开时启动会给出提示，`/doctor` 的 Terminal 一节也会显示当前状态。在 `~/.tmux.conf` 里加上 `set -s extended-keys on` 并执行 `tmux source ~/.tmux.conf` 即可；在此之前可以用 `Ctrl+J` 或 `Alt+Enter` 换行。
 
 ### 把命令移到后台（Ctrl+B）

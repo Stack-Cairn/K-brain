@@ -5,14 +5,14 @@
 [93m|[0m [90m  48  [0m      line [93m1[0m stays                                                                                             [93m|[0m
 [93m|[0m [90m  49  [0m      line [93m2[0m stays                                                                                             [93m|[0m
 [93m|[0m [90m  50  [0m      line [93m3[0m stays                                                                                             [93m|[0m
-[93m|[0m [90m  51  [0m[91m-[0m [91m    verbose := flags.Bool("v1", false, "verbose")[0m                                                            [93m|[0m
-[93m|[0m [90m  51  [0m[92m+[0m [92m    asJSON1 := flags.Bool("json1", false, "print JSON")[0m                                                      [93m|[0m
-[93m|[0m [90m  52  [0m[91m-[0m [91m    verbose := flags.Bool("v2", false, "verbose")[0m                                                            [93m|[0m
-[93m|[0m [90m  52  [0m[92m+[0m [92m    asJSON2 := flags.Bool("json2", false, "print JSON")[0m                                                      [93m|[0m
-[93m|[0m [90m  53  [0m[91m-[0m [91m    verbose := flags.Bool("v3", false, "verbose")[0m                                                            [93m|[0m
-[93m|[0m [90m  53  [0m[92m+[0m [92m    asJSON3 := flags.Bool("json3", false, "print JSON")[0m                                                      [93m|[0m
-[93m|[0m [90m  54  [0m[91m-[0m [91m    verbose := flags.Bool("v4", false, "verbose")[0m                                                            [93m|[0m
-[93m|[0m [90m  54  [0m[92m+[0m [92m    asJSON4 := flags.Bool("json4", false, "print JSON")[0m                                                      [93m|[0m
+[93m|[0m [90m  51  [0m[91m-[0m [91m    [0m[7;91mverbose[0m[91m := flags.Bool("[0m[7;91mv1[0m[91m", false, "[0m[7;91mverbose[0m[91m")[0m                                                            [93m|[0m
+[93m|[0m [90m  51  [0m[92m+[0m [92m    [0m[7;92masJSON1[0m[92m := flags.Bool("[0m[7;92mjson1[0m[92m", false, "[0m[7;92mprint JSON[0m[92m")[0m                                                      [93m|[0m
+[93m|[0m [90m  52  [0m[91m-[0m [91m    [0m[7;91mverbose[0m[91m := flags.Bool("[0m[7;91mv2[0m[91m", false, "[0m[7;91mverbose[0m[91m")[0m                                                            [93m|[0m
+[93m|[0m [90m  52  [0m[92m+[0m [92m    [0m[7;92masJSON2[0m[92m := flags.Bool("[0m[7;92mjson2[0m[92m", false, "[0m[7;92mprint JSON[0m[92m")[0m                                                      [93m|[0m
+[93m|[0m [90m  53  [0m[91m-[0m [91m    [0m[7;91mverbose[0m[91m := flags.Bool("[0m[7;91mv3[0m[91m", false, "[0m[7;91mverbose[0m[91m")[0m                                                            [93m|[0m
+[93m|[0m [90m  53  [0m[92m+[0m [92m    [0m[7;92masJSON3[0m[92m := flags.Bool("[0m[7;92mjson3[0m[92m", false, "[0m[7;92mprint JSON[0m[92m")[0m                                                      [93m|[0m
+[93m|[0m [90m  54  [0m[91m-[0m [91m    [0m[7;91mverbose[0m[91m := flags.Bool("[0m[7;91mv4[0m[91m", false, "[0m[7;91mverbose[0m[91m")[0m                                                            [93m|[0m
+[93m|[0m [90m  54  [0m[92m+[0m [92m    [0m[7;92masJSON4[0m[92m := flags.Bool("[0m[7;92mjson4[0m[92m", false, "[0m[7;92mprint JSON[0m[92m")[0m                                                      [93m|[0m
 [93m|[0m [90m  55  [0m[91m-[0m [91m    verbose := flags.Bool("v5", false, "verbose")[0m                                                            [93m|[0m
 [93m|[0m [37m    ... +11 lines - alt+o[0m                                                                                            [93m|[0m
 [93m|[0m                                                                                                                      [93m|[0m

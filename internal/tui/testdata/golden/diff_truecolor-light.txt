@@ -20,3 +20,9 @@
      + added
      - removed
        same
+== words ==
+  4  -     v, ok := cache.Get(key, width)
+  5  -     if !ok {
+  4  +     v, ok := cache.Get(key, height)
+  5  +     if !ok || v.stale {
+  6            return nil
