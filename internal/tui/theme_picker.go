@@ -17,6 +17,7 @@ import (
 // themePanel builds the picker with the saved theme selected. The panel's
 // note keeps the saved setting so Esc can restore it.
 func (m *model) themePanel() *ppanel {
+	m.refreshCustomThemes(true)
 	list := themeChoices()
 	cur := m.currentThemeName()
 	pp := &ppanel{kind: panelTheme, title: "Theme", list: list, note: cur}
@@ -67,6 +68,16 @@ func (m *model) themePanelView(pp *ppanel) string {
 	if avail := m.height - 14; avail > 0 && len(pp.list) > avail {
 		lo, hi = viewportWindow(len(pp.list), pp.midx, avail)
 	}
+	errs := customThemeErrors()
+	for i, e := range errs {
+		if i == 2 && len(errs) > 3 {
+			e = fmt.Sprintf("%d more theme files skipped", len(errs)-2)
+		}
+		b.WriteString(warnStyle.Render(ansi.Truncate(chromeGlyphs("  "+glyphs.Warn+" "+e), w, chromeGlyphs("…"))) + "\n")
+		if i == 2 {
+			break
+		}
+	}
 	if lo > 0 {
 		b.WriteString(dimStyle.Render(fmt.Sprintf(m.tr("   ↑ %d more"), lo)) + "\n")
 	}
@@ -90,7 +101,11 @@ func (m *model) themePanelView(pp *ppanel) string {
 		b.WriteString(dimStyle.Render(fmt.Sprintf(m.tr("   ↓ %d more"), len(pp.list)-hi)) + "\n")
 	}
 	if t := lookupTheme(pp.list[pp.midx]); t != nil && len(t.warnings) > 0 {
-		b.WriteString(warnStyle.Render(ansi.Truncate(chromeGlyphs("  "+glyphs.Warn+" "+t.warnings[0]), w, chromeGlyphs("…"))) + "\n")
+		warn := t.warnings[0]
+		if n := len(t.warnings) - 1; n > 0 {
+			warn += fmt.Sprintf(" (+%d more)", n)
+		}
+		b.WriteString(warnStyle.Render(ansi.Truncate(chromeGlyphs("  "+glyphs.Warn+" "+warn), w, chromeGlyphs("…"))) + "\n")
 	}
 	b.WriteString("\n")
 	for _, l := range themeSample() {

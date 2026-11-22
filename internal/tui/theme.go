@@ -303,6 +303,7 @@ func (m *model) themeCommand(args []string) {
 		m.openPaletteOn("theme")
 		return
 	}
+	m.refreshCustomThemes(true)
 	name := strings.ToLower(args[0])
 	if _, ok := parseThemeSetting(name); len(args) != 1 || !ok {
 		m.append(errStyle.Render("usage: /theme " + strings.Join(themeChoices(), "|")))

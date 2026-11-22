@@ -28,6 +28,11 @@ func (m *model) cfgSync() (tea.Model, tea.Cmd) {
 	if m.prog == nil {
 		return m, nil
 	}
+	// Theme files are re-read when they change, except while the picker is
+	// previewing one.
+	if m.palette == nil || m.palette.top() == nil || m.palette.top().kind != panelTheme {
+		m.refreshCustomThemes(false)
+	}
 	dir, err := config.Dir()
 	if err != nil {
 		return m, m.watchConfig()

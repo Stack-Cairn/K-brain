@@ -370,9 +370,13 @@ func Run(cfg *config.Config, modelName, provName, sysPrompt, resumeID string, ca
 
 	// Styles bake their adaptive colours at Render time, so the theme has to be
 	// settled before anything is appended to the transcript.
+	reloadCustomThemes(true)
 	m.themeHow = m.applyTheme(cfg.Theme)
 	m.applyColorEnv()
 	m.appendBanner()
+	for _, e := range customThemeErrors() {
+		m.append(warnStyle.Render(chromeGlyphs(glyphs.Warn + " theme file skipped: " + e)))
+	}
 
 	m.applyCompactModel()
 	m.applyTaskModel()
