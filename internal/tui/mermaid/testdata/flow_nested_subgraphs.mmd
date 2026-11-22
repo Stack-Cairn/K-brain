@@ -1,0 +1,9 @@
+flowchart LR
+  subgraph cloud [Cloud]
+    subgraph k8s [Cluster]
+      api[API] --> worker[Worker]
+    end
+    worker --> q[(Queue)]
+  end
+  user((User)) --> api
+  q --> report[Report]
