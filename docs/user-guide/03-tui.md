@@ -134,6 +134,10 @@ subagent 面板和 subagent 视图的按键见下文。
 
 `Ctrl+B` 是固定键位，目前没有自定义快捷键的配置。它也是 tmux 的默认前缀键：在 tmux 里要连按两次 `Ctrl+B`（tmux 把第二次按键原样发给 `kn`），或者改用别的 tmux 前缀。
 
+## 会话总览
+
+`/dashboard`（或 `Ctrl+P` 命令面板中的 **Dashboard**）打开全屏的会话总览：当前工作区和其他工作区的会话、各自的状态、模型、令牌与最后活动时间，以及本会话的 subagent。`Enter` 打开会话，`n` 新建，`d` 删除，`/` 筛选，`Tab` 按工作区分组，`r` 刷新。详见[会话总览（Dashboard）](13-dashboard.md)。
+
 ## Subagent 面板与实时视图
 
 前台和后台 subagent 都会出现在输入框下方的面板里：运行中的排在前面，已结束的随后，各组内新的在前。底部状态栏的 `⚙ N sub` 统计正在运行的 subagent 数量（含前台）。

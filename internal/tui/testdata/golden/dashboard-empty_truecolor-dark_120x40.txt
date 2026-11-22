@@ -1,0 +1,40 @@
+❯ Dashboard                                                                                                  0 sessions
+  / press / and type a title, workspace or model
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  no sessions yet · n starts one
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ● running = a turn in progress here, in another kn or in the backend; idle rows show their last saved state
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Enter open · n new · d delete · / filter · Tab group by workspace · r refresh · Esc close

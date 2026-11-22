@@ -1,0 +1,40 @@
+❯ Dashboard                                                                                                  6 sessions
+  / press / and type a title, workspace or model
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+    session                                    status   workspace            model               tokens · cost   active
+  This session's subagents
+  ● scan the store for stale run leases        running  sub-1                                                  just now
+  ✗ summarize test failures                    error    sub-2                                                    5m ago
+
+  This workspace
+❯ ● (current) Refactor the session store       running  ~                    kimi-k3-fast               191.4k   2m ago
+  ○ Fix flaky terminal capture test            idle     ~                    glm-5.2-fast                42.0k   3h ago
+  ○ (untitled)                                 idle     ~                    kimi-k3-fast                        2d ago
+
+  Other workspaces
+  ● Gateway rate limiter 限流设计              running  src/api-gateway      glm-5.2-fast                55.1k   1m ago
+  ○ Release notes for v0.9                     idle     build/runner         kimi-k3-fast                        1d ago
+  ○ Read the mermaid docs and write a long su… idle     ~/notes              kimi-k3-fast                        9d ago
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  c0ffee01 · kimi-k3-fast@inference · ~
+  ● running · this session · running a turn
+  191.4k tokens · 41 messages
+  ◎ goal: ship the multi-session dashboard
+  ☰ todos 1/3 done · next: draw the status column
+  ● running = a turn in progress here, in another kn or in the backend; idle rows show their last saved state
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Enter open · n new · d delete · / filter · Tab group by workspace · r refresh · Esc close

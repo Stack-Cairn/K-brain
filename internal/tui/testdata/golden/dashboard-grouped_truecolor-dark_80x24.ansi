@@ -1,0 +1,24 @@
+[38;2;47;191;160m❯[0m [1mDashboard[0m                                           [38;2;154;160;170mby workspace · 6 sessions[0m
+  [38;2;47;191;160m/[0m [38;2;154;160;170mpress / and type a title, workspace or model[0m
+[38;2;58;64;72m────────────────────────────────────────────────────────────────────────────────[0m
+[38;2;154;160;170m  ↑ 2 more[0m
+  [38;2;134;139;149m~[0m
+  [38;2;86;182;194m●[0m [38;2;47;191;160m(current) [0mRefactor the session store                     [38;2;154;160;170m running    2m ago[0m
+  [38;2;134;139;149m○[0m [38;2;47;191;160m[0mFix flaky terminal capture test                          [38;2;154;160;170m idle       3h ago[0m
+  [38;2;134;139;149m○[0m [38;2;47;191;160m[0m[38;2;134;139;149m(untitled)                                               [0m[38;2;154;160;170m idle       2d ago[0m
+
+  [38;2;134;139;149m~/src/api-gateway[0m
+[1;38;2;47;191;160;48;2;38;43;52m❯ ● Gateway rate limiter 限流设计                             running    1m ago[0m
+
+  [38;2;134;139;149m/srv/build/runner[0m
+  [38;2;134;139;149m○[0m [38;2;47;191;160m[0mRelease notes for v0.9                                   [38;2;154;160;170m idle       1d ago[0m
+
+  [38;2;134;139;149m~/notes[0m
+  [38;2;134;139;149m○[0m [38;2;47;191;160m[0mRead the mermaid docs and write a long summary that will…[38;2;154;160;170m idle       9d ago[0m
+[38;2;58;64;72m────────────────────────────────────────────────────────────────────────────────[0m
+  [38;2;134;139;149m0a0b0c0d · glm-5.2-fast@inference · ~/src/api-gateway[0m
+  [38;2;86;182;194m● running[0m[38;2;134;139;149m · running a turn in kn (pid 4242) · started 1m ago[0m
+  [38;2;134;139;149m55.1k tokens · 24 messages[0m
+  [38;2;200;204;211m● running = a turn in progress here, in another kn or in the backend; idle ro…[0m
+[38;2;58;64;72m────────────────────────────────────────────────────────────────────────────────[0m
+  [38;2;154;160;170mEnter open · n new · d delete · / filter · Tab group by workspace · r refresh…[0m

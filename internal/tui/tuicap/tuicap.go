@@ -61,6 +61,9 @@ type Options struct {
 	// Untrusted leaves the working directory untrusted, so kn starts on the
 	// trust question.
 	Untrusted bool
+	// Setup runs before kn starts, with the throwaway K_BRAIN_HOME and the
+	// working directory, e.g. to seed stored sessions.
+	Setup func(home, dir string)
 }
 
 // Session is one running kn.
@@ -116,6 +119,9 @@ func Start(t testing.TB, opts Options) *Session {
 	writeConfig(t, kbHome, provider.URL, opts.Config)
 	if !opts.Untrusted {
 		trust(t, kbHome, dir)
+	}
+	if opts.Setup != nil {
+		opts.Setup(kbHome, dir)
 	}
 
 	// The clipboard never leaves the session: kn finds these stubs before the

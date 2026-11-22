@@ -1,0 +1,24 @@
+> Dashboard             1 of 6 sessions
+  / gate_
+----------------------------------------
+    session                      active
+  Other workspaces
+> * Gateway rate limiter 限...   1m ago
+
+
+
+
+
+
+
+
+
+
+
+----------------------------------------
+  0a0b0c0d - glm-5.2-fast@inference -...
+  * running - running a turn in kn (p...
+  55.1k tokens - 24 messages
+  * running = a turn in progress here...
+----------------------------------------
+  type to filter - Enter done - Esc c...

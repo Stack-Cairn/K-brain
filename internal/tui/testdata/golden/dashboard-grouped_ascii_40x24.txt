@@ -1,0 +1,24 @@
+> Dashboard   by workspace - 6 sessions
+  / press / and type a title, workspa...
+----------------------------------------
+  Up 2 more
+  ~
+  * (current) Refactor the ...   2m ago
+  o Fix flaky terminal capt...   3h ago
+  o (untitled)                   2d ago
+
+  ~/src/api-gateway
+> * Gateway rate limiter 限...   1m ago
+
+  /srv/build/runner
+  o Release notes for v0.9       1d ago
+
+  ~/notes
+  o Read the mermaid docs a...   9d ago
+----------------------------------------
+  0a0b0c0d - glm-5.2-fast@inference -...
+  * running - running a turn in kn (p...
+  55.1k tokens - 24 messages
+  * running = a turn in progress here...
+----------------------------------------
+  Enter open - n new - d delete - / f...
