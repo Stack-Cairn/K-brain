@@ -1,13 +1,13 @@
 [1;96m|[0m  resize?                              [0m
                                         
-[3;90m[7m~[27m Thought - 2 lines[0m                     [0m
+[3;90m[7m=[27m Thought - 2 lines[0m                     [0m
 [1;96m|[0m[3;90m The key holds the [7mwidth[27m.[0m              [0m
 [1;96m|[0m[3;90m A resize changes it.[0m                  [0m
                                         
 [1;95m* [0mThe cache is keyed by [1m[7mwidth[0m[7m[27m.[0m          [0m
 [37m  ... 6 more lines[0m                      [0m
                                         
-[90m*[0m [1mBash[0m  [37mgrep -n [7mwidth[27m cache.go[0m          [0m
+[90m+[0m [1mBash[0m  [37mgrep -n [7mwidth[27m cache.go[0m          [0m
 [90m  ` [0m[37mcache.go:10: key := [7mwidth[27m + 0[0m       [0m
     [37mcache.go:11: key := [7mwidth[27m + 1[0m       [0m
 [37m    ... +8 lines - ctrl+e[0m               [0m

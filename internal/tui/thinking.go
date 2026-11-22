@@ -65,11 +65,11 @@ func renderThinking(b *block, width int) string {
 func thinkingHead(text string, t *thinkMeta) string {
 	switch {
 	case t.live:
-		return "◌ Thinking…"
+		return glyphs.ToolRun + " Thinking…"
 	case t.took > 0:
-		return fmt.Sprintf("◌ Thought for %s · %s", fmtThinkDuration(t.took), linesLabel(text))
+		return fmt.Sprintf("%s Thought for %s · %s", glyphs.Thought, fmtThinkDuration(t.took), linesLabel(text))
 	}
-	return "◌ Thought · " + linesLabel(text)
+	return glyphs.Thought + " Thought · " + linesLabel(text)
 }
 
 func linesLabel(text string) string {

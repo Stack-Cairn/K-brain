@@ -1,6 +1,6 @@
 ▌  resize?
 
-◌ Thought · 2 lines
+◉ Thought · 2 lines
 ┃ The key holds the width.
 ┃ A resize changes it.
 

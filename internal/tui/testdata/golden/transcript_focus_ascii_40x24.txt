@@ -1,13 +1,13 @@
 |  resize?
 
-~ Thought - 2 lines
+= Thought - 2 lines
 | The key holds the width.
 | A resize changes it.
 
 * The cache is keyed by width.
   ... 6 more lines
 
-* Bash  grep -n width cache.go
++ Bash  grep -n width cache.go
   ` cache.go:10: key := width + 0
     cache.go:11: key := width + 1
     ... +8 lines - ctrl+e

@@ -1,6 +1,6 @@
 |> add a --json flag to `kn status`
 
-+- * Plan ready for review ------------+
++- + Plan ready for review ------------+
 |     cmd/kn/status.go.                |
 | > 4 2. Encode Status with            |
 |     encoding/json, one object per    |

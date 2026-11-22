@@ -128,7 +128,7 @@ func TestSeedRebuildsThinking(t *testing.T) {
 	if len(m.blocks) != 3 || m.blocks[1].kind != blockThinking || m.blocks[2].kind != blockAssistant {
 		t.Fatalf("thinking block missing or out of order:\n%s", blockRows(m))
 	}
-	if got := ansi.Strip(m.blocks[1].render(100)); got != "◌ Thought · 2 lines" {
+	if got := ansi.Strip(m.blocks[1].render(100)); got != "◉ Thought · 2 lines" {
 		t.Fatalf("restored thinking = %q, want it folded", got)
 	}
 	m.blocks[1].toggle()

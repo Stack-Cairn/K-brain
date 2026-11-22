@@ -1,6 +1,6 @@
 [1;96m▌[0m[1;96m❯[0m Why does the cache miss after a resize?                                                                              [0m
                                                                                                                         
-[3;90m[7m◌[27m Thought · 2 lines[0m                                                                                                     [0m
+[3;90m[7m◉[27m Thought · 2 lines[0m                                                                                                     [0m
 [1;96m┃[0m[3;90m The key holds the [7mwidth[27m.[0m                                                                                              [0m
 [1;96m┃[0m[3;90m A resize changes it.[0m                                                                                                  [0m
                                                                                                                         

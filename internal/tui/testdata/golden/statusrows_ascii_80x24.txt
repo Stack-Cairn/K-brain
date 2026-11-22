@@ -3,9 +3,9 @@
 # waiting
   | Waiting for the model...  2s                          44s - Esc to interrupt
 # thinking
-  | Thinking...  4s                                46s - v225 - Esc to interrupt
+  | Thinking...  4s                                46s - #225 - Esc to interrupt
 # writing
-  | Writing...                                    42s - v3.1k - Esc to interrupt
+  | Writing...                                    42s - #3.1k - Esc to interrupt
 # tool
   | Running a tool...  3s                                 45s - Esc to interrupt
 # retrying

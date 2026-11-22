@@ -15,6 +15,7 @@ type glyphSet struct {
 	ToolQueued string
 	ToolRun    string
 	ToolDone   string
+	Thought    string // a finished thinking block; a live one shows ToolRun
 	OK         string
 	Fail       string
 	Result     string // the elbow under a tool row
@@ -39,6 +40,7 @@ var unicodeGlyphs = glyphSet{
 	ToolQueued: "◇",
 	ToolRun:    "◌",
 	ToolDone:   "◆",
+	Thought:    "◉",
 	OK:         "✓",
 	Fail:       "✗",
 	Result:     "└",
@@ -62,7 +64,8 @@ var asciiGlyphs = glyphSet{
 	Assistant:  "*",
 	ToolQueued: "o",
 	ToolRun:    "~",
-	ToolDone:   "*",
+	ToolDone:   "+",
+	Thought:    "=",
 	OK:         "v",
 	Fail:       "x",
 	Result:     "`",
@@ -73,7 +76,7 @@ var asciiGlyphs = glyphSet{
 	Notice:     "o",
 	Warn:       "!",
 	Effort:     "*",
-	Tokens:     "v",
+	Tokens:     "#",
 	BarFull:    "#",
 	BarEmpty:   "-",
 	Minus:      "-",
