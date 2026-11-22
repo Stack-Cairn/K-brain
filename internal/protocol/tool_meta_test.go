@@ -77,3 +77,24 @@ func TestHistoryToolCallCarriesRunInfo(t *testing.T) {
 		t.Fatalf("round trip kept run info: %+v", c)
 	}
 }
+
+// A stored MCP App reference becomes the call's ui_resource in history, with
+// no URL (the backend adds the session's paths) and no inline result.
+func TestFromAIMessageKeepsMCPAppView(t *testing.T) {
+	call := ai.ToolCall{ID: "c1", Type: "function", MCPApp: &ai.MCPAppRef{ServerID: "apps", Tool: "chart", URI: "ui://board/view.html", ResultStored: true}}
+	call.Function.Name, call.Function.Arguments = "mcp__apps__chart", "{}"
+	other := ai.ToolCall{ID: "c2", Type: "function", MCPApp: &ai.MCPAppRef{ServerID: "apps", Tool: "x", URI: "https://example.invalid/x"}}
+	other.Function.Name, other.Function.Arguments = "mcp__apps__x", "{}"
+	msg := FromAIMessage(ai.Message{Role: "assistant", ToolCalls: []ai.ToolCall{call, other}})
+	ui := msg.ToolCalls[0].UIResource
+	if ui == nil || ui.ServerID != "apps" || ui.URI != "ui://board/view.html" || ui.ToolName != "chart" || !ui.ResultStored || ui.URL != "" || ui.Result != nil {
+		t.Fatalf("ui_resource = %+v", ui)
+	}
+	if msg.ToolCalls[1].UIResource != nil {
+		t.Fatalf("non-ui:// resource kept: %+v", msg.ToolCalls[1].UIResource)
+	}
+	got := marshalString(t, msg.ToolCalls[0])
+	if strings.Contains(got, "ResultStored") || strings.Contains(got, `"result"`) || !strings.Contains(got, `"ui_resource":{"server_id":"apps","uri":"ui://board/view.html","url":"","tool_name":"chart"}`) {
+		t.Fatalf("tool call json = %s", got)
+	}
+}

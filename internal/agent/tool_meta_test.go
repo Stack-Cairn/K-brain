@@ -69,3 +69,24 @@ func TestShellExitStatusReachesResultAndHistoryNotRequest(t *testing.T) {
 		t.Errorf("tool result text changed: %s", last)
 	}
 }
+
+// Only a successful MCP call whose tool declares a ui:// view leaves an MCP
+// App reference in history.
+func TestMCPAppRefOnlyForSuccessfulViews(t *testing.T) {
+	app := &tools.MCPApp{ServerID: "apps", Tool: "chart", URI: "ui://board/view.html", Result: json.RawMessage(`{"content":[]}`)}
+	if got := mcpAppRef(tools.Result{MCPApp: app}); got == nil || *got != (ai.MCPAppRef{ServerID: "apps", Tool: "chart", URI: "ui://board/view.html", ResultStored: true}) {
+		t.Fatalf("ref = %+v", got)
+	}
+	noResult := *app
+	noResult.Result = nil
+	if got := mcpAppRef(tools.Result{MCPApp: &noResult}); got == nil || got.ResultStored {
+		t.Fatalf("ref without result = %+v", got)
+	}
+	noView := *app
+	noView.URI = ""
+	for _, r := range []tools.Result{{}, {MCPApp: app, Failed: true}, {MCPApp: app, Cancelled: true}, {MCPApp: &noView}} {
+		if got := mcpAppRef(r); got != nil {
+			t.Fatalf("ref for %+v = %+v", r, got)
+		}
+	}
+}

@@ -222,6 +222,9 @@ func (rt *runtimeSession) trajectoryChildEventsForRun(id, runID string) agent.Ev
 			if ms := result.DurationMs(); ms > 0 {
 				payload["duration_ms"] = ms
 			}
+			if ui := mcpToolUIResource(rt.eventDir, rt.id, call, result); ui != nil {
+				payload["ui_resource"] = ui
+			}
 			sub.publishChild(rt, id, protocol.EventChildToolEnd, payload)
 		},
 	}
@@ -469,11 +472,46 @@ func childTranscript(events []protocol.Event, id, prompt string, model protocol.
 				stop = string(ai.StopReasonError)
 			}
 			created := e.CreatedAt
-			messages = append(messages, protocol.Message{Role: protocol.RoleTool, ToolCallID: trajectoryString(p, "id"), Name: trajectoryString(p, "name"), Content: []protocol.ContentBlock{{Type: protocol.ContentText, Text: trajectoryString(p, "output")}}, StopReason: stop, CreatedAt: &created})
+			callID := trajectoryString(p, "id")
+			if ui := childUIResource(p); ui != nil {
+				attachToolUIResource(messages, callID, ui)
+			}
+			messages = append(messages, protocol.Message{Role: protocol.RoleTool, ToolCallID: callID, Name: trajectoryString(p, "name"), Content: []protocol.ContentBlock{{Type: protocol.ContentText, Text: trajectoryString(p, "output")}}, StopReason: stop, CreatedAt: &created})
 			current = -1
 		}
 	}
 	return messages
+}
+
+// childUIResource is the MCP App view a child tool end event announced, or
+// nil; the inline result is dropped, as in other history views.
+func childUIResource(p map[string]any) *protocol.ToolUIResource {
+	raw, ok := p["ui_resource"]
+	if !ok {
+		return nil
+	}
+	data, err := json.Marshal(raw)
+	if err != nil {
+		return nil
+	}
+	var ui protocol.ToolUIResource
+	if json.Unmarshal(data, &ui) != nil || ui.ServerID == "" || ui.URI == "" || ui.URL == "" {
+		return nil
+	}
+	ui.Result = nil
+	return &ui
+}
+
+// attachToolUIResource sets ui on the tool call callID of messages.
+func attachToolUIResource(messages []protocol.Message, callID string, ui *protocol.ToolUIResource) {
+	for i := len(messages) - 1; i >= 0; i-- {
+		for j := range messages[i].ToolCalls {
+			if messages[i].ToolCalls[j].ID == callID {
+				messages[i].ToolCalls[j].UIResource = ui
+				return
+			}
+		}
+	}
 }
 
 // subagentPrompt finds the prompt the parent gave a subagent in its tool call.
@@ -498,7 +536,9 @@ func subagentPromptFromCall(events []protocol.Event, callID string) string {
 	return ""
 }
 
-func storedTranscriptMessages(messages []ai.Message) []protocol.Message {
+// storedTranscriptMessages converts a subagent's stored transcript in session
+// sessionID for clients.
+func storedTranscriptMessages(sessionID string, messages []ai.Message) []protocol.Message {
 	out := []protocol.Message{}
 	for _, message := range messages {
 		if message.Role == protocol.RoleSystem || message.Role == protocol.RoleDeveloper {
@@ -506,6 +546,7 @@ func storedTranscriptMessages(messages []ai.Message) []protocol.Message {
 		}
 		out = append(out, protocol.FromAIMessage(message))
 	}
+	withHistoryUIResources(sessionID, out)
 	return out
 }
 
@@ -622,7 +663,7 @@ func (s *Server) subagentTranscript(w http.ResponseWriter, id, task string) {
 			return
 		}
 		if len(stored) > 0 {
-			out.Messages = storedTranscriptMessages(stored)
+			out.Messages = storedTranscriptMessages(id, stored)
 			writeJSON(w, http.StatusOK, out)
 			return
 		}

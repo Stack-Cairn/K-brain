@@ -423,7 +423,13 @@ func (s *server) setState(m *Manager, st Status, errMsg string) {
 	m.fireOnChange()
 }
 
-func (m *Manager) Tools() []tools.Tool {
+// Tools lists the connected servers' tools the model may call: every tool
+// but those whose _meta.ui.visibility leaves the model out.
+func (m *Manager) Tools() []tools.Tool { return m.AudienceTools(AudienceModel) }
+
+// AudienceTools lists the connected servers' tools that audience
+// (AudienceModel or AudienceApp) may call.
+func (m *Manager) AudienceTools(audience string) []tools.Tool {
 	m.onChangeMu.Lock()
 	servers := make([]*server, 0, len(m.servers))
 	for _, s := range m.servers {
@@ -439,7 +445,9 @@ func (m *Manager) Tools() []tools.Tool {
 			continue
 		}
 		for _, d := range defs {
-			out = append(out, s.bridge(d))
+			if visibleTo(d.Meta, audience) {
+				out = append(out, s.bridge(d))
+			}
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Def.Function.Name < out[j].Def.Function.Name })
@@ -453,10 +461,15 @@ func (s *server) bridge(d *sdkmcp.Tool) tools.Tool {
 	if d.Title != "" && desc == "" {
 		desc = d.Title
 	}
+	uri := uiResourceURI(d.Meta)
 	return tools.Tool{
 		Def: ai.NewTool(name, fmt.Sprintf("[MCP %s] %s", s.name, desc), schema),
 		Run: func(ctx context.Context, args json.RawMessage) (string, error) {
-			return s.call(ctx, d.Name, args)
+			out, res, err := s.callResult(ctx, d.Name, args)
+			if res != nil {
+				tools.ReportMCPApp(ctx, tools.MCPApp{ServerID: s.name, Tool: d.Name, URI: uri, Result: rawToolResult(res)})
+			}
+			return out, err
 		},
 	}
 }
@@ -464,7 +477,13 @@ func (s *server) bridge(d *sdkmcp.Tool) tools.Tool {
 const connectGrace = 5 * time.Second
 
 func (s *server) call(ctx context.Context, tool string, args json.RawMessage) (string, error) {
+	out, _, err := s.callResult(ctx, tool, args)
+	return out, err
+}
 
+// callResult calls tool and returns its flattened text with the server's
+// CallToolResult (nil when the call did not complete).
+func (s *server) callResult(ctx context.Context, tool string, args json.RawMessage) (string, *sdkmcp.CallToolResult, error) {
 	s.mu.Lock()
 	settled, sess, status, errMsg := s.settled, s.sess, s.status, s.err
 	toolTimeout := s.cfg.ToolTimeoutDuration()
@@ -477,9 +496,9 @@ func (s *server) call(ctx context.Context, tool string, args json.RawMessage) (s
 		case <-grace.Done():
 			cancel()
 			if ctx.Err() != nil {
-				return "", ctx.Err()
+				return "", nil, ctx.Err()
 			}
-			return "", fmt.Errorf("mcp server %q is still connecting — retry in a moment (/mcp shows status)", s.name)
+			return "", nil, fmt.Errorf("mcp server %q is still connecting — retry in a moment (/mcp shows status)", s.name)
 		}
 		cancel()
 		s.mu.Lock()
@@ -490,13 +509,13 @@ func (s *server) call(ctx context.Context, tool string, args json.RawMessage) (s
 		switch status {
 		case StatusFailed:
 			if errMsg != "" {
-				return "", fmt.Errorf("mcp server %q unavailable: %s (/mcp %s reconnect)", s.name, errMsg, s.name)
+				return "", nil, fmt.Errorf("mcp server %q unavailable: %s (/mcp %s reconnect)", s.name, errMsg, s.name)
 			}
-			return "", fmt.Errorf("mcp server %q unavailable (/mcp %s reconnect)", s.name, s.name)
+			return "", nil, fmt.Errorf("mcp server %q unavailable (/mcp %s reconnect)", s.name, s.name)
 		case StatusDisabled:
-			return "", fmt.Errorf("mcp server %q is disabled (/mcp %s enable)", s.name, s.name)
+			return "", nil, fmt.Errorf("mcp server %q is disabled (/mcp %s enable)", s.name, s.name)
 		default:
-			return "", fmt.Errorf("mcp server %q is %s", s.name, status)
+			return "", nil, fmt.Errorf("mcp server %q is %s", s.name, status)
 		}
 	}
 
@@ -504,7 +523,7 @@ func (s *server) call(ctx context.Context, tool string, args json.RawMessage) (s
 	case s.calling <- struct{}{}:
 		defer func() { <-s.calling }()
 	case <-ctx.Done():
-		return "", ctx.Err()
+		return "", nil, ctx.Err()
 	}
 	// The timeout pauses while the user answers an elicitation form.
 	ctx, cancel := context.WithCancelCause(ctx)
@@ -525,17 +544,17 @@ func (s *server) call(ctx context.Context, tool string, args json.RawMessage) (s
 	var argMap map[string]any
 	if len(args) > 0 {
 		if err := json.Unmarshal(args, &argMap); err != nil {
-			return "", fmt.Errorf("invalid tool arguments: %w", err)
+			return "", nil, fmt.Errorf("invalid tool arguments: %w", err)
 		}
 	}
 	res, err := sess.CallTool(ctx, &sdkmcp.CallToolParams{Name: tool, Arguments: argMap})
 	if err != nil {
 		if errors.Is(context.Cause(ctx), errToolTimeout) {
-			return "", fmt.Errorf("mcp tool %s timed out after %s", tool, toolTimeout)
+			return "", nil, fmt.Errorf("mcp tool %s timed out after %s", tool, toolTimeout)
 		}
-		return "", err
+		return "", nil, err
 	}
-	return flattenResult(res), nil
+	return flattenResult(res), res, nil
 }
 
 func flattenResult(res *sdkmcp.CallToolResult) string {

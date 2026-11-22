@@ -405,10 +405,14 @@ func (s *Server) deleteSession(w http.ResponseWriter, r *http.Request, id string
 		mutationError(w, err)
 		return
 	}
-	if dir := s.previewDir(id); dir == "" {
-	} else if err := os.RemoveAll(dir); err != nil {
-		mutationError(w, err)
-		return
+	for _, dir := range []string{s.previewDir(id), s.mcpResultDir(id)} {
+		if dir == "" {
+			continue
+		}
+		if err := os.RemoveAll(dir); err != nil {
+			mutationError(w, err)
+			return
+		}
 	}
 	cursor, cursorErr := s.store.SummaryCursor(r.Context())
 	if cursorErr != nil {
@@ -495,6 +499,7 @@ func (s *Server) history(w http.ResponseWriter, r *http.Request, id string) {
 		for _, msg := range snap.ActiveMessages {
 			active = append(active, protocol.FromAIMessage(msg))
 		}
+		withHistoryUIResources(id, active)
 		out.ActiveMessages = &active
 	}
 	writeJSON(w, 200, out)
@@ -718,6 +723,10 @@ func (s *Server) publicShare(w http.ResponseWriter, r *http.Request) {
 		}
 		if !meta.ShareRedactTool {
 			public.ToolCalls, public.ToolCallID, public.Name = full.ToolCalls, full.ToolCallID, full.Name
+			// MCP App views need the owner's token; a public share shows text only.
+			for i := range public.ToolCalls {
+				public.ToolCalls[i].UIResource = nil
+			}
 		}
 		if len(public.Content) > 0 || len(public.ToolCalls) > 0 {
 			out.Messages = append(out.Messages, public)

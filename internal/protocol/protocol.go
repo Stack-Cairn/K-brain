@@ -217,6 +217,11 @@ type ToolCall struct {
 	// ToolRunInfo is filled in history once the call has run; absent in
 	// tool.call events and in messages a client sends.
 	ToolRunInfo
+	// UIResource is the MCP App view of a successful MCP tool call, as
+	// tool.result announced it, kept in history so a client can render the
+	// view again (without the inline result: read it from result_url).
+	// capabilities.mcp_apps_structured_content.
+	UIResource *ToolUIResource `json:"ui_resource,omitempty"`
 }
 
 // ToolRunInfo describes how a tool call ran, for display. Every field is
@@ -282,6 +287,21 @@ type ToolUIResource struct {
 	// URL is the backend path that returns the resource's HTML
 	// (GET /v1/sessions/{id}/mcp-ui?server=&uri=), authenticated like other routes.
 	URL string `json:"url"`
+	// ToolName is the server's own name for the tool that ran (not the
+	// model-facing mcp__<server>__<tool> name); capabilities.mcp_apps_structured_content.
+	ToolName string `json:"tool_name,omitempty"`
+	// Result is the server's raw CallToolResult (content, structuredContent,
+	// _meta, isError) for the view's ui/notifications/tool-result. Only in
+	// live tool.result events, and only when it is small enough; otherwise
+	// read it from ResultURL.
+	Result json.RawMessage `json:"result,omitempty"`
+	// ResultURL is the backend path that returns the stored raw result
+	// (GET /v1/sessions/{id}/mcp-ui/results/{ref}); absent when the result
+	// was not kept (none, or larger than the limit).
+	ResultURL string `json:"result_url,omitempty"`
+	// ResultStored says the raw result was stored for ResultURL; the backend
+	// fills URL and ResultURL from it for history views.
+	ResultStored bool `json:"-"`
 }
 
 type Usage struct {
@@ -1009,7 +1029,11 @@ func FromAIMessage(m ai.Message) Message {
 		}
 	}
 	for _, tc := range m.ToolCalls {
-		out.ToolCalls = append(out.ToolCalls, ToolCall{ID: tc.ID, Name: tc.Function.Name, Arguments: json.RawMessage(tc.Function.Arguments), ToolRunInfo: ToolRunInfo{ExitCode: tc.ExitStatus, TimedOut: tc.TimedOut, DurationMs: tc.DurationMs, QuestionAnswers: tc.QuestionAnswers, Elicitations: tc.Elicitations}})
+		call := ToolCall{ID: tc.ID, Name: tc.Function.Name, Arguments: json.RawMessage(tc.Function.Arguments), ToolRunInfo: ToolRunInfo{ExitCode: tc.ExitStatus, TimedOut: tc.TimedOut, DurationMs: tc.DurationMs, QuestionAnswers: tc.QuestionAnswers, Elicitations: tc.Elicitations}}
+		if app := tc.MCPApp; app != nil && app.ServerID != "" && strings.HasPrefix(app.URI, "ui://") {
+			call.UIResource = &ToolUIResource{ServerID: app.ServerID, URI: app.URI, ToolName: app.Tool, ResultStored: app.ResultStored}
+		}
+		out.ToolCalls = append(out.ToolCalls, call)
 	}
 	return out
 }
