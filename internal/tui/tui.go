@@ -195,6 +195,8 @@ type model struct {
 	// fragFilter turns that on, in a real terminal session.
 	frag       mouseFrag
 	fragFilter bool
+	// bgr takes terminal background replies out of the key stream.
+	bgr bgReply
 
 	mouseOn  bool
 	sel      *selection
@@ -476,6 +478,7 @@ func Run(cfg *config.Config, modelName, provName, sysPrompt, resumeID string, ca
 		}
 
 		enableKeyboardEnhancement(os.Stdout)
+		enableSchemeReports(os.Stdout)
 	}
 	if m.cfgExtra == nil {
 		m.cfgExtra = map[string]string{}
@@ -512,6 +515,7 @@ func Run(cfg *config.Config, modelName, provName, sysPrompt, resumeID string, ca
 	}
 
 	{
+		disableSchemeReports(os.Stdout)
 		disableKeyboardEnhancement(os.Stdout)
 	}
 
@@ -905,8 +909,9 @@ func (m *model) Init() tea.Cmd {
 	// start and nothing repaints while the composer sits idle.
 	var cmds []tea.Cmd
 
-	if inTmuxEnv() {
-
+	// The periodic theme check: tmux's client theme, and the background
+	// re-query in a running session.
+	if inTmuxEnv() || tuiRunning {
 		cmds = append(cmds, themePollTick())
 	}
 	if m.initialPrompt != "" {
@@ -925,7 +930,7 @@ type (
 )
 
 func themePollTick() tea.Cmd {
-	return tea.Tick(10*time.Second, themePollFire)
+	return tea.Tick(themePollInterval, themePollFire)
 }
 
 func themePollFire(time.Time) tea.Msg { return themePollMsg{} }
@@ -989,6 +994,9 @@ func (m *model) Update(msg tea.Msg) (_ tea.Model, statusCmd tea.Cmd) {
 		vp.fn(m)
 		return m, nil
 	}
+	if handled, cmd := m.appearanceMsg(msg); handled {
+		return m, cmd
+	}
 	if c, ok := m.statusBefore(msg); ok {
 		return m, c
 	}
@@ -1039,6 +1047,14 @@ func (m *model) Update(msg tea.Msg) (_ tea.Model, statusCmd tea.Cmd) {
 		if !m.themeFollowsTerminal() {
 			return m, themePollTick()
 		}
+		// Re-ask while the window has focus (or focus is not reported);
+		// focus-in asks on its own.
+		if n := m.status().note; !n.focusKnown || n.focused {
+			m.queryAppearance()
+		}
+		if !inTmuxEnv() {
+			return m, themePollTick()
+		}
 		return m, tea.Batch(pollClientTheme, themePollTick())
 
 	case themeSyncMsg:
@@ -1056,12 +1072,16 @@ func (m *model) Update(msg tea.Msg) (_ tea.Model, statusCmd tea.Cmd) {
 		lipgloss.SetHasDarkBackground(!msg.light)
 		bgCache = bgResult{light: msg.light, valid: true}
 
-		m.refreshVP()
+		m.restyleTranscript()
 		word := "dark"
 		if msg.light {
 			word = "light"
 		}
-		m.append(dimStyle.Render("◐ theme: auto → " + word + " (terminal appearance changed)"))
+		name := "auto"
+		if activeTheme != nil && activeTheme.name != defaultThemeName {
+			name = activeTheme.name
+		}
+		m.append(dimStyle.Render(chromeGlyphs("◐ theme: " + name + " → " + word + " (terminal appearance changed)")))
 		return m, nil
 
 	case titleMsg:
