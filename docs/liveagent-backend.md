@@ -151,6 +151,8 @@ CLI 可用 `-config FILE -session-dir DIR` 指定配置与存储目录；省略�
 
 `bash`/`Bash` 命令运行期间，后端以 `tool.status{tool_call_id,status:"running",message}` 推送输出：`message` 是截至此刻的输出尾部快照（最多 4 KiB，尽量从整行开始），客户端整体替换而非拼接；同一调用最多每 500ms 发一次，输出停住后补发最后一份，且全部排在该调用的 `tool.result` 之前。快照只进事件日志，会话历史仍只保存最终的 `tool.result`。不认识该字段的旧客户端可以忽略。
 
+`tool.result` 的 `tool_result` 中，`output` 是工具结果文本（只出现这一次）；`content` 只装工具附加的图片等附件（截图、读取的图片），没有附件时省略，不会重复 `output` 的文本。客户端以 `output` 显示文本、以 `content` 显示图片。
+
 `tool.result` 的 `tool_result` 与会话历史里 assistant 消息的 `tool_calls[]` 带可选的运行信息，只用于展示，模型看到的工具结果文本不变：
 
 - `exit_code`：shell 类工具（`bash`、`Bash`、`ManagedProcess` 的 `status`/`read_log`/`wait`/`stop`、`ProcessWait`、`ProcessStop`）运行或观察到的命令退出码，包括 0；其他工具、超时、被取消或被信号杀死、仍在运行的命令不带该字段。
