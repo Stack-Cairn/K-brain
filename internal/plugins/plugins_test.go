@@ -42,6 +42,10 @@ func TestLoadValidatesUIPanels(t *testing.T) {
 	if err := load(valid); err != nil {
 		t.Fatalf("UI-only plugin without a command: %v", err)
 	}
+	// Unknown fields are ignored (TestLoadIgnoresUnknownManifestFields).
+	if err := load(panel(`"id":"a","title":"A","entry":"a.html","placement":"sidePane","script":"x"`)); err != nil {
+		t.Fatalf("unknown panel field: %v", err)
+	}
 	if err := load(`{"name":"ui","ui":{"root":"web","panels":[{"id":"s","title":"Settings","entry":"index.htm","placement":"settings"}]}}`); err != nil {
 		t.Fatalf("custom root: %v", err)
 	}
@@ -57,7 +61,6 @@ func TestLoadValidatesUIPanels(t *testing.T) {
 		"bad id":                panel(`"id":"../a","title":"A","entry":"a.html","placement":"sidePane"`),
 		"escaping root":         `{"name":"ui","ui":{"root":"../outside","panels":[]}}`,
 		"duplicate id":          `{"name":"ui","ui":{"panels":[{"id":"a","title":"A","entry":"a.html","placement":"sidePane"},{"id":"a","title":"B","entry":"b.html","placement":"sidePane"}]}}`,
-		"unknown panel field":   panel(`"id":"a","title":"A","entry":"a.html","placement":"sidePane","script":"x"`),
 	} {
 		if err := load(manifest); err == nil {
 			t.Errorf("%s: loaded", name)

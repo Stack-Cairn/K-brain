@@ -126,14 +126,26 @@ type pluginView struct {
 }
 
 // pluginContributes lists what a plugin adds. Tools are the model-facing names
-// (plugin_<plugin>_<tool>); hooks are the lifecycle events it runs commands
-// for; prompt says whether it adds system prompt text; ui are its panels.
+// (plugin_<key>_<tool>, see plugins.ToolKey); toolDetails pairs each with the
+// plugin's own name for the tool, which POST /v1/plugins/{id}/tools/call
+// takes; hooks are the lifecycle events it runs commands for; prompt says
+// whether it adds system prompt text; ui are its panels.
 type pluginContributes struct {
-	Tools  []string `json:"tools"`
-	Hooks  []string `json:"hooks"`
-	Prompt bool     `json:"prompt"`
+	Tools       []string         `json:"tools"`
+	ToolDetails []pluginToolView `json:"toolDetails"`
+	Hooks       []string         `json:"hooks"`
+	Prompt      bool             `json:"prompt"`
 	// UI lists the plugin's panels (plugin_ui.go).
 	UI []pluginPanelView `json:"ui"`
+}
+
+// pluginToolView is one entry of contributes.toolDetails.
+type pluginToolView struct {
+	// Name is the tool's name in plugin.json.
+	Name string `json:"name"`
+	// ModelName is the name the model calls it by.
+	ModelName   string `json:"modelName"`
+	Description string `json:"description,omitempty"`
 }
 
 type pluginList struct {
@@ -148,8 +160,11 @@ type pluginList struct {
 func viewPlugin(m *plugins.Manager, p plugins.Plugin) pluginView {
 	view := pluginView{ID: p.Name, Name: p.Name, Version: p.Version, Description: p.Description, Source: m.Source(p), Enabled: p.Enabled, Path: p.Dir,
 		Contributes: pluginContributes{Tools: []string{}, Hooks: []string{}, Prompt: strings.TrimSpace(p.Prompt) != "", UI: []pluginPanelView{}}}
+	view.Contributes.ToolDetails = []pluginToolView{}
 	for _, tool := range p.Tools {
-		view.Contributes.Tools = append(view.Contributes.Tools, "plugin_"+p.Name+"_"+tool.Name)
+		modelName := plugins.ToolName(p.Name, tool.Name)
+		view.Contributes.Tools = append(view.Contributes.Tools, modelName)
+		view.Contributes.ToolDetails = append(view.Contributes.ToolDetails, pluginToolView{Name: tool.Name, ModelName: modelName, Description: tool.Description})
 	}
 	for event, command := range p.Hooks {
 		if strings.TrimSpace(command) != "" {
@@ -457,12 +472,22 @@ func (s *Server) callPluginTool(w http.ResponseWriter, r *http.Request, workdir,
 	if len(args) == 0 {
 		args = json.RawMessage(`{}`)
 	}
-	full := "plugin_" + id + "_" + name
-	var tool *tools.Tool
+	// name is the plugin's own tool name (plugin.json tools[].name); the
+	// model-facing name of one of this plugin's tools is accepted too.
 	list := s.plugins.Tools(workdir)
-	for i := range list {
-		if list[i].Def.Function.Name == full {
-			tool = &list[i]
+	find := func(full string) *tools.Tool {
+		for i := range list {
+			if list[i].Def.Function.Name == full {
+				return &list[i]
+			}
+		}
+		return nil
+	}
+	full := plugins.ToolName(id, name)
+	tool := find(full)
+	if key, own, ok := plugins.ParseToolName(name); tool == nil && ok && key == plugins.ToolKey(id) {
+		if tool = find(name); tool != nil {
+			full, name = name, own
 		}
 	}
 	if tool == nil {
@@ -471,5 +496,5 @@ func (s *Server) callPluginTool(w http.ResponseWriter, r *http.Request, workdir,
 	}
 	ctx := tools.WithGate(r.Context(), func(tools.GateRequest) (tools.GateDecision, string) { return tools.GateAllowOnce, "" })
 	result := tools.ExecuteResult(ctx, []tools.Tool{*tool}, full, args, false)
-	writeJSON(w, http.StatusOK, map[string]any{"version": protocol.Version, "name": full, "output": result.Text, "failed": result.Failed, "cancelled": result.Cancelled})
+	writeJSON(w, http.StatusOK, map[string]any{"version": protocol.Version, "name": full, "toolName": name, "output": result.Text, "failed": result.Failed, "cancelled": result.Cancelled})
 }

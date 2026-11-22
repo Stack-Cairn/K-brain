@@ -136,8 +136,10 @@ func Load(dir string) (Plugin, error) {
 		return Plugin{}, err
 	}
 	var m Manifest
+	// Fields this version does not know are ignored, so a plugin written for
+	// a newer version (or carrying fields for other tools) still loads; the
+	// fields it relies on are validated below.
 	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.DisallowUnknownFields()
 	if err := dec.Decode(&m); err != nil {
 		return Plugin{}, fmt.Errorf("plugin.json: %w", err)
 	}
