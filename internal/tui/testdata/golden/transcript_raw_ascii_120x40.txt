@@ -1,0 +1,40 @@
+|> Why does the cache miss after a resize?
+
+= Thought - 2 lines
+
+* The cache is keyed by **width**.
+|
+| A resize changes the width, so every entry misses once.
+|
+| After that the new width is cached again.
+
++ Bash  grep -n width cache.go
+  ` cache.go:10: key := width + 0
+    cache.go:11: key := width + 1
+    ... +8 lines - alt+o
+    cache.go:20: key := width + 10
+    cache.go:21: key := width + 11
+    cache.go:99: // the stale entry is dropped here
+
+* Keying by width is intended.
+
+| transcript 3/6 - reply              j/k move - [/] turn - e fold - E all - y copy - r raw - v view - / find - Esc back
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+------------------------------------------------------------------------------------------------------------------------
+  > Ask k-brain anything...  ? help - / commands - Shift+Tab mode - Ctrl+P menu
+   Normal                                                                                           kimi-k3-fast - * off

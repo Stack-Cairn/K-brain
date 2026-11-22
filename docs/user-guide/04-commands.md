@@ -18,6 +18,7 @@
 | `/subagents` | 查看 subagent 面板 |
 | `/privacy on\|off\|toggle` | 开关本地隐私网关 |
 | `/ancient on\|off\|toggle` | 开关古人竖排输出模式 |
+| `/vim [on\|off]` | 开关输入框的 vim 模式（默认关闭，见“快捷键”一章） |
 | `/export [path]` | 导出 Markdown、JSONL 或 HTML |
 | `/diff [--staged\|--stat]` | 查看 Git 变更 |
 

@@ -304,7 +304,7 @@ func TestGoldenTranscriptFocus(t *testing.T) {
 	defer SetLightTheme(false)
 	for _, mode := range goldenModes {
 		for _, size := range goldenSizes {
-			for _, scene := range []string{"focus", "viewer"} {
+			for _, scene := range []string{"focus", "viewer", "raw"} {
 				name := fmt.Sprintf("transcript_%s_%s_%dx%d", scene, mode.name, size[0], size[1])
 				t.Run(name, func(t *testing.T) {
 					restore := useProfile(t, mode.profile, mode.dark)
@@ -321,6 +321,8 @@ func TestGoldenTranscriptFocus(t *testing.T) {
 						m = keys(t, m, "alt+up", "k", "k", "k", "h")
 						m.command("/find width")
 						m = keys(t, m, "n")
+					} else if scene == "raw" {
+						m = keys(t, m, "alt+up", "k", "k", "k", "r")
 					} else {
 						m = keys(t, m, "alt+up", "k", "v", "/", "w", "i", "d", "t", "h", "enter")
 					}

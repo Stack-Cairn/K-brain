@@ -64,6 +64,9 @@ func (m *model) infoRow() string {
 
 func (m *model) infoRowAt() (string, int) {
 	left := m.modeChip()
+	if tag := m.vimTag(); tag != "" {
+		left += "  " + tag
+	}
 	if st := m.statusLeft(); st != "" {
 		left += "  " + st
 	}
@@ -182,14 +185,26 @@ func (m *model) footerStats() string {
 		// Unpriced routes still get a sense of spend.
 		parts = append(parts, fmtTok(u.PromptTokens+u.CompletionTokens)+" tok")
 	}
-	if !m.follow && !m.vp.AtBottom() {
-		parts = append(parts, fmt.Sprintf("↑ %d%%", int(m.vp.ScrollPercent()*100)))
+	if m.scrolledUp() {
+		cell := fmt.Sprintf("↑ %d%%", int(m.vp.ScrollPercent()*100))
+		// The way back down, where the footer has room for it.
+		if m.width >= 60 {
+			key := "End"
+			if m.input.Value() != "" {
+				key = "Ctrl+End"
+			}
+			cell += " · " + key + " ↓"
+		}
+		parts = append(parts, cell)
 	}
 	if n := m.runningSubagents(); n > 0 && !m.topPanelShown() {
 		parts = append(parts, fmt.Sprintf("⚙ %d sub", n))
 	}
 	return strings.Join(parts, " · ")
 }
+
+// scrolledUp reports whether the transcript is scrolled away from its end.
+func (m *model) scrolledUp() bool { return !m.follow && !m.vp.AtBottom() }
 
 // contextBarCells is how many cells the footer's context bar spans.
 const contextBarCells = 6

@@ -115,6 +115,10 @@ func TestTokenContrast(t *testing.T) {
 		{tokChipInk, tokAccent, 3},
 		{tokChipInk, tokStateWarn, 3},
 		{tokTextSecondary, tokLineRule, 4.5},
+		{tokTextSecondary, tokDiffAddEmphBG, 4.5},
+		{tokTextSecondary, tokDiffDelEmphBG, 4.5},
+		{tokSynKeyword, tokDiffAddEmphBG, 3},
+		{tokSynString, tokDiffDelEmphBG, 3},
 	} {
 		fg, bg := tokenTable[pair.fg], tokenTable[pair.bg]
 		if got := contrast(t, fg.dark.hex, bg.dark.hex); got < pair.minimum {

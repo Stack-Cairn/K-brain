@@ -131,6 +131,8 @@ func buildStyles() {
 	toolHeadStyle = lipgloss.NewStyle().Bold(true)
 	diffAddStyle = lipgloss.NewStyle().Background(tokColor(tokDiffAddBG))
 	diffDelStyle = lipgloss.NewStyle().Background(tokColor(tokDiffDelBG))
+	diffAddEmphStyle = lipgloss.NewStyle().Background(tokColor(tokDiffAddEmphBG))
+	diffDelEmphStyle = lipgloss.NewStyle().Background(tokColor(tokDiffDelEmphBG))
 	gitRepoStyle = fgTok(tokTextSecondary)
 	bannerFrame = lipgloss.NewStyle().
 		Border(glyphs.Border).

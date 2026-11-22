@@ -1,0 +1,24 @@
+                                        
+[1m[7m●[27m [0mThe cache is keyed by **width**.      [0m
+[1m┃[0m                                       
+[1m┃[0m A resize changes the width, so every e
+[1m┃[0m ntry misses once.                     
+[1m┃[0m                                       
+[1m┃[0m After that the new width is cached aga
+[1m┃[0m in.                                   
+                                        
+[2m◆[0m [1mBash[0m  grep -n width cache.go          [0m
+[2m  └ [0mcache.go:10: key := width + 0       [0m
+    cache.go:11: key := width + 1       
+[2m    ⋯ +8 lines · alt+o[0m                  [0m
+    cache.go:20: key := width + 10      
+    cache.go:21: key := width + 11      
+    cache.go:99: // the stale entry is  
+    dropped here                        
+                                        
+[1m● [0mKeying by width is intended.          [0m
+
+[1m┃ transcript[0m[2m 3/6[0m[2m · reply[0m        [2mEsc back[0m
+────────────────────────────────────────
+  [1m❯ [0m[7mA[0m[2msk k-brain anything…  ? help…[0m      [0m
+  [Normal]          kimi-k3-fast[2m · [0m[1m✦ off[0m

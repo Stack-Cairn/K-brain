@@ -71,6 +71,8 @@ const (
 	tokStateError
 	tokDiffAddBG
 	tokDiffDelBG
+	tokDiffAddEmphBG
+	tokDiffDelEmphBG
 	tokSynKeyword
 	tokSynString
 	tokSynNumber
@@ -112,6 +114,9 @@ var tokenTable = [tokenCount]tokenDef{
 	tokStateError:    {name: "state.error", dark: themeColor{"#e0696a", "167", "9"}, light: themeColor{"#b94b4d", "131", "1"}, mono: monoBold},
 	tokDiffAddBG:     {name: "diff.add.bg", dark: themeColor{"#16301f", "22", ""}, light: themeColor{"#e3f6e7", "194", ""}, surface: true},
 	tokDiffDelBG:     {name: "diff.del.bg", dark: themeColor{"#3a1a1d", "52", ""}, light: themeColor{"#fbe5e5", "224", ""}, surface: true},
+	// The emphasis tints mark the changed words inside a paired -/+ row.
+	tokDiffAddEmphBG: {name: "diff.add.emph.bg", dark: themeColor{"#24563a", "28", ""}, light: themeColor{"#b4e6be", "157", ""}, surface: true},
+	tokDiffDelEmphBG: {name: "diff.del.emph.bg", dark: themeColor{"#6b2a2f", "88", ""}, light: themeColor{"#f5b8b8", "217", ""}, surface: true},
 	tokSynKeyword:    {name: "syn.keyword", dark: themeColor{"#c49bff", "141", "13"}, light: themeColor{"#7d3f9e", "90", "5"}},
 	tokSynString:     {name: "syn.string", dark: themeColor{"#8cc590", "114", "10"}, light: themeColor{"#2f7d3a", "28", "2"}},
 	tokSynNumber:     {name: "syn.number", dark: themeColor{"#e0a85a", "179", "11"}, light: themeColor{"#a8741a", "136", "3"}},

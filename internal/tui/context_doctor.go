@@ -127,7 +127,11 @@ func (m *model) doctorReport() string {
 	}
 	fmt.Fprintf(&b, "  %-*s %7s\n", w, "TOTAL injected before you type", "~"+tok(total))
 	b.WriteString("\nTrim: /mcp <name> disable · /plugins disable NAME · remove a skill from .agents/skills · /context-doctor again")
-	if t := terminalDoctor(); t != "" {
+	t := terminalDoctor()
+	if o := m.optionKeyDoctor(); o != "" {
+		t = strings.TrimPrefix(t+"\n"+o, "\n")
+	}
+	if t != "" {
 		b.WriteString("\n\nTerminal\n" + t)
 	}
 	return b.String()

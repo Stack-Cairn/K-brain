@@ -17,40 +17,44 @@ import (
 )
 
 // legacyHelpKeys is /help's key section as it was written out by hand before
-// the keymap existed, plus the rows given a hint since (Ctrl+P, F2, F1 / ?).
+// the keymap existed, plus the rows given a hint since (Ctrl+P, F2, F1 / ?) and the keys
+// rebound since (Ctrl+K kills to line end, Alt+O expands, Ctrl+E ends the line).
 // Generating it from the keymap must not change a byte, in any language.
 var legacyHelpKeys = []string{
 	"Tab — complete",
 	"Shift+Tab — cycle Normal / Plan / Auto review / Always allow",
-	"Ctrl+K — clear the conversation",
 	"Ctrl+T — subagents dock: ↑/↓ select, Space preview, Enter open, Ctrl+X stop",
 	"Alt+T — expand or collapse the top panel (goal, plan, subagents); a click on its header does the same",
 	"in a subagent view: Enter steers or follows up, Ctrl+X stops, PgUp/PgDn scroll, Esc returns",
 	palHintThinking + " — toggle thinking tokens",
-	"Ctrl+E — expand the last tool result",
+	"Alt+O — expand or collapse the last tool result",
 	"Ctrl+J / Shift+Enter — newline",
 	"Ctrl+G — edit the current draft in an external editor",
 	"Ctrl+V — paste image",
 	"Ctrl+L — redraw the screen",
-	"Esc — interrupt the agent",
+	"Esc (empty composer) / Ctrl+C Ctrl+C — interrupt the agent",
 	"Esc Esc (idle) — " + palDescRewind + " (↑/↓ browse, Enter rewinds, f forks)",
 	"while busy with queued messages: ↑/↓ select, Del removes",
 	"PgUp/PgDn — scroll · wheel — scroll · drag — select/copy text",
+	"End (empty composer) / Ctrl+End — back to the newest output after scrolling up",
 	palHintQuit + " — quit",
 	"Ctrl+P — command palette",
 	"Ctrl+Z / Alt+Z — undo / redo the draft",
-	"Ctrl+W / Ctrl+U / Alt+K / Alt+D — cut word, to line start, to line end, next word · Ctrl+Y paste it back (Alt+Y older)",
+	"Ctrl+W / Ctrl+U / Ctrl+K / Alt+D — cut word, to line start, to line end (also Alt+K), next word · Ctrl+Y paste it back (Alt+Y older)",
+	"Ctrl+A / Ctrl+E — start / end of the line",
 	"Alt+M — multiline mode: Enter adds a line, Ctrl+J sends",
 	"Ctrl+R — search prompt history (Tab: all directories)",
 	"Ctrl+S — stash the draft, or restore it on an empty composer",
 	"mouse in the composer: click moves the cursor, drag selects, double click a word, triple click / Alt+A all · with a selection: Backspace/Del deletes, typing or paste replaces, Ctrl+X cuts, Ctrl+C copies",
+	"Shift+←/→/↑/↓, Shift+Home/End, Alt+Shift+←/→ — select in the composer by character, row, to the line's start / end, by word; typing replaces it, Backspace deletes it, Ctrl+C copies it",
 	"with a queued message selected: Enter sends it now, Ctrl+E edits, Alt+↑/↓ moves",
 	"Alt+E (busy) — edit the last queued message · click a queued message to select it, click it again to edit, its ✗ removes it",
 	"Ctrl+B (busy) — move the running shell command to the background; it keeps running and the agent is told when it exits",
 	"F2 — settings",
-	"Alt+↑ — focus the transcript: j/k select a block, h/l fold / open, e toggle, E fold all, v view, / find, Esc back",
+	"Alt+↑ — focus the transcript: j/k select a block, [/] previous / next prompt, Ctrl+U/Ctrl+D half a page, h/l fold / open, e toggle, E fold all, y copy, r raw markdown, v view, / find, Esc back",
 	"in the block viewer: j/k scroll, Space/PgDn page, g/G top / end, / find, n/N next / previous, Esc back",
 	"F1 / ? (empty composer) — keyboard shortcuts and commands",
+	"/vim — vim mode: Esc for normal mode · h j k l w b e 0 ^ $ move · x dd dw D delete · cw cc C change · yy p yank / put · u undo · i a I A o O insert",
 }
 
 func TestKeymapHelpUnchanged(t *testing.T) {
@@ -70,7 +74,7 @@ func TestKeymapHelpUnchanged(t *testing.T) {
 }
 
 func TestKeymapRowsWellFormed(t *testing.T) {
-	known := []keyContext{keyGlobal, keyComposer, keyBusy, keyIdle, keyQueue, keyMenu, keyDock, keyTaskView, keyTranscript, keyViewer}
+	known := []keyContext{keyGlobal, keyComposer, keyBusy, keyIdle, keyQueue, keyMenu, keyDock, keyTaskView, keyTranscript, keyViewer, keyVim}
 	seen := map[string]bool{}
 	for _, b := range keymap {
 		if b.key == "" || b.action == "" {
@@ -92,6 +96,7 @@ var keyDispatchers = map[keyContext][]string{
 	keyTaskView:   {"taskViewKey"},
 	keyTranscript: {"transcriptFocusKey", "findTypingKey"},
 	keyViewer:     {"blockViewerKey"},
+	keyVim:        {"vimKey"},
 }
 
 func init() {
