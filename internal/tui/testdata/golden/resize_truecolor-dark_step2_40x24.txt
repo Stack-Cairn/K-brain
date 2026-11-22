@@ -20,5 +20,5 @@
 
 ● Stage 2 keeps a checkpoint per
 ────────────────────────────────────────
-  ❯ Ask k-brain anything…  / commands ·
+  ❯ Ask k-brain anything…  / commands…
    Normal   ↑ 23% · kimi-k3-fast · ✦ off

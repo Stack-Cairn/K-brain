@@ -17,7 +17,7 @@
 
 * Keying by width is intended.
 
-| transcript 2/6 - thinking - "width" 1/8  n/N older/newer - / new search - Esc…
+| transcript 2/6 - thinking - "width" 1/8             n/N older/newer - Esc back
 
 --------------------------------------------------------------------------------
   > Ask k-brain anything...  / commands - Shift+Tab mode - Ctrl+P menu

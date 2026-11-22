@@ -20,5 +20,5 @@
 | reject                               |
 +--------------------------------------+
 ----------------------------------------
-  > Ask k-brain anything...  / commands
+  > Ask k-brain anything...  / comman...
    Normal           kimi-k3-fast - * off

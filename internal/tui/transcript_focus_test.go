@@ -433,3 +433,21 @@ func TestFocusFoldsToolGroupsAndDiffs(t *testing.T) {
 		t.Fatalf("/find focused %v", m.focused().kind)
 	}
 }
+
+// The focus bar's hints shed middle entries before the way out: Esc back
+// stays on screen at every width a terminal is likely to have.
+func TestHintBarKeepsEscBack(t *testing.T) {
+	left := "┃ transcript 2/6 · thinking · \"width\" 1/8"
+	for _, w := range []int{40, 60, 80, 120} {
+		got := ansi.Strip(hintBar(left, "n/N older/newer · / new search · Esc back", w))
+		if ansi.StringWidth(got) > w {
+			t.Fatalf("width %d: bar %q overflows", w, got)
+		}
+		if !strings.HasSuffix(got, "Esc back") {
+			t.Fatalf("width %d: bar %q lost Esc back", w, got)
+		}
+	}
+	if got := ansi.Strip(hintBar("x", "a · b · Esc back", 80)); !strings.HasSuffix(got, "a · b · Esc back") {
+		t.Fatalf("roomy bar dropped hints: %q", got)
+	}
+}

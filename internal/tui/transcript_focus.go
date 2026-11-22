@@ -656,7 +656,39 @@ func (m *model) transcriptBarView() string {
 			right = m.tr("n/N older/newer · / new search · Esc back")
 		}
 	}
-	return "\n" + barColumns(left, dimStyle.Render(chromeGlyphs(right)), m.width) + "\n"
+	return "\n" + hintBar(left, right, m.width) + "\n"
+}
+
+// hintBar sets left and a key hint list ("a · b · Esc back") on one row of
+// width cells. Short of room the hints shed their middle entries, then all
+// but the last; the last names the way out and always stays, the left side
+// giving way for it if it must.
+func hintBar(left, hints string, width int) string {
+	width = max(width, 1)
+	lw := ansi.StringWidth(left)
+	if left == "" {
+		lw = -2
+	}
+	right := shedHints(hints, width-lw-2)
+	if rw := ansi.StringWidth(right); lw+2+rw > width && rw+2 < width {
+		left = ansi.Truncate(left, width-rw-2, "…")
+	}
+	return barColumns(left, dimStyle.Render(right), width)
+}
+
+// shedHints is a key hint list cut to room cells by leaving out its middle
+// entries, then all but the last, which names the way out.
+func shedHints(hints string, room int) string {
+	sep := chromeGlyphs(" · ")
+	parts := strings.Split(chromeGlyphs(hints), sep)
+	for len(parts) > 1 && ansi.StringWidth(strings.Join(parts, sep)) > room {
+		if len(parts) > 2 {
+			parts = append(parts[:len(parts)-2], parts[len(parts)-1])
+		} else {
+			parts = parts[1:]
+		}
+	}
+	return strings.Join(parts, sep)
 }
 
 // barColumns sets left and right on one row of width cells. When the two do

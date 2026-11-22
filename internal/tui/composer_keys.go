@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 func newInput() textarea.Model {
@@ -194,7 +195,20 @@ func (m *model) syncInputPlaceholder() {
 	if m.cmp != nil && m.cmp.hs == nil && len(m.cmp.stash) > 0 {
 		m.input.Placeholder = m.tr("draft stashed — Ctrl+S restores it")
 	}
-	m.input.Placeholder = chromeGlyphs(m.input.Placeholder)
+	m.input.Placeholder = fitPlaceholder(chromeGlyphs(m.input.Placeholder), m.input.Width())
+}
+
+// fitPlaceholder is p cut to the composer's one row of width cells, ending in
+// an ellipsis when it had to be cut. The textarea would otherwise word-wrap it
+// and show only the first wrapped line, dropping the rest without a mark. A
+// separator left dangling at the cut goes too.
+func fitPlaceholder(p string, width int) string {
+	if width <= 0 || ansi.StringWidth(p) <= width {
+		return p
+	}
+	ell := ellipsisGlyph()
+	cut := ansi.Truncate(p, max(width-ansi.StringWidth(ell), 0), "")
+	return strings.TrimRight(cut, " ·-") + ell
 }
 
 // composerPreKey handles the editing keys that act on the draft before any

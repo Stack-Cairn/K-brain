@@ -20,5 +20,5 @@
 ▌  idempotent and rerun its tests.
 
 ────────────────────────────────────────
-  ❯ Ask k-brain anything…  / commands ·
+  ❯ Ask k-brain anything…  / commands…
   [Normal]  ↑ 22% · kimi-k3-fast · ✦ off

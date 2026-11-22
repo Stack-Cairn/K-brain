@@ -20,5 +20,5 @@
 
   ⠋ Running a tool…  3s        12s · Esc
 ────────────────────────────────────────
-  ❯ busy — type to queue (sent after the
+  ❯ busy — type to queue (sent after th…
   [Always allow]    kimi-k3-fast · ✦ off

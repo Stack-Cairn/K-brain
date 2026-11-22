@@ -20,5 +20,5 @@
 
 
 ----------------------------------------
-  > Ask k-brain anything...  / commands
+  > Ask k-brain anything...  / comman...
    Plan             kimi-k3-fast - * off

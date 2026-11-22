@@ -9,6 +9,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Stack-Cairn/K-brain/internal/session"
 )
@@ -461,4 +462,39 @@ func TestQueuePaneHintsFitNarrowScreens(t *testing.T) {
 	if v := m.queueView(); !strings.Contains(v, "Enter send now") {
 		t.Fatalf("the most important hint survives at 40 columns:\n%s", v)
 	}
+}
+
+// A placeholder too long for a narrow composer ends in an ellipsis within the
+// row instead of being word-wrapped and silently cut.
+func TestPlaceholderFitsNarrowComposer(t *testing.T) {
+	for _, ascii := range []bool{false, true} {
+		setASCIIGlyphs(ascii)
+		m := compactCmdModel()
+		m.input.SetWidth(38)
+		m.syncInputPlaceholder()
+		p := m.input.Placeholder
+		setASCIIGlyphs(false)
+		if w := ansi.StringWidth(p); w > m.input.Width() {
+			t.Fatalf("ascii=%v: placeholder %q is %d cells, composer has %d", ascii, p, w, m.input.Width())
+		}
+		if !strings.HasSuffix(p, ellipsisGlyphFor(ascii)) {
+			t.Fatalf("ascii=%v: cut placeholder %q has no ellipsis", ascii, p)
+		}
+		if strings.HasSuffix(strings.TrimSuffix(p, ellipsisGlyphFor(ascii)), " ") {
+			t.Fatalf("ascii=%v: placeholder %q leaves a gap before the ellipsis", ascii, p)
+		}
+	}
+	m := compactCmdModel()
+	m.input.SetWidth(200)
+	m.syncInputPlaceholder()
+	if strings.HasSuffix(m.input.Placeholder, "…") && !strings.HasSuffix(inputPlaceholder, "…") {
+		t.Fatalf("a wide composer still cuts the placeholder: %q", m.input.Placeholder)
+	}
+}
+
+func ellipsisGlyphFor(ascii bool) string {
+	if ascii {
+		return "..."
+	}
+	return "…"
 }
