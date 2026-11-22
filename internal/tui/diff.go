@@ -128,10 +128,12 @@ func renderDiffFolded(diff, path string, width, maxRows int) string {
 	return strings.Join(out, "\n")
 }
 
-// diffSpan is a run of code in one style.
+// diffSpan is a run of code in one style. The style is shared by every span
+// drawn alike: a lipgloss.Style is several hundred bytes, and a diff has
+// thousands of spans.
 type diffSpan struct {
 	text  string
-	style lipgloss.Style
+	style *lipgloss.Style
 }
 
 // diffBase is the background a row's cells sit on.
@@ -154,6 +156,24 @@ func diffBase(kind byte, tinted bool) lipgloss.Style {
 // and removed rows take the line colour instead of syntax colours.
 func highlightDiff(rows []diffRow, lexer chroma.Lexer, tinted bool) [][]diffSpan {
 	out := make([][]diffSpan, len(rows))
+	type styleKey struct {
+		kind byte
+		id   tokenID
+		syn  bool
+	}
+	styles := map[styleKey]*lipgloss.Style{}
+	styleOf := func(kind byte, id tokenID, syn bool) *lipgloss.Style {
+		k := styleKey{kind, id, syn}
+		if st, ok := styles[k]; ok {
+			return st
+		}
+		st := diffBase(kind, tinted)
+		if syn {
+			st = synStyle(st, id)
+		}
+		styles[k] = &st
+		return &st
+	}
 	side := func(keep func(byte) bool, use func(byte) bool) {
 		var idx []int
 		var code []string
@@ -163,19 +183,17 @@ func highlightDiff(rows []diffRow, lexer chroma.Lexer, tinted bool) [][]diffSpan
 				code = append(code, strings.ReplaceAll(r.code, "\t", "    "))
 			}
 		}
-		toks := lexLines(strings.Join(code, "\n"), lexer, len(code))
+		toks := lexLinesMemo(strings.Join(code, "\n"), lexer, len(code))
 		for j, i := range idx {
 			if !use(rows[i].kind) {
 				continue
 			}
-			base := diffBase(rows[i].kind, tinted)
 			var spans []diffSpan
+			if len(toks[j]) > 0 {
+				spans = make([]diffSpan, 0, len(toks[j]))
+			}
 			for _, t := range toks[j] {
-				st := base
-				if t.ok {
-					st = synStyle(base, t.id)
-				}
-				spans = append(spans, diffSpan{t.text, st})
+				spans = append(spans, diffSpan{t.text, styleOf(rows[i].kind, t.id, t.ok)})
 			}
 			out[i] = spans
 		}
@@ -185,7 +203,8 @@ func highlightDiff(rows []diffRow, lexer chroma.Lexer, tinted bool) [][]diffSpan
 	if !tinted {
 		for i, r := range rows {
 			if r.kind == '+' || r.kind == '-' {
-				out[i] = []diffSpan{{strings.ReplaceAll(r.code, "\t", "    "), signStyleFor(r.kind)}}
+				st := signStyleFor(r.kind)
+				out[i] = []diffSpan{{strings.ReplaceAll(r.code, "\t", "    "), &st}}
 			}
 		}
 	}

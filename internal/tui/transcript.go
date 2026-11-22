@@ -47,6 +47,8 @@ package tui
 // replacing blocks needs no invalidation: refreshVP notices by each block's
 // uid. A resize or an ancient-mode switch drops only these width-keyed
 // caches; block state (expansion, tool data, uids) is kept.
+// On a transcript that reflows slowly, a burst of resizes is laid out once
+// it stops (reflow.go).
 //
 // A block that changes while it is on screen (a running tool's live output,
 // a reply growing) is updated the same way: change its fields, invalidate,
@@ -456,6 +458,8 @@ type transcriptState struct {
 	// block is open full screen (transcript_focus.go, blockviewer.go).
 	focus  *txFocus
 	viewer *blockViewer
+	// hold coalesces the reflows of a burst of resizes (reflow.go).
+	hold reflowHold
 }
 
 // txs is the transcript state, created on first use (models built directly
@@ -476,7 +480,8 @@ func (m *model) refreshVP() {
 	}
 	tx := m.txs()
 	ix := &tx.ix
-	width := max(m.width, minRenderWidth)
+	width := m.layoutWidth()
+	began := time.Now()
 
 	var anchor txAnchor
 	if !m.follow && m.vp.ix == ix {
@@ -554,6 +559,10 @@ func (m *model) refreshVP() {
 		}
 	}
 	ix.total = line
+	if len(m.blocks) > 1 && start <= 1 {
+		// The whole transcript was laid out: what a resize costs.
+		tx.hold.cost = time.Since(began)
+	}
 
 	m.vp.ix, m.vp.static = ix, nil
 	// The window only clamps against the content height; a stale offset on

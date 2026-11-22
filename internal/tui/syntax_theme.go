@@ -50,17 +50,28 @@ func synStyle(base lipgloss.Style, id tokenID) lipgloss.Style {
 // codeLexer picks a lexer from a fence language or a file name; nil means the
 // code is shown uncoloured rather than guessed at.
 func codeLexer(lang, filename string) chroma.Lexer {
+	lang = strings.TrimSpace(lang)
+	base := ""
+	if filename != "" {
+		base = filepath.Base(filename)
+	}
+	k := lexerKey{lang, base}
+	if l, ok := lexerMemo.Load(k); ok {
+		lx, _ := l.(chroma.Lexer)
+		return lx
+	}
 	var l chroma.Lexer
-	if lang = strings.TrimSpace(lang); lang != "" {
+	if lang != "" {
 		l = lexers.Get(lang)
 	}
-	if l == nil && filename != "" {
-		l = lexers.Match(filepath.Base(filename))
+	if l == nil && base != "" {
+		l = matchLexer(base)
 	}
-	if l == nil {
-		return nil
+	if l != nil {
+		l = chroma.Coalesce(l)
 	}
-	return chroma.Coalesce(l)
+	lexerMemo.Store(k, l)
+	return l
 }
 
 // highlightLines colours code and returns it split into display lines. Every
@@ -69,40 +80,22 @@ func codeLexer(lang, filename string) chroma.Lexer {
 // lands in, which would break the band and the wrap arithmetic.
 func highlightLines(code string, lexer chroma.Lexer, base lipgloss.Style) []string {
 	code = strings.ReplaceAll(code, "\t", "    ")
-	if lexer == nil {
-		lines := strings.Split(code, "\n")
-		for i, l := range lines {
-			if l != "" {
-				lines[i] = base.Render(l)
-			}
-		}
-		return lines
-	}
-	it, err := lexer.Tokenise(nil, code)
-	if err != nil {
-		return highlightLines(code, nil, base)
-	}
-	lines := []string{""}
-	for t := it(); t != chroma.EOF; t = it() {
-		st := base
-		if id, ok := synToken(t.Type); ok {
-			st = synStyle(base, id)
-		}
-		for i, part := range strings.Split(t.Value, "\n") {
-			if i > 0 {
-				lines = append(lines, "")
-			}
-			if part != "" {
-				lines[len(lines)-1] += st.Render(part)
-			}
-		}
-	}
 	// Lexers may append a final newline; keep exactly the input's line count.
-	want := strings.Count(code, "\n") + 1
-	for len(lines) < want {
-		lines = append(lines, "")
+	toks := lexLinesMemo(code, lexer, strings.Count(code, "\n")+1)
+	lines := make([]string, len(toks))
+	var b strings.Builder
+	for i, line := range toks {
+		b.Reset()
+		for _, t := range line {
+			st := base
+			if t.ok {
+				st = synStyle(base, t.id)
+			}
+			b.WriteString(st.Render(t.text))
+		}
+		lines[i] = b.String()
 	}
-	return lines[:want]
+	return lines
 }
 
 // glamourChroma feeds the syn.* tokens to glamour for the code blocks it still

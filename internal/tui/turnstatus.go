@@ -149,7 +149,7 @@ func (m *model) busyRights() []string {
 // been going.
 func (m *model) runningToolActivity() (string, bool) {
 	for i := len(m.blocks) - 1; i >= 0; i-- {
-		b := m.blocks[i]
+		b := &m.blocks[i]
 		if b.kind != blockToolRun || !b.toolRunning || b.toolName == "" {
 			continue
 		}
