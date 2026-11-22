@@ -20,6 +20,14 @@ func (m *model) overlayOwnsKeys() bool {
 // key routes a key press: an open dialog or overlay takes it first, then the
 // composer's editing chords, then the global keys below; whatever is left is
 // a composer key (composer_keys.go).
+// helpKeyOpens reports whether a typed "?" opens /help instead of going into
+// the composer: only on an empty composer that is not taking a name or a
+// history search, and never from a paste.
+func (m *model) helpKeyOpens(msg tea.KeyMsg) bool {
+	return !msg.Paste && !msg.Alt && m.input.Value() == "" && m.namePrompt == nil &&
+		(m.cmp == nil || m.cmp.hs == nil)
+}
+
 func (m *model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// A "press again" notice lasts until its window closes or the next key;
 	// a repeat of the same key shows it again below.
@@ -80,6 +88,9 @@ func (m *model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	if msg.String() == "f2" {
 		return m, m.openSettings()
+	}
+	if k := msg.String(); k == "f1" || (k == "?" && m.helpKeyOpens(msg)) {
+		return m.command("/help")
 	}
 
 	if r, cmd, ok := m.composerPasteKey(msg); ok {

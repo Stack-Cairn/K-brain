@@ -20,5 +20,5 @@
 
 | transcript 2/6 - thinking -…  Esc back
 ----------------------------------------
-  > Ask k-brain anything...  / comman...
+  > Ask k-brain anything...  ? help...
    Normal           kimi-k3-fast - * off

@@ -20,5 +20,5 @@
 │ ↑↓ or 1-9 select · Enter picks · Esc dismisses                               │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ────────────────────────────────────────────────────────────────────────────────
-  ❯ Ask k-brain anything…  / commands · Shift+Tab mode · Ctrl+P menu
+  ❯ Ask k-brain anything…  ? help · / commands · Shift+Tab mode · Ctrl+P menu
    Always allow                                             kimi-k3-fast · ✦ off

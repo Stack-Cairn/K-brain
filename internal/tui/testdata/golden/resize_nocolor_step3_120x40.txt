@@ -36,5 +36,5 @@
   • skip inputs it lists
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  ❯ Ask k-brain anything…  / commands · Shift+Tab mode · Ctrl+P menu
+  ❯ Ask k-brain anything…  ? help · / commands · Shift+Tab mode · Ctrl+P menu
   [Normal]                                                                                  ↑ 30% · kimi-k3-fast · ✦ off

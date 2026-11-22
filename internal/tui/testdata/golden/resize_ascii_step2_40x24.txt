@@ -20,5 +20,5 @@
 |  idempotent and rerun its tests.
 
 ----------------------------------------
-  > Ask k-brain anything...  / comman...
+  > Ask k-brain anything...  ? help...
    Normal  Up 22% - kimi-k3-fast - * off

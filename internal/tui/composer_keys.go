@@ -165,7 +165,7 @@ func (m *model) cursorOnLastLine() bool {
 	return li.RowOffset >= li.Height-1
 }
 
-const inputPlaceholder = "Ask k-brain anything…  / commands · Shift+Tab mode · Ctrl+P menu"
+const inputPlaceholder = "Ask k-brain anything…  ? help · / commands · Shift+Tab mode · Ctrl+P menu"
 
 func (m *model) syncInputPlaceholder() {
 	// Multiline mode swaps the caret for a rail so the mode is visible
@@ -195,18 +195,27 @@ func (m *model) syncInputPlaceholder() {
 	if m.cmp != nil && m.cmp.hs == nil && len(m.cmp.stash) > 0 {
 		m.input.Placeholder = m.tr("draft stashed — Ctrl+S restores it")
 	}
-	m.input.Placeholder = fitPlaceholder(chromeGlyphs(m.input.Placeholder), m.input.Width())
+	m.input.Placeholder = fitPlaceholder(m.input.Placeholder, m.input.Width())
 }
 
-// fitPlaceholder is p cut to the composer's one row of width cells, ending in
-// an ellipsis when it had to be cut. The textarea would otherwise word-wrap it
-// and show only the first wrapped line, dropping the rest without a mark. A
-// separator left dangling at the cut goes too.
-func fitPlaceholder(p string, width int) string {
+// fitPlaceholder is the placeholder raw, chrome glyphs swapped in, cut to the
+// composer's one row of width cells and ending in an ellipsis when it had to
+// be cut. The textarea would otherwise word-wrap it and show only the first
+// wrapped line, dropping the rest without a mark. Whole " · " hints go first;
+// a single part that is still too wide is cut mid-text.
+func fitPlaceholder(raw string, width int) string {
+	p := chromeGlyphs(raw)
 	if width <= 0 || ansi.StringWidth(p) <= width {
 		return p
 	}
 	ell := ellipsisGlyph()
+	parts := strings.Split(raw, " · ")
+	for len(parts) > 1 {
+		parts = parts[:len(parts)-1]
+		if s := chromeGlyphs(strings.Join(parts, " · ")) + ell; ansi.StringWidth(s) <= width {
+			return s
+		}
+	}
 	cut := ansi.Truncate(p, max(width-ansi.StringWidth(ell), 0), "")
 	return strings.TrimRight(cut, " ·-") + ell
 }
