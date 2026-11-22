@@ -38,7 +38,7 @@ func TestHelpOpensCheatsheetFromKeymap(t *testing.T) {
 		t.Fatal("/help on an interactive screen should open the cheatsheet")
 	}
 	v := surfScreen(m)
-	for _, want := range []string{"Keyboard shortcuts", "Anywhere", "Ctrl+K", "clear the conversation"} {
+	for _, want := range []string{"Keyboard shortcuts", "Anywhere", "Alt+O", "expand or collapse the last tool result"} {
 		if !strings.Contains(v, want) {
 			t.Fatalf("cheatsheet lacks %q:\n%s", want, v)
 		}
@@ -78,7 +78,7 @@ func TestHelpOpensCheatsheetFromKeymap(t *testing.T) {
 func TestHelpTextFallback(t *testing.T) {
 	m := surfaceModel(t)
 	m.command("/help text")
-	if m.surfaceOpen() || !strings.Contains(lastBlock(m), "Ctrl+K — clear the conversation") {
+	if m.surfaceOpen() || !strings.Contains(lastBlock(m), "Alt+O — expand or collapse the last tool result") {
 		t.Fatal("/help text prints the plain listing")
 	}
 	c := compactCmdModel()

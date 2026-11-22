@@ -13,7 +13,7 @@ import (
 //	◆ Read 3 files, searched 2 patterns                        ✓ 0.4s
 //	  └ status.go, main.go, view.go, asJSON, TODO
 //
-// Expanded (ctrl+e or a click), the group lists each call with its own count
+// Expanded (alt+o or a click), the group lists each call with its own count
 // and duration. Only finished calls that went fine join a group: a failure,
 // a running call or any other tool ends the run, and a result the reader
 // expanded by hand stays as it is. A group is a blockTool whose view

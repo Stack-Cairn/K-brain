@@ -326,8 +326,13 @@ func (m *model) composerPreKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 	case msg.Type == tea.KeyCtrlU:
 		m.composerKill(killToLineStart)
 		return m, nil, true
-	case k == "alt+k":
+	case msg.Type == tea.KeyCtrlK || k == "alt+k":
 		m.composerKill(killToLineEnd)
+		return m, nil, true
+	case msg.Type == tea.KeyCtrlE:
+		// End of line, as in a shell; the queue pane above keeps Ctrl+E for
+		// editing a selected message, where the composer is empty anyway.
+		m.input.CursorEnd()
 		return m, nil, true
 	case k == "alt+d":
 		m.composerKill(killAlnumWordFwd)

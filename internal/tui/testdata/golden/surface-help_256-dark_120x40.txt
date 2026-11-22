@@ -4,11 +4,10 @@
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   Anywhere
 ❯ Shift+Tab                          cycle the permission mode
-  Ctrl+K                             clear the conversation
   Ctrl+T                             focus the subagent dock
   Alt+T                              expand or collapse the top panel (goal, plan, subagents); a click on its header …
   Ctrl+O                             show or hide thinking tokens
-  Ctrl+E                             expand the last tool result
+  Alt+O                              expand or collapse the last tool result
   Ctrl+G                             edit the draft in an external editor
   Ctrl+V                             paste an image
   Ctrl+L                             redraw the screen
@@ -31,6 +30,7 @@
   Alt+Z                              redo the draft edit
   Ctrl+W / Alt+Backspace             cut the word before the cursor
   Ctrl+U                             cut to the start of the line
+  Ctrl+K / Alt+K                     cut to the end of the line
   ↓ 60 more
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   Shift+Tab  cycle the permission mode

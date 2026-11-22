@@ -307,7 +307,7 @@ type model struct {
 	// area at the end of the block rather than loose fields elsewhere in
 	// model, so branches for different areas merge without conflicts.
 	tx *transcriptState // transcript engine (transcript.go)
-	// expandKeyAt is 1 + the index of the block Ctrl+E toggles, 0 for none
+	// expandKeyAt is 1 + the index of the block Alt+O toggles, 0 for none
 	// (syncExpandTarget).
 	expandKeyAt int
 	cmp         *composerState   // composer: undo, kill ring, chips, stash, history search, queue editing

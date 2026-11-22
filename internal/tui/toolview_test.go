@@ -307,7 +307,7 @@ func TestRenderDiffWrapsInsteadOfTruncating(t *testing.T) {
 		t.Fatalf("wrapped row lost its tail:\n%s", out)
 	}
 	folded := ansi.Strip(renderDiffFolded(sampleDiff, "main.go", 80, 2, true))
-	if !strings.Contains(folded, glyphs.Fold+" +3 lines · ctrl+e") || strings.Contains(folded, "12  ") {
+	if !strings.Contains(folded, glyphs.Fold+" +3 lines · alt+o") || strings.Contains(folded, "12  ") {
 		t.Fatalf("folded diff wrong:\n%s", folded)
 	}
 }

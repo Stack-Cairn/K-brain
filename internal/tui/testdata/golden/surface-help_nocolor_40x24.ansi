@@ -4,16 +4,16 @@
 ────────────────────────────────────────
   [2mAnywhere[0m
 [1;7m❯ Shift+Tab      cycle the permission… [0m
-  Ctrl+K         clear the conversati…[2m[0m
   Ctrl+T         focus the subagent d…[2m[0m
   Alt+T          expand or collapse t…[2m[0m
   Ctrl+O         show or hide thinkin…[2m[0m
-  Ctrl+E         expand the last tool…[2m[0m
+  Alt+O          expand or collapse t…[2m[0m
   Ctrl+G         edit the draft in an…[2m[0m
   Ctrl+V         paste an image[2m[0m
   Ctrl+L         redraw the screen[2m[0m
   PgUp / PgDn    scroll the transcript[2m[0m
   Ctrl+C Ctrl+C  quit[2m[0m
+  Ctrl+P         open the command pal…[2m[0m
 [2m  ↓ 75 more[0m
 ────────────────────────────────────────
   [1mShift+Tab[0m  cycle the permission mode

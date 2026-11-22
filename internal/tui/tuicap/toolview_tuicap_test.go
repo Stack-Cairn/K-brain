@@ -64,9 +64,9 @@ func TestToolRowsShowExitBadgeAndDiff(t *testing.T) {
 			t.Errorf("screen missing %q", want)
 		}
 	}
-	// Ctrl+E acts on the last tool block, the edit, so only that one names it.
-	if strings.Contains(screen, "+6 lines · ctrl+e") {
-		t.Error("the shell output's fold names ctrl+e, which toggles the edit below it")
+	// Alt+O acts on the last tool block, the edit, so only that one names it.
+	if strings.Contains(screen, "+6 lines · alt+o") {
+		t.Error("the shell output's fold names alt+o, which toggles the edit below it")
 	}
 	if strings.Contains(screen, "(exit: exit status 3)") {
 		t.Error("the badge says the exit status; the output should not repeat it")

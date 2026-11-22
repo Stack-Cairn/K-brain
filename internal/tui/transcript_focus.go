@@ -727,13 +727,13 @@ func (m *model) findCommand(q string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// expandTargetKind reports the kinds Ctrl+E toggles: tool results and hosted
+// expandTargetKind reports the kinds Alt+O toggles: tool results and hosted
 // searches, the blocks that draw a fold row.
 func expandTargetKind(k blockKind) bool {
 	return k == blockTool || k == blockHostedSearch
 }
 
-// expandTarget is the index of the block Ctrl+E toggles: the last tool
+// expandTarget is the index of the block Alt+O toggles: the last tool
 // result or hosted search. -1 when there is none.
 func (m *model) expandTarget() int {
 	for i := len(m.blocks) - 1; i >= 0; i-- {
@@ -744,7 +744,7 @@ func (m *model) expandTarget() int {
 	return -1
 }
 
-// syncExpandTarget moves the expandKey mark to the block Ctrl+E toggles,
+// syncExpandTarget moves the expandKey mark to the block Alt+O toggles,
 // redrawing the blocks it leaves and reaches. m.expandKeyAt remembers where
 // it was, so the common case touches two blocks rather than all of them.
 func (m *model) syncExpandTarget() {

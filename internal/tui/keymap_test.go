@@ -17,17 +17,17 @@ import (
 )
 
 // legacyHelpKeys is /help's key section as it was written out by hand before
-// the keymap existed, plus the rows given a hint since (Ctrl+P, F2, F1 / ?).
+// the keymap existed, plus the rows given a hint since (Ctrl+P, F2, F1 / ?) and the keys
+// rebound since (Ctrl+K kills to line end, Alt+O expands, Ctrl+E ends the line).
 // Generating it from the keymap must not change a byte, in any language.
 var legacyHelpKeys = []string{
 	"Tab — complete",
 	"Shift+Tab — cycle Normal / Plan / Auto review / Always allow",
-	"Ctrl+K — clear the conversation",
 	"Ctrl+T — subagents dock: ↑/↓ select, Space preview, Enter open, Ctrl+X stop",
 	"Alt+T — expand or collapse the top panel (goal, plan, subagents); a click on its header does the same",
 	"in a subagent view: Enter steers or follows up, Ctrl+X stops, PgUp/PgDn scroll, Esc returns",
 	palHintThinking + " — toggle thinking tokens",
-	"Ctrl+E — expand the last tool result",
+	"Alt+O — expand or collapse the last tool result",
 	"Ctrl+J / Shift+Enter — newline",
 	"Ctrl+G — edit the current draft in an external editor",
 	"Ctrl+V — paste image",
@@ -39,7 +39,8 @@ var legacyHelpKeys = []string{
 	palHintQuit + " — quit",
 	"Ctrl+P — command palette",
 	"Ctrl+Z / Alt+Z — undo / redo the draft",
-	"Ctrl+W / Ctrl+U / Alt+K / Alt+D — cut word, to line start, to line end, next word · Ctrl+Y paste it back (Alt+Y older)",
+	"Ctrl+W / Ctrl+U / Ctrl+K / Alt+D — cut word, to line start, to line end (also Alt+K), next word · Ctrl+Y paste it back (Alt+Y older)",
+	"Ctrl+A / Ctrl+E — start / end of the line",
 	"Alt+M — multiline mode: Enter adds a line, Ctrl+J sends",
 	"Ctrl+R — search prompt history (Tab: all directories)",
 	"Ctrl+S — stash the draft, or restore it on an empty composer",

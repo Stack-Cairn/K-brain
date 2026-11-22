@@ -102,7 +102,7 @@ func renderDiff(diff, path string, width int) string {
 }
 
 // renderDiffFolded is renderDiff showing at most maxRows rows (0: all),
-// with a "⋯ +N lines" row for the rest, naming ctrl+e when key is set.
+// with a "⋯ +N lines" row for the rest, naming alt+o when key is set.
 func renderDiffFolded(diff, path string, width, maxRows int, key bool) string {
 	width = max(width, minRenderWidth)
 	rows := strings.Split(strings.TrimRight(diff, "\n"), "\n")

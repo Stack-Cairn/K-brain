@@ -15,11 +15,10 @@
 | 快捷键 | 作用 |
 |---|---|
 | `Shift+Tab` | 切换权限模式：Normal、Plan、Auto review、Always allow |
-| `Ctrl+K` | 清空当前会话 |
 | `Ctrl+T` | 聚焦 subagent 面板（见下文） |
 | `Alt+T` | 展开或折叠顶部面板（目标、计划、subagent）；点击面板标题也可以 |
 | `Ctrl+O` | 显示或隐藏思考内容 |
-| `Ctrl+E` | 展开或折叠最近一个工具结果（带 `ctrl+e` 提示的那一个） |
+| `Alt+O` | 展开或折叠最近一个工具结果（折叠行末尾带 `alt+o` 提示的那一个） |
 | `Ctrl+G` | 用外部编辑器编辑草稿 |
 | `Ctrl+V` | 粘贴图片 |
 | `Ctrl+L` | 重绘屏幕 |
@@ -31,6 +30,8 @@
 | `F1` | 打开快捷键速查表 |
 
 **输入框**
+
+输入框的编辑键沿用终端（readline）习惯：`Ctrl+K` 剪切到行尾、`Ctrl+E` 移到行尾、`Ctrl+U` 剪切到行首。清空对话只能用 `/clear`，没有快捷键。
 
 | 快捷键 | 作用 |
 |---|---|
@@ -44,9 +45,10 @@
 | `Alt+M` | 多行模式：`Enter` 换行，`Ctrl+J` 发送 |
 | `Ctrl+Z`（`Ctrl+_`） / `Alt+Z` | 撤销 / 重做草稿编辑 |
 | `Ctrl+W`（`Alt+Backspace`） | 剪切光标前的一个词 |
-| `Ctrl+U` / `Alt+K` | 剪切到行首 / 行尾 |
+| `Ctrl+U` / `Ctrl+K`（`Alt+K`） | 剪切到行首 / 行尾 |
 | `Alt+D` | 剪切下一个词 |
 | `Ctrl+Y` / `Alt+Y` | 粘贴最近剪切的内容 / 换成更早剪切的内容 |
+| `Ctrl+A` / `Ctrl+E` | 光标移到行首 / 行尾 |
 | `Alt+B` / `Alt+←` | 光标左移一个词 |
 | `←` / `→` | 跳过附件标记 |
 | `Alt+A` | 全选草稿；有选区时 `Ctrl+X` 剪切、`Ctrl+C` 复制，`Backspace`/`Del` 删除，输入或粘贴替换 |
@@ -144,7 +146,7 @@ subagent 面板和 subagent 视图的按键见下文。
   ⎿ ◌ running · 2 tools · Grep(LoadConfig) · 12s · 3.4k tok · Ctrl+T view
 ```
 
-后台任务的状态行会显示任务 ID，结束后变成 `⎿ ✓ <id> done · 5 tools · 43s · 12.3k tok`。后台完成通知以状态行（`◆ subagent <id> done · …`，报告默认折叠，`Ctrl+E` 展开）显示，不会显示成用户输入；它以后台消息身份发给模型。
+后台任务的状态行会显示任务 ID，结束后变成 `⎿ ✓ <id> done · 5 tools · 43s · 12.3k tok`。后台完成通知以状态行（`◆ subagent <id> done · …`，报告默认折叠，`Alt+O` 展开）显示，不会显示成用户输入；它以后台消息身份发给模型。
 
 | 按键（面板聚焦时） | 作用 |
 |---|---|

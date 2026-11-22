@@ -4,11 +4,10 @@
 [90m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [90mAnywhere[0m
 [1;96m❯ Shift+Tab                          cycle the permission mode                                                         [0m
-  Ctrl+K                             [37mclear the conversation[0m[37m[0m
   Ctrl+T                             [37mfocus the subagent dock[0m[37m[0m
   Alt+T                              [37mexpand or collapse the top panel (goal, plan, subagents); a click on its header …[0m[37m[0m
   Ctrl+O                             [37mshow or hide thinking tokens[0m[37m[0m
-  Ctrl+E                             [37mexpand the last tool result[0m[37m[0m
+  Alt+O                              [37mexpand or collapse the last tool result[0m[37m[0m
   Ctrl+G                             [37medit the draft in an external editor[0m[37m[0m
   Ctrl+V                             [37mpaste an image[0m[37m[0m
   Ctrl+L                             [37mredraw the screen[0m[37m[0m
@@ -31,6 +30,7 @@
   Alt+Z                              [37mredo the draft edit[0m[37m[0m
   Ctrl+W / Alt+Backspace             [37mcut the word before the cursor[0m[37m[0m
   Ctrl+U                             [37mcut to the start of the line[0m[37m[0m
+  Ctrl+K / Alt+K                     [37mcut to the end of the line[0m[37m[0m
 [37m  ↓ 60 more[0m
 [90m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [1mShift+Tab[0m  [37mcycle the permission mode[0m

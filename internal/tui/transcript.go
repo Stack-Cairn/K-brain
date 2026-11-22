@@ -26,7 +26,7 @@ package tui
 //	func init() {
 //		registerBlockKind(blockBashRun, blockKindSpec{
 //			render: renderBashRun,
-//			toggle: toggleExpanded, // foldable with click / ctrl+e
+//			toggle: toggleExpanded, // foldable with click / alt+o
 //		})
 //	}
 //
@@ -333,7 +333,7 @@ type block struct {
 	// folded cuts a kind without a toggle of its own to its first row
 	// (transcript_focus.go).
 	folded bool
-	// expandKey marks the block Ctrl+E toggles: only its fold row names the
+	// expandKey marks the block Alt+O toggles: only its fold row names the
 	// key (syncExpandTarget).
 	expandKey bool
 }

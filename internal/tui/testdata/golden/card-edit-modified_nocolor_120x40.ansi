@@ -14,7 +14,7 @@
 [1m│[0m [2m  54  [0m[1m-[0m [1m    verbose := flags.Bool("v4", false, "verbose")[0m                                                            [1m│[0m
 [1m│[0m [2m  54  [0m+     asJSON4 := flags.Bool("json4", false, "print JSON")                                                      [1m│[0m
 [1m│[0m [2m  55  [0m[1m-[0m [1m    verbose := flags.Bool("v5", false, "verbose")[0m                                                            [1m│[0m
-[1m│[0m [2m    ⋯ +11 lines · ctrl+e[0m                                                                                             [1m│[0m
+[1m│[0m [2m    ⋯ +11 lines · alt+o[0m                                                                                              [1m│[0m
 [1m│[0m                                                                                                                      [1m│[0m
 [1m│[0m [2mNormal mode confirms commands and file changes[0m                                                                       [1m│[0m
 [1m│[0m                                                                                                                      [1m│[0m
