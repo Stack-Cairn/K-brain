@@ -122,7 +122,7 @@ var helpActionDesc = map[string]string{
 var helpKeyLabel = map[string]string{
 	"idle/rewind":    "Esc Esc",
 	"global/quit":    "Ctrl+C Ctrl+C",
-	"busy/interrupt": "Esc / Ctrl+C",
+	"busy/interrupt": "Esc / Ctrl+C Ctrl+C",
 }
 
 // prettyKey turns a bubbletea key name into the label the cheatsheet shows.

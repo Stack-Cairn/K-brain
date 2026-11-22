@@ -138,6 +138,21 @@ func (r *retryState) label(m *model, now time.Time) string {
 	return s
 }
 
+// escInterrupts reports whether Esc, pressed now, interrupts the turn (see
+// key): only while the composer is empty and nothing it holds — a selected
+// or edited queued message, a selection, the transcript focus — takes Esc
+// first. Otherwise Ctrl+C Ctrl+C is the way to interrupt. It picks the busy
+// row's hint, so it does not look at whether a turn is running.
+func (m *model) escInterrupts() bool {
+	if strings.TrimSpace(m.input.Value()) != "" {
+		return false
+	}
+	if m.queueFocused() || m.editingQueued() != nil || m.menu != nil || m.namePrompt != nil {
+		return false
+	}
+	return m.tx == nil || (m.tx.focus == nil && m.tx.viewer == nil)
+}
+
 // busyRights are the right-cell variants from fullest to tightest.
 func (m *model) busyRights() []string {
 	st := m.status()
@@ -146,7 +161,11 @@ func (m *model) busyRights() []string {
 	case m.iactive != nil:
 		hint, short = "bash (interactive) — type to respond · Ctrl+C Ctrl+C to cancel", "Ctrl+C Ctrl+C"
 	case m.interrupt1:
-		hint, short = strings.TrimPrefix(m.tr(" · Esc again to interrupt"), " · "), "Esc"
+		// The first Ctrl+C armed the interrupt: the second is what sends it.
+		hint, short = m.tr("Ctrl+C again to interrupt"), "Ctrl+C"
+	case !m.escInterrupts():
+		// Esc would deal with the draft, the queue or the selection first.
+		hint, short = m.tr("Ctrl+C Ctrl+C to interrupt"), "Ctrl+C Ctrl+C"
 	case m.permDialog != nil || m.askDialog != nil || m.planOpen() || m.elicitOpen():
 		hint, short = "", ""
 	}

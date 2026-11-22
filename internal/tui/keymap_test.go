@@ -32,7 +32,7 @@ var legacyHelpKeys = []string{
 	"Ctrl+G — edit the current draft in an external editor",
 	"Ctrl+V — paste image",
 	"Ctrl+L — redraw the screen",
-	"Esc — interrupt the agent",
+	"Esc (empty composer) / Ctrl+C Ctrl+C — interrupt the agent",
 	"Esc Esc (idle) — " + palDescRewind + " (↑/↓ browse, Enter rewinds, f forks)",
 	"while busy with queued messages: ↑/↓ select, Del removes",
 	"PgUp/PgDn — scroll · wheel — scroll · drag — select/copy text",
