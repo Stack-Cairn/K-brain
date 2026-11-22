@@ -53,7 +53,7 @@ func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"statuses": s.mcp.Statuses()})
 	case r.Method == http.MethodGet && r.URL.Path == "/v1/mcp/tools":
 		request := mcpToolsRequest{CWD: r.URL.Query().Get("cwd"), ServerIDs: splitIDs(r.URL.Query().Get("server_ids"))}
-		writeJSON(w, http.StatusOK, map[string]any{"tools": toolViews(s.mcp.ToolsFor(r.Context(), request.CWD, request.ServerIDs))})
+		writeJSON(w, http.StatusOK, map[string]any{"tools": s.mcpToolViews(request.CWD, s.mcp.ToolsFor(r.Context(), request.CWD, request.ServerIDs))})
 	case r.Method == http.MethodPost && r.URL.Path == "/v1/mcp/search":
 		var request mcpSearchRequest
 		if decodeJSON(w, r, &request) != nil {
@@ -63,7 +63,7 @@ func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
 			writeJSONError(w, http.StatusBadRequest, "query is required")
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"tools": toolViews(s.mcp.Search(r.Context(), request.Query, request.CWD, request.ServerIDs, request.MaxResult))})
+		writeJSON(w, http.StatusOK, map[string]any{"tools": s.mcpToolViews(request.CWD, s.mcp.Search(r.Context(), request.Query, request.CWD, request.ServerIDs, request.MaxResult))})
 	case r.Method == http.MethodPost && r.URL.Path == "/v1/mcp/tools/call":
 		var request mcpCallRequest
 		if decodeJSON(w, r, &request) != nil {
@@ -79,6 +79,23 @@ func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeJSONError(w, http.StatusNotFound, "MCP route not found")
 	}
+}
+
+// mcpToolViews lists tools for the MCP routes, with uiResourceUri on tools
+// that declare an MCP App view.
+func (s *Server) mcpToolViews(cwd string, list []tools.Tool) []map[string]any {
+	names := make([]string, 0, len(list))
+	for _, tool := range list {
+		names = append(names, tool.Def.Function.Name)
+	}
+	uis := s.mcp.ToolUIs(cwd, names)
+	out := toolViews(list)
+	for _, view := range out {
+		if ui, ok := uis[view["name"].(string)]; ok {
+			view["uiResourceUri"] = ui.URI
+		}
+	}
+	return out
 }
 
 func toolViews(list []tools.Tool) []map[string]any {

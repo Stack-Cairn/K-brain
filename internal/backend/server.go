@@ -674,6 +674,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleQueue(w, r, id, len(parts) == 3)
 		return
 	}
+	if len(parts) == 2 && parts[1] == "mcp-ui" {
+		s.serveMCPUI(w, r, id)
+		return
+	}
 	if len(parts) == 2 && parts[1] == "command-notes" {
 		s.handleCommandNote(w, r, id)
 		return
@@ -1855,7 +1859,7 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, end func(),
 		_, _ = rt.publish(protocol.EventToolCall, protocol.ToolCallEvent{ToolCall: protocol.ToolCall{ID: id, Name: name, Arguments: json.RawMessage(args)}}, "")
 	}, OnToolResult: func(id, name string, result tools.Result) {
 		toolOutput.finish(id)
-		_, _ = rt.publish(protocol.EventToolResult, protocol.ToolResultEvent{ToolResult: protocol.ToolResult{ID: id, Name: name, Output: result.Text, Content: protocol.FromAIMessage(ai.Message{Role: "tool", Parts: result.Parts}).Content, Failed: result.Failed, Cancelled: result.Cancelled, ToolRunInfo: toolRunInfo(result)}}, "")
+		_, _ = rt.publish(protocol.EventToolResult, protocol.ToolResultEvent{ToolResult: protocol.ToolResult{ID: id, Name: name, Output: result.Text, Content: protocol.FromAIMessage(ai.Message{Role: "tool", Parts: result.Parts}).Content, Failed: result.Failed, Cancelled: result.Cancelled, UIResource: s.toolUIResource(rt.id, rt.agent.WorkingDir, name, result), ToolRunInfo: toolRunInfo(result)}}, "")
 	}, OnToolOutput: toolOutput.update, OnUsage: func(u ai.Usage) {
 		_, _ = rt.publish(protocol.EventUsage, protocol.Usage{InputTokens: u.PromptTokens, OutputTokens: u.CompletionTokens, CachedTokens: u.Cached(), CacheWriteTokens: u.CacheWrite()}, "")
 	}}

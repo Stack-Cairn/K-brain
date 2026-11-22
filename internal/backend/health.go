@@ -86,6 +86,11 @@ type healthCapabilities struct {
 	// their files read-only for sandboxed frames, and POST
 	// /v1/plugins/{id}/tools/call runs a plugin's own tools for its panel.
 	PluginUI int `json:"plugin_ui"`
+	// MCPApps is 1 where tool.result carries ui_resource for MCP tools whose
+	// _meta declares a ui:// view, GET /v1/mcp/tools marks them with
+	// uiResourceUri, and GET /v1/sessions/{id}/mcp-ui?server=&uri= returns the
+	// view's HTML (resources/read) with sandbox headers.
+	MCPApps int `json:"mcp_apps"`
 }
 
 // healthRunSandboxV1 describes per-run sandboxing (options.sandbox). Clients
@@ -200,6 +205,7 @@ func (s *Server) health() healthResponse {
 			FolderTrust:             1,
 			Plugins:                 1,
 			PluginUI:                1,
+			MCPApps:                 1,
 		},
 		HostBridge: s.hostBridge.status(),
 	}

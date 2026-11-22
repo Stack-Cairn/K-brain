@@ -105,6 +105,7 @@ VITE_KBRAIN_TOKEN=<backend-token>
 | GET / POST / DELETE | `/v1/plugins`、`/v1/plugins/{id}/enable|disable`、`/v1/plugins/install`、`/v1/plugins/reload` | 列出（可长轮询）/ 启用 / 停用 / 安装 / 删除 / 重新扫描插件；见下文，`capabilities.plugins` 表示支持 |
 | POST | `/v1/plugins/{id}/tools/call` | 为插件界面执行该插件自己的工具；见下文“插件界面”，`capabilities.plugin_ui` 表示支持 |
 | GET / HEAD | `/v1/plugin-assets/{grant}/{plugin}/{path}` | 只读提供插件界面文件，供沙箱 iframe 加载；**不需要令牌**（能力 URL），见下文“插件界面” |
+| GET | `/v1/sessions/{id}/mcp-ui?server=&uri=` | 读取 MCP 工具声明的界面资源（`ui://`）HTML，带沙箱响应头；见下文“MCP 应用界面”，`capabilities.mcp_apps` 表示支持 |
 
 列表支持 `page`、`page_size`、`cwd`、`cwd_empty`、`shared`、`pinned`、`archived`，返回 `sessions`、`total_count`、`epoch` 和字符串 `revision`。`/v1/health` 的 `capabilities.session_changes: 2` 表示同时支持不可变快照、增量、pinned、workdirs、字符串游标和过期 reset；客户端必须探测完整契约后才能放宽旧轮询。
 
@@ -690,6 +691,28 @@ Cross-Origin-Resource-Policy: cross-origin
 `POST /v1/plugins/{id}/tools/call`，请求体 `{"name":"<清单里的工具名>","arguments":{...},"workdir"?:"<绝对路径>"}`，需要令牌：执行插件 `{id}` 自己的工具，返回 `{"version","name":"plugin_<id>_<工具>","output","failed","cancelled"}`。插件停用、项目未受信任或工具不存在返回 404，缺少 `name` 返回 400。这条调用不在运行中，不会弹出审批：客户端（面板的 `host.callTool`）必须先征得用户同意。
 
 面板与宿主之间的 postMessage 协议（JSON-RPC 2.0：`host.initialize`、`host.getTheme`、`host.notify`、`host.openFile`、`host.callTool` 与 `panel.*` 通知）和 iframe 的沙箱要求见 [sandboxed-ui.md](sandboxed-ui.md)。
+
+### MCP 应用界面（`capabilities.mcp_apps: 1`）
+
+MCP 工具可以在 `tools/list` 的 `_meta` 里声明一个界面资源：`_meta.ui.resourceUri`（早期草案的扁平键 `_meta["ui/resourceUri"]` 也认），值必须是 `ui://` URI，其他值忽略。客户端在工具结果旁的沙箱 iframe 里显示它。
+
+- `tool.result`：MCP 工具**成功**返回、所在 server 已启用且 `workspaceRoots` 允许会话工作目录、`policy` 不是 `deny` 时，`tool_result` 多一项 `ui_resource`：
+
+```json
+{"tool_result": {
+  "id": "call_1", "name": "mcp__apps__board", "output": "board ready",
+  "ui_resource": {"server_id": "apps", "uri": "ui://board/view.html",
+                  "url": "/v1/sessions/s_123/mcp-ui?server=apps&uri=ui%3A%2F%2Fboard%2Fview.html"}
+}}
+```
+
+  失败、取消的调用与没有声明界面的工具不带这一项。子代理内部的工具结果不带。
+- `GET /v1/mcp/tools` 与 `POST /v1/mcp/search` 的条目在工具声明界面时多一项 `uiResourceUri`。
+- `GET /v1/sessions/{id}/mcp-ui?server=<server id>&uri=<ui:// URI>`（需要令牌）：按会话工作目录，用 MCP `resources/read` 读取该资源并返回 HTML。只读取**该 server 某个未被 deny 的工具声明过的** `ui://` URI，不能用来读任意资源。取 `mimeType` 以 `text/html` 开头（含 `text/html;profile=mcp-app`）的内容，`text` 或 `blob` 均可，最大 4 MiB，读取超时 30 秒。
+  - 缺少 `server` 或 `uri` 不是 `ui://`：400；会话不存在、server 未启用或不允许、URI 未被声明：404；server 读取失败、没有 HTML 内容或超过大小：502；没有 MCP：501。
+  - 响应头 `Content-Security-Policy: sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline' <资源域>; style-src 'unsafe-inline' <资源域>; img-src data: blob: <资源域>; font-src data: <资源域>; media-src data: blob: <资源域>; connect-src <连接域或 'none'>; frame-src 'none'; worker-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'`，以及 `nosniff`、`no-store`、`no-referrer`。资源域与连接域取自资源内容的 `_meta.ui.csp.resourceDomains` / `connectDomains`，只保留纯 `https://host[:port]` 源（最多 16 个），其余丢弃。
+  - 同一策略（不含 `sandbox`）还以 `<meta http-equiv="Content-Security-Policy">` 插到文档最前面（`<head>` 之后，否则 doctype 之后，否则开头），客户端用 `fetch` 带令牌取回后放进 `<iframe sandbox="allow-scripts" srcdoc=...>` 时限制同样生效。
+- 已知缺口：工具结果只转发拼好的文本（`output`），不转发 `structuredContent` 与原始 `CallToolResult`；`_meta.ui.visibility`（只给界面、不给模型的工具）没有处理，这类工具仍出现在模型的工具列表里；不处理 `_meta.ui.domain`、`prefersBorder` 等显示提示。界面与宿主之间的消息协议见 [sandboxed-ui.md](sandboxed-ui.md)。
 
 ### 记住的权限规则（`capabilities.permission_rules: 1`、`readonly_auto_allow: 1`）
 

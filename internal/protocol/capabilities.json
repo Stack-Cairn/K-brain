@@ -256,6 +256,15 @@
       "firstRelease": "v0.107.42",
       "evidenceCommit": "pending",
       "missing": "Plugins cannot declare UI panels (a plugin.json with a ui section fails to load), contributes.ui is absent and /v1/plugin-assets is not served; show no plugin panels."
+    },
+    {
+      "name": "mcp_apps",
+      "type": "integer",
+      "compare": "eq",
+      "value": 1,
+      "firstRelease": "v0.107.42",
+      "evidenceCommit": "pending",
+      "missing": "tool.result has no ui_resource and /v1/sessions/{id}/mcp-ui is not served; show MCP tool results as text only."
     }
   ]
 }

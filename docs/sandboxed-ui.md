@@ -1,6 +1,6 @@
-# 沙箱界面：插件面板与宿主桥接协议
+# 沙箱界面：插件面板、MCP 应用界面与宿主桥接协议
 
-本文写给图形客户端（桌面端、WebUI）。K-brain 后端只负责列出界面、以只读方式提供文件并带上沙箱响应头；渲染、与用户确认、以及下面的 postMessage 协议都由客户端（下称“宿主”）实现。HTTP 接口细节见 [liveagent-backend.md](liveagent-backend.md) 的“插件”“插件界面”两节。
+本文写给图形客户端（桌面端、WebUI）。三类界面共用同一安全模型：插件面板（`capabilities.plugin_ui`）、MCP 工具声明的界面（`capabilities.mcp_apps`），以及模型生成的 HTML 预览（`capabilities.html_previews`）。K-brain 后端只负责列出界面、以只读方式提供文件并带上沙箱响应头；渲染、与用户确认、以及下面的 postMessage 协议都由客户端（下称“宿主”）实现。HTTP 接口细节见 [liveagent-backend.md](liveagent-backend.md) 的“插件”“插件界面”两节。
 
 ## 安全模型
 
@@ -71,6 +71,17 @@
 | `-32002` | 不允许（超出范围、目标不存在、插件已停用） |
 | `-32003` | 超出速率或大小限制 |
 | `-32000` | 执行失败，`message` 为原因 |
+
+## MCP 应用界面
+
+`tool.result` 的 `ui_resource.url` 需要令牌，iframe 不能直接加载：宿主用带 `Authorization` 的 `fetch` 取回 HTML，放进 `<iframe sandbox="allow-scripts" srcdoc="...">`（文档开头已插入同样的 CSP `<meta>`）。不要把 HTML 转成同源的 blob URL 打开。
+
+MCP 应用界面按公开的 MCP Apps 约定通过 postMessage 收发 JSON-RPC 2.0（方法名带 `ui/` 前缀，与上文 `host.*` 不同）；传输规则（只认该 iframe 的 `event.source`、目标源 `"*"`、限制大小与速率）与上文相同。宿主至少应：
+
+- 回复 `ui/initialize`（主题、语言、宿主信息），之后用 `ui/notifications/tool-input`、`ui/notifications/tool-result` 把本次调用的参数与结果（`output`）推给界面；
+- 处理 `tools/call`：只允许调用**同一 server** 的工具，经 `POST /v1/mcp/tools/call`（`cwd` 为会话工作目录）执行，server 的 `policy` 照常生效；`deny` 由后端拒绝，`ask` 由宿主先征得用户同意（这条 HTTP 调用不会再弹审批）；
+- 其他方法（打开链接、向对话发消息等）要么由用户确认后执行，要么回复 `-32601`；
+- 忽略界面请求的尺寸以外的显示提示，按自己的布局限制高度。
 
 ## 宿主实现要点
 

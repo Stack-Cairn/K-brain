@@ -266,7 +266,19 @@ type ToolResult struct {
 	Output    string         `json:"output"`
 	Failed    bool           `json:"failed,omitempty"`
 	Cancelled bool           `json:"cancelled,omitempty"`
+	// UIResource is the MCP App view the tool declares, present on successful
+	// results of MCP tools that declare one (capabilities.mcp_apps).
+	UIResource *ToolUIResource `json:"ui_resource,omitempty"`
 	ToolRunInfo
+}
+
+// ToolUIResource names an MCP tool's UI resource and where a client reads it.
+type ToolUIResource struct {
+	ServerID string `json:"server_id"`
+	URI      string `json:"uri"`
+	// URL is the backend path that returns the resource's HTML
+	// (GET /v1/sessions/{id}/mcp-ui?server=&uri=), authenticated like other routes.
+	URL string `json:"url"`
 }
 
 type Usage struct {
