@@ -35,6 +35,9 @@ func renderCard(tone tokenID, title string, rows []string, width int) string {
 	inner := cardInner(width)
 	rule := fgTok(tone)
 	b := glyphs.Border
+	if compactDensity {
+		return renderCardCompact(rule, title, rows, width)
+	}
 	out := []string{borderTitledIn(rule, b.TopLeft, b.Top, b.TopRight, title, "", width)}
 	for _, row := range rows {
 		for line := range strings.SplitSeq(ansi.Wrap(row, inner, " "), "\n") {
@@ -43,6 +46,22 @@ func renderCard(tone tokenID, title string, rows []string, width int) string {
 		}
 	}
 	out = append(out, borderTitledIn(rule, b.BottomLeft, b.Bottom, b.BottomRight, "", "", width))
+	return strings.Join(out, "\n")
+}
+
+// renderCardCompact is renderCard without the frame, for compact density:
+// the title on a rule, then the rows behind a rail in the card's tone. The
+// rows keep the framed card's indent and width, so they wrap and line up
+// the same.
+func renderCardCompact(rule lipgloss.Style, title string, rows []string, width int) string {
+	inner := cardInner(width)
+	b := glyphs.Border
+	out := []string{borderTitledIn(rule, b.Top, b.Top, b.Top, title, "", width)}
+	for _, row := range rows {
+		for line := range strings.SplitSeq(ansi.Wrap(row, inner, " "), "\n") {
+			out = append(out, rule.Render(glyphs.Band)+" "+ansi.Truncate(line, inner, ""))
+		}
+	}
 	return strings.Join(out, "\n")
 }
 

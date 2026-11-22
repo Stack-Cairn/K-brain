@@ -2,7 +2,6 @@ package tui
 
 import (
 	"os"
-	"slices"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -86,7 +85,9 @@ const (
 	tokenCount
 )
 
-// tokenDef is one row of the token table.
+// tokenDef is one row of the token table. dark and light are the active
+// theme's colours for the token; activateTheme rewrites them when the theme
+// changes, and the rest of the row never changes.
 type tokenDef struct {
 	name        string
 	dark, light themeColor
@@ -98,7 +99,14 @@ type tokenDef struct {
 	mono    monoAttr
 }
 
-var tokenTable = [tokenCount]tokenDef{
+// tokenTable is the active token table: what every style resolves through.
+// It starts as the default theme (defaultTokens) and activateTheme swaps the
+// colour columns for another theme's.
+var tokenTable = defaultTokens
+
+// defaultTokens is the default theme ("auto", "light", "dark") and the
+// metadata of every token.
+var defaultTokens = [tokenCount]tokenDef{
 	tokTextPrimary:   {name: "text.primary", termDefault: true},
 	tokTextSecondary: {name: "text.secondary", dark: themeColor{"#c8ccd4", "252", "7"}, light: themeColor{"#3a3f46", "238", "0"}},
 	tokTextMuted:     {name: "text.muted", dark: themeColor{"#868b95", "245", "8"}, light: themeColor{"#686e76", "242", "8"}, mono: monoDim},
@@ -115,7 +123,7 @@ var tokenTable = [tokenCount]tokenDef{
 	tokDiffAddBG:     {name: "diff.add.bg", dark: themeColor{"#16301f", "22", ""}, light: themeColor{"#e3f6e7", "194", ""}, surface: true},
 	tokDiffDelBG:     {name: "diff.del.bg", dark: themeColor{"#3a1a1d", "52", ""}, light: themeColor{"#fbe5e5", "224", ""}, surface: true},
 	// The emphasis tints mark the changed words inside a paired -/+ row.
-	tokDiffAddEmphBG: {name: "diff.add.emph.bg", dark: themeColor{"#24563a", "28", ""}, light: themeColor{"#b4e6be", "157", ""}, surface: true},
+	tokDiffAddEmphBG: {name: "diff.add.emph.bg", dark: themeColor{"#24563a", "23", ""}, light: themeColor{"#b4e6be", "157", ""}, surface: true},
 	tokDiffDelEmphBG: {name: "diff.del.emph.bg", dark: themeColor{"#6b2a2f", "88", ""}, light: themeColor{"#f5b8b8", "217", ""}, surface: true},
 	tokSynKeyword:    {name: "syn.keyword", dark: themeColor{"#c49bff", "141", "13"}, light: themeColor{"#7d3f9e", "90", "5"}},
 	tokSynString:     {name: "syn.string", dark: themeColor{"#8cc590", "114", "10"}, light: themeColor{"#2f7d3a", "28", "2"}},
@@ -293,17 +301,40 @@ func (m *model) applyColorEnv() {
 	setMonoMode(wantMono(os.Getenv, theme), stdoutIsTTY())
 }
 
-// themeCommand is /theme [auto|light|dark|mono]: a name applies that theme
-// the way the settings panel does, a bare /theme opens the panel.
+// themeCommand is /theme [name]: a name applies that theme the way the
+// settings panel does, a bare /theme opens the picker.
 func (m *model) themeCommand(args []string) {
 	if len(args) == 0 {
 		m.openPaletteOn("theme")
 		return
 	}
+	m.refreshCustomThemes(true)
 	name := strings.ToLower(args[0])
-	if len(args) != 1 || !slices.Contains(themeNames, name) {
-		m.append(errStyle.Render("usage: /theme " + strings.Join(themeNames, "|")))
+	if _, ok := parseThemeSetting(name); len(args) != 1 || !ok {
+		m.append(errStyle.Render("usage: /theme " + strings.Join(themeChoices(), "|")))
 		return
 	}
 	m.pickTheme(name)
+}
+
+// previewTheme shows a theme without saving it, for the picker.
+func (m *model) previewTheme(name string) {
+	ch, ok := parseThemeSetting(name)
+	if !ok {
+		return
+	}
+	m.applyTheme(name)
+	setMonoMode(ch.mono || wantMono(os.Getenv, ""), stdoutIsTTY())
+	m.restyleTranscript()
+}
+
+// themeFollowsTerminal reports whether the saved theme switches variant with
+// the terminal's background.
+func (m *model) themeFollowsTerminal() bool {
+	theme := ""
+	if m.cfg != nil {
+		theme = m.cfg.Theme
+	}
+	ch, ok := parseThemeSetting(theme)
+	return ok && ch.pin == "" && !ch.mono
 }

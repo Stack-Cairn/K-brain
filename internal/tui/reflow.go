@@ -47,7 +47,7 @@ func (m *model) layoutWidth() int {
 	if m.tx != nil && m.tx.hold.width > 0 {
 		return m.tx.hold.width
 	}
-	return max(m.width, minRenderWidth)
+	return m.contentWidth(max(m.width, minRenderWidth))
 }
 
 // onResizeReflow reflows the transcript for a width change, or holds it

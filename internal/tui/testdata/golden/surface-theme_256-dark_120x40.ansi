@@ -1,0 +1,39 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;38;5;141m Commands › Theme[0m
+
+[1;38;5;141m ❯ auto    [0m  [38;5;245mdefault palette, follows the terminal background  (current)[0m
+   light     [38;5;245mdefault palette, light variant[0m
+   dark      [38;5;245mdefault palette, dark variant[0m
+   dusk      [38;5;245mdark · amber accent on violet greys[0m
+   harbor    [38;5;245msky-blue accent on slate, dark and light[0m
+   paper     [38;5;245mlight · ink and rust on warm paper[0m
+   contrast  [38;5;245mhigh contrast, dark and light[0m
+   mono      [38;5;245mno colour: bold, dim and reverse only[0m
+
+   [1;38;5;79m❯ you[0m  [1;38;5;141m● reply[0m  [38;5;80m◌ running[0m  [38;5;108m✓ ok[0m  [38;5;179m! warn[0m  [38;5;167m✗ error[0m  [38;5;245mmuted[0m
+   [38;5;141;48;5;235mfunc[0m[48;5;235m [0m[38;5;80;48;5;235mtotal[0m[48;5;235m([0m[48;5;235mn[0m[48;5;235m [0m[38;5;111;48;5;235mint[0m[48;5;235m)[0m[48;5;235m [0m[38;5;111;48;5;235mstring[0m[48;5;235m [0m[48;5;235m{[0m[48;5;235m [0m[38;5;141;48;5;235mreturn[0m[48;5;235m [0m[48;5;235mfmt[0m[48;5;235m.[0m[38;5;80;48;5;235mSprint[0m[48;5;235m([0m[48;5;235mn[0m[48;5;235m [0m[48;5;235m*[0m[48;5;235m [0m[38;5;179;48;5;235m42[0m[48;5;235m)[0m[48;5;235m [0m[48;5;235m}[0m[48;5;235m [0m[3;38;5;243;48;5;235m// sum[0m
+   [48;5;22m+ added line [0m  [48;5;52m− removed line [0m
+
+[38;5;245m  ↑/↓ preview · Enter/←/→ apply · Esc back[0m

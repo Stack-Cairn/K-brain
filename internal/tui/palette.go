@@ -312,23 +312,9 @@ func (m *model) paletteItems() []paletteItem {
 		},
 		{
 			title: "Theme", category: "Display",
-			dynDesc: func(m *model) string { return m.tr("current: ") + CurrentTheme() },
-			dynHint: func(m *model) string { return "/theme " + slashHint(m, "/theme") },
-			panel: func(m *model) *ppanel {
-				list := []string{"auto", "light", "dark", "mono"}
-				cur := m.cfg.Theme
-				if cur == "" {
-					cur = "auto"
-				}
-				pp := &ppanel{kind: panelTheme, title: "Theme", list: list}
-				for i, t := range list {
-					if t == cur {
-						pp.midx = i
-						break
-					}
-				}
-				return pp
-			},
+			dynDesc:  func(m *model) string { return m.tr("current: ") + themeLabel() },
+			dynHint:  func(m *model) string { return "/theme " + slashHint(m, "/theme") },
+			panel:    func(m *model) *ppanel { return m.themePanel() },
 			stepBack: func(m *model) { m.setTheme("light") },
 			stepFwd:  func(m *model) { m.setTheme("dark") },
 		},
@@ -718,18 +704,8 @@ func (m *model) panelKey(msg tea.KeyMsg, pp *ppanel) (tea.Model, tea.Cmd) {
 		}
 
 	case panelTheme:
-		switch msg.Type {
-		case tea.KeyEsc, tea.KeyCtrlC:
+		if m.themePanelKey(msg, pp) {
 			pop()
-		case tea.KeyUp, tea.KeyCtrlP, tea.KeyShiftTab:
-			pp.midx = (pp.midx - 1 + len(pp.list)) % len(pp.list)
-		case tea.KeyDown, tea.KeyCtrlN, tea.KeyTab:
-			pp.midx = (pp.midx + 1) % len(pp.list)
-		case tea.KeyLeft, tea.KeyRight, tea.KeyEnter:
-			m.pickTheme(pp.list[pp.midx])
-			if msg.Type == tea.KeyEnter {
-				pop()
-			}
 		}
 
 	case panelBrowser:
@@ -836,7 +812,7 @@ func (m *model) paletteView() string {
 	if pp := p.top(); pp != nil {
 		title = " " + m.tr("Commands") + " › " + m.tr(pp.title)
 	}
-	b.WriteString(botStyle.Render(title))
+	b.WriteString(botStyle.Render(chromeGlyphs(title)))
 	if p.top() == nil && p.filter != "" {
 		b.WriteString(dimStyle.Render(m.tr("  — type to filter")))
 	}
@@ -1045,22 +1021,7 @@ func (m *model) panelView(pp *ppanel) string {
 		b.WriteString("\n" + dimStyle.Render(m.tr("  ↑/↓ select · Enter apply · Esc back")))
 
 	case panelTheme:
-		cur := m.cfg.Theme
-		if cur == "" {
-			cur = "auto"
-		}
-		for i, name := range pp.list {
-			mark := ""
-			if name == cur {
-				mark = dimStyle.Render(m.tr("  (current)"))
-			}
-			if i == pp.midx {
-				b.WriteString(botStyle.Render(" "+menuMark()+name) + mark + "\n")
-			} else {
-				b.WriteString("   " + name + mark + "\n")
-			}
-		}
-		b.WriteString("\n" + dimStyle.Render(m.tr("  ↑/↓ select · Enter/←/→ apply · Esc back")))
+		b.WriteString(m.themePanelView(pp))
 
 	case panelBrowser:
 		for i, name := range pp.list {

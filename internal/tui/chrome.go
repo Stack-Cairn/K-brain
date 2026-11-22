@@ -153,8 +153,8 @@ func (m *model) statusLeft() string {
 	if m.transientNotice != "" {
 		return dimStyle.Render(ansi.Truncate(m.transientNotice, max(m.width/2, 16), "…"))
 	}
-	if line := m.statusLineText(); line != "" {
-		return dimStyle.Render(line)
+	if rows := m.statusLineRows(); len(rows) > 0 {
+		return rows[0]
 	}
 	left := m.git.render()
 	if m.goal != "" && !m.topPanelShown() {
@@ -214,7 +214,7 @@ const contextBarCells = 6
 func (m *model) contextCell() string {
 	pct := contextPercent(m.agent.ContextTokensNow(), m.agent.ContextLimit)
 	label := fmt.Sprintf(m.tr("%d%% ctx"), pct)
-	if m.width < 90 {
+	if m.width < 90 || compactDensity {
 		return label
 	}
 	return contextBar(pct, contextBarCells) + " " + label

@@ -16,5 +16,6 @@
 - [Headless 与 ACP](10-headless-acp.md)
 - [Hooks 与 MCP](11-hooks-mcp.md)
 - [故障排查](12-troubleshooting.md)
-- [会话总览（Dashboard）](13-dashboard.md)
-- [终端里的 Mermaid 图](14-mermaid.md)
+- [外观与状态行](13-appearance.md)
+- [会话总览（Dashboard）](14-dashboard.md)
+- [终端里的 Mermaid 图](15-mermaid.md)

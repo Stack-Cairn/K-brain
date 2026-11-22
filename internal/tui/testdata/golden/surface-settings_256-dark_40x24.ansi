@@ -1,8 +1,10 @@
-[38;5;79m❯[0m [1mSettings[0m                         [38;5;247m1/17[0m
+[38;5;79m❯[0m [1mSettings[0m                         [38;5;247m1/19[0m
   [38;5;79m/[0m [38;5;247mtype to filter[0m
 [38;5;238m────────────────────────────────────────[0m
   [38;5;245mDisplay[0m
 [1;38;5;79;48;5;236m❯ Theme          colour scheme fo… auto[0m
+  Density        [38;5;252mcompact f…[0m [38;5;247mcomfortable[0m
+  Content width  [38;5;252mwidest the transc…[0m [38;5;247moff[0m
   Language       [38;5;252minterface language[0m  [38;5;247men[0m
   Thinking tok…  [38;5;252mshow model reason…[0m [38;5;247moff[0m
   Mouse capture  [38;5;252mwheel scroll and c…[0m [38;5;247mon[0m
@@ -12,13 +14,11 @@
   Inline mode    [38;5;252mtranscript in the…[0m [38;5;247moff[0m
   Browser driv…  [38;5;252mautomation engine…[0m [38;5;247mrod[0m
 
-  [38;5;245mAgent[0m
-  Model          [38;5;252m[0m [38;5;247mkimi-k3-fast@inference[0m
-[38;5;247m  ↓ 7 more[0m
+[38;5;247m  ↓ 8 more[0m
 [38;5;238m────────────────────────────────────────[0m
   [1mTheme[0m  [38;5;79mauto[0m
   [38;5;252mcolour scheme for the transcript and[0m
   [38;5;252mchrome[0m
-  [38;5;245m←/→ change · Enter next · /theme[0m
+  [38;5;245m←/→ change · Enter opens its picker ·…[0m
 [38;5;238m────────────────────────────────────────[0m
   [38;5;247m↑/↓ select · ←/→ change · Enter toggl…[0m

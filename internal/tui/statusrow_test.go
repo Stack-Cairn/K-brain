@@ -522,12 +522,12 @@ func TestStatusLineCommand(t *testing.T) {
 		t.Skip("sh")
 	}
 	got, err := runStatusLine(`printf '\n  \033[1mbranch %s\033[0m\nsecond\n' "$(cat | sed -n 's/.*"session_id":"\([^"]*\)".*/\1/p')"`,
-		[]byte(`{"session_id":"s-42"}`), 2*time.Second)
+		[]byte(`{"session_id":"s-42"}`), 2*time.Second, 1)
 	if err != nil || got != "branch s-42" {
 		t.Fatalf("got %q, %v", got, err)
 	}
 	start := time.Now()
-	if _, err := runStatusLine("sleep 5", nil, 150*time.Millisecond); err == nil || time.Since(start) > 2*time.Second {
+	if _, err := runStatusLine("sleep 5", nil, 150*time.Millisecond, 1); err == nil || time.Since(start) > 2*time.Second {
 		t.Fatalf("timeout not enforced: %v after %v", err, time.Since(start))
 	}
 }

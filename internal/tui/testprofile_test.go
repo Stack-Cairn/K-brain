@@ -14,6 +14,10 @@ func useProfile(t *testing.T, profile termenv.Profile, dark bool) func() {
 	t.Helper()
 	prevProfile, prevDark := lipgloss.ColorProfile(), lipgloss.HasDarkBackground()
 	prevMono, prevASCII, prevRaised := monoMode, asciiMode, monoRaised
+	prevTheme := activeTheme
+	mdMu.Lock()
+	prevScheme := mdScheme
+	mdMu.Unlock()
 	lipgloss.SetColorProfile(profile)
 	lipgloss.SetHasDarkBackground(dark)
 	buildStyles()
@@ -23,6 +27,10 @@ func useProfile(t *testing.T, profile termenv.Profile, dark bool) func() {
 		lipgloss.SetHasDarkBackground(prevDark)
 		monoMode, monoRaised = prevMono, prevRaised
 		setASCIIGlyphs(prevASCII)
+		if activeTheme != prevTheme {
+			activateTheme(prevTheme)
+		}
+		setSchemeOverride(prevScheme)
 		invalidateMDRenderer()
 	}
 }

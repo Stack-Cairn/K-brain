@@ -78,3 +78,28 @@ func TestCompletionMatchesRegistry(t *testing.T) {
 		}
 	}
 }
+
+// The cheatsheet's command tab lists the display and session commands the
+// merged feature branches added, with their arguments.
+func TestHelpCommandTabListsMergedCommands(t *testing.T) {
+	m := compactCmdModel()
+	rows := map[string]surfaceRow{}
+	for _, r := range helpCommandRows(m) {
+		rows[r.key] = r
+	}
+	for name, args := range map[string]string{
+		"/theme":     "[auto|light|dark|<name>|mono]",
+		"/density":   "[compact|comfortable]",
+		"/dashboard": "",
+		"/vim":       "[on|off]",
+	} {
+		r, ok := rows[name]
+		if !ok {
+			t.Errorf("the command tab has no %s row", name)
+			continue
+		}
+		if r.desc == "" || !strings.Contains(r.search, args) {
+			t.Errorf("%s row: desc %q, search %q, want args %q", name, r.desc, r.search, args)
+		}
+	}
+}

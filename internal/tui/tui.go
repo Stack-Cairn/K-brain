@@ -195,6 +195,8 @@ type model struct {
 	// fragFilter turns that on, in a real terminal session.
 	frag       mouseFrag
 	fragFilter bool
+	// bgr takes terminal background replies out of the key stream.
+	bgr bgReply
 
 	mouseOn  bool
 	sel      *selection
@@ -374,9 +376,14 @@ func Run(cfg *config.Config, modelName, provName, sysPrompt, resumeID string, ca
 
 	// Styles bake their adaptive colours at Render time, so the theme has to be
 	// settled before anything is appended to the transcript.
+	reloadCustomThemes(true)
 	m.themeHow = m.applyTheme(cfg.Theme)
+	m.applyDensity()
 	m.applyColorEnv()
 	m.appendBanner()
+	for _, e := range customThemeErrors() {
+		m.append(warnStyle.Render(chromeGlyphs(glyphs.Warn + " theme file skipped: " + e)))
+	}
 
 	m.applyCompactModel()
 	m.applyTaskModel()
@@ -490,6 +497,7 @@ func Run(cfg *config.Config, modelName, provName, sysPrompt, resumeID string, ca
 		}
 
 		enableKeyboardEnhancement(os.Stdout)
+		enableSchemeReports(os.Stdout)
 	}
 	if m.cfgExtra == nil {
 		m.cfgExtra = map[string]string{}
@@ -527,6 +535,7 @@ func Run(cfg *config.Config, modelName, provName, sysPrompt, resumeID string, ca
 	}
 
 	{
+		disableSchemeReports(os.Stdout)
 		disableKeyboardEnhancement(os.Stdout)
 	}
 
@@ -773,7 +782,8 @@ func (m *model) persist() bool {
 }
 
 func (m *model) setTheme(theme string) {
-	if theme != "light" && theme != "dark" {
+	theme = strings.ToLower(strings.TrimSpace(theme))
+	if _, ok := parseThemeSetting(theme); !ok || theme == "mono" || theme == "" {
 		theme = "auto"
 	}
 	how := m.applyTheme(theme)
@@ -804,7 +814,9 @@ func (m *model) setTheme(theme string) {
 }
 
 func (m *model) applyTheme(theme string) (how string) {
-	switch theme {
+	ch, _ := parseThemeSetting(theme)
+	activateTheme(lookupTheme(ch.family))
+	switch ch.pin {
 	case "light":
 		SetLightTheme(true)
 		lipgloss.SetHasDarkBackground(false)
@@ -816,6 +828,11 @@ func (m *model) applyTheme(theme string) (how string) {
 	default:
 		setSchemeOverride("")
 		how = detectColorScheme()
+		if ch.family != defaultThemeName && !schemeKnown() {
+			// Only the default family has a neutral palette for an
+			// undetected background; a named one shows its dark variant.
+			SetLightTheme(false)
+		}
 	}
 	return how
 }
@@ -912,8 +929,9 @@ func (m *model) Init() tea.Cmd {
 	// start and nothing repaints while the composer sits idle.
 	var cmds []tea.Cmd
 
-	if inTmuxEnv() {
-
+	// The periodic theme check: tmux's client theme, and the background
+	// re-query in a running session.
+	if inTmuxEnv() || tuiRunning {
 		cmds = append(cmds, themePollTick())
 	}
 	if m.initialPrompt != "" {
@@ -932,7 +950,7 @@ type (
 )
 
 func themePollTick() tea.Cmd {
-	return tea.Tick(10*time.Second, themePollFire)
+	return tea.Tick(themePollInterval, themePollFire)
 }
 
 func themePollFire(time.Time) tea.Msg { return themePollMsg{} }
@@ -1001,6 +1019,9 @@ func (m *model) Update(msg tea.Msg) (_ tea.Model, statusCmd tea.Cmd) {
 		vp.fn(m)
 		return m, nil
 	}
+	if handled, cmd := m.appearanceMsg(msg); handled {
+		return m, cmd
+	}
 	if c, ok := m.statusBefore(msg); ok {
 		return m, c
 	}
@@ -1048,13 +1069,21 @@ func (m *model) Update(msg tea.Msg) (_ tea.Model, statusCmd tea.Cmd) {
 		return m, nil
 
 	case themePollMsg:
-		if m.cfg.Theme != "" {
+		if !m.themeFollowsTerminal() {
+			return m, themePollTick()
+		}
+		// Re-ask while the window has focus (or focus is not reported);
+		// focus-in asks on its own.
+		if n := m.status().note; !n.focusKnown || n.focused {
+			m.queryAppearance()
+		}
+		if !inTmuxEnv() {
 			return m, themePollTick()
 		}
 		return m, tea.Batch(pollClientTheme, themePollTick())
 
 	case themeSyncMsg:
-		if !msg.ok || m.cfg.Theme != "" {
+		if !msg.ok || !m.themeFollowsTerminal() {
 			return m, nil
 		}
 		mdMu.Lock()
@@ -1068,12 +1097,16 @@ func (m *model) Update(msg tea.Msg) (_ tea.Model, statusCmd tea.Cmd) {
 		lipgloss.SetHasDarkBackground(!msg.light)
 		bgCache = bgResult{light: msg.light, valid: true}
 
-		m.refreshVP()
+		m.restyleTranscript()
 		word := "dark"
 		if msg.light {
 			word = "light"
 		}
-		m.append(dimStyle.Render("◐ theme: auto → " + word + " (terminal appearance changed)"))
+		name := "auto"
+		if activeTheme != nil && activeTheme.name != defaultThemeName {
+			name = activeTheme.name
+		}
+		m.append(dimStyle.Render(chromeGlyphs("◐ theme: " + name + " → " + word + " (terminal appearance changed)")))
 		return m, nil
 
 	case titleMsg:

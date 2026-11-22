@@ -209,11 +209,11 @@ func TestSlashMenuRemembersUse(t *testing.T) {
 
 func TestSlashArgumentCompletion(t *testing.T) {
 	_, cs := completions("/theme ", nil, nil, nil, nil)
-	if got := texts(cs); !slices.Equal(got, []string{"auto", "dark", "light", "mono"}) {
+	if got := texts(cs); !slices.Equal(got, []string{"auto", "contrast", "dark", "dusk", "harbor", "light", "mono", "paper"}) {
 		t.Fatalf("/theme arguments: %v", got)
 	}
 	_, cs = completions("/theme d", nil, nil, nil, nil)
-	if got := texts(cs); !slices.Equal(got, []string{"dark"}) {
+	if got := texts(cs); !slices.Equal(got, []string{"dark", "dusk"}) {
 		t.Fatalf("/theme d: %v", got)
 	}
 	_, cs = completions("/plugins ", nil, nil, nil, nil)

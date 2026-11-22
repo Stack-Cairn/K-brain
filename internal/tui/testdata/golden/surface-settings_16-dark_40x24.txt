@@ -1,8 +1,10 @@
-❯ Settings                         1/17
+❯ Settings                         1/19
   / type to filter
 ────────────────────────────────────────
   Display
 ❯ Theme          colour scheme fo… auto
+  Density        compact f… comfortable
+  Content width  widest the transc… off
   Language       interface language  en
   Thinking tok…  show model reason… off
   Mouse capture  wheel scroll and c… on
@@ -12,13 +14,11 @@
   Inline mode    transcript in the… off
   Browser driv…  automation engine… rod
 
-  Agent
-  Model           kimi-k3-fast@inference
-  ↓ 7 more
+  ↓ 8 more
 ────────────────────────────────────────
   Theme  auto
   colour scheme for the transcript and
   chrome
-  ←/→ change · Enter next · /theme
+  ←/→ change · Enter opens its picker ·…
 ────────────────────────────────────────
   ↑/↓ select · ←/→ change · Enter toggl…

@@ -1,0 +1,23 @@
+
+
+
+
+
+
+
+[1m Commands › Theme[0m
+
+[1m ❯ auto    [0m  [2mdefault palette, follows t…[0m
+   light     [2mdefault palette, light var…[0m
+   dark      [2mdefault palette, dark vari…[0m
+   dusk      [2mdark · amber accent on vio…[0m
+   harbor    [2msky-blue accent on slate, …[0m
+   paper     [2mlight · ink and rust on wa…[0m
+   contrast  [2mhigh contrast, dark and li…[0m
+   mono      [2mno colour: bold, dim and r…[0m
+
+   [1m❯ you[0m  [1m● reply[0m  ◌ running  ✓ ok  [1m! w…[0m[1m[0m[2m[0m
+   func total(n int) string { return fm…[3m[0m
+   + added line   − removed line 
+
+[2m  ↑/↓ preview · Enter/←/→ apply · Esc b…[0m

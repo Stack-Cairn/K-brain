@@ -15,15 +15,49 @@ import (
 	"github.com/muesli/termenv"
 )
 
-// Every token is filled in for both backgrounds and every colour depth:
-// lipgloss picks one value per profile and an empty one silently renders
-// uncoloured. Surfaces are the exception on 16 colours, where a tint would
-// collide with the terminal's own palette, and text.primary, which is always
-// the terminal's default foreground.
+// themeVariants is every variant of every theme, built-in and loaded.
+func themeVariants() []struct {
+	label string
+	theme *themeDef
+	light bool
+	p     *themePalette
+} {
+	var out []struct {
+		label string
+		theme *themeDef
+		light bool
+		p     *themePalette
+	}
+	for _, th := range allThemes() {
+		for _, light := range []bool{false, true} {
+			p := th.dark
+			mode := "dark"
+			if light {
+				p, mode = th.light, "light"
+			}
+			if p == nil {
+				continue
+			}
+			out = append(out, struct {
+				label string
+				theme *themeDef
+				light bool
+				p     *themePalette
+			}{th.name + "/" + mode, th, light, p})
+		}
+	}
+	return out
+}
+
+// Every token is filled in for every variant of every theme and every colour
+// depth: lipgloss picks one value per profile and an empty one silently
+// renders uncoloured. Surfaces are the exception on 16 colours, where a tint
+// would collide with the terminal's own palette, and text.primary, which is
+// always the terminal's default foreground.
 func TestTokensCoverEveryColumn(t *testing.T) {
 	names := map[string]bool{}
 	for id := tokenID(0); id < tokenCount; id++ {
-		d := tokenTable[id]
+		d := defaultTokens[id]
 		if d.name == "" {
 			t.Fatalf("token %d has no name", id)
 		}
@@ -31,26 +65,30 @@ func TestTokensCoverEveryColumn(t *testing.T) {
 			t.Errorf("token name %q is used twice", d.name)
 		}
 		names[d.name] = true
-		if d.termDefault {
-			if d.dark != (themeColor{}) || d.light != (themeColor{}) {
-				t.Errorf("%s keeps the terminal foreground and must not carry colours", d.name)
+	}
+	hexRE := regexp.MustCompile(`^#[0-9a-f]{6}$`)
+	for _, v := range themeVariants() {
+		for id := tokenID(0); id < tokenCount; id++ {
+			d, c := defaultTokens[id], v.p[id]
+			if d.termDefault {
+				if c != (themeColor{}) {
+					t.Errorf("%s/%s keeps the terminal foreground and must not carry colours", v.label, d.name)
+				}
+				continue
 			}
-			continue
-		}
-		for mode, c := range map[string]themeColor{"dark": d.dark, "light": d.light} {
-			if !regexp.MustCompile(`^#[0-9a-f]{6}$`).MatchString(c.hex) {
-				t.Errorf("%s/%s: truecolor %q is not a 6-digit lower-case hex", mode, d.name, c.hex)
+			if !hexRE.MatchString(c.hex) {
+				t.Errorf("%s/%s: truecolor %q is not a 6-digit lower-case hex", v.label, d.name, c.hex)
 			}
-			check := func(label, v string, limit int) {
-				n, err := strconv.Atoi(v)
+			check := func(label, val string, limit int) {
+				n, err := strconv.Atoi(val)
 				if err != nil || n < 0 || n > limit {
-					t.Errorf("%s/%s: %s value %q is not in 0..%d", mode, d.name, label, v, limit)
+					t.Errorf("%s/%s: %s value %q is not in 0..%d", v.label, d.name, label, val, limit)
 				}
 			}
 			check("256-colour", c.x256, 255)
 			if d.surface {
 				if c.ansi != "" {
-					t.Errorf("%s/%s: a surface must not tint 16-colour terminals, got %q", mode, d.name, c.ansi)
+					t.Errorf("%s/%s: a surface must not tint 16-colour terminals, got %q", v.label, d.name, c.ansi)
 				}
 				continue
 			}
@@ -81,51 +119,92 @@ func contrast(t *testing.T, a, b string) float64 {
 	return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
 }
 
+// x256Hex is the xterm default RGB of a 256-colour index.
+func x256Hex(t *testing.T, idx string) string {
+	t.Helper()
+	n, err := strconv.Atoi(idx)
+	if err != nil || n < 16 || n > 255 {
+		t.Fatalf("256-colour index %q is not in the 16..255 range the contrast check models", idx)
+	}
+	c := ansiColorToRGB(n, false)
+	return fmt.Sprintf("#%02x%02x%02x", c.R, c.G, c.B)
+}
+
 // Text tokens meet WCAG AA for body text (4.5:1) and every other foreground
-// meets the non-text minimum (3:1), on a typical dark terminal and on white.
-// Surfaces, rules and diff tints are backgrounds and decoration, so they are
-// checked through the text that sits on them instead.
+// meets the non-text minimum (3:1), on a typical background of the variant's
+// polarity, at truecolor and at the hand-picked 256-colour values; the
+// high-contrast theme is held to 7:1 and 4.5:1. Surfaces, rules and diff
+// tints are backgrounds and decoration, so they are checked through the text
+// that sits on them instead. On 16 colours, where the terminal owns the RGB,
+// no foreground may sit on the slot that usually is the background itself.
 func TestTokenContrast(t *testing.T) {
 	const darkBG, lightBG = "#1e1e1e", "#ffffff"
-	for id := tokenID(0); id < tokenCount; id++ {
-		d := tokenTable[id]
-		if d.termDefault || d.surface || id == tokLineRule || id == tokChipInk {
-			continue
+	for _, v := range themeVariants() {
+		bg := darkBG
+		if v.light {
+			bg = lightBG
 		}
-		minimum := 3.0
-		if strings.HasPrefix(d.name, "text.") {
-			minimum = 4.5
+		textMin, otherMin := 4.5, 3.0
+		if v.theme.highContrast {
+			textMin, otherMin = 7, 4.5
 		}
-		if got := contrast(t, d.dark.hex, darkBG); got < minimum {
-			t.Errorf("%s dark %s on %s: %.2f:1, want >= %.1f:1", d.name, d.dark.hex, darkBG, got, minimum)
+		for id := tokenID(0); id < tokenCount; id++ {
+			d, c := defaultTokens[id], v.p[id]
+			if d.termDefault || d.surface || id == tokLineRule || id == tokChipInk {
+				continue
+			}
+			minimum := otherMin
+			switch {
+			case strings.HasPrefix(d.name, "text."):
+				minimum = textMin
+			case strings.HasPrefix(d.name, "logo."):
+				// The mark keeps the product gradient in every theme.
+				minimum = 3
+			}
+			if got := contrast(t, c.hex, bg); got < minimum {
+				t.Errorf("%s %s %s on %s: %.2f:1, want >= %.1f:1", v.label, d.name, c.hex, bg, got, minimum)
+			}
+			if got := contrast(t, x256Hex(t, c.x256), bg); got < minimum {
+				t.Errorf("%s %s 256-colour %s on %s: %.2f:1, want >= %.1f:1", v.label, d.name, c.x256, bg, got, minimum)
+			}
+			if (!v.light && c.ansi == "0") || (v.light && (c.ansi == "15" || c.ansi == "7")) {
+				t.Errorf("%s %s: 16-colour %s is the usual background slot", v.label, d.name, c.ansi)
+			}
 		}
-		if got := contrast(t, d.light.hex, lightBG); got < minimum {
-			t.Errorf("%s light %s on %s: %.2f:1, want >= %.1f:1", d.name, d.light.hex, lightBG, got, minimum)
-		}
-	}
-	// Text that sits on a surface or a chip.
-	for _, pair := range []struct {
-		fg, bg  tokenID
-		minimum float64
-	}{
-		{tokTextSecondary, tokSurfaceBand, 4.5},
-		{tokTextMuted, tokSurfaceBand, 4.5},
-		{tokAccent, tokSurfaceRaised, 3},
-		{tokChipInk, tokStateError, 3},
-		{tokChipInk, tokAccent, 3},
-		{tokChipInk, tokStateWarn, 3},
-		{tokTextSecondary, tokLineRule, 4.5},
-		{tokTextSecondary, tokDiffAddEmphBG, 4.5},
-		{tokTextSecondary, tokDiffDelEmphBG, 4.5},
-		{tokSynKeyword, tokDiffAddEmphBG, 3},
-		{tokSynString, tokDiffDelEmphBG, 3},
-	} {
-		fg, bg := tokenTable[pair.fg], tokenTable[pair.bg]
-		if got := contrast(t, fg.dark.hex, bg.dark.hex); got < pair.minimum {
-			t.Errorf("dark %s on %s: %.2f:1, want >= %.1f:1", fg.name, bg.name, got, pair.minimum)
-		}
-		if got := contrast(t, fg.light.hex, bg.light.hex); got < pair.minimum {
-			t.Errorf("light %s on %s: %.2f:1, want >= %.1f:1", fg.name, bg.name, got, pair.minimum)
+		// Text that sits on a surface or a chip.
+		for _, pair := range []struct {
+			fg, bg  tokenID
+			minimum float64
+		}{
+			{tokTextSecondary, tokSurfaceBand, 4.5},
+			{tokTextMuted, tokSurfaceBand, 4.5},
+			{tokAccent, tokSurfaceRaised, 3},
+			{tokChipInk, tokStateError, 3},
+			{tokChipInk, tokAccent, 3},
+			{tokChipInk, tokStateWarn, 3},
+			{tokTextSecondary, tokLineRule, 4.5},
+			// Changed words in a paired diff row sit on the emphasis tints.
+			{tokTextSecondary, tokDiffAddEmphBG, 4.5},
+			{tokTextSecondary, tokDiffDelEmphBG, 4.5},
+			{tokSynKeyword, tokDiffAddEmphBG, 3},
+			{tokSynString, tokDiffDelEmphBG, 3},
+		} {
+			fg, bgc := v.p[pair.fg], v.p[pair.bg]
+			name := defaultTokens[pair.fg].name + " on " + defaultTokens[pair.bg].name
+			if got := contrast(t, fg.hex, bgc.hex); got < pair.minimum {
+				t.Errorf("%s %s: %.2f:1, want >= %.1f:1", v.label, name, got, pair.minimum)
+			}
+			// The 256-colour grey ramp moves in steps of ten, so a pair of
+			// nearby greys may land up to 5% under the truecolor target. The
+			// cube has few dark greens and pale reds, so a syntax colour on
+			// a changed-word tint may land up to 15% under.
+			slack := 0.95
+			if (pair.bg == tokDiffAddEmphBG || pair.bg == tokDiffDelEmphBG) && pair.fg != tokTextSecondary {
+				slack = 0.85
+			}
+			if got := contrast(t, x256Hex(t, fg.x256), x256Hex(t, bgc.x256)); got < pair.minimum*slack {
+				t.Errorf("%s %s at 256 colours: %.2f:1, want >= %.2f:1", v.label, name, got, pair.minimum*slack)
+			}
 		}
 	}
 }
@@ -191,25 +270,21 @@ func TestSurfacesDropOutOn16Colours(t *testing.T) {
 }
 
 // Errors and warnings must not collapse into the accent, or "something is wrong"
-// and "here is the action" become indistinguishable.
+// and "here is the action" become indistinguishable — in every theme.
 func TestSemanticColoursAreDistinct(t *testing.T) {
 	roles := []tokenID{tokAccent, tokStateOK, tokStateWarn, tokStateError, tokStateRunning, tokRoleAssistant}
-	for _, mode := range []string{"dark", "light"} {
+	for _, v := range themeVariants() {
 		seen := map[string]string{}
 		seen256 := map[string]string{}
 		for _, id := range roles {
-			d := tokenTable[id]
-			c := d.dark
-			if mode == "light" {
-				c = d.light
-			}
+			name, c := defaultTokens[id].name, v.p[id]
 			if prev, dup := seen[c.hex]; dup {
-				t.Errorf("%s: %s and %s share %s", mode, prev, d.name, c.hex)
+				t.Errorf("%s: %s and %s share %s", v.label, prev, name, c.hex)
 			}
 			if prev, dup := seen256[c.x256]; dup {
-				t.Errorf("%s: %s and %s share 256-colour %s", mode, prev, d.name, c.x256)
+				t.Errorf("%s: %s and %s share 256-colour %s", v.label, prev, name, c.x256)
 			}
-			seen[c.hex], seen256[c.x256] = d.name, d.name
+			seen[c.hex], seen256[c.x256] = name, name
 		}
 	}
 }

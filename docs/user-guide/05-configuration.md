@@ -28,7 +28,9 @@
 
 `baseUrl` 必须包含 `/v1`，模型目录固定从 `${baseUrl}/models`（即 `/v1/models`）读取。`context`、`maxOut`、`vision` 和采样参数都可按模型自定义，不会把特定模型写死在代码中。`apiKey` 可写明文、环境变量名或 `${VAR}` 引用。
 
-主要可选项：`defaultEffort`、`goalMaxRounds`、`goalVerify`、`goalVerifyMaxRejections`、`mouse`、`thinking`、`collapsePaste`、`maxRetries`、`sandbox`、`browser`、`computer`、`hooks`、`mcp`、`lsp` 和 `rulesCompat`。
+主要可选项：`defaultEffort`、`goalMaxRounds`、`goalVerify`、`goalVerifyMaxRejections`、`mouse`、`thinking`、`collapsePaste`、`density`、`maxContentWidth`、`maxRetries`、`sandbox`、`browser`、`computer`、`hooks`、`mcp`、`lsp` 和 `rulesCompat`。
+
+`theme`、`density`、`maxContentWidth` 等外观设置和自定义主题文件见[外观与状态行](13-appearance.md)。
 
 `inline`（默认关闭）为 `true` 时 `kn` 以内联模式运行：不使用备用屏幕，已完成的对话打印到终端的滚动缓冲区，只重绘底部的实时区域；`kn --inline` / `--inline=false` 可在单次启动时覆盖它。环境变量 `K_BRAIN_SYNC_OUTPUT=1` / `0` 强制开启或关闭同步输出（DEC 2026），不设置时自动检测。详见[TUI 与快捷键](03-tui.md#屏幕模式与终端输出)。
 
@@ -45,7 +47,7 @@
 }
 ```
 
-`notifications.desktop` 为 `auto`（默认）时，只在终端报告过焦点状态、且当前失去焦点的情况下，于回合结束或等待批准/回答时发出桌面通知；`on` 在焦点未知时也通知，`off` 关闭，`osc9`、`osc777`、`bel` 可固定通知方式。`title` 控制窗口标题（会话名，回合进行中带旋转指示）。`statusLine.command` 默认不设置；设置后，命令从标准输入读取会话 JSON（模型、上下文、用量、费用、git 等），其输出的第一行显示在底栏左侧。命令在后台运行，两次运行至少间隔 `intervalMs`，超过 `timeoutMs` 即被终止。
+`notifications.desktop` 为 `auto`（默认）时，只在终端报告过焦点状态、且当前失去焦点的情况下，于回合结束或等待批准/回答时发出桌面通知；`on` 在焦点未知时也通知，`off` 关闭，`osc9`、`osc777`、`bel` 可固定通知方式。`title` 控制窗口标题（会话名，回合进行中带旋转指示）。`statusLine.command` 默认不设置；设置后，命令从标准输入读取会话 JSON（模型、上下文、用量、费用、git 等），其输出的第一行显示在底栏左侧（`maxLines` 可显示多行）。命令在后台运行，两次运行至少间隔 `intervalMs`，会话无变化时每隔 `refreshMs` 重新运行，超过 `timeoutMs` 即被终止。`statusLine.items` 可改用内置项目（模型、模式、目录、分支、上下文、token、费用、时间），完整说明见[外观与状态行](13-appearance.md#状态行)。
 
 ## 联网搜索回退（`webSearch`）
 

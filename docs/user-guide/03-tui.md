@@ -116,7 +116,7 @@
 | `y` | 复制当前块：回复复制它的 Markdown 原文；整条回复只是一个代码块时只复制代码；工具输出复制纯文本 |
 | `r` | 在原位切换回复的渲染视图和原始 Markdown |
 | `v` | 全屏查看当前块 |
-| `m` | 当前回复含 Mermaid 图时，把图的源码写入临时 `.mmd` 文件并用系统默认程序打开（见[终端里的 Mermaid 图](14-mermaid.md)） |
+| `m` | 当前回复含 Mermaid 图时，把图的源码写入临时 `.mmd` 文件并用系统默认程序打开（见[终端里的 Mermaid 图](15-mermaid.md)） |
 | `/` | 搜索对话记录（与 `/find` 相同）；`n` / `N` 跳到更早 / 更新的匹配 |
 | `Esc` / `q` | 回到输入框 |
 
@@ -153,7 +153,7 @@ Vim 模式默认关闭，用 `/vim`（或 `/vim on` / `/vim off`）或 `/setting
 
 subagent 面板和 subagent 视图的按键见下文。
 
-`/theme light|dark|auto` 切换配色，`/language zh_cn|zh_Hant|en` 切换界面语言。
+`/theme` 打开主题选择器（移动光标即预览，Enter 保存），`/theme <名称>` 直接切换配色（内置主题、自定义主题见[外观与状态行](13-appearance.md)），`/density compact|comfortable` 切换布局密度，`/language zh_cn|zh_Hant|en` 切换界面语言。
 
 编辑、写入工具的结果和审批卡片里的差异中，相邻的删除行和新增行逐行配对，配对行里改动的词用更深的底色标出；终端只有 16 色或使用单色主题时改用反色显示，纯文本输出不加任何标记。两行差别太大（共同部分不足四成）时不标出词级改动。
 
@@ -176,7 +176,7 @@ subagent 面板和 subagent 视图的按键见下文。
 
 ## 会话总览
 
-`/dashboard`（或 `Ctrl+P` 命令面板中的 **Dashboard**）打开全屏的会话总览：当前工作区和其他工作区的会话、各自的状态、模型、令牌与最后活动时间，以及本会话的 subagent。`Enter` 打开会话，`n` 新建，`d` 删除，`/` 筛选，`Tab` 按工作区分组，`r` 刷新。详见[会话总览（Dashboard）](13-dashboard.md)。
+`/dashboard`（或 `Ctrl+P` 命令面板中的 **Dashboard**）打开全屏的会话总览：当前工作区和其他工作区的会话、各自的状态、模型、令牌与最后活动时间，以及本会话的 subagent。`Enter` 打开会话，`n` 新建，`d` 删除，`/` 筛选，`Tab` 按工作区分组，`r` 刷新。详见[会话总览（Dashboard）](14-dashboard.md)。
 
 ## Subagent 面板与实时视图
 

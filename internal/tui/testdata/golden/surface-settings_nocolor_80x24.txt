@@ -1,8 +1,10 @@
-❯ Settings                                                                 1/17
+❯ Settings                                                                 1/19
   / type to filter
 ────────────────────────────────────────────────────────────────────────────────
   Display
 ❯ Theme             colour scheme for the transcript and chrome            auto
+  Density           compact folds tool output and drops blank rows  comfortable
+  Content width     widest the transcript is laid out                       off
   Language          interface language                                       en
   Thinking tokens   show model reasoning in the transcript                  off
   Mouse capture     wheel scroll and click-to-copy inside kn                 on
@@ -13,12 +15,10 @@
   Browser driver    automation engine that drives Chrome                    rod
 
   Agent
-  Model             model and route for new turns        kimi-k3-fast@inference
-  Reasoning effort  how hard the model thinks before answering              off
-  ↓ 6 more
+  ↓ 8 more
 ────────────────────────────────────────────────────────────────────────────────
   Theme  auto
   colour scheme for the transcript and chrome
-  ←/→ change · Enter next · /theme
+  ←/→ change · Enter opens its picker · /theme
 ────────────────────────────────────────────────────────────────────────────────
   ↑/↓ select · ←/→ change · Enter toggle or open · Esc close

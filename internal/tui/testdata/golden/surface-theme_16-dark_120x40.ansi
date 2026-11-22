@@ -1,0 +1,39 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;95m Commands › Theme[0m
+
+[1;95m ❯ auto    [0m  [90mdefault palette, follows the terminal background  (current)[0m
+   light     [90mdefault palette, light variant[0m
+   dark      [90mdefault palette, dark variant[0m
+   dusk      [90mdark · amber accent on violet greys[0m
+   harbor    [90msky-blue accent on slate, dark and light[0m
+   paper     [90mlight · ink and rust on warm paper[0m
+   contrast  [90mhigh contrast, dark and light[0m
+   mono      [90mno colour: bold, dim and reverse only[0m
+
+   [1;96m❯ you[0m  [1;95m● reply[0m  [36m◌ running[0m  [92m✓ ok[0m  [93m! warn[0m  [91m✗ error[0m  [90mmuted[0m
+   [95mfunc[0m [96mtotal[0m(n [94mint[0m) [94mstring[0m { [95mreturn[0m fmt.[96mSprint[0m(n * [93m42[0m) } [3;90m// sum[0m
+   + added line   − removed line 
+
+[90m  ↑/↓ preview · Enter/←/→ apply · Esc back[0m

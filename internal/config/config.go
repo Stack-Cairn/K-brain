@@ -146,6 +146,8 @@ type Config struct {
 	TaskModel       string                 `json:"taskModel,omitempty"`
 	TaskProvider    string                 `json:"taskProvider,omitempty"`
 	Theme           string                 `json:"theme,omitempty"`
+	Density         string                 `json:"density,omitempty"`         // "comfortable" (default) or "compact"
+	MaxContentWidth int                    `json:"maxContentWidth,omitempty"` // TUI transcript width cap in columns; 0 is off
 	Mouse           *bool                  `json:"mouse,omitempty"`
 	Thinking        *bool                  `json:"thinking,omitempty"`
 	CollapsePaste   *bool                  `json:"collapsePaste,omitempty"`
@@ -214,13 +216,24 @@ type NotificationsConfig struct {
 	Title   *bool  `json:"title,omitempty"`
 }
 
-// StatusLineConfig runs a command whose first output line is shown in the
-// terminal UI's footer. The command gets the session as JSON on stdin. Off
-// while Command is empty.
+// StatusLineConfig configures the terminal UI's footer readout. Items
+// lists built-in readouts shown in place of the default git and goal
+// readout; Command runs a script that gets the session as JSON on stdin and
+// whose output lines are shown too. With neither set, the footer keeps its
+// default readout.
 type StatusLineConfig struct {
 	Command string `json:"command,omitempty"`
+	// Items are built-in readouts, in order: model, mode, cwd, branch,
+	// context, tokens, cost, time.
+	Items []string `json:"items,omitempty"`
+	// MaxLines is how many lines of the command's output are shown (default
+	// 1, at most 4); lines past the first go on rows under the footer.
+	MaxLines int `json:"maxLines,omitempty"`
 	// IntervalMs is the shortest gap between runs (default 2000, at least 500).
 	IntervalMs int `json:"intervalMs,omitempty"`
+	// RefreshMs reruns the command this long after its last run even when
+	// the session has not changed (default 15000, at least IntervalMs).
+	RefreshMs int `json:"refreshMs,omitempty"`
 	// TimeoutMs bounds one run (default 1000).
 	TimeoutMs int `json:"timeoutMs,omitempty"`
 }

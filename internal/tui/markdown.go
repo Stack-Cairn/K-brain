@@ -381,6 +381,13 @@ func setSchemeOverride(s string) {
 	mdMu.Unlock()
 }
 
+// schemeKnown reports whether the background polarity has been settled.
+func schemeKnown() bool {
+	mdMu.Lock()
+	defer mdMu.Unlock()
+	return mdKnown
+}
+
 func CurrentTheme() string {
 	mdMu.Lock()
 	defer mdMu.Unlock()

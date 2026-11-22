@@ -263,3 +263,35 @@ func TestDoctorReportsScreen(t *testing.T) {
 		t.Fatalf("/doctor should say kn runs on the alternate screen:\n%s", m.doctorReport())
 	}
 }
+
+// The scrollback is printed as the transcript is laid out: at the content
+// width cap, and in compact density without blank rows between tool calls
+// and with successful output folded away until Alt+O.
+func TestInlineFollowsDensityAndContentWidth(t *testing.T) {
+	useCompact(t)
+	m := inlineTestModel(t)
+	m.cfg.MaxContentWidth = 50
+	m.Update(mkWinSize(100, 24))
+	m.appendRaw(blockUser, "run it")
+	m.appendRaw(blockAssistant, strings.Repeat("a long reply that wraps ", 10))
+	m.Update(toolStartMsg{id: "b1", name: "bash", args: `{"command":"go vet ./..."}`})
+	m.Update(toolEndMsg{id: "b1", name: "bash", result: "vet output line"})
+	m.Update(toolResultMsg{id: "b1", name: "bash", result: tools.Result{}})
+	m.Update(nudgeMsg{})
+	got := takePrinted(m)
+	for _, l := range strings.Split(got, "\n") {
+		if w := ansi.StringWidth(l); w > 50 {
+			t.Fatalf("printed row is %d wide past the 50-column cap: %q", w, l)
+		}
+	}
+	if strings.Contains(got, "vet output line") || !strings.Contains(got, "go vet") {
+		t.Fatalf("compact prints the header only:\n%s", got)
+	}
+	if i := strings.Index(got, "go vet"); i > 0 && strings.HasSuffix(got[:i], "\n\n") {
+		t.Fatalf("no blank row before a tool row in compact density:\n%s", got)
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'o'}, Alt: true})
+	if again := takePrinted(m); !strings.Contains(again, "vet output line") {
+		t.Fatalf("Alt+O prints the output, got %q", again)
+	}
+}

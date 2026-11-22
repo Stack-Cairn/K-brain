@@ -499,7 +499,7 @@ func renderToolHeader(b *block, width int) string {
 			meta = hint
 		}
 		out := withMeta(chromeGlyphs(row), meta, width)
-		if b.live != "" {
+		if b.live != "" && !compactDensity {
 			for l := range strings.SplitSeq(b.live, "\n") {
 				l = strings.TrimLeft(l, " ")
 				out += "\n" + truncCells(textMutedStyle.Render("  "+glyphs.Rail+" ")+textMutedStyle.Render(chromeGlyphs(l)), width)

@@ -170,7 +170,7 @@ func TestThemeSlashArgument(t *testing.T) {
 		}
 	}
 	m.command("/theme neon")
-	if !strings.Contains(lastBlock(m), "usage: /theme auto|light|dark|mono") {
+	if !strings.Contains(lastBlock(m), "usage: /theme auto|light|dark|dusk|harbor|paper|contrast|mono") {
 		t.Fatalf("bad theme: %q", lastBlock(m))
 	}
 }

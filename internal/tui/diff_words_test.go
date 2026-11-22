@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -96,4 +97,93 @@ func TestDiffWordEmphasisPerMode(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Every built-in theme variant tints changed words with its own emphasis
+// colours in truecolor, and falls back to reverse video where backgrounds
+// are not drawn: on 16 colours and in mono.
+func TestDiffWordEmphasisPerTheme(t *testing.T) {
+	const d = "4 - \tv := cache.Get(key, width)\n4 + \tv := cache.Get(key, height)"
+	defer SetLightTheme(false)
+	defer activateTheme(builtinThemes[0])
+	sgrBefore := func(t *testing.T, row, word string) string {
+		t.Helper()
+		i := strings.Index(row, word)
+		if i < 0 {
+			t.Fatalf("no plain %q run in %q", word, row)
+		}
+		return row[strings.LastIndex(row[:i], "\x1b["):i]
+	}
+	for _, th := range builtinThemes {
+		for _, light := range []bool{false, true} {
+			if (light && th.light == nil) || (!light && th.dark == nil) {
+				continue
+			}
+			p := th.variant(light)
+			name := th.name + map[bool]string{false: "-dark", true: "-light"}[light]
+			t.Run(name, func(t *testing.T) {
+				for _, mode := range []struct {
+					name    string
+					profile termenv.Profile
+					mono    bool
+				}{
+					{"truecolor", termenv.TrueColor, false},
+					{"16", termenv.ANSI, false},
+					{"mono", termenv.Ascii, true},
+				} {
+					restore := useProfile(t, mode.profile, !light)
+					activateTheme(th)
+					SetLightTheme(light)
+					if mode.mono {
+						setMonoMode(true, true)
+					}
+					rows := strings.Split(renderDiff(d, "main.go", 80), "\n")
+					del, add := sgrBefore(t, rows[0], "width"), sgrBefore(t, rows[1], "height")
+					if mode.mono {
+						setMonoMode(false, true)
+					}
+					restore()
+					if mode.name == "truecolor" {
+						for _, c := range []struct {
+							sgr string
+							id  tokenID
+						}{{del, tokDiffDelEmphBG}, {add, tokDiffAddEmphBG}} {
+							if !sgrBGNear(c.sgr, p[c.id].hex) {
+								t.Errorf("%s: emphasis drawn with %q, want the background %s", mode.name, c.sgr, p[c.id].hex)
+							}
+						}
+						continue
+					}
+					for _, sgr := range []string{del, add} {
+						params := strings.Split(strings.TrimSuffix(strings.TrimPrefix(sgr, "\x1b["), "m"), ";")
+						reverse, bg := false, false
+						for _, p := range params {
+							reverse = reverse || p == "7"
+							bg = bg || strings.HasPrefix(p, "4") && len(p) == 2 || strings.HasPrefix(p, "10") && len(p) == 3
+						}
+						if !reverse || bg {
+							t.Errorf("%s: emphasis drawn with %q, want reverse video and no background", mode.name, sgr)
+						}
+					}
+				}
+			})
+		}
+	}
+}
+
+// sgrBGNear reports whether sgr sets a truecolor background within one
+// step per channel of "#rrggbb" (the renderer rounds through float RGB).
+func sgrBGNear(sgr, hex string) bool {
+	var r, g, b int
+	fmt.Sscanf(hex, "#%02x%02x%02x", &r, &g, &b)
+	_, rest, ok := strings.Cut(sgr, "48;2;")
+	if !ok {
+		return false
+	}
+	var gr, gg, gb int
+	if n, _ := fmt.Sscanf(rest, "%d;%d;%d", &gr, &gg, &gb); n != 3 {
+		return false
+	}
+	near := func(a, b int) bool { return a-b <= 1 && b-a <= 1 }
+	return near(r, gr) && near(g, gg) && near(b, gb)
 }

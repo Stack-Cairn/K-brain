@@ -1,8 +1,10 @@
-[96m>[0m [1mSettings[0m                         [37m1/17[0m
+[96m>[0m [1mSettings[0m                         [37m1/19[0m
   [96m/[0m [37mtype to filter[0m
 [90m----------------------------------------[0m
   [90mDisplay[0m
 [1;96m> Theme          colour scheme ... auto[0m
+  Density        [37mcompact...[0m [37mcomfortable[0m
+  Content width  [37mwidest the tran...[0m [37moff[0m
   Language       [37minterface language[0m  [37men[0m
   Thinking t...  [37mshow model reas...[0m [37moff[0m
   Mouse capture  [37mwheel scroll and...[0m [37mon[0m
@@ -12,13 +14,11 @@
   Inline mode    [37mtranscript in t...[0m [37moff[0m
   Browser dr...  [37mautomation engi...[0m [37mrod[0m
 
-  [90mAgent[0m
-  Model          [37m[0m [37mkimi-k3-fast@inference[0m
-[37m  Down 7 more[0m
+[37m  Down 8 more[0m
 [90m----------------------------------------[0m
   [1mTheme[0m  [96mauto[0m
   [37mcolour scheme for the transcript and[0m
   [37mchrome[0m
-  [90m<-/-> change - Enter next - /theme[0m
+  [90m<-/-> change - Enter opens its pick...[0m
 [90m----------------------------------------[0m
   [37mUp/Down select - <-/-> change - Ent...[0m

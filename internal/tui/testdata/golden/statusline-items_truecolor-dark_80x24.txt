@@ -1,0 +1,24 @@
+▌❯ add a --json flag to `kn status` and run the tests
+
+● I'll add the flag next to the existing ones.
+
+                                                                           go
+    func statusJSON(w io.Writer, s Status) error {
+        // one object per call
+        return json.NewEncoder(w).Encode(s)
+    }
+
+  Then run the package tests.
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+  ❯ Ask k-brain anything…  ? help · / commands · Shift+Tab mode · Ctrl+P menu
+   Always allow   kn@feat/json · 03:04 0% ctx · 50.4k tok · kimi-k3-fast · ✦ off
+  ci: green
+  deploy: 2 pending

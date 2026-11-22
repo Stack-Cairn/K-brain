@@ -28,6 +28,11 @@ func (m *model) cfgSync() (tea.Model, tea.Cmd) {
 	if m.prog == nil {
 		return m, nil
 	}
+	// Theme files are re-read when they change, except while the picker is
+	// previewing one.
+	if m.palette == nil || m.palette.top() == nil || m.palette.top().kind != panelTheme {
+		m.refreshCustomThemes(false)
+	}
 	dir, err := config.Dir()
 	if err != nil {
 		return m, m.watchConfig()
@@ -72,6 +77,14 @@ func (m *model) applyCfgSync(msg cfgSyncMsg) {
 				m.applyMemorySwitch(on)
 			}
 		}
+	}
+	if _, pinned := m.cfgExtra["density"]; !pinned && msg.loaded != nil && m.cfg != nil && msg.loaded.Density != m.cfg.Density {
+		m.cfg.Density = msg.loaded.Density
+		m.applyDensity()
+	}
+	if _, pinned := m.cfgExtra["maxContentWidth"]; !pinned && msg.loaded != nil && m.cfg != nil && msg.loaded.MaxContentWidth != m.cfg.MaxContentWidth {
+		m.cfg.MaxContentWidth = msg.loaded.MaxContentWidth
+		m.refreshVP()
 	}
 	if _, pinned := m.cfgExtra["theme"]; pinned {
 		return

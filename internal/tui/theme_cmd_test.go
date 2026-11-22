@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -53,8 +54,8 @@ func TestThemeBareOpensSwitcher(t *testing.T) {
 		t.Fatalf("expected the theme panel, got %+v", pp)
 	}
 
-	if len(pp.list) != 4 || pp.list[0] != "auto" || pp.list[1] != "light" || pp.list[2] != "dark" || pp.list[3] != "mono" {
-		t.Fatalf("theme panel list: %v", pp.list)
+	if want := []string{"auto", "light", "dark", "dusk", "harbor", "paper", "contrast", "mono"}; !slices.Equal(pp.list, want) {
+		t.Fatalf("theme panel list: %v, want %v", pp.list, want)
 	}
 
 	tm, _ := m.paletteKey(tea.KeyMsg{Type: tea.KeyDown})

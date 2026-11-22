@@ -74,6 +74,18 @@ func ansiLuminance(n int) float64 {
 }
 
 func TestMarkdownContrastBothThemes(t *testing.T) {
+	for _, v := range themeVariants() {
+		t.Run(v.label, func(t *testing.T) {
+			defer activateTheme(builtinThemes[0])
+			activateTheme(v.theme)
+			markdownContrast(t, v.light)
+		})
+	}
+}
+
+// markdownContrast checks rendered markdown in the active theme against a
+// background of the given polarity.
+func markdownContrast(t *testing.T, light bool) {
 	samples := map[string]string{
 		"body":      "plain body text",
 		"bold":      "**bold text**",
@@ -81,7 +93,7 @@ func TestMarkdownContrastBothThemes(t *testing.T) {
 		"list":      "- item one\n- item two",
 		"codeblock": "```go\nfmt.Println(1)\n```",
 	}
-	for _, light := range []bool{true, false} {
+	{
 		restore := useProfile(t, termenv.ANSI256, !light)
 		SetLightTheme(light)
 		bgLum := 0.05

@@ -94,6 +94,8 @@ var chromeSectionList = []chromeSection{
 	{"plan", (*model).planRows},
 	// An MCP server's form (elicit_card.go).
 	{"elicit", (*model).elicitRows},
+	// Status lines past the first, under the footer (statusline.go).
+	{"statusLines", (*model).statusLineExtraRows},
 }
 
 func (m *model) chromeSections() []chromeSection { return chromeSectionList }
@@ -396,6 +398,9 @@ func (m *model) viewBody() string {
 		m.effortRow, m.effortX = strings.Count(b.String(), "\n"), chipX
 	}
 	b.WriteString(hints)
+	for _, row := range m.statusLineExtra() {
+		b.WriteString("\n" + row)
+	}
 	return b.String()
 }
 

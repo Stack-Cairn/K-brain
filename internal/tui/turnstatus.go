@@ -198,6 +198,9 @@ func (m *model) busyRights() []string {
 		}
 		return textMutedStyle.Render(strings.Join(keep, " · "))
 	}
+	if compactDensity {
+		return []string{join(clock, short), join(clock)}
+	}
 	return []string{
 		join(clock, tok, hint),
 		join(clock, hint),
