@@ -154,6 +154,15 @@ func (m *model) paletteItems() []paletteItem {
 			},
 		},
 		{
+			title: "Dashboard", category: "Session", suggested: true,
+			dynDesc: func(m *model) string { return slashHint(m, "/dashboard") },
+			dynHint: func(m *model) string { return "/dashboard" },
+			run: func(m *model) (tea.Model, tea.Cmd) {
+				m.palette = nil
+				return m, m.openDashboard()
+			},
+		},
+		{
 			title: "Rewind conversation", category: "Session", suggested: true,
 			dynDesc: func(m *model) string {
 				if len(m.future) > 0 {

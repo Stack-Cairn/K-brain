@@ -21,4 +21,4 @@
   • read the checkpoint
 ────────────────────────────────────────────────────────────────────────────────
   ❯ Ask k-brain anything…  ? help · / commands · Shift+Tab mode · Ctrl+P menu
-   Normal                                           ↑ 23% · kimi-k3-fast · ✦ off
+   Normal                                   ↑ 23% · End ↓ · kimi-k3-fast · ✦ off

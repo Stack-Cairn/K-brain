@@ -26,7 +26,7 @@ package tui
 //	func init() {
 //		registerBlockKind(blockBashRun, blockKindSpec{
 //			render: renderBashRun,
-//			toggle: toggleExpanded, // foldable with click / ctrl+e
+//			toggle: toggleExpanded, // foldable with click / alt+o
 //		})
 //	}
 //
@@ -333,9 +333,11 @@ type block struct {
 	// folded cuts a kind without a toggle of its own to its first row
 	// (transcript_focus.go).
 	folded bool
-	// expandKey marks the block Ctrl+E toggles: only its fold row names the
+	// expandKey marks the block Alt+O toggles: only its fold row names the
 	// key (syncExpandTarget).
 	expandKey bool
+	// raw draws a reply as its markdown source (transcript_focus_copy.go).
+	raw bool
 }
 
 // invalidate drops the block's render cache; call it after changing
@@ -362,6 +364,8 @@ func (b *block) linesAt(width int, ancient bool) []string {
 	}
 	_, custom := blockKinds[b.kind]
 	switch {
+	case b.raw && hasRawView(b):
+		b.rows = rawReplyRows(b, width)
 	case ancient && (b.kind == blockAssistant || b.kind == blockUser):
 		b.rows = splitRows(accentStyle.Render(renderAncientText(ansi.Strip(b.render(width)), width)))
 	case b.kind == blockAssistant && !custom:

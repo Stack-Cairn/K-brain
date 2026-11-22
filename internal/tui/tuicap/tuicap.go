@@ -61,6 +61,9 @@ type Options struct {
 	// Untrusted leaves the working directory untrusted, so kn starts on the
 	// trust question.
 	Untrusted bool
+	// Setup runs before kn starts, with the throwaway K_BRAIN_HOME and the
+	// working directory, e.g. to seed stored sessions.
+	Setup func(home, dir string)
 }
 
 // Session is one running kn.
@@ -80,6 +83,8 @@ type Session struct {
 	raw  bytes.Buffer
 	done chan struct{}
 	err  error
+	// drained is closed once everything kn wrote has reached the emulator.
+	drained chan struct{}
 }
 
 // Start builds kn if needed and runs it in a PTY. The session is closed when
@@ -116,6 +121,9 @@ func Start(t testing.TB, opts Options) *Session {
 	writeConfig(t, kbHome, provider.URL, opts.Config)
 	if !opts.Untrusted {
 		trust(t, kbHome, dir)
+	}
+	if opts.Setup != nil {
+		opts.Setup(kbHome, dir)
 	}
 
 	// The clipboard never leaves the session: kn finds these stubs before the
@@ -157,7 +165,7 @@ func Start(t testing.TB, opts Options) *Session {
 		t: t, cmd: cmd, pty: ptmx, provider: provider, timeout: opts.Timeout,
 		Home: kbHome, Dir: dir, Clipboard: clip,
 		term: vt.NewEmulator(opts.Width, opts.Height),
-		done: make(chan struct{}),
+		done: make(chan struct{}), drained: make(chan struct{}),
 	}
 	go s.pump()
 	go s.answer()
@@ -171,6 +179,7 @@ func Start(t testing.TB, opts Options) *Session {
 
 // pump feeds everything kn writes into the emulator and the raw log.
 func (s *Session) pump() {
+	defer close(s.drained)
 	buf := make([]byte, 32<<10)
 	for {
 		n, err := s.pty.Read(buf)
@@ -246,6 +255,14 @@ func (s *Session) write(b string) {
 func (s *Session) Resize(width, height int) {
 	s.t.Helper()
 	s.mu.Lock()
+	if cur := s.term.CursorPosition(); !s.term.IsAltScreen() && cur.Y >= height {
+		// The emulator cuts rows off the bottom when it gets shorter. A real
+		// terminal keeps the cursor's row on screen and scrolls the rows above
+		// it into the scrollback, which programs drawing in the normal screen
+		// rely on; do that first.
+		n := cur.Y - height + 1
+		_, _ = fmt.Fprintf(s.term, "\x1b7\x1b[%d;1H%s\x1b8\x1b[%dA", s.term.Height(), strings.Repeat("\n", n), n)
+	}
 	s.term.Resize(width, height)
 	s.mu.Unlock()
 	if err := pty.Setsize(s.pty, &pty.Winsize{Cols: uint16(width), Rows: uint16(height)}); err != nil {
@@ -278,6 +295,51 @@ func (s *Session) Snapshot() string {
 		lines[y] = strings.TrimRight(row.String(), " ")
 	}
 	return strings.Join(lines, "\n") + "\n"
+}
+
+// History is the main screen with its scrollback: the rows scrolled off
+// the top, oldest first, then the screen as Snapshot draws it.
+func (s *Session) History() string {
+	s.mu.Lock()
+	var b strings.Builder
+	w := s.term.Width()
+	for y := range s.term.ScrollbackLen() {
+		var row strings.Builder
+		for x := 0; x < w; x++ {
+			c := s.term.ScrollbackCellAt(x, y)
+			switch {
+			case c == nil || (c.Content == "" && c.Width != 0):
+				row.WriteByte(' ')
+			case c.Content == "":
+			default:
+				row.WriteString(c.Content)
+			}
+		}
+		b.WriteString(strings.TrimRight(row.String(), " ") + "\n")
+	}
+	s.mu.Unlock()
+	return b.String() + s.Snapshot()
+}
+
+// AltScreen reports whether the terminal is showing the alternate screen.
+func (s *Session) AltScreen() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.term.IsAltScreen()
+}
+
+// WaitExit waits for kn to exit on its own and for its last output to reach
+// the emulator, failing the test after the session timeout.
+func (s *Session) WaitExit() {
+	s.t.Helper()
+	timeout := time.After(s.timeout)
+	for _, ch := range []chan struct{}{s.done, s.drained} {
+		select {
+		case <-ch:
+		case <-timeout:
+			s.t.Fatalf("kn did not exit within %s; screen:\n%s", s.timeout, s.Snapshot())
+		}
+	}
 }
 
 // Raw is every byte kn has written so far, escapes included.

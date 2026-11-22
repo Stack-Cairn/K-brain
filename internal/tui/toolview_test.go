@@ -259,9 +259,12 @@ func TestToolViewGoldens(t *testing.T) {
 
 const sampleDiff = "10   func main() {\n11 - \tfmt.Println(\"hello\")\n11 + \tfmt.Println(\"hello, world\", strings.Repeat(\"=\", 40), os.Args[1:])\n12   }\n… +3 more lines"
 
+// wordsDiff changes a word or two inside each paired line.
+const wordsDiff = "4 - \tv, ok := cache.Get(key, width)\n5 - \tif !ok {\n4 + \tv, ok := cache.Get(key, height)\n5 + \tif !ok || v.stale {\n6   \t\treturn nil"
+
 func TestRenderDiffGoldens(t *testing.T) {
 	defer SetLightTheme(false)
-	for _, mode := range []goldenMode{goldenModes[0], goldenModes[1], goldenModes[4]} {
+	for _, mode := range []goldenMode{goldenModes[0], goldenModes[1], goldenModes[3], goldenModes[4]} {
 		t.Run(mode.name, func(t *testing.T) {
 			restore := useProfile(t, mode.profile, mode.dark)
 			defer restore()
@@ -279,6 +282,7 @@ func TestRenderDiffGoldens(t *testing.T) {
 				{"wrapped", 40, renderDiff(sampleDiff, "main.go", 40)},
 				{"folded", 80, renderDiffFolded(sampleDiff, "main.go", 80, 2, true)},
 				{"unnumbered", 80, renderDiff("+ added\n- removed\n  same", "x.txt", 80)},
+				{"words", 80, renderDiff(wordsDiff, "main.go", 80)},
 			} {
 				for _, l := range strings.Split(c.out, "\n") {
 					if w := lipgloss.Width(l); w > c.width {
@@ -307,7 +311,7 @@ func TestRenderDiffWrapsInsteadOfTruncating(t *testing.T) {
 		t.Fatalf("wrapped row lost its tail:\n%s", out)
 	}
 	folded := ansi.Strip(renderDiffFolded(sampleDiff, "main.go", 80, 2, true))
-	if !strings.Contains(folded, glyphs.Fold+" +3 lines · ctrl+e") || strings.Contains(folded, "12  ") {
+	if !strings.Contains(folded, glyphs.Fold+" +3 lines · alt+o") || strings.Contains(folded, "12  ") {
 		t.Fatalf("folded diff wrong:\n%s", folded)
 	}
 }

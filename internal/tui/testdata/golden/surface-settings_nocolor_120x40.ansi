@@ -1,4 +1,4 @@
-[1m❯[0m [1mSettings[0m                                                                                                         [2m1/16[0m
+[1m❯[0m [1mSettings[0m                                                                                                         [2m1/19[0m
   [1m/[0m [2mtype to filter[0m
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   [2mDisplay[0m
@@ -8,7 +8,10 @@
   Language          interface language                                                                               [2men[0m
   Thinking tokens   show model reasoning in the transcript                                                          [2moff[0m
   Mouse capture     wheel scroll and click-to-copy inside kn                                                         [2mon[0m
+  Vim mode          modal editing in the composer: Esc for normal mode, i to insert                                 [2moff[0m
+  Option as Alt     read macOS Option+letter characters as Alt shortcuts                                            [2moff[0m
   Ancient mode      classical vertical layout for replies                                                           [2moff[0m
+  Inline mode       transcript in the terminal's scrollback                                                         [2moff[0m
   Browser driver    automation engine that drives Chrome                                                            [2mrod[0m
 
   [2mAgent[0m
@@ -22,9 +25,6 @@
   Compaction level  auto-compact at this share of the context window                                                [2m90%[0m
   [2mGoal rounds     [0m  [2mrounds a /goal may run before it stops[0m                                                          [2m100[0m
   Privacy gateway   mask secrets in requests, restore them in replies                                               [2moff[0m
-
-
-
 
 
 

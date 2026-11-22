@@ -1,4 +1,4 @@
-[96m❯[0m [1mSettings[0m                                                                 [37m1/16[0m
+[96m❯[0m [1mSettings[0m                                                                 [37m1/19[0m
   [96m/[0m [37mtype to filter[0m
 [90m────────────────────────────────────────────────────────────────────────────────[0m
   [90mDisplay[0m
@@ -8,14 +8,14 @@
   Language          [37minterface language[0m                                       [37men[0m
   Thinking tokens   [37mshow model reasoning in the transcript[0m                  [37moff[0m
   Mouse capture     [37mwheel scroll and click-to-copy inside kn[0m                 [37mon[0m
+  Vim mode          [37mmodal editing in the composer: Esc for normal mode, i …[0m [37moff[0m
+  Option as Alt     [37mread macOS Option+letter characters as Alt shortcuts[0m    [37moff[0m
   Ancient mode      [37mclassical vertical layout for replies[0m                   [37moff[0m
+  Inline mode       [37mtranscript in the terminal's scrollback[0m                 [37moff[0m
   Browser driver    [37mautomation engine that drives Chrome[0m                    [37mrod[0m
 
   [90mAgent[0m
-  Model             [37mmodel and route for new turns[0m        [37mkimi-k3-fast@inference[0m
-  Reasoning effort  [37mhow hard the model thinks before answering[0m              [37moff[0m
-  Permission mode   [37mwhat tools may do without asking[0m               [37mAlways allow[0m
-[37m  ↓ 5 more[0m
+[37m  ↓ 8 more[0m
 [90m────────────────────────────────────────────────────────────────────────────────[0m
   [1mTheme[0m  [96mauto[0m
   [37mcolour scheme for the transcript and chrome[0m

@@ -183,6 +183,11 @@ func TestTokenContrast(t *testing.T) {
 			{tokChipInk, tokAccent, 3},
 			{tokChipInk, tokStateWarn, 3},
 			{tokTextSecondary, tokLineRule, 4.5},
+			// Changed words in a paired diff row sit on the emphasis tints.
+			{tokTextSecondary, tokDiffAddEmphBG, 4.5},
+			{tokTextSecondary, tokDiffDelEmphBG, 4.5},
+			{tokSynKeyword, tokDiffAddEmphBG, 3},
+			{tokSynString, tokDiffDelEmphBG, 3},
 		} {
 			fg, bgc := v.p[pair.fg], v.p[pair.bg]
 			name := defaultTokens[pair.fg].name + " on " + defaultTokens[pair.bg].name
@@ -190,9 +195,15 @@ func TestTokenContrast(t *testing.T) {
 				t.Errorf("%s %s: %.2f:1, want >= %.1f:1", v.label, name, got, pair.minimum)
 			}
 			// The 256-colour grey ramp moves in steps of ten, so a pair of
-			// nearby greys may land up to 5% under the truecolor target.
-			if got := contrast(t, x256Hex(t, fg.x256), x256Hex(t, bgc.x256)); got < pair.minimum*0.95 {
-				t.Errorf("%s %s at 256 colours: %.2f:1, want >= %.2f:1", v.label, name, got, pair.minimum*0.95)
+			// nearby greys may land up to 5% under the truecolor target. The
+			// cube has few dark greens and pale reds, so a syntax colour on
+			// a changed-word tint may land up to 15% under.
+			slack := 0.95
+			if (pair.bg == tokDiffAddEmphBG || pair.bg == tokDiffDelEmphBG) && pair.fg != tokTextSecondary {
+				slack = 0.85
+			}
+			if got := contrast(t, x256Hex(t, fg.x256), x256Hex(t, bgc.x256)); got < pair.minimum*slack {
+				t.Errorf("%s %s at 256 colours: %.2f:1, want >= %.2f:1", v.label, name, got, pair.minimum*slack)
 			}
 		}
 	}

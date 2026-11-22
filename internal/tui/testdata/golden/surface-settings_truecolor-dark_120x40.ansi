@@ -1,4 +1,4 @@
-[38;2;47;191;160m❯[0m [1mSettings[0m                                                                                                         [38;2;154;160;170m1/16[0m
+[38;2;47;191;160m❯[0m [1mSettings[0m                                                                                                         [38;2;154;160;170m1/19[0m
   [38;2;47;191;160m/[0m [38;2;154;160;170mtype to filter[0m
 [38;2;58;64;72m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [38;2;134;139;149mDisplay[0m
@@ -8,7 +8,10 @@
   Language          [38;2;200;204;211minterface language[0m                                                                               [38;2;154;160;170men[0m
   Thinking tokens   [38;2;200;204;211mshow model reasoning in the transcript[0m                                                          [38;2;154;160;170moff[0m
   Mouse capture     [38;2;200;204;211mwheel scroll and click-to-copy inside kn[0m                                                         [38;2;154;160;170mon[0m
+  Vim mode          [38;2;200;204;211mmodal editing in the composer: Esc for normal mode, i to insert[0m                                 [38;2;154;160;170moff[0m
+  Option as Alt     [38;2;200;204;211mread macOS Option+letter characters as Alt shortcuts[0m                                            [38;2;154;160;170moff[0m
   Ancient mode      [38;2;200;204;211mclassical vertical layout for replies[0m                                                           [38;2;154;160;170moff[0m
+  Inline mode       [38;2;200;204;211mtranscript in the terminal's scrollback[0m                                                         [38;2;154;160;170moff[0m
   Browser driver    [38;2;200;204;211mautomation engine that drives Chrome[0m                                                            [38;2;154;160;170mrod[0m
 
   [38;2;134;139;149mAgent[0m
@@ -22,9 +25,6 @@
   Compaction level  [38;2;200;204;211mauto-compact at this share of the context window[0m                                                [38;2;154;160;170m90%[0m
   [38;2;134;139;149mGoal rounds     [0m  [38;2;134;139;149mrounds a /goal may run before it stops[0m                                                          [38;2;134;139;149m100[0m
   Privacy gateway   [38;2;200;204;211mmask secrets in requests, restore them in replies[0m                                               [38;2;154;160;170moff[0m
-
-
-
 
 
 

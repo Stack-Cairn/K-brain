@@ -1,0 +1,24 @@
+❯ Dashboard                                                          6 sessions
+  / press / and type a title, workspace or model
+────────────────────────────────────────────────────────────────────────────────
+    session                                                   status     active
+  This session's subagents
+  ● scan the store for stale run leases                       running  just now
+  ✗ summarize test failures                                   error      5m ago
+
+  This workspace
+❯ ● (current) Refactor the session store                      running    2m ago
+  ○ Fix flaky terminal capture test                           idle       3h ago
+  ○ (untitled)                                                idle       2d ago
+
+  Other workspaces
+  ● Gateway rate limiter 限流设计                             running    1m ago
+  ↓ 2 more
+────────────────────────────────────────────────────────────────────────────────
+  c0ffee01 · kimi-k3-fast@inference · ~
+  ● running · this session · running a turn
+  191.4k tokens · 41 messages
+  ◎ goal: ship the multi-session dashboard
+  ● running = a turn in progress here, in another kn or in the backend; idle ro…
+────────────────────────────────────────────────────────────────────────────────
+  Enter open · n new · d delete · / filter · Tab group by workspace · r refresh…

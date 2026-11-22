@@ -1,0 +1,24 @@
+> Dashboard                                           by workspace - 6 sessions
+  / press / and type a title, workspace or model
+--------------------------------------------------------------------------------
+  Up 2 more
+  ~
+  * (current) Refactor the session store                      running    2m ago
+  o Fix flaky terminal capture test                           idle       3h ago
+  o (untitled)                                                idle       2d ago
+
+  ~/src/api-gateway
+> * Gateway rate limiter 限流设计                             running    1m ago
+
+  /srv/build/runner
+  o Release notes for v0.9                                    idle       1d ago
+
+  ~/notes
+  o Read the mermaid docs and write a long summary that wi... idle       9d ago
+--------------------------------------------------------------------------------
+  0a0b0c0d - glm-5.2-fast@inference - ~/src/api-gateway
+  * running - running a turn in kn (pid 4242) - started 1m ago
+  55.1k tokens - 24 messages
+  * running = a turn in progress here, in another kn or in the backend; idle ...
+--------------------------------------------------------------------------------
+  Enter open - n new - d delete - / filter - Tab group by workspace - r refre...

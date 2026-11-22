@@ -1,0 +1,20 @@
+kind=flowchart width=45
+               ┌─────┐
+               │  D  │
+               └─────┘
+                ▲ ▲ ▲
+          ╭─────╯ ╰╮╰───╮
+          │        │    │
+      ┌───┴───┐  ┌─┴─┐  │
+      │ short │  │ C │  │
+      └───────┘  └───┘  │
+          ▲        ▲    │
+          │        │ a long edge label that …
+          │      ╭─╯    │
+          ╰────╮ │ ╭────╯
+               │ │ │
+┌──────────────┴─┴─┴───────────────┐
+│  This is a very long label that  │
+│ should wrap across several lines │
+│            in the box            │
+└──────────────────────────────────┘

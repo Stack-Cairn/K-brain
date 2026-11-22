@@ -12,12 +12,14 @@
 | `/rewind` / `/undo` | 浏览并回退到之前的轮次 |
 | `/new` / `/clear` | 新建或清空会话 |
 | `/resume [id]` | 恢复会话 |
+| `/dashboard` | 全屏查看各工作区的会话及其状态（见[会话总览](14-dashboard.md)） |
 | `/rename [title]` | 修改 session title |
 | `/goal <text>` | 设定会话目标，模型会持续多轮工作直到完成；`/goal clear\|resume\|rounds [n]\|verify [on\|off]` |
 | `/subagent <prompt>` | 启动后台 subagent |
 | `/subagents` | 查看 subagent 面板 |
 | `/privacy on\|off\|toggle` | 开关本地隐私网关 |
 | `/ancient on\|off\|toggle` | 开关古人竖排输出模式 |
+| `/vim [on\|off]` | 开关输入框的 vim 模式（默认关闭，见“快捷键”一章） |
 | `/export [path]` | 导出 Markdown、JSONL 或 HTML |
 | `/diff [--staged\|--stat]` | 查看 Git 变更 |
 

@@ -1,0 +1,40 @@
+❯ Dashboard                                                                                             1 of 6 sessions
+  / gate▏
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+    session                                    status   workspace            model               tokens · cost   active
+  Other workspaces
+❯ ● Gateway rate limiter 限流设计              running  src/api-gateway      glm-5.2-fast                55.1k   1m ago
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  0a0b0c0d · glm-5.2-fast@inference · ~/src/api-gateway
+  ● running · running a turn in kn (pid 4242) · started 1m ago
+  55.1k tokens · 24 messages
+  ● running = a turn in progress here, in another kn or in the backend; idle rows show their last saved state
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  type to filter · Enter done · Esc clear

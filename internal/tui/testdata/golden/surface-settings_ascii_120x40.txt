@@ -1,4 +1,4 @@
-> Settings                                                                                                         1/16
+> Settings                                                                                                         1/19
   / type to filter
 ------------------------------------------------------------------------------------------------------------------------
   Display
@@ -8,7 +8,10 @@
   Language          interface language                                                                               en
   Thinking tokens   show model reasoning in the transcript                                                          off
   Mouse capture     wheel scroll and click-to-copy inside kn                                                         on
+  Vim mode          modal editing in the composer: Esc for normal mode, i to insert                                 off
+  Option as Alt     read macOS Option+letter characters as Alt shortcuts                                            off
   Ancient mode      classical vertical layout for replies                                                           off
+  Inline mode       transcript in the terminal's scrollback                                                         off
   Browser driver    automation engine that drives Chrome                                                            rod
 
   Agent
@@ -22,9 +25,6 @@
   Compaction level  auto-compact at this share of the context window                                                90%
   Goal rounds       rounds a /goal may run before it stops                                                          100
   Privacy gateway   mask secrets in requests, restore them in replies                                               off
-
-
-
 
 
 

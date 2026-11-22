@@ -1,0 +1,12 @@
+sequenceDiagram
+    participant 用户
+    participant Service as 服务 API
+    用户->>Service: 提交订单（含很长很长的说明文字，需要换行）
+    Service->>Service: 校验库存
+    Service-->>用户: 完成 ✓
+    Note left of 用户: 左侧备注
+    par 并行
+        Service->>用户: 通知
+    and
+        Service-)用户: 邮件
+    end

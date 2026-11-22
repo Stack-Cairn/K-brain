@@ -259,6 +259,9 @@ func (m *model) refreshBanner() {
 // as block 0 for resume, rewind and /clear alike.
 func (m *model) resetTranscript() {
 	m.blocks, m.msgBlock = nil, nil
+	if m.inl != nil {
+		m.inl.reset()
+	}
 	m.appendBanner()
 }
 

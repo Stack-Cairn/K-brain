@@ -1,0 +1,21 @@
+sequenceDiagram
+    autonumber
+    participant A as Alice
+    actor B as Bob
+    participant S as 服务器
+    A->>B: Hello Bob, how are you?
+    B-->>A: Fine
+    loop Every minute
+        A->>S: Ping
+        S--)A: Pong
+    end
+    alt is sick
+        B->>B: Rest
+    else is well
+        B-xS: Work
+    end
+    Note right of S: 记录日志
+    Note over A,B: A typical exchange
+    opt Extra
+      A<<->>S: sync
+    end

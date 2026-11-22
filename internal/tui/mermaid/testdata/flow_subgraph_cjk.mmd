@@ -1,0 +1,9 @@
+flowchart TD
+  subgraph front [前端 Frontend]
+    UI[用户界面] --> Store
+  end
+  subgraph back [Backend]
+    API --> DB[(数据库)]
+  end
+  Store --> API
+  UI --> Log

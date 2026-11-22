@@ -4,7 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -82,7 +81,7 @@ func TestToolResultFullyVisibleWhenExpanded(t *testing.T) {
 		t.Fatal("collapsed view should keep the last row")
 	}
 
-	tm, _ = m.key(tea.KeyMsg{Type: tea.KeyCtrlE})
+	tm, _ = m.key(altKey("o"))
 	m = tm.(*model)
 	joined = strings.Join(m.viewportPlain(), "\n")
 	for i := 1; i <= 12; i++ {

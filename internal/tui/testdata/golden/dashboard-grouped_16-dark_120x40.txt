@@ -1,0 +1,40 @@
+❯ Dashboard                                                                                   by workspace · 6 sessions
+  / press / and type a title, workspace or model
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+    session                                    status   workspace            model               tokens · cost   active
+  This session's subagents
+  ● scan the store for stale run leases        running  sub-1                                                  just now
+  ✗ summarize test failures                    error    sub-2                                                    5m ago
+
+  ~
+  ● (current) Refactor the session store       running  ~                    kimi-k3-fast               191.4k   2m ago
+  ○ Fix flaky terminal capture test            idle     ~                    glm-5.2-fast                42.0k   3h ago
+  ○ (untitled)                                 idle     ~                    kimi-k3-fast                        2d ago
+
+  ~/src/api-gateway
+❯ ● Gateway rate limiter 限流设计              running  src/api-gateway      glm-5.2-fast                55.1k   1m ago
+
+  /srv/build/runner
+  ○ Release notes for v0.9                     idle     build/runner         kimi-k3-fast                        1d ago
+
+  ~/notes
+  ○ Read the mermaid docs and write a long su… idle     ~/notes              kimi-k3-fast                        9d ago
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  0a0b0c0d · glm-5.2-fast@inference · ~/src/api-gateway
+  ● running · running a turn in kn (pid 4242) · started 1m ago
+  55.1k tokens · 24 messages
+  ● running = a turn in progress here, in another kn or in the backend; idle rows show their last saved state
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Enter open · n new · d delete · / filter · Tab group by workspace · r refresh · Esc close

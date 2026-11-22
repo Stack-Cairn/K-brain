@@ -409,12 +409,12 @@ func TestSubagentResultFoldsToOneLine(t *testing.T) {
 	}
 	b := block{kind: blockTool, toolName: "subagent", text: raw, expandKey: true}
 	out := stripAll(b.render(100))
-	if strings.Contains(out, `"type"`) || !strings.Contains(out, "scripted failure") || !strings.Contains(out, "ctrl+e") {
+	if strings.Contains(out, `"type"`) || !strings.Contains(out, "scripted failure") || !strings.Contains(out, "alt+o") {
 		t.Fatalf("failed subagent result should fold to its message:\n%s", out)
 	}
 	b.expanded = true
 	if out := stripAll(b.render(100)); !strings.Contains(out, `"invalid_request_error"`) {
-		t.Fatalf("ctrl+e should show the whole result:\n%s", out)
+		t.Fatalf("alt+o should show the whole result:\n%s", out)
 	}
 	report := block{kind: blockTool, toolName: "subagent", text: "Changelog audited: 3 entries fixed.\n\n- a\n- b"}
 	out = stripAll(report.render(100))
@@ -422,7 +422,7 @@ func TestSubagentResultFoldsToOneLine(t *testing.T) {
 		t.Fatalf("report should fold to its first line and a hint:\n%s", out)
 	}
 	one := block{kind: blockTool, toolName: "subagent", text: "done"}
-	if out := stripAll(one.render(100)); strings.Contains(out, "ctrl+e") {
+	if out := stripAll(one.render(100)); strings.Contains(out, "alt+o") {
 		t.Fatalf("a one-line report needs no fold hint: %q", out)
 	}
 }

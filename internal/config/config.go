@@ -151,11 +151,16 @@ type Config struct {
 	Mouse           *bool                  `json:"mouse,omitempty"`
 	Thinking        *bool                  `json:"thinking,omitempty"`
 	CollapsePaste   *bool                  `json:"collapsePaste,omitempty"`
+	Vim             *bool                  `json:"vim,omitempty"`
+	OptionAsAlt     *bool                  `json:"optionAsAlt,omitempty"`
 	GoalMaxRounds   int                    `json:"goalMaxRounds,omitempty"`
 	// GoalVerify turns the independent check of a GOAL_MET claim on or off; nil is on.
 	GoalVerify *bool `json:"goalVerify,omitempty"`
 	// GoalVerifyMaxRejections caps verifier rejections per goal; 0 uses the default.
 	GoalVerifyMaxRejections int `json:"goalVerifyMaxRejections,omitempty"`
+	// Inline runs kn in the terminal's normal screen, the finished transcript
+	// printed into its scrollback, instead of the alternate screen; nil is off.
+	Inline *bool `json:"inline,omitempty"`
 
 	WorktreeSubagents *bool `json:"worktreeSubagents,omitempty"`
 	MaxRetries        int   `json:"maxRetries,omitempty"`

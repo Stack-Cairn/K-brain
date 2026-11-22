@@ -14,7 +14,7 @@
 │   54  -     verbose := flags.Bool("v4", false, "verbose")                                                            │
 │   54  +     asJSON4 := flags.Bool("json4", false, "print JSON")                                                      │
 │   55  -     verbose := flags.Bool("v5", false, "verbose")                                                            │
-│     ⋯ +11 lines · ctrl+e                                                                                             │
+│     ⋯ +11 lines · alt+o                                                                                              │
 │                                                                                                                      │
 │ Normal mode confirms commands and file changes                                                                       │
 │                                                                                                                      │

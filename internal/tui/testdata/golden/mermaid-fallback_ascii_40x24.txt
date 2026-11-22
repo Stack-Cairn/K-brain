@@ -1,0 +1,24 @@
+|> draw the request path
+
+* ```mermaid
+    pie title Pets
+      "Dogs" : 3
+  ```
+  mermaid: pie diagrams are not dra...
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+----------------------------------------
+  > Ask k-brain anything...  ? help...
+   Normal           kimi-k3-fast - * off

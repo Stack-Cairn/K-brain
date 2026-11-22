@@ -37,4 +37,4 @@
 
 ------------------------------------------------------------------------------------------------------------------------
   > Ask k-brain anything...  ? help - / commands - Shift+Tab mode - Ctrl+P menu
-   Normal                                                                                  Up 30% - kimi-k3-fast - * off
+   Normal                                                                       Up 30% - End Down - kimi-k3-fast - * off

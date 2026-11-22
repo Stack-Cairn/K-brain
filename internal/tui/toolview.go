@@ -660,7 +660,7 @@ func renderGenericBody(b *block, text string, preview int, width int) string {
 
 // renderSubagentBody is a finished subagent's result folded to one line: the
 // report's first line, or for a failure the error's message instead of the
-// provider's raw response body. ctrl+e opens the whole result; key says
+// provider's raw response body. alt+o opens the whole result; key says
 // whether the fold row names it.
 func renderSubagentBody(text string, width int, key bool) string {
 	elbow := textMutedStyle.Render("  " + glyphs.Result + " ")
@@ -711,13 +711,13 @@ func subagentErrorSummary(text string) string {
 }
 
 // foldHint is the row standing in for n folded rows: "⋯ +14 lines", and
-// " · ctrl+e" after it when key says Ctrl+E is what opens them. Only the
-// block Ctrl+E toggles says so (expandTarget); the others still open from
+// " · alt+o" after it when key says Alt+O is what opens them. Only the
+// block Alt+O toggles says so (expandTarget); the others still open from
 // the transcript focus or a click.
 func foldHint(n int, unit string, key bool) string {
 	s := fmt.Sprintf("    %s +%d %s", glyphs.Fold, n, unit)
 	if key {
-		s += " · ctrl+e"
+		s += " · alt+o"
 	}
 	return textHintStyle.Render(chromeGlyphs(s))
 }
