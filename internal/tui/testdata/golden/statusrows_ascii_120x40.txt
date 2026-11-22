@@ -15,4 +15,4 @@
 # approval
   o Waiting for your approval                                                                                        42s
 # interrupt
-  | Preparing...                                                                            42s - Esc again to interrupt
+  | Preparing...                                                                         42s - Ctrl+C again to interrupt

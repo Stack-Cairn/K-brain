@@ -15,7 +15,7 @@
 
   Then run the package tests.
 
-  ⠋ Writing…                    7s · Esc
+  ⠋ Writing…                          7s
   queued (2) · Enter send now
     1 then run the linter
   ❯ 2 and update the changelog with…  ✗

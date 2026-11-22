@@ -1,14 +1,13 @@
-❯ Keyboard shortcuts                                                                                               1/87
+❯ Keyboard shortcuts                                                                                              1/109
   [Keys]  Commands
   / type to filter
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   Anywhere
 ❯ Shift+Tab                          cycle the permission mode
-  Ctrl+K                             clear the conversation
   Ctrl+T                             focus the subagent dock
   Alt+T                              expand or collapse the top panel (goal, plan, subagents); a click on its header …
   Ctrl+O                             show or hide thinking tokens
-  Ctrl+E                             expand the last tool result
+  Alt+O                              expand or collapse the last tool result
   Ctrl+G                             edit the draft in an external editor
   Ctrl+V                             paste an image
   Ctrl+L                             redraw the screen
@@ -23,6 +22,7 @@
   Tab                                complete a command, path or mention
   Ctrl+J / Shift+Enter / Alt+Enter   insert a newline
   Esc                                clear the draft
+  End / Ctrl+End                     back to the newest output
   Enter                              send the message
   ↑                                  previous prompt from history
   ↓ / Ctrl+N                         next prompt from history
@@ -31,7 +31,7 @@
   Alt+Z                              redo the draft edit
   Ctrl+W / Alt+Backspace             cut the word before the cursor
   Ctrl+U                             cut to the start of the line
-  ↓ 61 more
+  ↓ 83 more
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   Shift+Tab  cycle the permission mode
   Shift+Tab — cycle Normal / Plan / Auto review / Always allow

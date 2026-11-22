@@ -15,4 +15,4 @@
 # approval
   [1;38;2;168;116;26m◇[0m [38;2;168;116;26mWaiting for your approval[0m                                                                                        [38;2;104;110;118m42s[0m
 # interrupt
-  [38;2;47;95;168m⠋[0m [38;2;47;95;168mPreparing…[0m                                                                              [38;2;104;110;118m42s · Esc again to interrupt[0m
+  [38;2;47;95;168m⠋[0m [38;2;47;95;168mPreparing…[0m                                                                           [38;2;104;110;118m42s · Ctrl+C again to interrupt[0m

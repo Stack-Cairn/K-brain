@@ -1,4 +1,4 @@
-[38;5;79m❯[0m [1mSettings[0m                                                                                                         [38;5;247m1/14[0m
+[38;5;79m❯[0m [1mSettings[0m                                                                                                         [38;5;247m1/17[0m
   [38;5;79m/[0m [38;5;247mtype to filter[0m
 [38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [38;5;245mDisplay[0m
@@ -6,7 +6,10 @@
   Language          [38;5;252minterface language[0m                                                                               [38;5;247men[0m
   Thinking tokens   [38;5;252mshow model reasoning in the transcript[0m                                                          [38;5;247moff[0m
   Mouse capture     [38;5;252mwheel scroll and click-to-copy inside kn[0m                                                         [38;5;247mon[0m
+  Vim mode          [38;5;252mmodal editing in the composer: Esc for normal mode, i to insert[0m                                 [38;5;247moff[0m
+  Option as Alt     [38;5;252mread macOS Option+letter characters as Alt shortcuts[0m                                            [38;5;247moff[0m
   Ancient mode      [38;5;252mclassical vertical layout for replies[0m                                                           [38;5;247moff[0m
+  Inline mode       [38;5;252mtranscript in the terminal's scrollback[0m                                                         [38;5;247moff[0m
   Browser driver    [38;5;252mautomation engine that drives Chrome[0m                                                            [38;5;247mrod[0m
 
   [38;5;245mAgent[0m
@@ -20,9 +23,6 @@
   Compaction level  [38;5;252mauto-compact at this share of the context window[0m                                                [38;5;247m90%[0m
   [38;5;245mGoal rounds     [0m  [38;5;245mrounds a /goal may run before it stops[0m                                                          [38;5;245m100[0m
   Privacy gateway   [38;5;252mmask secrets in requests, restore them in replies[0m                                               [38;5;247moff[0m
-
-
-
 
 
 

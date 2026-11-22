@@ -1,14 +1,13 @@
-[1m❯[0m [1mKeyboard shortcuts[0m                                                                                               [2m1/87[0m
+[1m❯[0m [1mKeyboard shortcuts[0m                                                                                              [2m1/109[0m
   [1m[Keys][0m [2m Commands [0m
   [1m/[0m [2mtype to filter[0m
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   [2mAnywhere[0m
 [1;7m❯ Shift+Tab                          cycle the permission mode                                                         [0m
-  Ctrl+K                             clear the conversation[2m[0m
   Ctrl+T                             focus the subagent dock[2m[0m
   Alt+T                              expand or collapse the top panel (goal, plan, subagents); a click on its header …[2m[0m
   Ctrl+O                             show or hide thinking tokens[2m[0m
-  Ctrl+E                             expand the last tool result[2m[0m
+  Alt+O                              expand or collapse the last tool result[2m[0m
   Ctrl+G                             edit the draft in an external editor[2m[0m
   Ctrl+V                             paste an image[2m[0m
   Ctrl+L                             redraw the screen[2m[0m
@@ -23,6 +22,7 @@
   Tab                                complete a command, path or mention[2m[0m
   Ctrl+J / Shift+Enter / Alt+Enter   insert a newline[2m[0m
   Esc                                clear the draft[2m[0m
+  End / Ctrl+End                     back to the newest output[2m[0m
   Enter                              send the message[2m[0m
   ↑                                  previous prompt from history[2m[0m
   ↓ / Ctrl+N                         next prompt from history[2m[0m
@@ -31,7 +31,7 @@
   Alt+Z                              redo the draft edit[2m[0m
   Ctrl+W / Alt+Backspace             cut the word before the cursor[2m[0m
   Ctrl+U                             cut to the start of the line[2m[0m
-[2m  ↓ 61 more[0m
+[2m  ↓ 83 more[0m
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   [1mShift+Tab[0m  cycle the permission mode
   [2mShift+Tab — cycle Normal / Plan / Auto review / Always allow[0m

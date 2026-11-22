@@ -31,6 +31,7 @@ var execNow = map[string]bool{
 	"/mcp": true, "/model": true, "/mouse": true, "/pwd": true, "/quit": true, "/report": true, "/resume": true, "/subagents": true, "/tasks": true, "/import": true,
 	"/rewind": true, "/language": true, "/plugins": true, "/privacy": true, "/new-context": true, "/new_context": true,
 	"/usage": true, "/dashboard": true,
+	"/vim": true,
 }
 
 func completions(val string, models, providers, skillCands, efforts []cand) (head string, cands []cand) {

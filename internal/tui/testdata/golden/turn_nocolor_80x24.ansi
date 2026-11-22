@@ -2,8 +2,8 @@
                                                                                 
 [2m◆[0m [1mEdit[0m  cmd/kn/status.go                                           +1 [1m−1[0m  ✓[2m 0.1s[0m
 [2m  41  [0m      flags := pflag.NewFlagSet("status")                                 [0m
-[2m  42  [0m[1m-[0m [1m    verbose := flags.Bool("v", false, "verbose")[0m                        [0m
-[2m  42  [0m+     asJSON := flags.Bool("json", false, "print JSON")                   [0m
+[2m  42  [0m[1m-[0m [1m    [0m[1;7mverbose[0m[1m := flags.Bool("[0m[1;7mv[0m[1m", false, "[0m[1;7mverbose[0m[1m")[0m                        [0m
+[2m  42  [0m+     [7masJSON[0m := flags.Bool("[7mjson[0m", false, "[7mprint JSON[0m")                   [0m
 [2m◆[0m [1mBash[0m  go test ./cmd/kn/                                                 ✓[2m 2.4s[0m
 [2m  └ [0mok      github.com/acme/kn/cmd/kn    2.1s                                   [0m
 [1m✗[0m [1mBash[0m  go vet ./...                                               [1mfailed[0m[2m · 1.1s[0m

@@ -34,6 +34,7 @@ var registry = []registryEntry{
 	{Name: "/editor", Hint: "edit a prompt in $VISUAL / $EDITOR", Keybind: "ctrl+g", Category: "App"},
 	{Name: "/effort", Args: "[level]", Hint: "reasoning effort: off·low·medium·high", Category: "Agent"},
 	{Name: "/ancient", Args: "[on|off|toggle]", Hint: "toggle ancient vertical writing mode", Category: "Display"},
+	{Name: "/vim", Args: "[on|off]", Hint: "toggle vim mode in the composer", Category: "Display"},
 	{Name: "/export", Args: "[path]", Hint: "export transcript as markdown, JSONL, or HTML", Category: "Session"},
 	{Name: "/fork", Args: "[name]", Hint: "copy the conversation into a new session", Category: "Session"},
 	{Name: "/forks", Hint: "show the current session tree", Category: "Session"},

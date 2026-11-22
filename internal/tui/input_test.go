@@ -32,7 +32,7 @@ func TestIsShiftEnterSeq(t *testing.T) {
 	}
 }
 
-func TestCtrlEFallsThroughToTextarea(t *testing.T) {
+func TestCtrlEGoesToLineEnd(t *testing.T) {
 	m := compactCmdModel()
 	m.input.SetValue("hello world")
 	m.input.CursorStart()
@@ -40,18 +40,29 @@ func TestCtrlEFallsThroughToTextarea(t *testing.T) {
 	tm, _ := m.key(tea.KeyMsg{Type: tea.KeyCtrlE})
 	m = tm.(*model)
 	if got := m.input.LineInfo().CharOffset; got != len("hello world") {
-		t.Fatalf("ctrl+e with no tool blocks should go to line end, char offset = %d", got)
+		t.Fatalf("ctrl+e should go to line end, char offset = %d", got)
 	}
 
+	// With a tool block to expand Ctrl+E still only moves the cursor; Alt+O
+	// is the expand key.
 	m.blocks = append(m.blocks, block{kind: blockTool, text: "ran a thing"})
 	m.input.CursorStart()
 	tm, _ = m.key(tea.KeyMsg{Type: tea.KeyCtrlE})
 	m = tm.(*model)
-	if !m.blocks[len(m.blocks)-1].expanded {
-		t.Fatal("ctrl+e with a tool block should expand it")
+	if m.blocks[len(m.blocks)-1].expanded {
+		t.Fatal("ctrl+e must not expand a tool block")
 	}
-	if got := m.input.LineInfo().CharOffset; got != 0 {
-		t.Fatalf("ctrl+e consumed by the block toggle must not move the cursor, offset = %d", got)
+	if got := m.input.LineInfo().CharOffset; got != len("hello world") {
+		t.Fatalf("ctrl+e should go to line end with a tool block too, offset = %d", got)
+	}
+	m.input.CursorStart()
+	tm, _ = m.key(altKey("o"))
+	m = tm.(*model)
+	if !m.blocks[len(m.blocks)-1].expanded {
+		t.Fatal("alt+o with a tool block should expand it")
+	}
+	if got := m.input.Value(); got != "hello world" || m.input.LineInfo().CharOffset != 0 {
+		t.Fatalf("alt+o must leave the draft alone: %q at %d", got, m.input.LineInfo().CharOffset)
 	}
 }
 

@@ -10,7 +10,7 @@
 [38;5;245m◆[0m [1mBash[0m  [38;5;252mgrep -n [7mwidth[27m cache.go[0m                                                  [0m
 [38;5;245m  └ [0m[38;5;252mcache.go:10: key := [7mwidth[27m + 0[0m                                               [0m
     [38;5;252mcache.go:11: key := [7mwidth[27m + 1[0m                                               [0m
-[38;5;247m    ⋯ +8 lines · ctrl+e[0m                                                         [0m
+[38;5;247m    ⋯ +8 lines · alt+o[0m                                                          [0m
     [38;5;252mcache.go:20: key := [7mwidth[27m + 10[0m                                              [0m
     [38;5;252mcache.go:21: key := [7mwidth[27m + 11[0m                                              [0m
     [38;5;252mcache.go:99: // the stale entry is dropped here[0m                             [0m

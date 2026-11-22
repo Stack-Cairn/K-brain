@@ -37,4 +37,4 @@
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   ❯ Ask k-brain anything…  ? help · / commands · Shift+Tab mode · Ctrl+P menu
-   Normal                                                                                   ↑ 30% · kimi-k3-fast · ✦ off
+   Normal                                                                           ↑ 30% · End ↓ · kimi-k3-fast · ✦ off

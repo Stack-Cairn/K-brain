@@ -1,0 +1,24 @@
+[1;38;5;79;48;5;235m▌[0m[1;38;5;79;48;5;235m❯[0m[48;5;235m [0m[48;5;235mWhy does the cache miss after a resize?[0m[48;5;235m                                      [0m
+                                                                                
+[3;38;5;245m◉ Thought · 2 lines[0m                                                             [0m
+                                                                                
+[1;38;5;141m[7m●[27m [0m[38;5;252mThe cache is keyed by **width**.[0m                                              [0m
+[1;38;5;79m┃[0m [38;5;252m[0m                                                                              [0m
+[1;38;5;79m┃[0m [38;5;252mA resize changes the width, so every entry misses once.[0m                       [0m
+[1;38;5;79m┃[0m [38;5;252m[0m                                                                              [0m
+[1;38;5;79m┃[0m [38;5;252mAfter that the new width is cached again.[0m                                     [0m
+                                                                                
+[38;5;245m◆[0m [1mBash[0m  [38;5;252mgrep -n width cache.go[0m                                                  [0m
+[38;5;245m  └ [0m[38;5;252mcache.go:10: key := width + 0[0m                                               [0m
+    [38;5;252mcache.go:11: key := width + 1[0m                                               [0m
+[38;5;247m    ⋯ +8 lines · alt+o[0m                                                          [0m
+    [38;5;252mcache.go:20: key := width + 10[0m                                              [0m
+    [38;5;252mcache.go:21: key := width + 11[0m                                              [0m
+    [38;5;252mcache.go:99: // the stale entry is dropped here[0m                             [0m
+                                                                                
+[1;38;5;141m● [0mKeying by width is intended.                                                  [0m
+
+[1;38;5;79m┃ transcript[0m[38;5;245m 3/6[0m[38;5;245m · reply[0m         [38;5;245mj/k move · [/] turn · e fold · E all · Esc back[0m
+[38;5;238m────────────────────────────────────────────────────────────────────────────────[0m
+  [1;38;5;79m❯ [0m[7mA[0m[38;5;245msk k-brain anything…  ? help · / commands · Shift+Tab mode · Ctrl+P menu[0m   [0m
+  [48;5;238m [0m[1;38;5;252;48;5;238mNormal[0m[48;5;238m [0m                                                  [38;5;252mkimi-k3-fast[0m[38;5;245m · [0m[1;38;5;79m✦ off[0m
