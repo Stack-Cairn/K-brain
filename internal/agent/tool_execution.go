@@ -160,8 +160,19 @@ func (a *Agent) runTools(ctx context.Context, calls []ai.ToolCall, ev Events) []
 		calls[oc.i].TimedOut = oc.out.TimedOut
 		calls[oc.i].QuestionAnswers = oc.out.QuestionAnswers
 		calls[oc.i].Elicitations = oc.out.Elicitations
+		calls[oc.i].MCPApp = mcpAppRef(oc.out)
 	}
 	return results
+}
+
+// mcpAppRef is what history keeps of a tool call's MCP App view: only for a
+// successful call of an MCP tool that declares a ui:// resource.
+func mcpAppRef(result tools.Result) *ai.MCPAppRef {
+	app := result.MCPApp
+	if app == nil || result.Failed || result.Cancelled || app.ServerID == "" || !strings.HasPrefix(app.URI, "ui://") {
+		return nil
+	}
+	return &ai.MCPAppRef{ServerID: app.ServerID, Tool: app.Tool, URI: app.URI, ResultStored: len(app.Result) > 0}
 }
 
 const doomLoopMaxRun = 3

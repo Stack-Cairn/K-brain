@@ -4,7 +4,9 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"html"
 	"io/fs"
 	"net/http"
 	"net/url"
@@ -57,6 +59,43 @@ type pluginPanelView struct {
 	// URL loads the panel; a path on this backend, present only while the
 	// plugin is enabled.
 	URL string `json:"url,omitempty"`
+	// Error says why the panel cannot load (checked only while the plugin is
+	// enabled): ErrorCode is one of the panelError* codes, Error a message.
+	ErrorCode string `json:"errorCode,omitempty"`
+	Error     string `json:"error,omitempty"`
+}
+
+// Codes of pluginPanelView.ErrorCode.
+const (
+	panelErrorUIRootMissing = "ui_root_missing"
+	panelErrorEntryMissing  = "entry_missing"
+	panelErrorEntryNotFile  = "entry_not_file"
+	panelErrorEntryTooLarge = "entry_too_large"
+)
+
+// panelEntryError checks that p's panel entry is a file the asset route will
+// serve; it returns an error code and message, or "" when it is.
+func panelEntryError(p plugins.Plugin, entry string) (string, string) {
+	pluginRoot, err := os.OpenRoot(p.Dir)
+	if err != nil {
+		return panelErrorUIRootMissing, "the plugin directory cannot be opened"
+	}
+	defer pluginRoot.Close()
+	uiRoot, err := pluginRoot.OpenRoot(p.UIRoot())
+	if err != nil {
+		return panelErrorUIRootMissing, "the ui root " + p.UIRoot() + " does not exist in the plugin directory"
+	}
+	defer uiRoot.Close()
+	info, err := uiRoot.Stat(entry)
+	switch {
+	case err != nil:
+		return panelErrorEntryMissing, "the entry " + entry + " does not exist under the ui root " + p.UIRoot()
+	case !info.Mode().IsRegular():
+		return panelErrorEntryNotFile, "the entry " + entry + " is not a regular file"
+	case info.Size() > maxPluginAssetBytes:
+		return panelErrorEntryTooLarge, "the entry " + entry + " is larger than 10 MiB"
+	}
+	return "", ""
 }
 
 // panelViewsLocked lists p's panels; h.mu is held.
@@ -73,13 +112,19 @@ func (h *PluginHost) panelViewsLocked(project string, p plugins.Plugin) []plugin
 		view := pluginPanelView{ID: panel.ID, Title: panel.Title, Placement: panel.Placement, Entry: panel.Entry}
 		if grant != "" {
 			view.URL = pluginAssetPrefix + grant + "/" + p.Name + "/" + panel.Entry
+			view.ErrorCode, view.Error = panelEntryError(p, panel.Entry)
 		}
 		out = append(out, view)
 	}
 	return out
 }
 
-var errPluginAssetGone = errors.New("plugin asset not found")
+var (
+	// errPluginAssetGone: the grant no longer stands for an enabled plugin.
+	errPluginAssetGone = errors.New("plugin unavailable")
+	// errPluginAssetMissing: the plugin is there but the file is not.
+	errPluginAssetMissing = errors.New("plugin asset not found")
+)
 
 // openPluginAsset opens rel under the plugin's UI root after checking that
 // the grant still stands for an enabled plugin at the same place, in a folder
@@ -108,17 +153,17 @@ func (h *PluginHost) openPluginAsset(grant, id, rel string) (*os.File, fs.FileIn
 	defer pluginRoot.Close()
 	uiRoot, err := pluginRoot.OpenRoot(p.UIRoot())
 	if err != nil {
-		return nil, nil, errPluginAssetGone
+		return nil, nil, errPluginAssetMissing
 	}
 	defer uiRoot.Close()
 	file, err := uiRoot.Open(rel)
 	if err != nil {
-		return nil, nil, errPluginAssetGone
+		return nil, nil, errPluginAssetMissing
 	}
 	info, err := file.Stat()
 	if err != nil || !info.Mode().IsRegular() {
 		file.Close()
-		return nil, nil, errPluginAssetGone
+		return nil, nil, errPluginAssetMissing
 	}
 	return file, info, nil
 }
@@ -236,14 +281,46 @@ func (s *Server) servePluginAsset(w http.ResponseWriter, r *http.Request) {
 	grant, id, rel := segments[0], segments[1], strings.Join(segments[2:], "/")
 	file, info, err := s.plugins.openPluginAsset(grant, id, rel)
 	if err != nil {
-		notFound()
+		code, message := "plugin_unavailable", "The plugin is disabled, moved or no longer trusted, or this link has expired. Reload the plugin list."
+		if errors.Is(err, errPluginAssetMissing) {
+			code, message = "asset_not_found", "The plugin has no file "+rel+" under its ui root."
+		}
+		pluginAssetError(w, r, rel, http.StatusNotFound, code, message)
 		return
 	}
 	defer file.Close()
 	if info.Size() > maxPluginAssetBytes {
-		http.Error(w, "plugin asset too large", http.StatusRequestEntityTooLarge)
+		pluginAssetError(w, r, rel, http.StatusRequestEntityTooLarge, "asset_too_large", "The plugin file "+rel+" is larger than 10 MiB.")
 		return
 	}
 	setSandboxHeaders(w, assetContentType(rel), pluginAssetPolicy(requestBase(r)+pluginAssetPrefix+grant+"/"+id+"/"))
 	http.ServeContent(w, r, "", time.Time{}, file)
+}
+
+// pluginAssetErrorHeader names the error code of a failed asset request.
+const pluginAssetErrorHeader = "X-K-Brain-Asset-Error"
+
+// pluginAssetError answers a failed asset request with status and code in
+// pluginAssetErrorHeader. A failed page (.html/.htm), as a panel frame loads
+// it, gets a small sandboxed page that shows message and posts the
+// notification host.panelLoadError {status, code, message} to its parent, so
+// the host can tell a broken panel from a loaded one; other files get text.
+func pluginAssetError(w http.ResponseWriter, r *http.Request, rel string, status int, code, message string) {
+	w.Header().Set(pluginAssetErrorHeader, code)
+	ext := strings.ToLower(path.Ext(rel))
+	if ext != ".html" && ext != ".htm" {
+		w.Header().Set("Cache-Control", "no-store")
+		http.Error(w, message, status)
+		return
+	}
+	notice, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "method": "host.panelLoadError", "params": map[string]any{"status": status, "code": code, "message": message}})
+	// The notice is a JSON literal; json.Marshal escapes "<", so it cannot
+	// close the script element.
+	page := "<!doctype html><html><head><meta charset=utf-8><title>Panel unavailable</title></head><body>" +
+		"<p>" + html.EscapeString(message) + "</p><script>window.parent.postMessage(" + string(notice) + ",\"*\")</script></body></html>"
+	setSandboxHeaders(w, "text/html; charset=utf-8", "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'")
+	w.WriteHeader(status)
+	if r.Method != http.MethodHead {
+		_, _ = w.Write([]byte(page))
+	}
 }

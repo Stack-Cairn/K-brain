@@ -25,6 +25,27 @@ type mcpCallRequest struct {
 	Name      string          `json:"name"`
 	Arguments json.RawMessage `json:"arguments,omitempty"`
 	CWD       string          `json:"cwd,omitempty"`
+	// Caller is who asks for the call: "model" (default) or "app" for an MCP
+	// App view; each may call only the tools _meta.ui.visibility allows it.
+	Caller string `json:"caller,omitempty"`
+	// ApprovalID approves a call an earlier response marked
+	// approval_required; it is single-use and bound to name, arguments and cwd.
+	ApprovalID string `json:"approval_id,omitempty"`
+}
+
+// mcpCallResponse is the reply of POST /v1/mcp/tools/call.
+type mcpCallResponse struct {
+	Name      string `json:"name"`
+	Output    string `json:"output"`
+	Failed    bool   `json:"failed"`
+	Cancelled bool   `json:"cancelled"`
+	// Status is "completed", "failed", "cancelled" or "approval_required".
+	Status string `json:"status"`
+	// Result is the server's raw CallToolResult (content, structuredContent,
+	// _meta, isError), when the call reached the server and the result is
+	// within mcp.MaxToolResultBytes.
+	Result   json.RawMessage      `json:"result,omitempty"`
+	Approval *mcpApprovalRequired `json:"approval,omitempty"`
 }
 
 func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
@@ -53,7 +74,12 @@ func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"statuses": s.mcp.Statuses()})
 	case r.Method == http.MethodGet && r.URL.Path == "/v1/mcp/tools":
 		request := mcpToolsRequest{CWD: r.URL.Query().Get("cwd"), ServerIDs: splitIDs(r.URL.Query().Get("server_ids"))}
-		writeJSON(w, http.StatusOK, map[string]any{"tools": s.mcpToolViews(request.CWD, s.mcp.ToolsFor(r.Context(), request.CWD, request.ServerIDs))})
+		audience, ok := mcpAudience(r.URL.Query().Get("audience"))
+		if !ok {
+			writeJSONError(w, http.StatusBadRequest, `audience must be "model" or "app"`)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"tools": s.mcpToolViews(request.CWD, s.mcp.ToolsForAudience(r.Context(), request.CWD, request.ServerIDs, audience))})
 	case r.Method == http.MethodPost && r.URL.Path == "/v1/mcp/search":
 		var request mcpSearchRequest
 		if decodeJSON(w, r, &request) != nil {
@@ -73,12 +99,22 @@ func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
 			writeJSONError(w, http.StatusBadRequest, "name is required")
 			return
 		}
-		toolList := s.mcp.ToolsFor(r.Context(), request.CWD, nil)
-		result := tools.ExecuteResult(r.Context(), toolList, request.Name, request.Arguments, false)
-		writeJSON(w, http.StatusOK, map[string]any{"name": request.Name, "output": result.Text, "failed": result.Failed, "cancelled": result.Cancelled})
+		s.callMCPTool(w, r, request)
 	default:
 		writeJSONError(w, http.StatusNotFound, "MCP route not found")
 	}
+}
+
+// mcpAudience parses the audience of a tool listing or call: "model" (the
+// default) or "app".
+func mcpAudience(v string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "", mcp.AudienceModel:
+		return mcp.AudienceModel, true
+	case mcp.AudienceApp:
+		return mcp.AudienceApp, true
+	}
+	return "", false
 }
 
 // mcpToolViews lists tools for the MCP routes, with uiResourceUri on tools
@@ -89,11 +125,28 @@ func (s *Server) mcpToolViews(cwd string, list []tools.Tool) []map[string]any {
 		names = append(names, tool.Def.Function.Name)
 	}
 	uis := s.mcp.ToolUIs(cwd, names)
+	infos := s.mcp.ToolInfos(names)
+	labels := s.mcp.ServerNames()
 	out := toolViews(list)
 	for _, view := range out {
-		if ui, ok := uis[view["name"].(string)]; ok {
+		name := view["name"].(string)
+		if ui, ok := uis[name]; ok {
 			view["uiResourceUri"] = ui.URI
 		}
+		info, ok := infos[name]
+		if !ok {
+			continue
+		}
+		// serverId is the configured id; it was the name key before, which
+		// differs for ids that are not simple names, so serverKey keeps it.
+		view["serverId"] = info.ServerID
+		view["serverKey"] = info.ServerKey
+		view["serverLabel"] = info.ServerID
+		if label, ok := labels[info.ServerID]; ok {
+			view["serverLabel"] = label
+		}
+		view["serverToolName"] = info.Tool
+		view["visibility"] = info.Visibility
 	}
 	return out
 }
@@ -104,7 +157,7 @@ func toolViews(list []tools.Tool) []map[string]any {
 		var schema any
 		_ = json.Unmarshal([]byte(tool.Def.Function.Parameters), &schema)
 		serverID, rawName, _ := mcp.ParseToolName(tool.Def.Function.Name)
-		out = append(out, map[string]any{"name": tool.Def.Function.Name, "serverId": serverID, "serverLabel": serverID, "toolName": rawName, "description": tool.Def.Function.Description, "inputSchema": schema})
+		out = append(out, map[string]any{"name": tool.Def.Function.Name, "serverId": serverID, "serverKey": serverID, "serverLabel": serverID, "toolName": rawName, "description": tool.Def.Function.Description, "inputSchema": schema})
 	}
 	return out
 }

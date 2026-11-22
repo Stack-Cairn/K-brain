@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"maps"
 	"os"
 	"os/exec"
@@ -301,6 +302,38 @@ func (m *Manager) runHook(ctx context.Context, event string, payload any, policy
 	return nil
 }
 
+// ToolKey is plugin's part of its tools' model-facing names
+// (plugin_<key>_<tool>). It is the plugin name when that has no "_", so those
+// names do not change; otherwise each "_" becomes "-" and a hash of the name
+// is appended, so the key never contains "_" and a name parses back to one
+// plugin and the plugin's own tool name.
+func ToolKey(plugin string) string {
+	if !strings.Contains(plugin, "_") {
+		return plugin
+	}
+	sum := fnv.New32a()
+	_, _ = sum.Write([]byte(plugin))
+	return fmt.Sprintf("%s-%08x", strings.ReplaceAll(plugin, "_", "-"), sum.Sum32())
+}
+
+// ToolName is the model-facing name of plugin's tool.
+func ToolName(plugin, tool string) string { return "plugin_" + ToolKey(plugin) + "_" + tool }
+
+// ParseToolName splits a model-facing plugin tool name into the plugin's key
+// (see ToolKey) and the plugin's own tool name.
+func ParseToolName(name string) (key, tool string, ok bool) {
+	rest, found := strings.CutPrefix(name, "plugin_")
+	if !found {
+		return "", "", false
+	}
+	key, tool, found = strings.Cut(rest, "_")
+	if !found || key == "" || tool == "" {
+		return "", "", false
+	}
+	return key, tool, true
+}
+
+// Tools lists the enabled plugins' tools under their model-facing names.
 func (m *Manager) Tools() []Tool {
 	var out []Tool
 	for _, p := range m.List() {
@@ -308,11 +341,26 @@ func (m *Manager) Tools() []Tool {
 			continue
 		}
 		for _, t := range p.Tools {
-			t.Name = "plugin_" + p.Name + "_" + t.Name
+			t.Name = ToolName(p.Name, t.Name)
 			out = append(out, t)
 		}
 	}
 	return out
+}
+
+// pluginForKey finds the plugin whose ToolKey is key.
+func (m *Manager) pluginForKey(key string) (Plugin, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if p, ok := m.plugins[key]; ok && ToolKey(p.Name) == key {
+		return p, true
+	}
+	for _, p := range m.plugins {
+		if ToolKey(p.Name) == key {
+			return p, true
+		}
+	}
+	return Plugin{}, false
 }
 
 type request struct {
@@ -331,15 +379,13 @@ type response struct {
 }
 
 func (m *Manager) Invoke(ctx context.Context, name string, args json.RawMessage, policy *sandbox.Policy) (string, error) {
-	parts := strings.SplitN(name, "_", 3)
-	if len(parts) != 3 || parts[0] != "plugin" {
+	key, toolName, ok := ParseToolName(name)
+	if !ok {
 		return "", fmt.Errorf("invalid plugin tool %q", name)
 	}
-	m.mu.RLock()
-	p, ok := m.plugins[parts[1]]
-	m.mu.RUnlock()
+	p, ok := m.pluginForKey(key)
 	if !ok || !p.Enabled {
-		return "", fmt.Errorf("plugin %q is disabled", parts[1])
+		return "", fmt.Errorf("plugin %q is disabled", key)
 	}
 	if len(p.Command) == 0 {
 		return "", fmt.Errorf("plugin %q has no command", p.Name)
@@ -383,7 +429,7 @@ func (m *Manager) Invoke(ctx context.Context, name string, args json.RawMessage,
 		return "", err
 	}
 	defer cmd.Process.Kill()
-	req, _ := json.Marshal(request{JSONRPC: "2.0", ID: 1, Method: "tool.invoke", Params: map[string]any{"name": parts[2], "arguments": json.RawMessage(args)}})
+	req, _ := json.Marshal(request{JSONRPC: "2.0", ID: 1, Method: "tool.invoke", Params: map[string]any{"name": toolName, "arguments": json.RawMessage(args)}})
 	if _, err := stdin.Write(append(req, '\n')); err != nil {
 		return "", err
 	}

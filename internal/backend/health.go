@@ -96,6 +96,36 @@ type healthCapabilities struct {
 	// by the Write tool) are published as preview.created and served by
 	// GET /v1/sessions/{id}/previews/{previewId} with sandbox headers.
 	HTMLPreviews int `json:"html_previews"`
+	// MCPAppsStructuredContent is 1 where an MCP App's ui_resource carries
+	// tool_name and the server's raw CallToolResult (result inline when small,
+	// result_url for GET /v1/sessions/{id}/mcp-ui/results/{ref}), history and
+	// subagent tool_calls[] keep ui_resource, and POST /v1/mcp/tools/call
+	// returns result.
+	MCPAppsStructuredContent int `json:"mcp_apps_structured_content"`
+	// MCPToolVisibility is 1 where _meta.ui.visibility is honored: app-only
+	// tools are not offered to the model, GET /v1/mcp/tools takes
+	// audience=model|app and lists visibility, and POST /v1/mcp/tools/call
+	// takes caller=model|app.
+	MCPToolVisibility int `json:"mcp_tool_visibility"`
+	// MCPToolCallApproval is 1 where POST /v1/mcp/tools/call answers a tool
+	// under an "ask" policy with status approval_required and an approval id,
+	// and runs it when the request is repeated with approval_id.
+	MCPToolCallApproval int `json:"mcp_tool_call_approval"`
+	// MCPToolServerIDs is 1 where GET /v1/mcp/tools reports serverId as the
+	// configured server id, with serverKey (the name key), serverToolName and
+	// serverLabel (the server's optional display name).
+	MCPToolServerIDs int `json:"mcp_tool_server_ids"`
+	// PluginToolNames is 1 where plugin tool names stay unambiguous for ids
+	// with "_" (plugins.ToolKey), GET /v1/plugins lists contributes.toolDetails
+	// and POST /v1/plugins/{id}/tools/call takes either tool name.
+	PluginToolNames int `json:"plugin_tool_names"`
+	// PluginUIErrors is 1 where contributes.ui[] reports errorCode/error for
+	// panels that cannot load, and failed plugin assets carry
+	// X-K-Brain-Asset-Error (pages also post host.panelLoadError).
+	PluginUIErrors int `json:"plugin_ui_errors"`
+	// PluginManifestUnknownFields is 1 where plugin.json fields this backend
+	// does not know are ignored instead of failing the load.
+	PluginManifestUnknownFields int `json:"plugin_manifest_unknown_fields"`
 }
 
 // healthRunSandboxV1 describes per-run sandboxing (options.sandbox). Clients
@@ -182,36 +212,43 @@ func (s *Server) health() healthResponse {
 		InstanceID:         s.instance.get(),
 		CapabilityRevision: capabilityRevision(),
 		Capabilities: healthCapabilities{
-			SessionChanges:          2,
-			SessionQueue:            1,
-			ComputerSessionApproval: 1,
-			MemorySwitch:            1,
-			ImageModelToggle:        1,
-			SessionExists:           1,
-			AIReviewPerRun:          1,
-			PermissionRules:         1,
-			ReadOnlyAutoAllow:       1,
-			PermissionModes:         append([]string(nil), permissionModes...),
-			Image:                   healthImageV1{Supported: s.image != nil, Version: imageWireVersion()},
-			RunSandbox:              runSandboxCapability(),
-			SubagentTranscripts:     1,
-			SandboxSetup:            1,
-			QuestionSelectedLabels:  1,
-			MCPElicitation:          1,
-			HostBridge:              1,
-			SSHManager:              1,
-			SkillPacks:              1,
-			BackgroundTool:          1,
-			SessionArchive:          1,
-			MemoryOrganizerSettings: 1,
-			SessionExternalRuns:     1,
-			WebSearchFallback:       1,
-			UsageStats:              1,
-			FolderTrust:             1,
-			Plugins:                 1,
-			PluginUI:                1,
-			MCPApps:                 1,
-			HTMLPreviews:            1,
+			SessionChanges:              2,
+			SessionQueue:                1,
+			ComputerSessionApproval:     1,
+			MemorySwitch:                1,
+			ImageModelToggle:            1,
+			SessionExists:               1,
+			AIReviewPerRun:              1,
+			PermissionRules:             1,
+			ReadOnlyAutoAllow:           1,
+			PermissionModes:             append([]string(nil), permissionModes...),
+			Image:                       healthImageV1{Supported: s.image != nil, Version: imageWireVersion()},
+			RunSandbox:                  runSandboxCapability(),
+			SubagentTranscripts:         1,
+			SandboxSetup:                1,
+			QuestionSelectedLabels:      1,
+			MCPElicitation:              1,
+			HostBridge:                  1,
+			SSHManager:                  1,
+			SkillPacks:                  1,
+			BackgroundTool:              1,
+			SessionArchive:              1,
+			MemoryOrganizerSettings:     1,
+			SessionExternalRuns:         1,
+			WebSearchFallback:           1,
+			UsageStats:                  1,
+			FolderTrust:                 1,
+			Plugins:                     1,
+			PluginUI:                    1,
+			MCPApps:                     1,
+			HTMLPreviews:                1,
+			MCPAppsStructuredContent:    1,
+			MCPToolVisibility:           1,
+			MCPToolCallApproval:         1,
+			MCPToolServerIDs:            1,
+			PluginToolNames:             1,
+			PluginUIErrors:              1,
+			PluginManifestUnknownFields: 1,
 		},
 		HostBridge: s.hostBridge.status(),
 	}

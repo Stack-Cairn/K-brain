@@ -43,6 +43,23 @@ type ToolCall struct {
 	// Elicitations are the forms MCP servers asked the user to fill during
 	// the call and how each ended; for display.
 	Elicitations []Elicitation `json:"elicitations,omitempty"`
+	// MCPApp is the MCP App view of a successful MCP tool call, so a client
+	// can render it again from history; for display.
+	MCPApp *MCPAppRef `json:"mcp_app,omitempty"`
+}
+
+// MCPAppRef is what history keeps of an MCP tool call's App view: enough to
+// read the view (server and ui:// resource) and the call's raw result, which
+// is stored beside the session rather than in the transcript.
+type MCPAppRef struct {
+	// ServerID is the configured MCP server.
+	ServerID string `json:"server_id"`
+	// Tool is the server's own name for the tool.
+	Tool string `json:"tool"`
+	// URI is the ui:// resource the tool declares.
+	URI string `json:"uri"`
+	// ResultStored says the raw CallToolResult was kept for the view.
+	ResultStored bool `json:"result_stored,omitempty"`
 }
 
 func stripAuthored(msgs []Message) []Message {
@@ -70,6 +87,7 @@ func stripAuthored(msgs []Message) []Message {
 				calls[j].TimedOut = false
 				calls[j].QuestionAnswers = nil
 				calls[j].Elicitations = nil
+				calls[j].MCPApp = nil
 			}
 			out[i].ToolCalls = calls
 		}

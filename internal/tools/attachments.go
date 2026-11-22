@@ -35,6 +35,25 @@ type Result struct {
 	// Elicitations are the forms MCP servers asked the user to fill during
 	// the call (see ReportElicitation). Display only.
 	Elicitations []ai.Elicitation
+	// MCPApp is what an MCP tool call reported about itself for MCP App
+	// views (see ReportMCPApp); nil for other tools. Display only.
+	MCPApp *MCPApp
+}
+
+// MCPApp describes an MCP tool call for a client that renders MCP App views:
+// the server and tool that ran, the ui:// resource the tool declares, and
+// the server's raw CallToolResult.
+type MCPApp struct {
+	// ServerID is the configured MCP server the tool belongs to.
+	ServerID string
+	// Tool is the server's own name for the tool (not the model-facing name).
+	Tool string
+	// URI is the ui:// resource the tool declares; empty when it declares none.
+	URI string
+	// Result is the CallToolResult as JSON (content, structuredContent,
+	// _meta, isError); nil when the server returned none or it was too large
+	// to keep.
+	Result json.RawMessage
 }
 
 type attachmentKey struct{}

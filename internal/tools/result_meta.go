@@ -23,6 +23,7 @@ type callMeta struct {
 	denial   *sandbox.Denial
 	answers  []ai.QuestionAnswer
 	elicited []ai.Elicitation
+	mcpApp   *MCPApp
 }
 
 type callMetaKey struct{}
@@ -128,6 +129,16 @@ func ReportElicitation(ctx context.Context, e ai.Elicitation) {
 	}
 }
 
+// ReportMCPApp records what the current MCP tool call returned for MCP App
+// views; the last report wins.
+func ReportMCPApp(ctx context.Context, app MCPApp) {
+	if m := callMetaFrom(ctx); m != nil {
+		m.mu.Lock()
+		m.mcpApp = &app
+		m.mu.Unlock()
+	}
+}
+
 // ReportUserWait leaves d, time the current tool call spent waiting for the
 // user (an MCP elicitation form), out of the call's duration.
 func ReportUserWait(ctx context.Context, d time.Duration) {
@@ -153,6 +164,7 @@ func (m *callMeta) apply(r *Result, start time.Time) {
 	r.SandboxDenial = m.denial
 	r.QuestionAnswers = m.answers
 	r.Elicitations = m.elicited
+	r.MCPApp = m.mcpApp
 	r.Duration = max(time.Since(start)-m.gateWait, time.Nanosecond)
 }
 

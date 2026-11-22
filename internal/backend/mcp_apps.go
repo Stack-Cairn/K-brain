@@ -1,9 +1,14 @@
 package backend
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -12,18 +17,127 @@ import (
 	"github.com/Stack-Cairn/K-brain/internal/tools"
 )
 
+// maxInlineToolResultBytes bounds the raw result a tool.result event carries
+// inline; a larger one (up to mcp.MaxToolResultBytes) is only read from
+// result_url.
+const maxInlineToolResultBytes = 256 << 10
+
+var mcpResultRefPattern = regexp.MustCompile(`^[0-9a-f]{32}$`)
+
 // toolUIResource is the MCP App view to announce with a tool.result: only for
-// successful MCP tool calls whose tool declares a ui:// resource.
-func (s *Server) toolUIResource(sessionID, cwd, name string, result tools.Result) *protocol.ToolUIResource {
-	if s.mcp == nil || result.Failed || result.Cancelled || !strings.HasPrefix(name, "mcp__") {
+// successful MCP tool calls whose tool declares a ui:// resource. The call's
+// raw result is stored for result_url and, when small, sent inline.
+func (s *Server) toolUIResource(sessionID, callID string, result tools.Result) *protocol.ToolUIResource {
+	return mcpToolUIResource(s.eventDir, sessionID, callID, result)
+}
+
+// mcpToolUIResource is toolUIResource with the event directory the session's
+// stored results live under.
+func mcpToolUIResource(eventDir, sessionID, callID string, result tools.Result) *protocol.ToolUIResource {
+	app := result.MCPApp
+	if app == nil || result.Failed || result.Cancelled || app.ServerID == "" || !strings.HasPrefix(app.URI, mcp.UIResourceScheme) {
 		return nil
 	}
-	ui, ok := s.mcp.ToolUI(cwd, name)
-	if !ok {
+	ui := &protocol.ToolUIResource{ServerID: app.ServerID, URI: app.URI, ToolName: app.Tool, ResultStored: len(app.Result) > 0 && saveMCPResult(eventDir, sessionID, callID, *app)}
+	if len(app.Result) <= maxInlineToolResultBytes {
+		ui.Result = app.Result
+	}
+	return withUIResourceURLs(sessionID, callID, ui)
+}
+
+// withUIResourceURLs fills the backend paths of ui, a view of tool call
+// callID in session sessionID.
+func withUIResourceURLs(sessionID, callID string, ui *protocol.ToolUIResource) *protocol.ToolUIResource {
+	if ui == nil {
 		return nil
 	}
 	query := url.Values{"server": {ui.ServerID}, "uri": {ui.URI}}
-	return &protocol.ToolUIResource{ServerID: ui.ServerID, URI: ui.URI, URL: "/v1/sessions/" + url.PathEscape(sessionID) + "/mcp-ui?" + query.Encode()}
+	base := "/v1/sessions/" + url.PathEscape(sessionID) + "/mcp-ui"
+	ui.URL = base + "?" + query.Encode()
+	if ui.ResultStored {
+		ui.ResultURL = base + "/results/" + mcpResultRef(callID)
+	}
+	return ui
+}
+
+// withHistoryUIResources fills the view paths of the MCP App views on the
+// tool calls of messages, read from session sessionID's history.
+func withHistoryUIResources(sessionID string, messages []protocol.Message) {
+	for i := range messages {
+		for j := range messages[i].ToolCalls {
+			call := &messages[i].ToolCalls[j]
+			call.UIResource = withUIResourceURLs(sessionID, call.ID, call.UIResource)
+		}
+	}
+}
+
+// mcpResultRef names a tool call's stored result: a hash, since tool call ids
+// come from the model provider.
+func mcpResultRef(callID string) string {
+	sum := sha256.Sum256([]byte("mcp-result\x00" + callID))
+	return hex.EncodeToString(sum[:16])
+}
+
+func (s *Server) mcpResultDir(sessionID string) string { return mcpResultDir(s.eventDir, sessionID) }
+
+func mcpResultDir(eventDir, sessionID string) string {
+	if eventDir == "" || sessionID == "" {
+		return ""
+	}
+	return filepath.Join(eventDir, "mcp-results", sessionID)
+}
+
+// storedMCPResult is the file kept for one tool call's raw result.
+type storedMCPResult struct {
+	Version    string          `json:"version"`
+	ToolCallID string          `json:"tool_call_id"`
+	ServerID   string          `json:"server_id"`
+	ToolName   string          `json:"tool_name"`
+	URI        string          `json:"uri"`
+	Result     json.RawMessage `json:"result"`
+}
+
+// saveMCPResult stores app's raw result for tool call callID; false when it
+// could not be stored.
+func saveMCPResult(eventDir, sessionID, callID string, app tools.MCPApp) bool {
+	dir := mcpResultDir(eventDir, sessionID)
+	if dir == "" || callID == "" || len(app.Result) == 0 || len(app.Result) > mcp.MaxToolResultBytes {
+		return false
+	}
+	data, err := json.Marshal(storedMCPResult{Version: protocol.Version, ToolCallID: callID, ServerID: app.ServerID, ToolName: app.Tool, URI: app.URI, Result: app.Result})
+	if err != nil || os.MkdirAll(dir, 0o700) != nil {
+		return false
+	}
+	return writePreviewFile(filepath.Join(dir, mcpResultRef(callID)+".json"), data) == nil
+}
+
+// serveMCPResult serves GET /v1/sessions/{id}/mcp-ui/results/{ref}: the raw
+// CallToolResult of an MCP tool call whose App view tool.result announced.
+func (s *Server) serveMCPResult(w http.ResponseWriter, r *http.Request, id, ref string) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if _, _, err := s.store.Load(id); err != nil {
+		writeJSONError(w, http.StatusNotFound, "session not found")
+		return
+	}
+	dir := s.mcpResultDir(id)
+	if dir == "" || !mcpResultRefPattern.MatchString(ref) {
+		writeJSONError(w, http.StatusNotFound, "MCP tool result not found")
+		return
+	}
+	data, err := os.ReadFile(filepath.Join(dir, ref+".json"))
+	if err != nil || len(data) > mcp.MaxToolResultBytes+64<<10 || !json.Valid(data) {
+		writeJSONError(w, http.StatusNotFound, "MCP tool result not found")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
+	if r.Method != http.MethodHead {
+		_, _ = w.Write(data)
+	}
 }
 
 // sandboxPolicy is the CSP for generated or server-provided HTML rendered in

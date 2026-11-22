@@ -2,6 +2,8 @@ package mcptest
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -21,6 +23,11 @@ const AppsHTML = "<!doctype html><html><head><title>Board</title></head><body><d
 //   - secret: ui://secret/view.html, for tests that deny the tool by policy
 //   - notes: ui://notes/view.txt, a resource that is not HTML
 //   - plain: no UI
+//   - chart: ui://board/view.html; its result has structuredContent and _meta
+//   - big: ui://board/view.html; its structuredContent holds a string of the
+//     "bytes" argument's length
+//   - refresh: ui://board/view.html, _meta.ui.visibility ["app"] (views only)
+//   - summary: _meta.ui.visibility ["model"] (hidden from views)
 //
 // ui://undeclared/view.html exists but no tool declares it.
 func NewAppsServer() *sdkmcp.Server {
@@ -37,6 +44,34 @@ func NewAppsServer() *sdkmcp.Server {
 	server.AddTool(&sdkmcp.Tool{Name: "secret", Description: "Denied in tests.", InputSchema: object, Meta: ui("ui://secret/view.html")}, text("secret"))
 	server.AddTool(&sdkmcp.Tool{Name: "notes", Description: "Non-HTML UI.", InputSchema: object, Meta: ui("ui://notes/view.txt")}, text("notes"))
 	server.AddTool(&sdkmcp.Tool{Name: "plain", Description: "No UI.", InputSchema: object, Meta: ui("https://example.invalid/not-ui")}, text("plain"))
+	server.AddTool(&sdkmcp.Tool{Name: "chart", Description: "Chart with data.", InputSchema: object, Meta: ui("ui://board/view.html")},
+		func(context.Context, *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
+			return &sdkmcp.CallToolResult{
+				Meta:              sdkmcp.Meta{"fake/trace": "t-1"},
+				Content:           []sdkmcp.Content{&sdkmcp.TextContent{Text: "chart ready"}},
+				StructuredContent: map[string]any{"series": []any{1, 2, 3}, "title": "Sales"},
+			}, nil
+		})
+	server.AddTool(&sdkmcp.Tool{Name: "big", Description: "Large structured result.", InputSchema: map[string]any{"type": "object", "properties": map[string]any{"bytes": map[string]any{"type": "integer"}}}, Meta: ui("ui://board/view.html")},
+		func(_ context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
+			var args struct {
+				Bytes int `json:"bytes"`
+			}
+			_ = json.Unmarshal(req.Params.Arguments, &args)
+			return &sdkmcp.CallToolResult{
+				Content:           []sdkmcp.Content{&sdkmcp.TextContent{Text: "big ready"}},
+				StructuredContent: map[string]any{"data": strings.Repeat("x", max(args.Bytes, 0))},
+			}, nil
+		})
+	visibility := func(uri string, audiences ...any) sdkmcp.Meta {
+		meta := map[string]any{"visibility": audiences}
+		if uri != "" {
+			meta["resourceUri"] = uri
+		}
+		return sdkmcp.Meta{"ui": meta}
+	}
+	server.AddTool(&sdkmcp.Tool{Name: "refresh", Description: "View-only refresh.", InputSchema: object, Meta: visibility("ui://board/view.html", "app")}, text("refreshed"))
+	server.AddTool(&sdkmcp.Tool{Name: "summary", Description: "Model-only summary.", InputSchema: object, Meta: visibility("", "model")}, text("summary"))
 	resource := func(uri, mime string, contents func() *sdkmcp.ResourceContents) {
 		server.AddResource(&sdkmcp.Resource{URI: uri, Name: uri, MIMEType: mime}, func(context.Context, *sdkmcp.ReadResourceRequest) (*sdkmcp.ReadResourceResult, error) {
 			return &sdkmcp.ReadResourceResult{Contents: []*sdkmcp.ResourceContents{contents()}}, nil

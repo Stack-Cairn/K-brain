@@ -20,6 +20,7 @@ type CredentialBridge func(context.Context, string) (string, error)
 
 type LiveServer struct {
 	ID             string            `json:"id"`
+	Name           string            `json:"name,omitempty"` // optional display name; ID stays the identity
 	Description    string            `json:"description,omitempty"`
 	DocsURL        string            `json:"docsUrl,omitempty"`
 	Enabled        bool              `json:"enabled"`
@@ -329,7 +330,17 @@ func (m *LiveManager) transportConfig(server LiveServer) (ServerConfig, error) {
 	return cfg, nil
 }
 
+// ToolsFor lists the tools the model may call in a session in cwd: those of
+// the enabled servers (of selected, when given) allowed there, with each
+// server's policy applied. Tools whose _meta.ui.visibility leaves the model
+// out (callable only by an MCP App view) are not listed.
 func (m *LiveManager) ToolsFor(ctx context.Context, cwd string, selected []string) []tools.Tool {
+	return m.ToolsForAudience(ctx, cwd, selected, AudienceModel)
+}
+
+// ToolsForAudience is ToolsFor for audience: AudienceModel, or AudienceApp
+// for the tools an MCP App view may call.
+func (m *LiveManager) ToolsForAudience(ctx context.Context, cwd string, selected []string, audience string) []tools.Tool {
 	m.mu.RLock()
 	settings, manager := cloneLiveSettings(m.settings), m.manager
 	m.mu.RUnlock()
@@ -350,7 +361,7 @@ func (m *LiveManager) ToolsFor(ctx context.Context, cwd string, selected []strin
 		}
 		allowed[server.ID] = server
 	}
-	all := manager.Tools()
+	all := manager.AudienceTools(audience)
 	out := make([]tools.Tool, 0, len(all))
 	for _, tool := range all {
 		serverKey, _, ok := ParseToolName(tool.Def.Function.Name)

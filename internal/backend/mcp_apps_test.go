@@ -22,6 +22,7 @@ import (
 )
 
 // appsClient calls each tool in calls once, in order, then answers "done".
+// A call may carry arguments after a space: "name {json}".
 type appsClient struct {
 	scriptedClient
 	calls []string
@@ -39,12 +40,23 @@ func (c *appsClient) Stream(_ context.Context, request ai.Request, text, _ func(
 		text("done")
 		return ai.Message{Role: "assistant", Content: "done", StopReason: ai.StopReasonStop}, ai.Usage{}, nil
 	}
-	call := ai.ToolCall{ID: "apps-call-" + c.calls[done], Type: "function"}
-	call.Function.Name, call.Function.Arguments = c.calls[done], `{}`
+	name, args, found := strings.Cut(c.calls[done], " ")
+	if !found {
+		args = `{}`
+	}
+	call := ai.ToolCall{ID: "apps-call-" + name, Type: "function"}
+	call.Function.Name, call.Function.Arguments = name, args
 	return ai.Message{Role: "assistant", ToolCalls: []ai.ToolCall{call}, StopReason: ai.StopReasonToolUse}, ai.Usage{}, nil
 }
 
 func appsFixture(t *testing.T, calls ...string) (*httptest.Server, string) {
+	t.Helper()
+	return appsFixtureFor(t, mcp.LiveServer{ID: "apps", Policy: map[string]string{"mcp__apps__secret": "deny"}}, calls...)
+}
+
+// appsFixtureFor serves a backend with the fake apps MCP server configured as
+// server (its transport fields are filled in).
+func appsFixtureFor(t *testing.T, server mcp.LiveServer, calls ...string) (*httptest.Server, string) {
 	t.Helper()
 	isolateUserDir(t)
 	root := t.TempDir()
@@ -56,10 +68,8 @@ func appsFixture(t *testing.T, calls ...string) (*httptest.Server, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	live, err := mcp.NewLiveManager(context.Background(), filepath.Join(root, "mcp.json"), mcp.LiveSettings{Servers: []mcp.LiveServer{{
-		ID: "apps", Enabled: true, Transport: "stdio", Command: exe, Env: map[string]string{mcptest.AppsServerEnv: "1"},
-		Policy: map[string]string{"mcp__apps__secret": "deny"},
-	}}})
+	server.Enabled, server.Transport, server.Command, server.Env = true, "stdio", exe, map[string]string{mcptest.AppsServerEnv: "1"}
+	live, err := mcp.NewLiveManager(context.Background(), filepath.Join(root, "mcp.json"), mcp.LiveSettings{Servers: []mcp.LiveServer{server}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,9 +88,9 @@ func appsFixture(t *testing.T, calls ...string) (*httptest.Server, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := httptest.NewServer(service)
-	t.Cleanup(func() { server.Close(); service.Close(); live.Close(); store.Close() })
-	return server, root
+	httpServer := httptest.NewServer(service)
+	t.Cleanup(func() { httpServer.Close(); service.Close(); live.Close(); store.Close() })
+	return httpServer, root
 }
 
 func runAndCollectToolResults(t *testing.T, server *httptest.Server, root string) (protocol.Session, map[string]protocol.ToolResult) {

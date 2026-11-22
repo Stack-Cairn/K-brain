@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -21,8 +22,67 @@ const (
 	UIResourceScheme = "ui://"
 	// MaxUIResourceBytes bounds the HTML read for one UI resource.
 	MaxUIResourceBytes = 4 << 20
+	// MaxToolResultBytes bounds the raw CallToolResult kept for a view (the
+	// serialized JSON); a larger result is not kept and the view gets only
+	// the text output.
+	MaxToolResultBytes = 1 << 20
 	uiReadTimeout      = 30 * time.Second
 )
+
+// Audiences of a tool's _meta.ui.visibility.
+const (
+	// AudienceModel: the model may call the tool.
+	AudienceModel = "model"
+	// AudienceApp: an MCP App view of the same server may call the tool.
+	AudienceApp = "app"
+)
+
+// toolVisibility reads _meta.ui.visibility: the audiences that may call the
+// tool. An absent or empty list, or one naming no known audience, means both.
+func toolVisibility(meta sdkmcp.Meta) []string {
+	ui, _ := meta["ui"].(map[string]any)
+	list, _ := ui["visibility"].([]any)
+	model, app := false, false
+	for _, item := range list {
+		switch v, _ := item.(string); strings.ToLower(strings.TrimSpace(v)) {
+		case AudienceModel:
+			model = true
+		case AudienceApp:
+			app = true
+		}
+	}
+	if !model && !app {
+		return []string{AudienceModel, AudienceApp}
+	}
+	var out []string
+	if model {
+		out = append(out, AudienceModel)
+	}
+	if app {
+		out = append(out, AudienceApp)
+	}
+	return out
+}
+
+// visibleTo reports whether audience may call a tool declared with meta.
+func visibleTo(meta sdkmcp.Meta, audience string) bool {
+	for _, v := range toolVisibility(meta) {
+		if v == audience {
+			return true
+		}
+	}
+	return false
+}
+
+// rawToolResult is res as JSON for an MCP App view, or nil when it cannot be
+// encoded or is larger than MaxToolResultBytes.
+func rawToolResult(res *sdkmcp.CallToolResult) json.RawMessage {
+	data, err := json.Marshal(res)
+	if err != nil || len(data) > MaxToolResultBytes {
+		return nil
+	}
+	return data
+}
 
 // uiResourceURI returns the UI resource a tool's _meta declares:
 // _meta.ui.resourceUri, or the flat "ui/resourceUri" key of earlier drafts.
@@ -89,6 +149,76 @@ func (m *Manager) toolUIs(serverName string) map[string]string {
 	for _, d := range defs {
 		if uri := uiResourceURI(d.Meta); uri != "" {
 			out[ToolName(serverName, d.Name)] = uri
+		}
+	}
+	return out
+}
+
+// ToolInfo describes one connected MCP tool by its model-facing name.
+type ToolInfo struct {
+	// ServerID is the configured server id (LiveServer.ID).
+	ServerID string
+	// ServerKey is the server's part of the model-facing name
+	// mcp__<ServerKey>__<tool>; it equals ServerID when the id is simple.
+	ServerKey string
+	// Tool is the server's own name for the tool (what tools/call takes).
+	Tool string
+	// Visibility lists the audiences (AudienceModel, AudienceApp) that may
+	// call the tool, from its _meta.ui.visibility.
+	Visibility []string
+}
+
+// toolInfos maps the model-facing names of the connected servers' tools to
+// what they are.
+func (m *Manager) toolInfos() map[string]ToolInfo {
+	m.onChangeMu.Lock()
+	servers := make([]*server, 0, len(m.servers))
+	for _, s := range m.servers {
+		servers = append(servers, s)
+	}
+	m.onChangeMu.Unlock()
+	out := map[string]ToolInfo{}
+	for _, s := range servers {
+		s.mu.Lock()
+		defs, sess := s.defs, s.sess
+		s.mu.Unlock()
+		if sess == nil {
+			continue
+		}
+		for _, d := range defs {
+			out[ToolName(s.name, d.Name)] = ToolInfo{ServerID: s.name, ServerKey: serverKey(s.name), Tool: d.Name, Visibility: toolVisibility(d.Meta)}
+		}
+	}
+	return out
+}
+
+// ToolInfos describes each of names that is a connected MCP tool.
+func (m *LiveManager) ToolInfos(names []string) map[string]ToolInfo {
+	m.mu.RLock()
+	manager := m.manager
+	m.mu.RUnlock()
+	out := map[string]ToolInfo{}
+	if manager == nil {
+		return out
+	}
+	all := manager.toolInfos()
+	for _, name := range names {
+		if info, ok := all[name]; ok {
+			out[name] = info
+		}
+	}
+	return out
+}
+
+// ServerNames maps each configured server id to its display name, when the
+// settings give one.
+func (m *LiveManager) ServerNames() map[string]string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := map[string]string{}
+	for _, server := range m.settings.Servers {
+		if name := strings.TrimSpace(server.Name); name != "" {
+			out[server.ID] = name
 		}
 	}
 	return out

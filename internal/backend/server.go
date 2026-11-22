@@ -96,6 +96,7 @@ type Server struct {
 	usage                *ProviderUsageService
 	prompts              *resources.PromptStore
 	eventDir             string
+	mcpApprovals         mcpApprovals
 	permissionDir        string
 	sandboxMasked        []string
 	sandboxEnvKeep       []string
@@ -682,6 +683,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.serveMCPUI(w, r, id)
 		return
 	}
+	if len(parts) == 4 && parts[1] == "mcp-ui" && parts[2] == "results" {
+		s.serveMCPResult(w, r, id, parts[3])
+		return
+	}
 	if len(parts) == 2 && parts[1] == "command-notes" {
 		s.handleCommandNote(w, r, id)
 		return
@@ -934,6 +939,7 @@ func (s *Server) sessionSnapshotView(rt *runtimeSession, snap session.HistorySna
 	for _, msg := range snap.Messages {
 		out.Messages = append(out.Messages, protocol.FromAIMessage(msg))
 	}
+	withHistoryUIResources(rt.id, out.Messages)
 	seen := make(map[string]bool)
 	if rt.agent != nil {
 		for _, task := range rt.agent.Tasks().List() {
@@ -1863,7 +1869,7 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, end func(),
 		_, _ = rt.publish(protocol.EventToolCall, protocol.ToolCallEvent{ToolCall: protocol.ToolCall{ID: id, Name: name, Arguments: json.RawMessage(args)}}, "")
 	}, OnToolResult: func(id, name string, result tools.Result) {
 		toolOutput.finish(id)
-		_, _ = rt.publish(protocol.EventToolResult, protocol.ToolResultEvent{ToolResult: protocol.ToolResult{ID: id, Name: name, Output: result.Text, Content: protocol.FromAIMessage(ai.Message{Role: "tool", Parts: result.Parts}).Content, Failed: result.Failed, Cancelled: result.Cancelled, UIResource: s.toolUIResource(rt.id, rt.agent.WorkingDir, name, result), ToolRunInfo: toolRunInfo(result)}}, "")
+		_, _ = rt.publish(protocol.EventToolResult, protocol.ToolResultEvent{ToolResult: protocol.ToolResult{ID: id, Name: name, Output: result.Text, Content: protocol.FromAIMessage(ai.Message{Role: "tool", Parts: result.Parts}).Content, Failed: result.Failed, Cancelled: result.Cancelled, UIResource: s.toolUIResource(rt.id, id, result), ToolRunInfo: toolRunInfo(result)}}, "")
 	}, OnToolOutput: toolOutput.update, OnUsage: func(u ai.Usage) {
 		_, _ = rt.publish(protocol.EventUsage, protocol.Usage{InputTokens: u.PromptTokens, OutputTokens: u.CompletionTokens, CachedTokens: u.Cached(), CacheWriteTokens: u.CacheWrite()}, "")
 	}}

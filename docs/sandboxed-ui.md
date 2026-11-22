@@ -51,7 +51,7 @@
 
 `host.callTool`：
 
-- 插件面板只能调用**本插件自己的工具**：`name` 是 `plugin.json` 里 `tools[].name`（不是模型看到的 `plugin_<插件>_<工具>`）。宿主用 `POST /v1/plugins/{id}/tools/call {name, arguments, workdir}` 执行，把回复的 `output`、`failed` 转给页面。
+- 插件面板只能调用**本插件自己的工具**：`name` 是 `plugin.json` 里 `tools[].name`（不是模型看到的工具名）。宿主用 `POST /v1/plugins/{id}/tools/call {name, arguments, workdir}` 执行，把回复的 `output`、`failed` 转给页面。确认对话框里显示清单里的名字（回复的 `toolName`）；需要模型看到的名字时取 `contributes.toolDetails[].modelName`，不要自己拼 `plugin_<插件>_<工具>`（插件名含 `_` 时名字带哈希，见 liveagent-backend.md 的“插件”一节）。
 - 每次调用前宿主向用户显示插件名、工具名与参数并请求确认；用户可以选择“本会话内对此插件的此工具不再询问”。用户拒绝返回 `-32001`。这条 HTTP 调用不在运行中，后端不会再弹审批，**宿主的确认就是唯一的审批**。
 - 插件停用、不存在的工具返回后端的 404，宿主转成 `-32002`。
 
@@ -61,6 +61,16 @@
 |---|---|---|
 | `panel.themeChanged` | `theme` | 用户切换主题 |
 | `panel.visibilityChanged` | `{visible}` | 面板被隐藏或重新显示（宿主可以在隐藏时保留 iframe） |
+
+## 面板加载失败
+
+面板的 iframe 加载不了入口文件时（`capabilities.plugin_ui_errors`），后端返回的不是面板页面而是一个沙箱错误页，它在加载后向父窗口发一条通知（没有 `id`）：
+
+```json
+{"jsonrpc":"2.0","method":"host.panelLoadError","params":{"status":404,"code":"asset_not_found","message":"The plugin has no file index.html under its ui root."}}
+```
+
+`code` 与响应头 `X-K-Brain-Asset-Error` 相同：`asset_not_found`（插件没有这个文件）、`plugin_unavailable`（插件停用、目录变了、项目不再受信任或链接已失效）、`asset_too_large`。宿主照常只认该 iframe 的 `event.source`，收到后把面板显示为错误状态（显示 `message`，纯文本），不再等它发 `host.initialize`；`plugin_unavailable` 时先重新取列表再试一次。插件自己的页面也能发出同样的消息，宿主只据此显示错误状态，不做别的事。旧后端返回纯文本 404，宿主只能靠 `host.initialize` 超时判断。
 
 ## 错误码
 
@@ -78,8 +88,8 @@
 
 MCP 应用界面按公开的 MCP Apps 约定通过 postMessage 收发 JSON-RPC 2.0（方法名带 `ui/` 前缀，与上文 `host.*` 不同）；传输规则（只认该 iframe 的 `event.source`、目标源 `"*"`、限制大小与速率）与上文相同。宿主至少应：
 
-- 回复 `ui/initialize`（主题、语言、宿主信息），之后用 `ui/notifications/tool-input`、`ui/notifications/tool-result` 把本次调用的参数与结果（`output`）推给界面；
-- 处理 `tools/call`：只允许调用**同一 server** 的工具，经 `POST /v1/mcp/tools/call`（`cwd` 为会话工作目录）执行，server 的 `policy` 照常生效；`deny` 由后端拒绝，`ask` 由宿主先征得用户同意（这条 HTTP 调用不会再弹审批）；
+- 回复 `ui/initialize`（主题、语言、宿主信息），之后用 `ui/notifications/tool-input`、`ui/notifications/tool-result` 把本次调用的参数与结果推给界面。结果（`capabilities.mcp_apps_structured_content`）用 server 返回的原始 `CallToolResult`：`ui_resource.result`，没有时带令牌 `GET` `ui_resource.result_url`（会话历史里的调用只有 `result_url`）；两者都没有（结果超过 1 MiB 或旧后端）时才退回 `{"content":[{"type":"text","text":<output>}]}`。这样界面能拿到 `structuredContent` 与 `_meta`；
+- 处理 `tools/call`：只允许调用**同一 server**（`ui_resource.server_id`，对照 `GET /v1/mcp/tools?audience=app` 的 `serverId`）的工具，经 `POST /v1/mcp/tools/call {name, arguments, cwd, caller:"app"}`（`cwd` 为会话工作目录）执行，把回复的 `result`（没有时用 `output` 拼成文本内容，`isError` 取 `failed`）返回给界面。`caller:"app"` 让后端只允许界面可见的工具（`_meta.ui.visibility` 含 `app`，包括不给模型看的工具）。旧后端以 400（未知字段）拒绝 `caller` 与 `approval_id`，宿主只在 `mcp_tool_visibility == 1`、`mcp_tool_call_approval == 1` 时分别发送它们。server 的 `policy` 照常生效：`deny` 由后端拒绝；`ask` 时后端回复 `status:"approval_required"` 与 `approval`（`capabilities.mcp_tool_call_approval`），宿主向用户显示 server、工具与参数，同意后用同样的请求加 `approval_id: approval.id` 再调用一次，拒绝则向界面回 `-32001`。旧后端不支持审批时 `ask` 直接执行，宿主必须自己先征得同意；
 - 其他方法（打开链接、向对话发消息等）要么由用户确认后执行，要么回复 `-32601`；
 - 忽略界面请求的尺寸以外的显示提示，按自己的布局限制高度。
 
@@ -89,7 +99,7 @@ MCP 应用界面按公开的 MCP Apps 约定通过 postMessage 收发 JSON-RPC 2
 
 ## 宿主实现要点
 
-1. 从 `GET /v1/plugins?workdir=<会话工作目录>` 的 `plugins[].contributes.ui[]` 取面板，只显示带 `url` 的面板（插件已启用）；`placement:"sidePane"` 放侧边栏，`"settings"` 放设置页中该插件的条目下。
+1. 从 `GET /v1/plugins?workdir=<会话工作目录>` 的 `plugins[].contributes.ui[]` 取面板，只显示带 `url` 的面板（插件已启用）；`placement:"sidePane"` 放侧边栏，`"settings"` 放设置页中该插件的条目下。带 `errorCode` 的面板（入口文件缺失等）显示为错误状态并显示 `error`，不加载 iframe。
 2. `src` 为后端地址加 `url`（`url` 是后端上的路径）。列表的 `revision` 变化后重新取列表，URL 可能变化。
-3. 面板加载失败（404）说明授权已失效：重新取列表后再加载一次。
+3. 面板加载失败时按 `host.panelLoadError` 的 `code` 处理（见“面板加载失败”）：`plugin_unavailable` 说明授权已失效，重新取列表后再加载一次；`asset_not_found`、`asset_too_large` 直接显示错误。
 4. 卸载面板时移除 iframe 并丢弃挂起的请求。
