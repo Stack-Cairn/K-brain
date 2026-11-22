@@ -316,6 +316,10 @@ type model struct {
 	st          *statusState     // status row, footer, notifications (status_state.go)
 
 	cards *cardState // interactive cards: plan review (plan_view.go)
+
+	// inl is inline mode's printed transcript; nil on the alternate screen
+	// (scrollback_mode.go).
+	inl *inlineState
 }
 
 type initialPromptMsg struct{}
@@ -461,9 +465,23 @@ func Run(cfg *config.Config, modelName, provName, sysPrompt, resumeID string, ca
 
 	m.startupReport()
 
-	opts := []tea.ProgramOption{tea.WithAltScreen(), tea.WithReportFocus()}
+	opts := []tea.ProgramOption{tea.WithReportFocus()}
+	if inlineWanted(cfg) {
+		// The terminal's scrollback holds the transcript, so the wheel and
+		// drag-select belong to the terminal for this session.
+		m.inl, m.mouseOn = newInlineState(), false
+	} else {
+		opts = append(opts, tea.WithAltScreen())
+	}
+	if stdoutIsTTY() {
+		// Frames reach the terminal through syncOutput, which brackets each
+		// one for terminals that draw it atomically (syncoutput.go).
+		opts = append(opts, tea.WithOutput(newSyncOutput(os.Stdout, detectSyncOutput())))
+	}
 
-	fmt.Fprint(os.Stdout, "\x1b[9999;1H")
+	if m.inl == nil {
+		fmt.Fprint(os.Stdout, "\x1b[9999;1H")
+	}
 
 	{
 		if m.mouseOn {
@@ -496,6 +514,7 @@ func Run(cfg *config.Config, modelName, provName, sysPrompt, resumeID string, ca
 	tuiRunning = true
 	stopDiagnostics := startDiagnostics(p)
 	_, err = p.Run()
+	m.inlineFinish(os.Stdout)
 	stopDiagnostics()
 	forgetUIPoster(p)
 	m.stopStatus()
@@ -968,6 +987,11 @@ func cwd() string {
 func (m *model) Update(msg tea.Msg) (_ tea.Model, statusCmd tea.Cmd) {
 	if ping, ok := msg.(watchdogPing); ok {
 		close(ping.done)
+		return m, nil
+	}
+	// Inline mode prints what this update finished, after everything else.
+	defer func() { statusCmd = m.inlineAfter(msg, statusCmd) }()
+	if m.inlineMsg(msg) {
 		return m, nil
 	}
 	defer m.layout()

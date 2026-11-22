@@ -1,4 +1,4 @@
-[96m❯[0m [1mSettings[0m                                                                                                         [37m1/16[0m
+[96m❯[0m [1mSettings[0m                                                                                                         [37m1/17[0m
   [96m/[0m [37mtype to filter[0m
 [90m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [90mDisplay[0m
@@ -9,6 +9,7 @@
   Vim mode          [37mmodal editing in the composer: Esc for normal mode, i to insert[0m                                 [37moff[0m
   Option as Alt     [37mread macOS Option+letter characters as Alt shortcuts[0m                                            [37moff[0m
   Ancient mode      [37mclassical vertical layout for replies[0m                                                           [37moff[0m
+  Inline mode       [37mtranscript in the terminal's scrollback[0m                                                         [37moff[0m
   Browser driver    [37mautomation engine that drives Chrome[0m                                                            [37mrod[0m
 
   [90mAgent[0m
@@ -22,7 +23,6 @@
   Compaction level  [37mauto-compact at this share of the context window[0m                                                [37m90%[0m
   [90mGoal rounds     [0m  [90mrounds a /goal may run before it stops[0m                                                          [90m100[0m
   Privacy gateway   [37mmask secrets in requests, restore them in replies[0m                                               [37moff[0m
-
 
 
 

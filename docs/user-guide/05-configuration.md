@@ -30,6 +30,8 @@
 
 主要可选项：`defaultEffort`、`goalMaxRounds`、`goalVerify`、`goalVerifyMaxRejections`、`mouse`、`thinking`、`collapsePaste`、`maxRetries`、`sandbox`、`browser`、`computer`、`hooks`、`mcp`、`lsp` 和 `rulesCompat`。
 
+`inline`（默认关闭）为 `true` 时 `kn` 以内联模式运行：不使用备用屏幕，已完成的对话打印到终端的滚动缓冲区，只重绘底部的实时区域；`kn --inline` / `--inline=false` 可在单次启动时覆盖它。环境变量 `K_BRAIN_SYNC_OUTPUT=1` / `0` 强制开启或关闭同步输出（DEC 2026），不设置时自动检测。详见[TUI 与快捷键](03-tui.md#屏幕模式与终端输出)。
+
 `goalVerify`（默认开启）控制 `/goal` 在模型声明完成时是否先做一次独立校验，`goalVerifyMaxRejections`（默认 3）是同一目标最多驳回的次数，详见[斜杠命令](04-commands.md#goal-独立校验)。
 
 `rulesCompat` 控制是否读取其他代理工具的规则文件，两项默认开启：`{"rulesCompat": {"claude": false, "cursor": false}}` 可分别关闭 Claude Code（`CLAUDE.md`、`CLAUDE.local.md`、`.claude/CLAUDE*.md`、`~/.claude/CLAUDE.md`、项目 `.claude/skills`）和 Cursor（`.cursor/rules`、`.cursorrules`）兼容。详见[提示词层级](02-prompts.md)。

@@ -35,7 +35,9 @@ func (e *editorExec) SetStdin(r io.Reader) {
 
 func (e *editorExec) SetStdout(w io.Writer) {
 	if e.cmd.Stdout == nil {
-		e.cmd.Stdout = w
+		// The program's output may be the synchronized-output wrapper; the
+		// editor needs the terminal itself, not a pipe into it.
+		e.cmd.Stdout = plainOutput(w).(io.Writer)
 	}
 }
 

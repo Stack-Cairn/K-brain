@@ -55,6 +55,7 @@ func main() {
 	flag.BoolVar(&browseMode, "browse", false, "open the session picker at startup (same as bare --resume)")
 	benchFlag := flag.Bool("bench", false, "do full startup init (config, routing, key, agent) then exit; for `task benchmark`")
 	cautiousFlag := flag.Bool("cautious", false, "ask before running commands / writing files")
+	inlineFlag := flag.Bool("inline", false, "run in the terminal's normal screen with the transcript in its scrollback (--inline=false forces the alternate screen)")
 	normalizeBareResume(os.Args[1:])
 	flag.Parse()
 	tools.Version = version
@@ -183,6 +184,11 @@ func main() {
 
 	go update.Check(version)
 	tui.Version = version
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "inline" {
+			tui.InlineOverride = inlineFlag
+		}
+	})
 	sessionID, err := tui.Run(cfg, *modelFlag, *providerFlag, sysprompt.Build(cwd(), time.Now()), *resumeFlag, *cautiousFlag, firstRun, initialPrompt, continueMode, browseMode)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "kn:", err)

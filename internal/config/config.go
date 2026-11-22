@@ -156,6 +156,9 @@ type Config struct {
 	GoalVerify *bool `json:"goalVerify,omitempty"`
 	// GoalVerifyMaxRejections caps verifier rejections per goal; 0 uses the default.
 	GoalVerifyMaxRejections int `json:"goalVerifyMaxRejections,omitempty"`
+	// Inline runs kn in the terminal's normal screen, the finished transcript
+	// printed into its scrollback, instead of the alternate screen; nil is off.
+	Inline *bool `json:"inline,omitempty"`
 
 	WorktreeSubagents *bool `json:"worktreeSubagents,omitempty"`
 	MaxRetries        int   `json:"maxRetries,omitempty"`

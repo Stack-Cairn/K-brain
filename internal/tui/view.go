@@ -177,6 +177,9 @@ func (m *model) padAboveComposer(v string, n int) string {
 }
 
 func (m *model) View() string {
+	if m.inlineLive() {
+		return m.inlineView()
+	}
 	m.syncInputPlaceholder()
 	v := m.viewBody()
 
@@ -308,7 +311,12 @@ func (m *model) viewBody() string {
 	panel := m.topPanelSection()
 	m.tp.drawn = strings.Count(panel, "\n")
 	b.WriteString(panel)
-	viewport := m.viewportView()
+	viewport := ""
+	if m.inlineLive() {
+		viewport = m.inlinePendingView()
+	} else {
+		viewport = m.viewportView()
+	}
 	m.viewportTop = strings.Count(b.String(), "\n")
 	if viewport != "" {
 		m.viewportRows = lipgloss.Height(viewport)

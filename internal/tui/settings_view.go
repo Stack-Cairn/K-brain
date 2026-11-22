@@ -104,6 +104,11 @@ func settingDefs() []settingDef {
 			step:  func(m *model, _ int) { m.ancientCommand([]string{"toggle"}) },
 		},
 		{
+			section: "Display", name: "Inline mode", desc: "transcript in the terminal's scrollback", command: "kn --inline",
+			value: func(m *model) string { return onOff(m.cfg != nil && m.cfg.Inline != nil && *m.cfg.Inline) },
+			step:  func(m *model, _ int) { m.toggleInlineSetting() },
+		},
+		{
 			section: "Display", name: "Browser driver", desc: "automation engine that drives Chrome", command: "K_BRAIN_BROWSER_DRIVER",
 			value: func(m *model) string { return browser.Driver },
 			step:  func(m *model, d int) { m.switchBrowserDriver(cycle(browser.Drivers, browser.Driver, d)) },
