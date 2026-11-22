@@ -36,6 +36,7 @@ var legacyHelpKeys = []string{
 	"Esc Esc (idle) — " + palDescRewind + " (↑/↓ browse, Enter rewinds, f forks)",
 	"while busy with queued messages: ↑/↓ select, Del removes",
 	"PgUp/PgDn — scroll · wheel — scroll · drag — select/copy text",
+	"End (empty composer) / Ctrl+End — back to the newest output after scrolling up",
 	palHintQuit + " — quit",
 	"Ctrl+P — command palette",
 	"Ctrl+Z / Alt+Z — undo / redo the draft",
@@ -50,7 +51,7 @@ var legacyHelpKeys = []string{
 	"Alt+E (busy) — edit the last queued message · click a queued message to select it, click it again to edit, its ✗ removes it",
 	"Ctrl+B (busy) — move the running shell command to the background; it keeps running and the agent is told when it exits",
 	"F2 — settings",
-	"Alt+↑ — focus the transcript: j/k select a block, h/l fold / open, e toggle, E fold all, v view, / find, Esc back",
+	"Alt+↑ — focus the transcript: j/k select a block, Ctrl+U/Ctrl+D half a page, h/l fold / open, e toggle, E fold all, v view, / find, Esc back",
 	"in the block viewer: j/k scroll, Space/PgDn page, g/G top / end, / find, n/N next / previous, Esc back",
 	"F1 / ? (empty composer) — keyboard shortcuts and commands",
 }

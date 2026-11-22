@@ -37,4 +37,4 @@
     if done[in.ID] {
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   ❯ Ask k-brain anything…  ? help · / commands · Shift+Tab mode · Ctrl+P menu
-   Normal                                                                                   ↑ 31% · kimi-k3-fast · ✦ off
+   Normal                                                                           ↑ 31% · End ↓ · kimi-k3-fast · ✦ off

@@ -59,6 +59,8 @@ var helpActionDesc = map[string]string{
 	"queueNext":       "select the next queued message",
 	"queueRemove":     "remove the selected queued message",
 	"scroll":          "scroll the transcript",
+	"jumpBottom":      "back to the newest output",
+	"halfPage":        "scroll half a page",
 	"quit":            "quit",
 	"submit":          "send the message",
 	"historyPrev":     "previous prompt from history",

@@ -177,6 +177,16 @@ func (m *model) transcriptFocusKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.vp.PageDown()
 		m.follow = m.vp.AtBottom()
 		m.focusOnScreen(bi, 1)
+	case msg.Type == tea.KeyCtrlU:
+		// Half a page, as in a pager; the composer keeps Ctrl+U as its
+		// kill to line start.
+		m.vp.HalfPageUp()
+		m.follow = false
+		m.focusOnScreen(bi, -1)
+	case msg.Type == tea.KeyCtrlD:
+		m.vp.HalfPageDown()
+		m.follow = m.vp.AtBottom()
+		m.focusOnScreen(bi, 1)
 	case msg.Type == tea.KeyLeft || k == "h":
 		m.foldFocused(bi, false)
 	case msg.Type == tea.KeyRight || k == "l":

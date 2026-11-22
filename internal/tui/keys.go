@@ -158,6 +158,18 @@ func (m *model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.follow = m.vp.AtBottom()
 		return m, cmd
 
+	case tea.KeyEnd, tea.KeyCtrlEnd:
+		// Scrolled up, End on an empty composer (or Ctrl+End at any time)
+		// jumps back to the newest output; the footer says so. Otherwise
+		// they stay the textarea's end of line and end of draft.
+		if m.scrolledUp() && (msg.Type == tea.KeyCtrlEnd || m.input.Value() == "") {
+			m.vp.GotoBottom()
+			m.follow = true
+			if msg.Type == tea.KeyEnd {
+				return m, nil
+			}
+		}
+
 	case tea.KeyEsc:
 
 		if m.busy && m.cancel != nil && strings.TrimSpace(m.input.Value()) == "" {

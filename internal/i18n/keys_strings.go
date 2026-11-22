@@ -9,6 +9,8 @@ var keysChinese = map[string]string{
 	"Ctrl+C again to interrupt":                                  "再按 Ctrl+C 中断",
 	"Ctrl+C Ctrl+C to interrupt":                                 "Ctrl+C Ctrl+C 中断",
 	"Shift+←/→/↑/↓, Shift+Home/End, Alt+Shift+←/→ — select in the composer by character, row, to the line's start / end, by word; typing replaces it, Backspace deletes it, Ctrl+C copies it": "Shift+←/→/↑/↓、Shift+Home/End、Alt+Shift+←/→ — 在输入框中按字符、按行、到行首 / 行尾、按词选择；输入替换选区，Backspace 删除，Ctrl+C 复制",
+	"End (empty composer) / Ctrl+End — back to the newest output after scrolling up":                                                                                                          "End（输入框为空时）/ Ctrl+End — 向上滚动后回到最新输出",
+	"Alt+↑ — focus the transcript: j/k select a block, Ctrl+U/Ctrl+D half a page, h/l fold / open, e toggle, E fold all, v view, / find, Esc back":                                            "Alt+↑ — 聚焦对话记录：j/k 选择块，Ctrl+U/Ctrl+D 翻半页，h/l 折叠 / 展开，e 切换，E 全部折叠，v 查看，/ 查找，Esc 返回",
 }
 
 var keysTraditionalChinese = map[string]string{
@@ -19,6 +21,8 @@ var keysTraditionalChinese = map[string]string{
 	"Ctrl+C again to interrupt":                                  "再按 Ctrl+C 中斷",
 	"Ctrl+C Ctrl+C to interrupt":                                 "Ctrl+C Ctrl+C 中斷",
 	"Shift+←/→/↑/↓, Shift+Home/End, Alt+Shift+←/→ — select in the composer by character, row, to the line's start / end, by word; typing replaces it, Backspace deletes it, Ctrl+C copies it": "Shift+←/→/↑/↓、Shift+Home/End、Alt+Shift+←/→ — 在輸入框中按字元、按行、到行首 / 行尾、按詞選取；輸入取代選取範圍，Backspace 刪除，Ctrl+C 複製",
+	"End (empty composer) / Ctrl+End — back to the newest output after scrolling up":                                                                                                          "End（輸入框為空時）/ Ctrl+End — 向上捲動後回到最新輸出",
+	"Alt+↑ — focus the transcript: j/k select a block, Ctrl+U/Ctrl+D half a page, h/l fold / open, e toggle, E fold all, v view, / find, Esc back":                                            "Alt+↑ — 聚焦對話記錄：j/k 選擇區塊，Ctrl+U/Ctrl+D 翻半頁，h/l 摺疊 / 展開，e 切換，E 全部摺疊，v 檢視，/ 尋找，Esc 返回",
 }
 
 func init() {

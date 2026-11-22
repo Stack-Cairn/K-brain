@@ -1,4 +1,4 @@
-❯ Keyboard shortcuts                                                                                               1/90
+❯ Keyboard shortcuts                                                                                               1/92
   [Keys]  Commands
   / type to filter
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -22,6 +22,7 @@
   Tab                                complete a command, path or mention
   Ctrl+J / Shift+Enter / Alt+Enter   insert a newline
   Esc                                clear the draft
+  End / Ctrl+End                     back to the newest output
   Enter                              send the message
   ↑                                  previous prompt from history
   ↓ / Ctrl+N                         next prompt from history
@@ -30,8 +31,7 @@
   Alt+Z                              redo the draft edit
   Ctrl+W / Alt+Backspace             cut the word before the cursor
   Ctrl+U                             cut to the start of the line
-  Ctrl+K / Alt+K                     cut to the end of the line
-  ↓ 64 more
+  ↓ 66 more
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   Shift+Tab  cycle the permission mode
   Shift+Tab — cycle Normal / Plan / Auto review / Always allow
