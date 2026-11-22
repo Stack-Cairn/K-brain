@@ -127,7 +127,7 @@ func (m *model) doctorReport() string {
 	}
 	fmt.Fprintf(&b, "  %-*s %7s\n", w, "TOTAL injected before you type", "~"+tok(total))
 	b.WriteString("\nTrim: /mcp <name> disable · /plugins disable NAME · remove a skill from .agents/skills · /context-doctor again")
-	if t := terminalDoctor(); t != "" {
+	if t := m.screenDoctor() + "\n" + terminalDoctor(); t != "" {
 		b.WriteString("\n\nTerminal\n" + t)
 	}
 	return b.String()
