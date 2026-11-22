@@ -41,13 +41,9 @@ func renderMarkdownWhole(s string, width int) string {
 		if r == nil {
 			return s
 		}
-		text, held := holdCodeHyphens(seg.text)
-		out, err := r.Render(text)
+		out, err := glamourProse(r, seg.text)
 		if err != nil {
 			return s
-		}
-		if held {
-			out = strings.ReplaceAll(out, heldHyphen, "-")
 		}
 		parts = append(parts, stripLinePadding(strings.Trim(out, "\n")))
 	}
@@ -55,6 +51,24 @@ func renderMarkdownWhole(s string, width int) string {
 	linked := hyperlinkGlamourLinks(rendered, realFileExists)
 	linked = linkifyRenderedFilePaths(linked, realFileExists)
 	return wrapWideLines(linked, width)
+}
+
+// glamourProse renders prose through r, working around what glamour lays
+// out badly: hyphens inside code spans and paragraphs inside list items.
+func glamourProse(r *glamour.TermRenderer, text string) (string, error) {
+	text, gaps := splitListParagraphs(text)
+	text, held := holdCodeHyphens(text)
+	out, err := r.Render(text)
+	if err != nil {
+		return "", err
+	}
+	if held {
+		out = strings.ReplaceAll(out, heldHyphen, "-")
+	}
+	if gaps {
+		out = strings.ReplaceAll(out, listParaGap, " ")
+	}
+	return out, nil
 }
 
 // mdSegment is a run of markdown: prose for glamour, or one top-level fenced

@@ -7,7 +7,9 @@
   • a loose third item                                                                                                  
                                                                                                                         
   1. step one                                                                                                           
-  2. step twowith an indented continuation paragraph.                                                                   
+  2. step two                                                                                                           
+                                                                                                                        
+  with an indented continuation paragraph.                                                                              
                                                                                                                         
   [90m```go[0m                                                                                                                 [0m
     [95mfunc[0m [96mf[0m() {                                                                                                          [0m
@@ -28,8 +30,6 @@
 [0m  [90m--------[0m                                                                                                              [0m
                                                                                                                         
   Final paragraph with a long sentence that wraps across the narrow widths the golden test uses.                        
-
-
 
 
 

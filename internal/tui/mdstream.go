@@ -284,13 +284,9 @@ func renderProse(text string, width int) (string, bool) {
 	if r == nil {
 		return "", false
 	}
-	held, hyphens := holdCodeHyphens(text)
-	out, err := r.Render(held)
+	out, err := glamourProse(r, text)
 	if err != nil {
 		return "", false
-	}
-	if hyphens {
-		out = strings.ReplaceAll(out, heldHyphen, "-")
 	}
 	return stripLinePadding(strings.Trim(out, "\n")), true
 }

@@ -7,7 +7,9 @@
   • a loose third item                                                                                                  
                                                                                                                         
   1. step one                                                                                                           
-  2. step twowith an indented continuation paragraph.                                                                   
+  2. step two                                                                                                           
+                                                                                                                        
+  with an indented continuation paragraph.                                                                              
                                                                                                                         
   [48;5;235m                                                                                                                 [0m[38;5;245;48;5;235mgo [0m  [0m
   [48;5;235m  [0m[38;5;141;48;5;235mfunc[0m[48;5;235m [0m[38;5;80;48;5;235mf[0m[48;5;235m()[0m[48;5;235m [0m[48;5;235m{[0m[48;5;235m                                                                                                        [0m  [0m
@@ -27,8 +29,6 @@
 [0m  [38;5;238m--------[0m                                                                                                              [0m
                                                                                                                         
   Final paragraph with a long sentence that wraps across the narrow widths the golden test uses.                        
-
-
 
 
 

@@ -1,4 +1,4 @@
-  2. step twowith an indented continuation paragraph.
+  with an indented continuation paragraph.
 
                                                                            go
     func f() {
