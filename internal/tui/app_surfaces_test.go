@@ -283,3 +283,51 @@ func TestSurfaceFitsEveryWidth(t *testing.T) {
 		}
 	}
 }
+
+// F1 opens the cheatsheet anywhere on the main screen; ? does on an empty
+// composer and is typed as usual once the draft has text.
+func TestHelpKeyOpensCheatsheet(t *testing.T) {
+	m := surfaceModel(t)
+	m.syncInputPlaceholder()
+	if !strings.Contains(m.input.Placeholder, "? help") {
+		t.Fatalf("the empty composer should mention ? help, placeholder %q", m.input.Placeholder)
+	}
+	pressAll(t, m, tea.KeyMsg{Type: tea.KeyF1})
+	if !m.surfaceOpen() || m.app.modal.kind != "help" {
+		t.Fatal("F1 should open the cheatsheet")
+	}
+
+	m = surfaceModel(t)
+	pressAll(t, m, keyRunes("?"))
+	if !m.surfaceOpen() || m.app.modal.kind != "help" {
+		t.Fatal("? on an empty composer should open the cheatsheet")
+	}
+	if m.input.Value() != "" {
+		t.Fatalf("? that opened help must not be typed, composer %q", m.input.Value())
+	}
+
+	m = surfaceModel(t)
+	pressAll(t, m, keyRunes("w"), keyRunes("h"), keyRunes("y"), keyRunes("?"))
+	if m.surfaceOpen() {
+		t.Fatal("? after text should type, not open help")
+	}
+	if m.input.Value() != "why?" {
+		t.Fatalf("composer = %q, want %q", m.input.Value(), "why?")
+	}
+
+	m = surfaceModel(t)
+	pressAll(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("?"), Paste: true})
+	if m.surfaceOpen() || m.input.Value() != "?" {
+		t.Fatalf("a pasted ? is text: open=%v composer %q", m.surfaceOpen(), m.input.Value())
+	}
+}
+
+// The cheatsheet keeps a lone letter's case, so g and G stay apart, and
+// capitalises the letter of a chord.
+func TestPrettyKeyCase(t *testing.T) {
+	for in, want := range map[string]string{"g": "g", "G": "G", "ctrl+k": "Ctrl+K", "alt+up": "Alt+↑", "?": "?", "f1": "F1", "/": "/"} {
+		if got := prettyKey(in); got != want {
+			t.Errorf("prettyKey(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

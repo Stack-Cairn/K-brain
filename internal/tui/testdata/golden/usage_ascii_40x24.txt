@@ -20,5 +20,5 @@
 
 
 ----------------------------------------
-  > Ask k-brain anything...  / commands
+  > Ask k-brain anything...  ? help...
    28% ctx - 60.2k tok - kimi-k3-fast...

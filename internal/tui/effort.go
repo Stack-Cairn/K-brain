@@ -88,7 +88,7 @@ func (m *model) effortPanelView(pp *ppanel) string {
 		active := effortLabel(level) == current
 		marker := " "
 		if i == pp.lidx {
-			marker = "›"
+			marker = selMark()
 		}
 		state := "○"
 		if active {
@@ -108,7 +108,7 @@ func (m *model) effortPanelView(pp *ppanel) string {
 		}
 		b.WriteByte('\n')
 	}
-	b.WriteString("\n" + shortcutStyle.Render("  ↑↓ Navigate  ·  Enter Apply  ·  ←→ Cycle  ·  Esc Close"))
+	b.WriteString("\n" + shortcutStyle.Render("  ↑↓ navigate · Enter apply · ←→ cycle · Esc close"))
 	return b.String()
 }
 

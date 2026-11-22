@@ -15,12 +15,14 @@ type glyphSet struct {
 	ToolQueued string
 	ToolRun    string
 	ToolDone   string
+	Thought    string // a finished thinking block; a live one shows ToolRun
 	OK         string
 	Fail       string
 	Result     string // the elbow under a tool row
 	Rail       string // live output and quote rail
 	Band       string // the user band's left rail when there is no tint
 	Fold       string
+	Wrap       string // leads the later rows of a wrapped code line
 	Notice     string // system notices
 	Warn       string
 	Effort     string
@@ -38,12 +40,14 @@ var unicodeGlyphs = glyphSet{
 	ToolQueued: "◇",
 	ToolRun:    "◌",
 	ToolDone:   "◆",
+	Thought:    "◉",
 	OK:         "✓",
 	Fail:       "✗",
 	Result:     "└",
 	Rail:       "│",
 	Band:       "▌",
 	Fold:       "⋯",
+	Wrap:       "↪",
 	Notice:     "◎",
 	Warn:       "!",
 	Effort:     "✦",
@@ -60,17 +64,19 @@ var asciiGlyphs = glyphSet{
 	Assistant:  "*",
 	ToolQueued: "o",
 	ToolRun:    "~",
-	ToolDone:   "*",
+	ToolDone:   "+",
+	Thought:    "=",
 	OK:         "v",
 	Fail:       "x",
 	Result:     "`",
 	Rail:       "|",
 	Band:       "|",
 	Fold:       "...",
+	Wrap:       ">",
 	Notice:     "o",
 	Warn:       "!",
 	Effort:     "*",
-	Tokens:     "v",
+	Tokens:     "#",
 	BarFull:    "#",
 	BarEmpty:   "-",
 	Minus:      "-",

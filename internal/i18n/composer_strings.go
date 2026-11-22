@@ -8,7 +8,11 @@ var composerChinese = map[string]string{
 	"Alt+M — multiline mode: Enter adds a line, Ctrl+J sends":                                                                "Alt+M — 多行模式：Enter 换行，Ctrl+J 发送",
 	"Ctrl+R — search prompt history (Tab: all directories)":                                                                  "Ctrl+R — 搜索输入历史（Tab：所有目录）",
 	"Ctrl+S — stash the draft, or restore it on an empty composer":                                                           "Ctrl+S — 暂存草稿；输入框为空时恢复",
-	"with a queued message selected: Enter sends it now, Ctrl+E edits, Alt+↑/↓ moves":                                        "选中队列消息时：Enter 立即发送，Ctrl+E 编辑，Alt+↑/↓ 移动",
+	"Ctrl+P — command palette": "Ctrl+P — 命令面板",
+	"F2 — settings":            "F2 — 设置",
+	"F1 / ? (empty composer) — keyboard shortcuts and commands":                       "F1 / ?（输入框为空时）— 快捷键与命令",
+	"open this cheatsheet (? only on an empty composer)":                              "打开本速查表（? 仅在输入框为空时）",
+	"with a queued message selected: Enter sends it now, Ctrl+E edits, Alt+↑/↓ moves": "选中队列消息时：Enter 立即发送，Ctrl+E 编辑，Alt+↑/↓ 移动",
 	"  (editing)": "  （编辑中）",
 	"↑ select":    "↑ 选择",
 	"↑↓ select":   "↑↓ 选择",
@@ -48,6 +52,11 @@ var composerChinese = map[string]string{
 	"Alt+E edit last":                "Alt+E 编辑最后一条",
 	"Enter saves · Esc puts it back": "Enter 保存 · Esc 放回原处",
 	"clear the composer to pick a queued message · Ctrl+S stashes the draft · Alt+E edits the last one": "先清空输入框再选排队消息 · Ctrl+S 暂存草稿 · Alt+E 编辑最后一条",
+
+	// Double-press notices in the footer.
+	"Press Ctrl+C again to quit":                  "再按 Ctrl+C 退出",
+	"Esc again to clear the input (↑ recalls it)": "再按 Esc 清空输入（↑ 可找回）",
+	"Esc again to rewind the conversation":        "再按 Esc 回退对话",
 }
 
 var composerTraditionalChinese = map[string]string{
@@ -56,7 +65,11 @@ var composerTraditionalChinese = map[string]string{
 	"Alt+M — multiline mode: Enter adds a line, Ctrl+J sends":                                                                "Alt+M — 多行模式：Enter 換行，Ctrl+J 傳送",
 	"Ctrl+R — search prompt history (Tab: all directories)":                                                                  "Ctrl+R — 搜尋輸入歷史（Tab：所有目錄）",
 	"Ctrl+S — stash the draft, or restore it on an empty composer":                                                           "Ctrl+S — 暫存草稿；輸入框為空時還原",
-	"with a queued message selected: Enter sends it now, Ctrl+E edits, Alt+↑/↓ moves":                                        "選取佇列訊息時：Enter 立即傳送，Ctrl+E 編輯，Alt+↑/↓ 移動",
+	"Ctrl+P — command palette": "Ctrl+P — 命令面板",
+	"F2 — settings":            "F2 — 設定",
+	"F1 / ? (empty composer) — keyboard shortcuts and commands":                       "F1 / ?（輸入框為空時）— 快捷鍵與命令",
+	"open this cheatsheet (? only on an empty composer)":                              "開啟本速查表（? 僅在輸入框為空時）",
+	"with a queued message selected: Enter sends it now, Ctrl+E edits, Alt+↑/↓ moves": "選取佇列訊息時：Enter 立即傳送，Ctrl+E 編輯，Alt+↑/↓ 移動",
 	"  (editing)": "  （編輯中）",
 	"↑ select":    "↑ 選擇",
 	"↑↓ select":   "↑↓ 選擇",
@@ -96,6 +109,11 @@ var composerTraditionalChinese = map[string]string{
 	"Alt+E edit last":                "Alt+E 編輯最後一則",
 	"Enter saves · Esc puts it back": "Enter 儲存 · Esc 放回原處",
 	"clear the composer to pick a queued message · Ctrl+S stashes the draft · Alt+E edits the last one": "先清空輸入框再選佇列訊息 · Ctrl+S 暫存草稿 · Alt+E 編輯最後一則",
+
+	// Double-press notices in the footer.
+	"Press Ctrl+C again to quit":                  "再按 Ctrl+C 退出",
+	"Esc again to clear the input (↑ recalls it)": "再按 Esc 清空輸入（↑ 可找回）",
+	"Esc again to rewind the conversation":        "再按 Esc 回退對話",
 }
 
 func init() {

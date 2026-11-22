@@ -53,7 +53,7 @@ func TestChromeSectionsAddUp(t *testing.T) {
 		seen[s.name] = true
 		sum += s.rows(m)
 	}
-	for _, want := range []string{"composer", "busy", "ask", "queue", "quitArm"} {
+	for _, want := range []string{"composer", "busy", "ask", "queue"} {
 		if !seen[want] {
 			t.Errorf("no %q chrome section", want)
 		}

@@ -312,7 +312,7 @@ func TestEnterOpensTaskViewAndEscBacksOut(t *testing.T) {
 	if !strings.Contains(body, "probe") || !strings.Contains(body, "find things") {
 		t.Fatalf("task view should show description and prompt, got %q", body)
 	}
-	if !strings.Contains(m.View(), "Esc Back") {
+	if !strings.Contains(m.View(), "Esc back") {
 		t.Fatal("the open task view should render the back hint")
 	}
 	m.key(mkKey("esc"))
@@ -627,13 +627,13 @@ func TestDockScrollsWithSelection(t *testing.T) {
 	if !strings.Contains(dock, "probe-1") {
 		t.Fatalf("scrolled dock should keep the selection visible, got %q", dock)
 	}
-	if !strings.Contains(dock, "More") {
+	if !strings.Contains(dock, " more") {
 		t.Fatalf("dock should advertise hidden rows, got %q", dock)
 	}
 
 	rendered := 0
 	for line := range strings.Lines(dock) {
-		if strings.Contains(line, "probe-") && !strings.Contains(line, "More") {
+		if strings.Contains(line, "probe-") && !strings.Contains(line, " more") {
 			rendered++
 		}
 	}
@@ -973,7 +973,7 @@ func TestDockClickMapsThroughScrollWindow(t *testing.T) {
 	m.View()
 	before := m.taskSel
 	dock := stripAll(m.tasksDock())
-	if !strings.Contains(dock, "More") {
+	if !strings.Contains(dock, " more") {
 		t.Fatalf("test setup: dock should show the +N more counter, got %q", dock)
 	}
 	click(m.dockTop() + m.dockTaskRows)

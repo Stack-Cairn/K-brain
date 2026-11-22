@@ -252,7 +252,24 @@ type noticeExpiredMsg uint64
 // showNotice shows msg in the footer for a couple of seconds.
 func (m *model) showNotice(msg string) tea.Cmd {
 	m.transientNotice = msg
+	m.armNotice = false
 	m.noticeGeneration++
 	generation := m.noticeGeneration
 	return tea.Tick(2*time.Second, func(time.Time) tea.Msg { return noticeExpiredMsg(generation) })
+}
+
+// showArmNotice shows a double-press hint ("press Ctrl+C again to quit") in
+// the footer rather than the transcript. It has no timer of its own: the
+// key's arm message, or the next key, clears it.
+func (m *model) showArmNotice(msg string) {
+	m.transientNotice = msg
+	m.noticeGeneration++
+	m.armNotice = true
+}
+
+// clearArmNotice takes a double-press hint off the footer.
+func (m *model) clearArmNotice() {
+	if m.armNotice {
+		m.transientNotice, m.armNotice = "", false
+	}
 }

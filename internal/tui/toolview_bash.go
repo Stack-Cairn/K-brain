@@ -74,7 +74,7 @@ func renderShellBody(b *block, text string, width int) string {
 	out := make([]string, 0, len(rows))
 	for i, r := range rows {
 		if r.fold > 0 {
-			out = append(out, foldHint(r.fold, "lines"))
+			out = append(out, foldHint(r.fold, "lines", b.expandKey))
 			continue
 		}
 		lead := elbow

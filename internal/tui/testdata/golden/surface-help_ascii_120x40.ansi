@@ -1,4 +1,4 @@
-[96m>[0m [1mKeyboard shortcuts[0m                                                                                               [37m1/84[0m
+[96m>[0m [1mKeyboard shortcuts[0m                                                                                               [37m1/86[0m
   [1;96m[Keys][0m [90m Commands [0m
   [96m/[0m [37mtype to filter[0m
 [90m------------------------------------------------------------------------------------------------------------------------[0m
@@ -17,6 +17,7 @@
   Ctrl+P                                    [37mopen the command palette[0m[37m[0m
   F2                                        [37mopen settings[0m[37m[0m
   Alt+Up                                    [37mfocus the transcript, a block at a time[0m[37m[0m
+  F1                                        [37mopen this cheatsheet (? only on an empty composer)[0m[37m[0m
 
   [90mComposer[0m
   Tab                                       [37mcomplete a command, path or mention[0m[37m[0m
@@ -30,8 +31,7 @@
   Alt+Z                                     [37mredo the draft edit[0m[37m[0m
   Ctrl+W / Alt+Backspace                    [37mcut the word before the cursor[0m[37m[0m
   Ctrl+U                                    [37mcut to the start of the line[0m[37m[0m
-  Alt+K                                     [37mcut to the end of the line[0m[37m[0m
-[37m  Down 58 more[0m
+[37m  Down 60 more[0m
 [90m------------------------------------------------------------------------------------------------------------------------[0m
   [1mShift+Tab[0m  [37mcycle the permission mode[0m
   [37mShift+Tab - cycle Normal / Plan / Auto review / Always allow[0m

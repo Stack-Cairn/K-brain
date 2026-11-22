@@ -1,6 +1,6 @@
         // one object per call
         return json.NewEncoder(w).Enco
-    de(s)
+  ↪ de(s)
     }
   ```
 
@@ -20,5 +20,5 @@
 │ dismisses                            │
 ╰──────────────────────────────────────╯
 ────────────────────────────────────────
-  ❯ Ask k-brain anything…  / commands ·
+  ❯ Ask k-brain anything…  ? help…
   [Always allow]    kimi-k3-fast · ✦ off

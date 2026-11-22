@@ -36,5 +36,5 @@
                                                                                                                    go
     if done[in.ID] {
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  ❯ Ask k-brain anything…  / commands · Shift+Tab mode · Ctrl+P menu
+  ❯ Ask k-brain anything…  ? help · / commands · Shift+Tab mode · Ctrl+P menu
    Normal                                                                                   ↑ 31% · kimi-k3-fast · ✦ off

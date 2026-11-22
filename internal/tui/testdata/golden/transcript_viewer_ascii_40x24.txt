@@ -21,4 +21,4 @@
 
 
 
-"width" 1/12  n/N next/previous - j/k s…
+"width" 1/12                    Esc back

@@ -16,7 +16,7 @@
 
 [38;2;213;218;222m────────────────────────────────────────[0m
   [1;38;2;21;127;104m❯ [0m/mo[7m [0m                                [0m
-[1;38;2;21;127;104;48;2;232;236;240m› /model              switch model (ref…[0m
+[1;38;2;21;127;104;48;2;232;236;240m❯ /model              switch model (ref…[0m
   /model-for-session  [38;2;104;110;118mswitch model for …[0m
   /mouse              [38;2;104;110;118mtoggle mouse capt…[0m
   /memory             [38;2;104;110;118mlist saved memori…[0m

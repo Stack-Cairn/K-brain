@@ -454,7 +454,7 @@ func (m *model) permPreview(d *permDialog, p *tools.EditPreview, w int) []string
 	if d.expanded {
 		rows = 0
 	}
-	return append(lines, strings.Split(renderDiffFolded(p.Diff, path, inner, rows), "\n")...)
+	return append(lines, strings.Split(renderDiffFolded(p.Diff, path, inner, rows, true), "\n")...)
 }
 
 // displayPath is path relative to the working directory when it is inside,
@@ -540,7 +540,7 @@ func (m *model) permTail(d *permDialog, w int, compact bool) []string {
 	levels := d.scopes()
 	if d.rejecting {
 		tail = append(append(tail, gap...), accentFgStyle.Render(m.tr("reject with message: "))+d.rejectIn+"█",
-			textHintStyle.Render(chromeGlyphs(m.tr("Enter sends · Esc Back"))))
+			textHintStyle.Render(chromeGlyphs(m.tr("Enter sends · Esc back"))))
 	} else {
 		always := m.tr("Yes, always allow")
 		if rules := d.chosenRules(); len(rules) > 0 {

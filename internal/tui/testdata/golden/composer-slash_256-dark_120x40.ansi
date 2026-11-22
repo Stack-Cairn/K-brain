@@ -32,7 +32,7 @@
 
 [38;5;238m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [1;38;5;79m❯ [0m/mo[7m [0m                                                                                                                [0m
-[1;38;5;79;48;5;236m› /model              switch model (refresh pulls the catalog)[0m[48;5;236m                                                          [0m
+[1;38;5;79;48;5;236m❯ /model              switch model (refresh pulls the catalog)[0m[48;5;236m                                                          [0m
   /model-for-session  [38;5;245mswitch model for this session only[0m
   /mouse              [38;5;245mtoggle mouse capture[0m
   /memory             [38;5;245mlist saved memories; mark entry n done[0m

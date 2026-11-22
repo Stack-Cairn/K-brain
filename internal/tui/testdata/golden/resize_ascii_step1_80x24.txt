@@ -10,7 +10,7 @@
     }
   ```
 
-* Bash  go test ./pkg/stage1/...                                          v 1.1s
++ Bash  go test ./pkg/stage1/...                                          v 1.1s
   ` ok      github.com/acme/kn/pkg/stage1    0.2s
 
 |> Stage 2: make the pipeline step idempotent and rerun its tests.
@@ -20,5 +20,5 @@
 
   * read the checkpoint
 --------------------------------------------------------------------------------
-  > Ask k-brain anything...  / commands - Shift+Tab mode - Ctrl+P menu
+  > Ask k-brain anything...  ? help - / commands - Shift+Tab mode - Ctrl+P menu
    Normal                                          Up 23% - kimi-k3-fast - * off

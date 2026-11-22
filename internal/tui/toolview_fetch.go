@@ -16,7 +16,7 @@ import (
 //	◆ Web search  "bubbletea viewport"                     ✓ 5 sources
 //	  └ Viewport — github.com
 //	    Bubbles docs — pkg.go.dev
-//	    ⋯ +3 sources · ctrl+e
+//	    ⋯ +3 sources · ctrl+e   (on the block Ctrl+E toggles)
 
 // blockHostedSearch is a provider-side web search with its sources.
 const blockHostedSearch blockKind = 200
@@ -94,7 +94,7 @@ func renderHostedSearch(b *block, width int) string {
 		elbow = "    "
 	}
 	if rest := len(s.Sources) - len(shown); rest > 0 {
-		out = append(out, foldHint(rest, "sources"))
+		out = append(out, foldHint(rest, "sources", b.expandKey))
 	}
 	return strings.Join(out, "\n")
 }

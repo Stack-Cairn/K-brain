@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -16,8 +17,8 @@ import (
 )
 
 // legacyHelpKeys is /help's key section as it was written out by hand before
-// the keymap existed. Generating it from the keymap must not change a byte,
-// in any language.
+// the keymap existed, plus the rows given a hint since (Ctrl+P, F2, F1 / ?).
+// Generating it from the keymap must not change a byte, in any language.
 var legacyHelpKeys = []string{
 	"Tab — complete",
 	"Shift+Tab — cycle Normal / Plan / Auto review / Always allow",
@@ -36,6 +37,7 @@ var legacyHelpKeys = []string{
 	"while busy with queued messages: ↑/↓ select, Del removes",
 	"PgUp/PgDn — scroll · wheel — scroll · drag — select/copy text",
 	palHintQuit + " — quit",
+	"Ctrl+P — command palette",
 	"Ctrl+Z / Alt+Z — undo / redo the draft",
 	"Ctrl+W / Ctrl+U / Alt+K / Alt+D — cut word, to line start, to line end, next word · Ctrl+Y paste it back (Alt+Y older)",
 	"Alt+M — multiline mode: Enter adds a line, Ctrl+J sends",
@@ -45,8 +47,10 @@ var legacyHelpKeys = []string{
 	"with a queued message selected: Enter sends it now, Ctrl+E edits, Alt+↑/↓ moves",
 	"Alt+E (busy) — edit the last queued message · click a queued message to select it, click it again to edit, its ✗ removes it",
 	"Ctrl+B (busy) — move the running shell command to the background; it keeps running and the agent is told when it exits",
+	"F2 — settings",
 	"Alt+↑ — focus the transcript: j/k select a block, h/l fold / open, e toggle, E fold all, v view, / find, Esc back",
 	"in the block viewer: j/k scroll, Space/PgDn page, g/G top / end, / find, n/N next / previous, Esc back",
+	"F1 / ? (empty composer) — keyboard shortcuts and commands",
 }
 
 func TestKeymapHelpUnchanged(t *testing.T) {
@@ -257,6 +261,21 @@ func TestDispatchedKeysAreInKeymap(t *testing.T) {
 			if !listed {
 				t.Errorf("%s handles %q, which has no keymap row in %v", id, k, contexts)
 			}
+		}
+	}
+}
+
+// The user guide's key tables cover every key in the keymap, so a new
+// binding cannot ship undocumented.
+func TestUserGuideListsEveryKey(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", "docs", "user-guide", "03-tui.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := string(b)
+	for _, k := range keymap {
+		if label := prettyKey(k.key); !strings.Contains(doc, "`"+label+"`") {
+			t.Errorf("docs/user-guide/03-tui.md does not mention `%s` (%s, %s)", label, k.context, k.action)
 		}
 	}
 }

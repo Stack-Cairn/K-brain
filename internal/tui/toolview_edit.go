@@ -83,7 +83,7 @@ func renderEditBody(b *block, text string, width int) (string, bool) {
 		added, removed := diffCounts(diff)
 		out.WriteString(textMutedStyle.Render("  "+glyphs.Result+" ") + diffCountsCell(added, removed) + textMutedStyle.Render("  "+diffSummary(added, removed)) + "\n")
 	}
-	out.WriteString(renderDiffFolded(diff, path, width, limit))
+	out.WriteString(renderDiffFolded(diff, path, width, limit, b.expandKey))
 	if trail := strings.TrimSpace(strings.Join(strings.Split(rest, "\n")[1:], "\n")); trail != "" {
 		for l := range strings.SplitSeq(trail, "\n") {
 			out.WriteString("\n" + wrapHanging("    ", textMutedStyle.Render(l), width))

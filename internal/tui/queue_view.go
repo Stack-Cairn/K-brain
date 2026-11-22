@@ -60,16 +60,19 @@ func (m *model) queueView() string {
 			hints = []string{m.tr("Alt+E edit last")}
 		}
 	}
-	b.WriteString(dimStyle.Render(fitHints(chromeGlyphs(header), hints, width)) + "\n")
+	// The pane sits in the composer's gutter, and a row's mark in the column
+	// the composer's caret takes; only the selected row wears selMark.
+	indent := strings.Repeat(" ", min(chromeIndent, width))
+	b.WriteString(indent + dimStyle.Render(fitHints(chromeGlyphs(header), hints, max(width-len(indent), 1))) + "\n")
 
 	row := func(i int, q string, selected, editing bool) string {
 		num := fmt.Sprintf("%d ", i+1)
 		text := strings.Join(strings.Fields(q), " ")
 		switch {
 		case editing:
-			return ansi.Truncate(accentStyle.Render(" "+glyphs.Fold+" ")+dimStyle.Render(num)+dimStyle.Render(text)+dimStyle.Render(m.tr("  (editing)")), width, ellipsisGlyph())
+			return ansi.Truncate(indent+accentStyle.Render(glyphs.Fold+" ")+dimStyle.Render(num)+dimStyle.Render(text)+dimStyle.Render(m.tr("  (editing)")), width, ellipsisGlyph())
 		case selected:
-			body := " " + chromeGlyphs("→") + " " + num + text
+			body := indent + menuMark() + num + text
 			if width < queueMarkMinWidth {
 				return selectedRowStyle.Width(width).Render(ansi.Truncate(body, width, ellipsisGlyph()))
 			}
@@ -79,7 +82,7 @@ func (m *model) queueView() string {
 			pad := max(width-ansi.StringWidth(body)-ansi.StringWidth(mark), 0)
 			return selectedRowStyle.Width(width).Render(body + strings.Repeat(" ", pad) + mark)
 		default:
-			return ansi.Truncate(youStyle.Render(" "+glyphUser)+dimStyle.Render(num)+text, width, ellipsisGlyph())
+			return ansi.Truncate(indent+"  "+dimStyle.Render(num)+text, width, ellipsisGlyph())
 		}
 	}
 	shown := 0

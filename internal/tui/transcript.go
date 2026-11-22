@@ -333,6 +333,9 @@ type block struct {
 	// folded cuts a kind without a toggle of its own to its first row
 	// (transcript_focus.go).
 	folded bool
+	// expandKey marks the block Ctrl+E toggles: only its fold row names the
+	// key (syncExpandTarget).
+	expandKey bool
 }
 
 // invalidate drops the block's render cache; call it after changing
@@ -478,6 +481,7 @@ func (m *model) refreshVP() {
 	if m.width == 0 {
 		return
 	}
+	m.syncExpandTarget()
 	tx := m.txs()
 	ix := &tx.ix
 	width := m.layoutWidth()
@@ -635,7 +639,7 @@ func indentLines(s string, n int) string {
 	const docMargin = 2
 	lines := strings.Split(s, "\n")
 	for i, l := range lines {
-		if strings.TrimSpace(ansi.Strip(l)) == "" {
+		if blankRow(l) {
 			lines[i] = ""
 			continue
 		}

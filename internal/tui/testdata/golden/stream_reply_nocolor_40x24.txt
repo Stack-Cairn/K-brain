@@ -20,5 +20,5 @@
   narrow widths the golden test
   uses.
 ────────────────────────────────────────
-  ❯ Ask k-brain anything…  / commands ·
+  ❯ Ask k-brain anything…  ? help…
   [Normal]          kimi-k3-fast · ✦ off
