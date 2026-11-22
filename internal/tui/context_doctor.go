@@ -127,7 +127,25 @@ func (m *model) doctorReport() string {
 	}
 	fmt.Fprintf(&b, "  %-*s %7s\n", w, "TOTAL injected before you type", "~"+tok(total))
 	b.WriteString("\nTrim: /mcp <name> disable · /plugins disable NAME · remove a skill from .agents/skills · /context-doctor again")
+	if t := terminalDoctor(); t != "" {
+		b.WriteString("\n\nTerminal\n" + t)
+	}
 	return b.String()
+}
+
+// terminalDoctor is the terminal part of /doctor: whether Shift+Enter can
+// reach k-brain through a multiplexer or mosh, and what to change if not.
+// It is empty where there is nothing to say.
+func terminalDoctor() string {
+	switch {
+	case inMoshEnv():
+		return "  shift+enter          unavailable over mosh (it arrives as enter); use ctrl+j or alt+enter for a newline"
+	case !inTmuxEnv():
+		return ""
+	case tmuxExtKeysCheck():
+		return "  tmux extended-keys   on; shift+enter reaches k-brain"
+	}
+	return "  tmux extended-keys   off; shift+enter arrives as enter. " + tmuxExtendedKeysHint
 }
 
 func shortSkillsDir(dir string) string {

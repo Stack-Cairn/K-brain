@@ -459,7 +459,6 @@ func Run(cfg *config.Config, modelName, provName, sysPrompt, resumeID string, ca
 
 	m.applyAppearance()
 
-	tmuxEnableExtendedKeys()
 	m.startupReport()
 
 	opts := []tea.ProgramOption{tea.WithAltScreen(), tea.WithReportFocus()}
@@ -537,7 +536,7 @@ func (m *model) startupReport() {
 		m.append(dimStyle.Render("◐ shift+enter unavailable over mosh — mosh collapses it to enter (no keyboard-protocol support); use ctrl+j or alt+enter for a newline"))
 	} else if inTmuxEnv() && !tmuxExtKeysCheck() {
 
-		m.append(dimStyle.Render("◐ shift+enter needs tmux extended-keys on — k-brain couldn't set it; add `set -s extended-keys on` to ~/.tmux.conf (meanwhile ctrl+j / alt+enter insert newlines)"))
+		m.append(dimStyle.Render("◐ shift+enter needs tmux extended-keys on — " + tmuxExtendedKeysHint))
 	}
 	// The memory switch is shared with LiveAgent and cannot be changed here.
 	if m.cfg != nil && !m.cfg.Memory.IsEnabled() {

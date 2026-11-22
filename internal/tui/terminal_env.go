@@ -37,14 +37,15 @@ func disableKeyboardEnhancement(w io.Writer) {
 	}
 }
 
-func tmuxEnableExtendedKeys() {
-	if tmuxExtendedKeysReady() {
-		return
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	_ = exec.CommandContext(ctx, "tmux", "set", "-s", "extended-keys", "on").Run()
-}
+// k-brain does not turn tmux's extended-keys on by itself. The option is
+// server-wide: it changes every pane of every session on that server, and
+// putting it back on exit cannot be made safe. Two k-brains in one server
+// would restore it under each other, a SIGKILL skips the restore, and a value
+// the user set meanwhile would be overwritten. The startup notice and
+// /doctor recommend the one-line tmux.conf change instead.
+
+// tmuxExtendedKeysHint is the advice for a tmux whose extended-keys is off.
+const tmuxExtendedKeysHint = "add `set -s extended-keys on` to ~/.tmux.conf, then `tmux source ~/.tmux.conf` (meanwhile ctrl+j / alt+enter insert newlines)"
 
 func tmuxPassthrough(seq string) string {
 	if !inTmuxEnv() {
