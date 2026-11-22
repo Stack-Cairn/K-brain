@@ -17,7 +17,7 @@ package tui
 // Blocks are printed strictly in order, so a held block keeps every block
 // after it live too; in practice holds end within a turn. Two kinds change
 // after they are printed and get a short addendum instead of an edit: a block
-// expanded with Ctrl+E is printed again expanded, and a subagent's row is
+// expanded with Alt+O is printed again expanded, and a subagent's row is
 // printed once more, as it ended, when the subagent finishes.
 //
 // A print reaches the terminal only when bubbletea's renderer handles the
@@ -251,7 +251,7 @@ func (m *model) inlineBlockLines(i, w int) []string {
 }
 
 // inlineRows draws a copy of b for the scrollback, without the cues that
-// only mean something on screen (hover, the Ctrl+E target).
+// only mean something on screen (hover, the Alt+O target).
 func inlineRows(b *block, w int, ancient bool) []string {
 	c := *b
 	c.hover, c.expandKey = false, false
@@ -337,7 +337,7 @@ func (m *model) inlineHeld(i, tail int) bool {
 	return b.kind == blockToolRun && b.toolID != "" && !m.inl.results[b.toolID]
 }
 
-// inlineExpanded prints again, expanded, the printed blocks Ctrl+E has
+// inlineExpanded prints again, expanded, the printed blocks Alt+O has
 // opened since.
 func (m *model) inlineExpanded(w int) []string {
 	s := m.inl

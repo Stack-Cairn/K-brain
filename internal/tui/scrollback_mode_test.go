@@ -150,7 +150,7 @@ func TestInlineToolPrintsWhenSettled(t *testing.T) {
 }
 
 // Printed blocks are separated as the transcript separates them, and a
-// block printed earlier is printed again when Ctrl+E expands it.
+// block printed earlier is printed again when Alt+O expands it.
 func TestInlineGapsAndExpandedReprint(t *testing.T) {
 	m := inlineTestModel(t)
 	m.appendRaw(blockUser, "one")
@@ -165,9 +165,9 @@ func TestInlineGapsAndExpandedReprint(t *testing.T) {
 	m.refreshVP()
 	m.Update(nudgeMsg{})
 	folded := takePrinted(m)
-	m.Update(tea.KeyMsg{Type: tea.KeyCtrlE})
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'o'}, Alt: true})
 	if !m.blocks[len(m.blocks)-1].expanded {
-		t.Fatal("Ctrl+E should expand the last tool block")
+		t.Fatal("Alt+O should expand the last tool block")
 	}
 	expanded := takePrinted(m)
 	if strings.Count(expanded, "output row") <= strings.Count(folded, "output row") {
