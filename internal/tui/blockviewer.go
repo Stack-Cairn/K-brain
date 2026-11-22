@@ -256,16 +256,16 @@ func (m *model) blockViewerView() (string, bool) {
 	switch {
 	case v.typing:
 		foot = accentStyle.Render("/") + " " + v.draft + accentStyle.Render(chromeGlyphs("▏"))
-		foot = barColumns(foot, dimStyle.Render(chromeGlyphs(m.tr("Enter search · Esc cancel"))), w)
+		foot = hintBar(foot, m.tr("Enter search · Esc cancel"), w)
 	case v.query != "":
 		state := m.tr("no match")
 		if len(v.hits) > 0 {
 			state = fmt.Sprintf("%d/%d", max(v.cur+1, 0), len(v.hits))
 		}
-		foot = barColumns(accentStyle.Render(fmt.Sprintf("%q", v.query))+dimStyle.Render(" "+state),
-			dimStyle.Render(chromeGlyphs(m.tr("n/N next/previous · j/k scroll · Esc back"))), w)
+		foot = hintBar(accentStyle.Render(fmt.Sprintf("%q", v.query))+dimStyle.Render(" "+state),
+			m.tr("n/N next/previous · j/k scroll · Esc back"), w)
 	default:
-		foot = ansi.Truncate(dimStyle.Render(chromeGlyphs(m.tr("j/k scroll · Space/PgDn page · g/G top/end · / find · Esc back"))), w, "…")
+		foot = ansi.Truncate(dimStyle.Render(shedHints(m.tr("j/k scroll · Space/PgDn page · g/G top/end · / find · Esc back"), w)), w, "…")
 	}
 	out = append(out, foot)
 	return strings.Join(out, "\n"), true

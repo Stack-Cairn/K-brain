@@ -507,7 +507,7 @@ func (m *model) modelPickerView() string {
 		}
 		if gi == g {
 			selRow = len(rows)
-			rows = append(rows, botStyle.Render(chromeGlyphs(" → ")+name)+"  "+dimStyle.Render(summary)+cur)
+			rows = append(rows, botStyle.Render(" "+menuMark()+name)+"  "+dimStyle.Render(summary)+cur)
 			continue
 		}
 		line := "   " + name + "  " + dimStyle.Render(summary)
@@ -519,7 +519,7 @@ func (m *model) modelPickerView() string {
 	if len(view) == 0 {
 		rows = append(rows, dimStyle.Render(m.tr("  no models match ")+strconv.Quote(p.filter.query)))
 	}
-	footer := []string{dimStyle.Render(chromeGlyphs(fmt.Sprintf(m.tr("  (%d/%d) Type to Filter · ↑/↓ Select · Enter Switch · Esc Cancel"), min(g+1, len(groups)), len(groups))))}
+	footer := []string{dimStyle.Render(chromeGlyphs(fmt.Sprintf(m.tr("  (%d/%d) type to filter · ↑/↓ select · Enter switch · Esc cancel"), min(g+1, len(groups)), len(groups))))}
 	if len(p.staleHints) > 0 {
 		footer = append(footer, dimStyle.Render(chromeGlyphs(fmt.Sprintf(m.tr("  catalog stale for %s — /model refresh to pull newly announced models"), strings.Join(p.staleHints, ", ")))))
 	}
@@ -548,12 +548,12 @@ func (m *model) routeStageRows() ([]string, []string, int) {
 		}
 		if i == p.idx {
 			selRow = len(rows)
-			rows = append(rows, botStyle.Render(chromeGlyphs("   → ")+line)+cur)
+			rows = append(rows, botStyle.Render("   "+menuMark()+line)+cur)
 		} else {
 			rows = append(rows, "     "+line+cur)
 		}
 	}
-	footer := []string{dimStyle.Render(chromeGlyphs(m.tr("  ↑/↓ Select · Enter Switch · Esc Back")))}
+	footer := []string{dimStyle.Render(chromeGlyphs(m.tr("  ↑/↓ select · Enter switch · Esc back")))}
 	return rows, footer, selRow
 }
 
@@ -570,12 +570,12 @@ func (m *model) effortStageRows() ([]string, []string, int) {
 		}
 		if i == p.lidx {
 			selRow = len(rows)
-			rows = append(rows, botStyle.Render(chromeGlyphs("   → ")+line)+cur)
+			rows = append(rows, botStyle.Render("   "+menuMark()+line)+cur)
 		} else {
 			rows = append(rows, "     "+line+cur)
 		}
 	}
-	footer := []string{dimStyle.Render(chromeGlyphs(m.tr("  ↑/↓ Select · Enter Apply · Esc Keep current")))}
+	footer := []string{dimStyle.Render(chromeGlyphs(m.tr("  ↑/↓ select · Enter apply · Esc keep current")))}
 	return rows, footer, selRow
 }
 

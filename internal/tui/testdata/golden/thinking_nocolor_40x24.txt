@@ -1,11 +1,11 @@
 
-◌ Thought for 3s · 2 lines
+◉ Thought for 3s · 2 lines
 
 ● Coverage runs twice.
 
 ▌❯ Can we skip one?
 
-◌ Thought for 12s · 2 lines
+◉ Thought for 12s · 2 lines
   Dropping the plain run keeps coverage.
   CI reads only the coverage report.
 
@@ -20,5 +20,5 @@
 
   ⠋ Thinking…           Esc to interrupt
 ────────────────────────────────────────
-  ❯ busy — type to queue (sent after the
+  ❯ busy — type to queue (sent after th…
   [Normal]          kimi-k3-fast · ✦ off

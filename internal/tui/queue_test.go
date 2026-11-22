@@ -410,3 +410,50 @@ func TestOrphanSteerDeferredWhileBusy(t *testing.T) {
 		t.Fatalf("busy: nothing should submit, got %+v", m.agent.Messages)
 	}
 }
+
+// Only the selected queued message wears the selection mark, and the pane
+// sits in the composer's two-column gutter like the rest of the chrome.
+func TestQueueMarksOnlyTheSelectedRow(t *testing.T) {
+	for _, ascii := range []bool{false, true} {
+		setASCIIGlyphs(ascii)
+		m := busyQueueModel("first", "second", "third")
+		m.queueSel = 1
+		rows := strings.Split(strings.TrimRight(ansi.Strip(m.queueView()), "\n"), "\n")
+		setASCIIGlyphs(false)
+		if len(rows) != 4 {
+			t.Fatalf("ascii=%v: want a header and three rows, got %q", ascii, rows)
+		}
+		if !strings.HasPrefix(rows[0], "  queued (3)") {
+			t.Fatalf("ascii=%v: header %q is not in the composer's gutter", ascii, rows[0])
+		}
+		mark := map[bool]string{false: "❯", true: ">"}[ascii]
+		for i, r := range rows[1:] {
+			marked := strings.HasPrefix(r, "  "+mark+" ")
+			if marked != (i == m.queueSel) {
+				t.Fatalf("ascii=%v: row %d %q marked=%v, selection is row %d", ascii, i, r, marked, m.queueSel)
+			}
+			if !marked && !strings.HasPrefix(r, "    ") {
+				t.Fatalf("ascii=%v: row %d %q does not line up with the selected row's text", ascii, i, r)
+			}
+		}
+	}
+}
+
+// Every list marks its selected row with the same pointer: the menus, the
+// palette, the model and route pickers and the queue.
+func TestOneSelectionMark(t *testing.T) {
+	if menuMark() != glyphs.User+" " || selMark() != glyphs.User {
+		t.Fatalf("menu mark %q and selection mark %q should be the caret %q", menuMark(), selMark(), glyphs.User)
+	}
+	for _, src := range []string{"command_menu.go", "effort.go", "history_search.go", "modelpicker.go", "palette.go", "queue_view.go"} {
+		b, err := os.ReadFile(src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, old := range []string{`"›"`, `"› "`, `" → "`, `"   → "`, `chromeGlyphs("→")`} {
+			if strings.Contains(string(b), old) {
+				t.Errorf("%s still marks a selected row with %s", src, old)
+			}
+		}
+	}
+}

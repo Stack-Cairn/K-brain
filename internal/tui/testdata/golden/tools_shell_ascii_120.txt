@@ -1,5 +1,5 @@
 == ok ==
-* Bash  go test ./internal/tui/                                                                                   v 2.4s
++ Bash  go test ./internal/tui/                                                                                   v 2.4s
   ` ok      github.com/acme/kn/internal/tui    2.1s
 == exit ==
 x Bash  make lint                                                                                          exit 2 - 2.8s
@@ -22,8 +22,8 @@ x Bash  go build ./...                                                          
   | === RUN   TestOne
   | === RUN   TestTwo
 == no-output ==
-* Bash  true                                                                                                      v 0.0s
++ Bash  true                                                                                                      v 0.0s
   ` (no output)
 == process ==
-* Process  npm run dev                                                                                            v 0.2s
++ Process  npm run dev                                                                                            v 0.2s
   ` started web (pid 4242)

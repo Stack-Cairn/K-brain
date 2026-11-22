@@ -2,7 +2,6 @@ package tui
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/Stack-Cairn/K-brain/internal/agent"
@@ -19,10 +18,9 @@ func (m *model) busyStats() string {
 	if m.turnStart.IsZero() {
 		return ""
 	}
-	d := max(m.nowFn().Sub(m.turnStart), 0)
-	elapsed := d.Round(time.Second)
-	// Spend and context live in the info row; the busy row only says how long.
-	return fmt.Sprintf(" %d:%02d", int(elapsed.Minutes()), int(elapsed.Seconds())%60)
+	// Spend and context live in the info row; the busy row only says how
+	// long, in the same form as the activity's own clock.
+	return " " + fmtSpan(m.nowFn().Sub(m.turnStart))
 }
 
 func (m *model) prepareTurn(text string) (string, []ai.ContentPart) {

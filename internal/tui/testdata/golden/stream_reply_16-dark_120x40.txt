@@ -7,7 +7,9 @@
   • a loose third item
 
   1. step one
-  2. step twowith an indented continuation paragraph.
+  2. step two
+
+  with an indented continuation paragraph.
 
   ```go
     func f() {
@@ -33,8 +35,6 @@
 
 
 
-
-
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  ❯ Ask k-brain anything…  / commands · Shift+Tab mode · Ctrl+P menu
+  ❯ Ask k-brain anything…  ? help · / commands · Shift+Tab mode · Ctrl+P menu
    Normal                                                                                           kimi-k3-fast · ✦ off

@@ -98,12 +98,12 @@ func (m *model) diffCommand(flags []string) tea.Cmd {
 // under the syntax colours; elsewhere the sign and a line colour carry the
 // meaning. Long rows wrap under the code, not under the gutter.
 func renderDiff(diff, path string, width int) string {
-	return renderDiffFolded(diff, path, width, 0)
+	return renderDiffFolded(diff, path, width, 0, false)
 }
 
 // renderDiffFolded is renderDiff showing at most maxRows rows (0: all),
-// with a "⋯ +N lines · ctrl+e" row for the rest.
-func renderDiffFolded(diff, path string, width, maxRows int) string {
+// with a "⋯ +N lines" row for the rest, naming ctrl+e when key is set.
+func renderDiffFolded(diff, path string, width, maxRows int, key bool) string {
 	width = max(width, minRenderWidth)
 	rows := strings.Split(strings.TrimRight(diff, "\n"), "\n")
 	shown := rows
@@ -123,7 +123,7 @@ func renderDiffFolded(diff, path string, width, maxRows int) string {
 		out = append(out, renderDiffRow(r, code[i], numW, tinted, width))
 	}
 	if n := len(rows) - len(shown); n > 0 {
-		out = append(out, foldHint(n, "lines"))
+		out = append(out, foldHint(n, "lines", key))
 	}
 	return strings.Join(out, "\n")
 }

@@ -1,9 +1,9 @@
                                    go
     func statusJSON(w io.Writer, s Sta
-    tus) error {
+  ↪ tus) error {
         // one object per call
         return json.NewEncoder(w).Enco
-    de(s)
+  ↪ de(s)
     }
 
   Then run the package tests.
@@ -20,5 +20,5 @@
 │ reject                               │
 ╰──────────────────────────────────────╯
 ────────────────────────────────────────
-  ❯ Ask k-brain anything…  / commands ·
+  ❯ Ask k-brain anything…  ? help…
    Normal           kimi-k3-fast · ✦ off

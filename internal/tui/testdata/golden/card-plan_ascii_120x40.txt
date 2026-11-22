@@ -1,6 +1,6 @@
 |> add a --json flag to `kn status`
 
-+- * Plan ready for review --------------------------------------------------------------------------------------------+
++- + Plan ready for review --------------------------------------------------------------------------------------------+
 |   1 Add --json to kn status                                                                                          |
 |   2                                                                                                                  |
 |   3 1. Add a `--json` flag next to the existing ones in cmd/kn/status.go.                                            |
@@ -36,5 +36,5 @@
 
 
 ------------------------------------------------------------------------------------------------------------------------
-  > Ask k-brain anything...  / commands - Shift+Tab mode - Ctrl+P menu
+  > Ask k-brain anything...  ? help - / commands - Shift+Tab mode - Ctrl+P menu
    Plan  read-only                                                                                  kimi-k3-fast - * off

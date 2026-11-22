@@ -1,5 +1,5 @@
 == ok ==
-* github:search_issues  is:open label:tui                                                                         v 0.9s
++ github:search_issues  is:open label:tui                                                                         v 0.9s
   ` # 1
     # 2
     # 3

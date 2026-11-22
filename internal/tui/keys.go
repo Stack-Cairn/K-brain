@@ -20,8 +20,18 @@ func (m *model) overlayOwnsKeys() bool {
 // key routes a key press: an open dialog or overlay takes it first, then the
 // composer's editing chords, then the global keys below; whatever is left is
 // a composer key (composer_keys.go).
-func (m *model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+// helpKeyOpens reports whether a typed "?" opens /help instead of going into
+// the composer: only on an empty composer that is not taking a name or a
+// history search, and never from a paste.
+func (m *model) helpKeyOpens(msg tea.KeyMsg) bool {
+	return !msg.Paste && !msg.Alt && m.input.Value() == "" && m.namePrompt == nil &&
+		(m.cmp == nil || m.cmp.hs == nil)
+}
 
+func (m *model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// A "press again" notice lasts until its window closes or the next key;
+	// a repeat of the same key shows it again below.
+	m.clearArmNotice()
 	if m.iactive != nil {
 		return m.iactiveKey(msg)
 	}
@@ -79,6 +89,9 @@ func (m *model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if msg.String() == "f2" {
 		return m, m.openSettings()
 	}
+	if k := msg.String(); k == "f1" || (k == "?" && m.helpKeyOpens(msg)) {
+		return m.command("/help")
+	}
 
 	if r, cmd, ok := m.composerPasteKey(msg); ok {
 		return r, cmd
@@ -126,7 +139,7 @@ func (m *model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		m.quit1 = true
-		m.append(errStyle.Render("  · press Ctrl+C again to quit"))
+		m.showArmNotice(m.tr("Press Ctrl+C again to quit"))
 		return m, tea.Tick(2*time.Second, func(time.Time) tea.Msg { return quitArmMsg{} })
 
 	case tea.KeyPgUp, tea.KeyPgDown:
@@ -174,7 +187,7 @@ func (m *model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				m.escClr = true
-				m.append(errStyle.Render("  · Esc again: clear the input (↑ recalls it)"))
+				m.showArmNotice(m.tr("Esc again to clear the input (↑ recalls it)"))
 				return m, tea.Tick(time.Second, func(time.Time) tea.Msg { return escArmMsg{} })
 			}
 
@@ -187,7 +200,7 @@ func (m *model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.esc1 = true
-			m.append(dimStyle.Render("  · Esc again: rewind the conversation"))
+			m.showArmNotice(m.tr("Esc again to rewind the conversation"))
 			return m, tea.Tick(time.Second, func(time.Time) tea.Msg { return escArmMsg{} })
 		}
 		m.esc1 = false
@@ -200,12 +213,10 @@ func (m *model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyCtrlE:
 
-		for i := len(m.blocks) - 1; i >= 0; i-- {
-			if m.blocks[i].kind == blockTool {
-				m.blocks[i].toggle()
-				m.refreshVP()
-				return m, nil
-			}
+		if i := m.expandTarget(); i >= 0 {
+			m.blocks[i].toggle()
+			m.refreshVP()
+			return m, nil
 		}
 		m.tasksFocus = false
 		var cmd tea.Cmd

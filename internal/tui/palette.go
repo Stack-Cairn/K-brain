@@ -872,7 +872,7 @@ func (m *model) paletteView() string {
 		body += strings.Repeat(" ", max(bodyWidth-lipgloss.Width(body), 0))
 		marker := " "
 		if i == p.idx {
-			marker = botStyle.Render("›")
+			marker = botStyle.Render(selMark())
 		}
 		b.WriteString(ansi.Truncate(marker+body+"  "+hint, max(m.width, 1), "…"))
 		b.WriteString("\n")
@@ -881,7 +881,7 @@ func (m *model) paletteView() string {
 		b.WriteString(dimStyle.Render(m.tr("  (no matches)")))
 		b.WriteString("\n")
 	}
-	b.WriteString("\n" + dimStyle.Render(fmt.Sprintf(m.tr("  (%d/%d) ↑/↓ Select · Enter Open/Apply · ←/→ Change · Esc Close"),
+	b.WriteString("\n" + dimStyle.Render(fmt.Sprintf(m.tr("  (%d/%d) ↑/↓ select · Enter open/apply · ←/→ change · Esc close"),
 		min(p.idx+1, len(p.items)), len(p.items))))
 	return b.String()
 }
@@ -942,7 +942,7 @@ func (m *model) panelView(pp *ppanel) string {
 			}
 			if i == pp.idx {
 				selRow = len(rows)
-				rows = append(rows, botStyle.Render("   → "+line)+cur)
+				rows = append(rows, botStyle.Render("   "+menuMark()+line)+cur)
 			} else {
 				rows = append(rows, "     "+line+cur)
 			}
@@ -961,7 +961,7 @@ func (m *model) panelView(pp *ppanel) string {
 		if hi < len(rows) {
 			b.WriteString(dimStyle.Render(fmt.Sprintf(m.tr("   ↓ %d more"), len(rows)-hi)) + "\n")
 		}
-		b.WriteString("\n" + dimStyle.Render(fmt.Sprintf("  (%d/%d) ↑/↓ preview · Enter switch · Esc Back", pp.idx+1, len(pp.items))))
+		b.WriteString("\n" + dimStyle.Render(fmt.Sprintf("  (%d/%d) ↑/↓ preview · Enter switch · Esc back", pp.idx+1, len(pp.items))))
 
 	case panelEffort:
 		return m.effortPanelView(pp)
@@ -1002,7 +1002,7 @@ func (m *model) panelView(pp *ppanel) string {
 				line += dimStyle.Render(m.tr("  (current)"))
 			}
 			if i == pp.midx {
-				b.WriteString(botStyle.Render(" → "+line) + "\n")
+				b.WriteString(botStyle.Render(" "+menuMark()+line) + "\n")
 			} else {
 				b.WriteString("   " + line + "\n")
 			}
@@ -1019,7 +1019,7 @@ func (m *model) panelView(pp *ppanel) string {
 		if pp.note != "" {
 			b.WriteString(dimStyle.Render("  "+pp.note) + "\n")
 		}
-		b.WriteString("\n" + dimStyle.Render(fmt.Sprintf(m.tr("  (%d/%d) type to filter · ↑/↓ select · Enter/←/→ apply · Esc Back"), pp.midx+1, len(view))))
+		b.WriteString("\n" + dimStyle.Render(fmt.Sprintf(m.tr("  (%d/%d) type to filter · ↑/↓ select · Enter/←/→ apply · Esc back"), pp.midx+1, len(view))))
 
 	case panelLanguage:
 		for i, language := range pp.list {
@@ -1028,12 +1028,12 @@ func (m *model) panelView(pp *ppanel) string {
 				line += m.tr("  (current)")
 			}
 			if i == pp.midx {
-				b.WriteString(botStyle.Render(" → "+line) + "\n")
+				b.WriteString(botStyle.Render(" "+menuMark()+line) + "\n")
 			} else {
 				b.WriteString("   " + line + "\n")
 			}
 		}
-		b.WriteString("\n" + dimStyle.Render(m.tr("  ↑/↓ select · Enter apply · Esc Back")))
+		b.WriteString("\n" + dimStyle.Render(m.tr("  ↑/↓ select · Enter apply · Esc back")))
 
 	case panelTheme:
 		cur := m.cfg.Theme
@@ -1046,12 +1046,12 @@ func (m *model) panelView(pp *ppanel) string {
 				mark = dimStyle.Render(m.tr("  (current)"))
 			}
 			if i == pp.midx {
-				b.WriteString(botStyle.Render(" → "+name) + mark + "\n")
+				b.WriteString(botStyle.Render(" "+menuMark()+name) + mark + "\n")
 			} else {
 				b.WriteString("   " + name + mark + "\n")
 			}
 		}
-		b.WriteString("\n" + dimStyle.Render(m.tr("  ↑/↓ select · Enter/←/→ apply · Esc Back")))
+		b.WriteString("\n" + dimStyle.Render(m.tr("  ↑/↓ select · Enter/←/→ apply · Esc back")))
 
 	case panelBrowser:
 		for i, name := range pp.list {
@@ -1060,12 +1060,12 @@ func (m *model) panelView(pp *ppanel) string {
 				mark = dimStyle.Render(m.tr("  (current)"))
 			}
 			if i == pp.midx {
-				b.WriteString(botStyle.Render(" → "+name) + mark + "\n")
+				b.WriteString(botStyle.Render(" "+menuMark()+name) + mark + "\n")
 			} else {
 				b.WriteString("   " + name + mark + "\n")
 			}
 		}
-		b.WriteString("\n" + dimStyle.Render(m.tr("  ↑/↓ select · Enter/←/→ apply · Esc Back")))
+		b.WriteString("\n" + dimStyle.Render(m.tr("  ↑/↓ select · Enter/←/→ apply · Esc back")))
 
 	case panelGoal:
 		b.WriteString(" " + youStyle.Render(glyphUser) + pp.prepare + dimStyle.Render("█"))
@@ -1082,12 +1082,12 @@ func (m *model) panelView(pp *ppanel) string {
 			}
 			line := fmt.Sprintf("%s %-22s %s", box, row.name, dimStyle.Render(row.detail))
 			if i == pp.midx {
-				b.WriteString(botStyle.Render(" → "+line) + "\n")
+				b.WriteString(botStyle.Render(" "+menuMark()+line) + "\n")
 			} else {
 				b.WriteString("   " + line + "\n")
 			}
 		}
-		b.WriteString("\n" + dimStyle.Render("  ↑/↓ select · Enter/←/→ toggle · Esc Back · /mcp for reconnect"))
+		b.WriteString("\n" + dimStyle.Render("  ↑/↓ select · Enter/←/→ toggle · Esc back · /mcp for reconnect"))
 	}
 	b.WriteString("\n")
 	return b.String()

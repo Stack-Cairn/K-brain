@@ -203,7 +203,10 @@ type model struct {
 
 	// transientNotice briefly replaces the footer's status cell, e.g. after a
 	// copy; noticeGeneration lets a newer notice outlive an older one's timer.
-	transientNotice  string
+	transientNotice string
+	// armNotice says transientNotice is a "press again" hint, which the
+	// double-press window or the next key clears (showArmNotice).
+	armNotice        bool
 	noticeGeneration uint64
 
 	inputBodyOff int
@@ -303,11 +306,14 @@ type model struct {
 	// the type and its methods in that area's own files. Add one line per
 	// area at the end of the block rather than loose fields elsewhere in
 	// model, so branches for different areas merge without conflicts.
-	tx  *transcriptState // transcript engine (transcript.go)
-	cmp *composerState   // composer: undo, kill ring, chips, stash, history search, queue editing
-	app *appSurfaceState // app surfaces: cheatsheet, settings, extensions, memory (picker_view.go)
-	tv  *toolViewState   // tool views and the plan pane (toolview.go, todo_pane.go)
-	st  *statusState     // status row, footer, notifications (status_state.go)
+	tx *transcriptState // transcript engine (transcript.go)
+	// expandKeyAt is 1 + the index of the block Ctrl+E toggles, 0 for none
+	// (syncExpandTarget).
+	expandKeyAt int
+	cmp         *composerState   // composer: undo, kill ring, chips, stash, history search, queue editing
+	app         *appSurfaceState // app surfaces: cheatsheet, settings, extensions, memory (picker_view.go)
+	tv          *toolViewState   // tool views and the plan pane (toolview.go, todo_pane.go)
+	st          *statusState     // status row, footer, notifications (status_state.go)
 
 	cards *cardState // interactive cards: plan review (plan_view.go)
 }
@@ -453,7 +459,6 @@ func Run(cfg *config.Config, modelName, provName, sysPrompt, resumeID string, ca
 
 	m.applyAppearance()
 
-	tmuxEnableExtendedKeys()
 	m.startupReport()
 
 	opts := []tea.ProgramOption{tea.WithAltScreen(), tea.WithReportFocus()}
@@ -531,7 +536,7 @@ func (m *model) startupReport() {
 		m.append(dimStyle.Render("◐ shift+enter unavailable over mosh — mosh collapses it to enter (no keyboard-protocol support); use ctrl+j or alt+enter for a newline"))
 	} else if inTmuxEnv() && !tmuxExtKeysCheck() {
 
-		m.append(dimStyle.Render("◐ shift+enter needs tmux extended-keys on — k-brain couldn't set it; add `set -s extended-keys on` to ~/.tmux.conf (meanwhile ctrl+j / alt+enter insert newlines)"))
+		m.append(dimStyle.Render("◐ shift+enter needs tmux extended-keys on — " + tmuxExtendedKeysHint))
 	}
 	// The memory switch is shared with LiveAgent and cannot be changed here.
 	if m.cfg != nil && !m.cfg.Memory.IsEnabled() {
@@ -1359,11 +1364,13 @@ func (m *model) Update(msg tea.Msg) (_ tea.Model, statusCmd tea.Cmd) {
 
 	case quitArmMsg:
 		m.quit1 = false
+		m.clearArmNotice()
 		return m, nil
 
 	case escArmMsg:
 		m.esc1 = false
 		m.escClr = false
+		m.clearArmNotice()
 		return m, nil
 
 	case copyDoneMsg:

@@ -68,7 +68,7 @@ func TestThinkingFoldsToDuration(t *testing.T) {
 	if b == nil || b.thought.live {
 		t.Fatalf("thinking block still live: %+v", b)
 	}
-	if got := ansi.Strip(b.render(80)); got != "◌ Thought for 4s · 3 lines" {
+	if got := ansi.Strip(b.render(80)); got != "◉ Thought for 4s · 3 lines" {
 		t.Fatalf("folded = %q", got)
 	}
 	if b.text != "look at the cache\nthen the config\ndecide" {
@@ -84,7 +84,7 @@ func TestThinkingFoldsToDuration(t *testing.T) {
 	if !b.expanded {
 		t.Fatal("click did not open the thinking block")
 	}
-	if got := ansi.Strip(b.render(80)); !strings.Contains(got, "then the config") || !strings.HasPrefix(got, "◌ Thought for 4s") {
+	if got := ansi.Strip(b.render(80)); !strings.Contains(got, "then the config") || !strings.HasPrefix(got, "◉ Thought for 4s") {
 		t.Fatalf("expanded = %q", got)
 	}
 }
@@ -166,6 +166,30 @@ func TestGoldenThinking(t *testing.T) {
 				checkGolden(t, name+".ansi", v)
 				checkGolden(t, name+".txt", stripView(v))
 			})
+		}
+	}
+}
+
+// A finished thinking block does not wear the running glyph, and in ASCII
+// the done, reply, OK and token glyphs all differ.
+func TestDoneGlyphsAreDistinct(t *testing.T) {
+	for _, set := range []glyphSet{unicodeGlyphs, asciiGlyphs} {
+		if set.Thought == set.ToolRun {
+			t.Errorf("finished thinking uses the running glyph %q", set.Thought)
+		}
+		if set.ToolDone == set.Assistant {
+			t.Errorf("done tool and reply share %q", set.ToolDone)
+		}
+		if set.OK == set.Tokens {
+			t.Errorf("OK and tokens share %q", set.OK)
+		}
+	}
+	for from, to := range map[string]string{"◆": asciiGlyphs.ToolDone, "◉": asciiGlyphs.Thought, "⇣": asciiGlyphs.Tokens, "●": asciiGlyphs.Assistant} {
+		setASCIIGlyphs(true)
+		got := chromeGlyphs(from)
+		setASCIIGlyphs(false)
+		if got != to {
+			t.Errorf("ASCII chrome maps %q to %q, want %q as in the glyph set", from, got, to)
 		}
 	}
 }

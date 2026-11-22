@@ -656,7 +656,39 @@ func (m *model) transcriptBarView() string {
 			right = m.tr("n/N older/newer · / new search · Esc back")
 		}
 	}
-	return "\n" + barColumns(left, dimStyle.Render(chromeGlyphs(right)), m.width) + "\n"
+	return "\n" + hintBar(left, right, m.width) + "\n"
+}
+
+// hintBar sets left and a key hint list ("a · b · Esc back") on one row of
+// width cells. Short of room the hints shed their middle entries, then all
+// but the last; the last names the way out and always stays, the left side
+// giving way for it if it must.
+func hintBar(left, hints string, width int) string {
+	width = max(width, 1)
+	lw := ansi.StringWidth(left)
+	if left == "" {
+		lw = -2
+	}
+	right := shedHints(hints, width-lw-2)
+	if rw := ansi.StringWidth(right); lw+2+rw > width && rw+2 < width {
+		left = ansi.Truncate(left, width-rw-2, "…")
+	}
+	return barColumns(left, dimStyle.Render(right), width)
+}
+
+// shedHints is a key hint list cut to room cells by leaving out its middle
+// entries, then all but the last, which names the way out.
+func shedHints(hints string, room int) string {
+	sep := chromeGlyphs(" · ")
+	parts := strings.Split(chromeGlyphs(hints), sep)
+	for len(parts) > 1 && ansi.StringWidth(strings.Join(parts, sep)) > room {
+		if len(parts) > 2 {
+			parts = append(parts[:len(parts)-2], parts[len(parts)-1])
+		} else {
+			parts = parts[1:]
+		}
+	}
+	return strings.Join(parts, sep)
 }
 
 // barColumns sets left and right on one row of width cells. When the two do
@@ -693,4 +725,47 @@ func (m *model) findCommand(q string) (tea.Model, tea.Cmd) {
 	}
 	m.startFind(q)
 	return m, nil
+}
+
+// expandTargetKind reports the kinds Ctrl+E toggles: tool results and hosted
+// searches, the blocks that draw a fold row.
+func expandTargetKind(k blockKind) bool {
+	return k == blockTool || k == blockHostedSearch
+}
+
+// expandTarget is the index of the block Ctrl+E toggles: the last tool
+// result or hosted search. -1 when there is none.
+func (m *model) expandTarget() int {
+	for i := len(m.blocks) - 1; i >= 0; i-- {
+		if expandTargetKind(m.blocks[i].kind) {
+			return i
+		}
+	}
+	return -1
+}
+
+// syncExpandTarget moves the expandKey mark to the block Ctrl+E toggles,
+// redrawing the blocks it leaves and reaches. m.expandKeyAt remembers where
+// it was, so the common case touches two blocks rather than all of them.
+func (m *model) syncExpandTarget() {
+	t := m.expandTarget()
+	if p := m.expandKeyAt - 1; p != t || (t >= 0 && !m.blocks[t].expandKey) {
+		if p >= 0 && p < len(m.blocks) && p != t && m.blocks[p].expandKey {
+			m.blocks[p].expandKey = false
+			m.blocks[p].invalidate()
+		} else {
+			// The blocks moved under the remembered index: clear by scan.
+			for i := range m.blocks {
+				if i != t && m.blocks[i].expandKey {
+					m.blocks[i].expandKey = false
+					m.blocks[i].invalidate()
+				}
+			}
+		}
+	}
+	if t >= 0 && !m.blocks[t].expandKey {
+		m.blocks[t].expandKey = true
+		m.blocks[t].invalidate()
+	}
+	m.expandKeyAt = t + 1
 }

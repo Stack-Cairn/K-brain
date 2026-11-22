@@ -1,6 +1,9 @@
 package tui
 
 import (
+	"fmt"
+
+	"github.com/Stack-Cairn/K-brain/internal/ai"
 	"strings"
 	"testing"
 
@@ -40,5 +43,41 @@ func TestToolExpand(t *testing.T) {
 	m = tm.(*model)
 	if !m.blocks[0].expanded {
 		t.Fatalf("click at screen Y=%d should expand the tool block", screenY)
+	}
+}
+
+// Only the block Ctrl+E toggles names the key on its fold row; a hosted
+// search counts as such a block.
+func TestFoldHintNamesCtrlEOnlyOnItsTarget(t *testing.T) {
+	m := compactCmdModel()
+	m.Update(mkWinSize(80, 30))
+	long := "line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8"
+	m.appendRaw(blockTool, long)
+	m.appendRaw(blockTool, long)
+	m.refreshVP()
+	first := ansi.Strip(strings.Join(m.blocks[0].linesAt(m.width, false), "\n"))
+	last := ansi.Strip(strings.Join(m.blocks[1].linesAt(m.width, false), "\n"))
+	if strings.Contains(first, "ctrl+e") || !strings.Contains(first, glyphs.Fold+" +5 lines") {
+		t.Fatalf("an earlier block must not claim ctrl+e:\n%s", first)
+	}
+	if !strings.Contains(last, glyphs.Fold+" +5 lines · ctrl+e") {
+		t.Fatalf("the last block names ctrl+e:\n%s", last)
+	}
+
+	var srcs []ai.SearchSource
+	for i := range 5 {
+		srcs = append(srcs, ai.SearchSource{URL: fmt.Sprintf("https://example.com/%d", i), Title: "t"})
+	}
+	m.onHostedSearch(ai.HostedSearch{ID: "s1", Status: "done", Queries: []string{"q"}, Sources: srcs})
+	search := len(m.blocks) - 1
+	last = ansi.Strip(strings.Join(m.blocks[1].linesAt(m.width, false), "\n"))
+	got := ansi.Strip(strings.Join(m.blocks[search].linesAt(m.width, false), "\n"))
+	if strings.Contains(last, "ctrl+e") || !strings.Contains(got, "+2 sources · ctrl+e") {
+		t.Fatalf("the hint should move to the search:\ntool:\n%s\nsearch:\n%s", last, got)
+	}
+	tm, _ := m.key(tea.KeyMsg{Type: tea.KeyCtrlE})
+	m = tm.(*model)
+	if !m.blocks[search].expanded || m.blocks[1].expanded {
+		t.Fatal("ctrl+e should open the search, the block whose row names it")
 	}
 }

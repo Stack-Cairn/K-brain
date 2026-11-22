@@ -1,4 +1,4 @@
-❯ Keyboard shortcuts               1/84
+❯ Keyboard shortcuts               1/86
   [Keys]  Commands
   / type to filter
 ────────────────────────────────────────
@@ -14,7 +14,7 @@
   Ctrl+L         redraw the screen
   PgUp / PgDn    scroll the transcript
   Ctrl+C Ctrl+C  quit
-  ↓ 73 more
+  ↓ 75 more
 ────────────────────────────────────────
   Shift+Tab  cycle the permission mode
   Shift+Tab — cycle Normal / Plan /

@@ -1,5 +1,5 @@
 == read ==
-* Read  internal/tui/view.go  lines
++ Read  internal/tui/view.go  lines
   10-49                           v 0.0s
   ` 40 lines
 == failed ==

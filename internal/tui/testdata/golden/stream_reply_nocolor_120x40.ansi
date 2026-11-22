@@ -7,7 +7,9 @@
   • a loose third item                                                                                                  
                                                                                                                         
   1. step one                                                                                                           
-  2. step twowith an indented continuation paragraph.                                                                   
+  2. step two                                                                                                           
+                                                                                                                        
+  with an indented continuation paragraph.                                                                              
                                                                                                                         
   [2m```go[0m                                                                                                                 [0m
     func f() {                                                                                                          
@@ -33,8 +35,6 @@
 
 
 
-
-
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  [1m❯ [0m[7mA[0m[2msk k-brain anything…  / commands · Shift+Tab mode · Ctrl+P menu[0m                                                    [0m
+  [1m❯ [0m[7mA[0m[2msk k-brain anything…  ? help · / commands · Shift+Tab mode · Ctrl+P menu[0m                                           [0m
   [Normal]                                                                                          kimi-k3-fast[2m · [0m[1m✦ off[0m

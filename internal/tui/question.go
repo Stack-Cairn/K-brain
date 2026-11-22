@@ -308,7 +308,7 @@ func (m *model) askView() string {
 	custom := m.tr("type your own answer")
 	if d.editing {
 		rows = append(rows, accentFgStyle.Render(glyphs.User+" "+n+"  "+custom+": ")+t.custom+"█",
-			"", textHintStyle.Render(chromeGlyphs(m.tr("Enter confirms · Esc Back"))))
+			"", textHintStyle.Render(chromeGlyphs(m.tr("Enter confirms · Esc back"))))
 		return renderCard(tokAccent, head, rows, w)
 	}
 	other := textMutedStyle.Render(custom)

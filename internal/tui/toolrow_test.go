@@ -77,7 +77,7 @@ func TestDiffPreviewCapAndExpand(t *testing.T) {
 	for range diffPreviewRows + 5 {
 		rows = append(rows, "+ added")
 	}
-	b := block{kind: blockTool, text: "Wrote 1 bytes to a.go\n```diff\n" + strings.Join(rows, "\n") + "\n```"}
+	b := block{kind: blockTool, text: "Wrote 1 bytes to a.go\n```diff\n" + strings.Join(rows, "\n") + "\n```", expandKey: true}
 	out := ansi.Strip(b.render(80))
 	// Drawn without a header, the result says the counts itself.
 	if !strings.Contains(out, glyphs.Fold+" +5 lines · ctrl+e") || !strings.Contains(out, "Added 35 lines") {

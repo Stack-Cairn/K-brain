@@ -110,3 +110,43 @@ func TestTok(t *testing.T) {
 		t.Errorf("tok: %q %q", tok(350), tok(4848))
 	}
 }
+
+// Inside a tmux whose extended-keys is off, /doctor says so and how to turn it
+// on; k-brain itself never changes the server-wide option.
+func TestDoctorRecommendsTmuxExtendedKeys(t *testing.T) {
+	t.Setenv("TMUX", "/tmp/tmux-test/default,1,0")
+	prev := tmuxExtKeysCheck
+	t.Cleanup(func() { tmuxExtKeysCheck = prev })
+
+	tmuxExtKeysCheck = func() bool { return false }
+	out := tasksModel("http://unused").doctorReport()
+	if !strings.Contains(out, "tmux extended-keys   off") || !strings.Contains(out, "set -s extended-keys on") {
+		t.Fatalf("/doctor should recommend extended-keys:\n%s", out)
+	}
+	tmuxExtKeysCheck = func() bool { return true }
+	if out := tasksModel("http://unused").doctorReport(); !strings.Contains(out, "tmux extended-keys   on") {
+		t.Fatalf("/doctor should report extended-keys on:\n%s", out)
+	}
+	t.Setenv("TMUX", "")
+	t.Setenv("TERM", "xterm-256color")
+	if out := tasksModel("http://unused").doctorReport(); strings.Contains(out, "Terminal\n") {
+		t.Fatalf("outside tmux /doctor has no terminal advice to give:\n%s", out)
+	}
+
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
+			continue
+		}
+		b, err := os.ReadFile(e.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(b), `"set", "-s"`) || strings.Contains(string(b), `"set-option"`) {
+			t.Errorf("%s changes a tmux option; recommend it through /doctor instead", e.Name())
+		}
+	}
+}

@@ -309,7 +309,7 @@ func (m *model) tasksDock() string {
 	}
 	m.dockTaskRows = offset
 	if lo > 0 || hi < len(tasks) {
-		more := fmt.Sprintf(m.tr("   ↑ %d More · ↓ %d More · Ctrl+T Browse"), lo, len(tasks)-hi)
+		more := fmt.Sprintf(m.tr("   ↑ %d more · ↓ %d more · Ctrl+T browse"), lo, len(tasks)-hi)
 		rows = append(rows, dimStyle.Render(ansi.Truncate(more, max(m.width, 1), "…")))
 	}
 	return strings.Join(rows, "\n")

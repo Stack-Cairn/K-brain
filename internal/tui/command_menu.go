@@ -207,13 +207,12 @@ func (m *model) skillCands() []cand {
 
 const menuRows = 8
 
-// menuMark is the pointer before the selected row of a menu or panel.
-func menuMark() string {
-	if asciiMode {
-		return "> "
-	}
-	return "› "
-}
+// selMark is the pointer before the selected row of every list the user
+// moves through: pickers, menus, panels and the queue.
+func selMark() string { return glyphs.User }
+
+// menuMark is selMark with the gap that follows it.
+func menuMark() string { return selMark() + " " }
 
 // ellipsisGlyph is the truncation mark, ASCII in ASCII mode.
 func ellipsisGlyph() string { return chromeGlyphs("…") }

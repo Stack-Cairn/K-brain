@@ -277,7 +277,7 @@ func TestRenderDiffGoldens(t *testing.T) {
 			}{
 				{"highlighted", 120, renderDiff(sampleDiff, "main.go", 120)},
 				{"wrapped", 40, renderDiff(sampleDiff, "main.go", 40)},
-				{"folded", 80, renderDiffFolded(sampleDiff, "main.go", 80, 2)},
+				{"folded", 80, renderDiffFolded(sampleDiff, "main.go", 80, 2, true)},
 				{"unnumbered", 80, renderDiff("+ added\n- removed\n  same", "x.txt", 80)},
 			} {
 				for _, l := range strings.Split(c.out, "\n") {
@@ -306,7 +306,7 @@ func TestRenderDiffWrapsInsteadOfTruncating(t *testing.T) {
 	if !strings.Contains(compact, `os.Args[1:])`) {
 		t.Fatalf("wrapped row lost its tail:\n%s", out)
 	}
-	folded := ansi.Strip(renderDiffFolded(sampleDiff, "main.go", 80, 2))
+	folded := ansi.Strip(renderDiffFolded(sampleDiff, "main.go", 80, 2, true))
 	if !strings.Contains(folded, glyphs.Fold+" +3 lines · ctrl+e") || strings.Contains(folded, "12  ") {
 		t.Fatalf("folded diff wrong:\n%s", folded)
 	}

@@ -87,18 +87,6 @@ var chromeSectionList = []chromeSection{
 	// The top panel above the transcript, subagent rows included; set by
 	// measureTopPanel during layout (top_panel.go).
 	{"topPanel", (*model).topPanelRows},
-	{"quitArm", func(m *model) int {
-		if !m.quit1 {
-			return 0
-		}
-		return 1
-	}},
-	{"escArm", func(m *model) int {
-		if !m.escClr && (!m.esc1 || m.rew != nil || m.namePrompt != nil) {
-			return 0
-		}
-		return 1
-	}},
 	{"composerPanel", (*model).composerPanelRows},
 	{"transcriptBar", (*model).transcriptBarRows},
 	{"usage", (*model).usageCardRows},

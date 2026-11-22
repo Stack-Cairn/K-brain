@@ -1,4 +1,4 @@
-  2. step twowith an indented continuation paragraph.
+  with an indented continuation paragraph.
 
                                                                            go
     func f() {
@@ -20,5 +20,5 @@
   Final paragraph with a long sentence that wraps across the narrow widths
   the golden test uses.
 ────────────────────────────────────────────────────────────────────────────────
-  ❯ Ask k-brain anything…  / commands · Shift+Tab mode · Ctrl+P menu
+  ❯ Ask k-brain anything…  ? help · / commands · Shift+Tab mode · Ctrl+P menu
    Normal                                                   kimi-k3-fast · ✦ off

@@ -55,7 +55,7 @@ func TestToolRowsShowExitBadgeAndDiff(t *testing.T) {
 
 	for _, want := range []string{
 		"Bash  for i in", "exit 3 · ", // the exit badge and the tool's own time
-		"line 1", "line 2", "+6 lines · ctrl+e", "line 10", "boom", // head and tail around the fold
+		"line 1", "line 2", "+6 lines", "line 10", "boom", // head and tail around the fold
 		"Read  greet.go",
 		"Edit  greet.go", "+1 −1", // counts on the header
 		`6  - fmt.Println("hello")`, `6  + fmt.Println("hello, world")`,
@@ -63,6 +63,10 @@ func TestToolRowsShowExitBadgeAndDiff(t *testing.T) {
 		if !strings.Contains(screen, want) {
 			t.Errorf("screen missing %q", want)
 		}
+	}
+	// Ctrl+E acts on the last tool block, the edit, so only that one names it.
+	if strings.Contains(screen, "+6 lines · ctrl+e") {
+		t.Error("the shell output's fold names ctrl+e, which toggles the edit below it")
 	}
 	if strings.Contains(screen, "(exit: exit status 3)") {
 		t.Error("the badge says the exit status; the output should not repeat it")

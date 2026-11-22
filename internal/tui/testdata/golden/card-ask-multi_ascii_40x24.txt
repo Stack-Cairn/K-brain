@@ -20,5 +20,5 @@
 
 
 ----------------------------------------
-  > Ask k-brain anything...  / commands
+  > Ask k-brain anything...  ? help...
    Always allow     kimi-k3-fast - * off

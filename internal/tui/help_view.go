@@ -114,6 +114,7 @@ var helpActionDesc = map[string]string{
 	"viewerFind":      "search the block",
 	"viewerFindNext":  "next match",
 	"viewerFindPrev":  "previous match",
+	"help":            "open this cheatsheet (? only on an empty composer)",
 }
 
 // helpKeyLabel overrides the generated key label of a (context, action)
@@ -138,8 +139,13 @@ func prettyKey(k string) string {
 			parts[i] = s
 			continue
 		}
+		// A lone letter keeps its case: j and G are different keys. With a
+		// modifier it is a chord name, Ctrl+K.
 		if len(p) == 1 {
-			parts[i] = strings.ToUpper(p)
+			if len(parts) > 1 {
+				p = strings.ToUpper(p)
+			}
+			parts[i] = p
 			continue
 		}
 		parts[i] = strings.ToUpper(p[:1]) + p[1:]

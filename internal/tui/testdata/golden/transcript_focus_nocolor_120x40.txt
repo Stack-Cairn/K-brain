@@ -1,6 +1,6 @@
 ▌❯ Why does the cache miss after a resize?
 
-◌ Thought · 2 lines
+◉ Thought · 2 lines
 ┃ The key holds the width.
 ┃ A resize changes it.
 
@@ -36,5 +36,5 @@
 
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  ❯ Ask k-brain anything…  / commands · Shift+Tab mode · Ctrl+P menu
+  ❯ Ask k-brain anything…  ? help · / commands · Shift+Tab mode · Ctrl+P menu
   [Normal]                                                                                          kimi-k3-fast · ✦ off

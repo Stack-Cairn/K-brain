@@ -92,7 +92,7 @@ var keymap = []keyBinding{
 	{"up", keyComposer, "historyPrev", ""},
 	{"down", keyComposer, "historyNext", ""},
 	{"ctrl+n", keyComposer, "historyNext", ""},
-	{"ctrl+p", keyGlobal, "palette", ""},
+	{"ctrl+p", keyGlobal, "palette", "Ctrl+P — command palette"},
 	{"alt+b", keyComposer, "wordLeft", ""},
 	{"alt+left", keyComposer, "wordLeft", ""},
 	{"tab", keyMenu, "menuNext", ""},
@@ -129,7 +129,7 @@ var keymap = []keyBinding{
 	{"esc", keyQueue, "queueDeselect", ""},
 	{"alt+e", keyBusy, "queueEditLast", "Alt+E (busy) — edit the last queued message · click a queued message to select it, click it again to edit, its ✗ removes it"},
 	{"ctrl+b", keyBusy, "backgroundTool", "Ctrl+B (busy) — move the running shell command to the background; it keeps running and the agent is told when it exits"},
-	{"f2", keyGlobal, "settings", ""},
+	{"f2", keyGlobal, "settings", "F2 — settings"},
 	{"alt+up", keyGlobal, "focusTranscript", "Alt+↑ — focus the transcript: j/k select a block, h/l fold / open, e toggle, E fold all, v view, / find, Esc back"},
 	{"down", keyTranscript, "focusNext", ""},
 	{"j", keyTranscript, "focusNext", ""},
@@ -174,6 +174,8 @@ var keymap = []keyBinding{
 	{"N", keyViewer, "viewerFindPrev", ""},
 	{"enter", keyViewer, "viewerFind", ""},
 	{"backspace", keyViewer, "viewerFind", ""},
+	{"f1", keyGlobal, "help", "F1 / ? (empty composer) — keyboard shortcuts and commands"},
+	{"?", keyComposer, "help", ""},
 }
 
 // keymapHelp is /help's key section: every hint in keymap order, translated

@@ -160,7 +160,7 @@ func TestForegroundSubagentStreamsIntoRowDockAndView(t *testing.T) {
 				t.Fatal("the subagent view should follow the running child")
 			}
 			view := stripAll(m.taskViewView())
-			for _, want := range []string{"Survey the loader", "foreground", "⚒ Read(/nonexistent/k-brain-probe.txt)", "read-only", "Ctrl+X Cancel"} {
+			for _, want := range []string{"Survey the loader", "foreground", "⚒ Read(/nonexistent/k-brain-probe.txt)", "read-only", "Ctrl+X cancel"} {
 				if !strings.Contains(view, want) {
 					t.Fatalf("subagent view missing %q:\n%s", want, view)
 				}

@@ -1,4 +1,4 @@
-> Keyboard shortcuts                                                                                               1/84
+> Keyboard shortcuts                                                                                               1/86
   [Keys]  Commands
   / type to filter
 ------------------------------------------------------------------------------------------------------------------------
@@ -17,6 +17,7 @@
   Ctrl+P                                    open the command palette
   F2                                        open settings
   Alt+Up                                    focus the transcript, a block at a time
+  F1                                        open this cheatsheet (? only on an empty composer)
 
   Composer
   Tab                                       complete a command, path or mention
@@ -30,8 +31,7 @@
   Alt+Z                                     redo the draft edit
   Ctrl+W / Alt+Backspace                    cut the word before the cursor
   Ctrl+U                                    cut to the start of the line
-  Alt+K                                     cut to the end of the line
-  Down 58 more
+  Down 60 more
 ------------------------------------------------------------------------------------------------------------------------
   Shift+Tab  cycle the permission mode
   Shift+Tab - cycle Normal / Plan / Auto review / Always allow

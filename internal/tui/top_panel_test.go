@@ -407,7 +407,7 @@ func TestSubagentResultFoldsToOneLine(t *testing.T) {
 	if got := subagentErrorSummary("Error: context canceled"); got != "context canceled" {
 		t.Fatalf("plain error summary = %q", got)
 	}
-	b := block{kind: blockTool, toolName: "subagent", text: raw}
+	b := block{kind: blockTool, toolName: "subagent", text: raw, expandKey: true}
 	out := stripAll(b.render(100))
 	if strings.Contains(out, `"type"`) || !strings.Contains(out, "scripted failure") || !strings.Contains(out, "ctrl+e") {
 		t.Fatalf("failed subagent result should fold to its message:\n%s", out)

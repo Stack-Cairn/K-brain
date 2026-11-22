@@ -1,6 +1,6 @@
         [3m// one object per call[0m          [0m
         return json.NewEncoder(w).Enco  
-    de(s)                               
+  [2m↪[0m de(s)                               [0m
     }                                   
   [2m```[0m                                   [0m
                                         
@@ -20,5 +20,5 @@
 [1m│[0m dismisses[0m                            [1m│[0m
 [1m╰[0m[1m──────────────────────────────────────[0m[1m╯[0m
 ────────────────────────────────────────
-  [1m❯ [0m[7mA[0m[2msk k-brain anything…  / commands ·[0m [0m
+  [1m❯ [0m[7mA[0m[2msk k-brain anything…  ? help…[0m      [0m
   [1;7m[Always allow][0m    kimi-k3-fast[2m · [0m[1m✦ off[0m

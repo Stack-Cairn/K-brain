@@ -374,11 +374,11 @@ func (m *model) planTail(d *planDialog, w int, compact bool) []string {
 	case planEditComment:
 		tail = append(append(tail, gap...),
 			wrapHanging(accentFgStyle.Render(fmt.Sprintf(m.tr("comment on line %d: "), d.cursor+1)), d.draft+"█", inner),
-			textHintStyle.Render(chromeGlyphs(m.tr("Enter saves (empty removes) · Esc Back"))))
+			textHintStyle.Render(chromeGlyphs(m.tr("Enter saves (empty removes) · Esc back"))))
 	case planEditFeedback:
 		tail = append(append(tail, gap...),
 			wrapHanging(accentFgStyle.Render(m.tr("what should change: ")), d.draft+"█", inner),
-			textHintStyle.Render(chromeGlyphs(m.tr("Enter sends · Esc Back"))))
+			textHintStyle.Render(chromeGlyphs(m.tr("Enter sends · Esc back"))))
 	default:
 		hint := m.tr("↑↓ line · c comment · 1 approve · 2 request changes · Esc close")
 		if compact {
