@@ -303,11 +303,14 @@ type model struct {
 	// the type and its methods in that area's own files. Add one line per
 	// area at the end of the block rather than loose fields elsewhere in
 	// model, so branches for different areas merge without conflicts.
-	tx  *transcriptState // transcript engine (transcript.go)
-	cmp *composerState   // composer: undo, kill ring, chips, stash, history search, queue editing
-	app *appSurfaceState // app surfaces: cheatsheet, settings, extensions, memory (picker_view.go)
-	tv  *toolViewState   // tool views and the plan pane (toolview.go, todo_pane.go)
-	st  *statusState     // status row, footer, notifications (status_state.go)
+	tx *transcriptState // transcript engine (transcript.go)
+	// expandKeyAt is 1 + the index of the block Ctrl+E toggles, 0 for none
+	// (syncExpandTarget).
+	expandKeyAt int
+	cmp         *composerState   // composer: undo, kill ring, chips, stash, history search, queue editing
+	app         *appSurfaceState // app surfaces: cheatsheet, settings, extensions, memory (picker_view.go)
+	tv          *toolViewState   // tool views and the plan pane (toolview.go, todo_pane.go)
+	st          *statusState     // status row, footer, notifications (status_state.go)
 
 	cards *cardState // interactive cards: plan review (plan_view.go)
 }

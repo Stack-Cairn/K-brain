@@ -200,12 +200,10 @@ func (m *model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyCtrlE:
 
-		for i := len(m.blocks) - 1; i >= 0; i-- {
-			if m.blocks[i].kind == blockTool {
-				m.blocks[i].toggle()
-				m.refreshVP()
-				return m, nil
-			}
+		if i := m.expandTarget(); i >= 0 {
+			m.blocks[i].toggle()
+			m.refreshVP()
+			return m, nil
 		}
 		m.tasksFocus = false
 		var cmd tea.Cmd

@@ -331,6 +331,9 @@ type block struct {
 	// folded cuts a kind without a toggle of its own to its first row
 	// (transcript_focus.go).
 	folded bool
+	// expandKey marks the block Ctrl+E toggles: only its fold row names the
+	// key (syncExpandTarget).
+	expandKey bool
 }
 
 // invalidate drops the block's render cache; call it after changing
@@ -474,6 +477,7 @@ func (m *model) refreshVP() {
 	if m.width == 0 {
 		return
 	}
+	m.syncExpandTarget()
 	tx := m.txs()
 	ix := &tx.ix
 	width := max(m.width, minRenderWidth)

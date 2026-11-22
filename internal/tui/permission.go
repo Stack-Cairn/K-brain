@@ -454,7 +454,7 @@ func (m *model) permPreview(d *permDialog, p *tools.EditPreview, w int) []string
 	if d.expanded {
 		rows = 0
 	}
-	return append(lines, strings.Split(renderDiffFolded(p.Diff, path, inner, rows), "\n")...)
+	return append(lines, strings.Split(renderDiffFolded(p.Diff, path, inner, rows, true), "\n")...)
 }
 
 // displayPath is path relative to the working directory when it is inside,

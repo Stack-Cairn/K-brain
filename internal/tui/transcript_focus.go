@@ -694,3 +694,46 @@ func (m *model) findCommand(q string) (tea.Model, tea.Cmd) {
 	m.startFind(q)
 	return m, nil
 }
+
+// expandTargetKind reports the kinds Ctrl+E toggles: tool results and hosted
+// searches, the blocks that draw a fold row.
+func expandTargetKind(k blockKind) bool {
+	return k == blockTool || k == blockHostedSearch
+}
+
+// expandTarget is the index of the block Ctrl+E toggles: the last tool
+// result or hosted search. -1 when there is none.
+func (m *model) expandTarget() int {
+	for i := len(m.blocks) - 1; i >= 0; i-- {
+		if expandTargetKind(m.blocks[i].kind) {
+			return i
+		}
+	}
+	return -1
+}
+
+// syncExpandTarget moves the expandKey mark to the block Ctrl+E toggles,
+// redrawing the blocks it leaves and reaches. m.expandKeyAt remembers where
+// it was, so the common case touches two blocks rather than all of them.
+func (m *model) syncExpandTarget() {
+	t := m.expandTarget()
+	if p := m.expandKeyAt - 1; p != t || (t >= 0 && !m.blocks[t].expandKey) {
+		if p >= 0 && p < len(m.blocks) && p != t && m.blocks[p].expandKey {
+			m.blocks[p].expandKey = false
+			m.blocks[p].invalidate()
+		} else {
+			// The blocks moved under the remembered index: clear by scan.
+			for i := range m.blocks {
+				if i != t && m.blocks[i].expandKey {
+					m.blocks[i].expandKey = false
+					m.blocks[i].invalidate()
+				}
+			}
+		}
+	}
+	if t >= 0 && !m.blocks[t].expandKey {
+		m.blocks[t].expandKey = true
+		m.blocks[t].invalidate()
+	}
+	m.expandKeyAt = t + 1
+}

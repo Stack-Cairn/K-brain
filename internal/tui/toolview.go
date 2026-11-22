@@ -586,7 +586,7 @@ func renderToolBody(b *block, width int) string {
 	case toolKindOf(b.toolName) == tkMCP:
 		body = renderGenericBody(b, text, mcpPreviewLines, width)
 	case toolKindOf(b.toolName) == tkSubagent && !b.expanded:
-		body = renderSubagentBody(text, width)
+		body = renderSubagentBody(text, width, b.expandKey)
 	default:
 		body = renderGenericBody(b, text, toolPreviewLines, width)
 	}
@@ -653,15 +653,16 @@ func renderGenericBody(b *block, text string, preview int, width int) string {
 		rows = rows[:limit]
 	}
 	if hidden > 0 {
-		rows = append(rows, foldHint(hidden, "lines"))
+		rows = append(rows, foldHint(hidden, "lines", b.expandKey))
 	}
 	return strings.Join(rows, "\n")
 }
 
 // renderSubagentBody is a finished subagent's result folded to one line: the
 // report's first line, or for a failure the error's message instead of the
-// provider's raw response body. ctrl+e opens the whole result.
-func renderSubagentBody(text string, width int) string {
+// provider's raw response body. ctrl+e opens the whole result; key says
+// whether the fold row names it.
+func renderSubagentBody(text string, width int, key bool) string {
 	elbow := textMutedStyle.Render("  " + glyphs.Result + " ")
 	lines := strings.Split(text, "\n")
 	first := strings.TrimSpace(lines[0])
@@ -679,7 +680,7 @@ func renderSubagentBody(text string, width int) string {
 	}
 	out := ansi.Truncate(elbow+row, max(width, 1), "…")
 	if strings.TrimSpace(text) != first || lipgloss.Width(elbow+row) > width {
-		out += "\n" + foldHint(max(len(lines)-1, 1), "lines")
+		out += "\n" + foldHint(max(len(lines)-1, 1), "lines", key)
 	}
 	return out
 }
@@ -709,9 +710,16 @@ func subagentErrorSummary(text string) string {
 	return head
 }
 
-// foldHint is the row standing in for n folded rows: "⋯ +14 lines · ctrl+e".
-func foldHint(n int, unit string) string {
-	return textHintStyle.Render(chromeGlyphs(fmt.Sprintf("    %s +%d %s · ctrl+e", glyphs.Fold, n, unit)))
+// foldHint is the row standing in for n folded rows: "⋯ +14 lines", and
+// " · ctrl+e" after it when key says Ctrl+E is what opens them. Only the
+// block Ctrl+E toggles says so (expandTarget); the others still open from
+// the transcript focus or a click.
+func foldHint(n int, unit string, key bool) string {
+	s := fmt.Sprintf("    %s +%d %s", glyphs.Fold, n, unit)
+	if key {
+		s += " · ctrl+e"
+	}
+	return textHintStyle.Render(chromeGlyphs(s))
 }
 
 var hookNoteRE = regexp.MustCompile(`(?m)^Hook (PostToolUse|PostToolUseFailure) failed: (.*)$\n?`)
