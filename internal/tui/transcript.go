@@ -565,7 +565,7 @@ func (m *model) refreshVP() {
 			continue
 		}
 		gap := 0
-		if len(ix.entries) > 0 && !gluedToPrev(m.blocks, i) && (!compactDensity || b.kind == blockUser) {
+		if len(ix.entries) > 0 && gapBefore(m.blocks, i) {
 			gap = 1
 		}
 		rows := b.linesAt(width, m.ancientMode)

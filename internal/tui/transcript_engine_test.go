@@ -21,7 +21,7 @@ func referenceRows(m *model) []string {
 			continue
 		}
 		if wrote {
-			if gluedToPrev(m.blocks, i) || compactDensity && m.blocks[i].kind != blockUser {
+			if !gapBefore(m.blocks, i) {
 				b.WriteString("\n")
 			} else {
 				b.WriteString("\n\n")

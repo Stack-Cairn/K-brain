@@ -242,8 +242,13 @@ func (m *model) inlinePrint(revisit bool) []tea.Cmd {
 // it hangs under the block before it.
 func (m *model) inlineBlockLines(i, w int) []string {
 	s := m.inl
+	if compactHidden(m.blocks, i) {
+		// Folded away in compact density, as on screen; Alt+O prints it
+		// expanded later.
+		return nil
+	}
 	var out []string
-	if s.printedAny && !gluedToPrev(m.blocks, i) {
+	if s.printedAny && gapBefore(m.blocks, i) {
 		out = append(out, "")
 	}
 	s.printedAny = true
@@ -402,12 +407,12 @@ func (m *model) inlinePendingView() string {
 	var rows []string
 	for i := start; i < len(m.blocks); i++ {
 		b := &m.blocks[i]
-		if b.kind == blockBanner {
+		if b.kind == blockBanner || compactHidden(m.blocks, i) {
 			continue
 		}
 		if len(rows) == 0 {
-			s.glued = s.printedAny && gluedToPrev(m.blocks, i)
-		} else if !gluedToPrev(m.blocks, i) {
+			s.glued = s.printedAny && !gapBefore(m.blocks, i)
+		} else if gapBefore(m.blocks, i) {
 			rows = append(rows, "")
 		}
 		rows = append(rows, b.linesAt(w, m.ancientMode)...)
