@@ -83,6 +83,10 @@ MCP 应用界面按公开的 MCP Apps 约定通过 postMessage 收发 JSON-RPC 2
 - 其他方法（打开链接、向对话发消息等）要么由用户确认后执行，要么回复 `-32601`；
 - 忽略界面请求的尺寸以外的显示提示，按自己的布局限制高度。
 
+## HTML 预览
+
+`preview.created` 的 `url` 同样需要令牌：取回后用 `srcdoc` 放进 `sandbox="allow-scripts"` 的 iframe。预览是模型生成的内容，宿主**不**为它实现任何 `host.*` 方法，忽略它发来的所有消息；它不能联网（`connect-src 'none'`），也不能加载外部资源。放大查看时也在新的沙箱 iframe 里渲染同一 HTML，不要给它同源权限。
+
 ## 宿主实现要点
 
 1. 从 `GET /v1/plugins?workdir=<会话工作目录>` 的 `plugins[].contributes.ui[]` 取面板，只显示带 `url` 的面板（插件已启用）；`placement:"sidePane"` 放侧边栏，`"settings"` 放设置页中该插件的条目下。

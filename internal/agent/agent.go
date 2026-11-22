@@ -706,7 +706,7 @@ func (a *Agent) turnPending(ctx context.Context, input string, parts []ai.Conten
 		return "", ErrBusy
 	}
 	defer a.turnMu.Unlock()
-	if err := a.refreshSystemPrompt(); err != nil {
+	if err := a.refreshSystemPrompt(ctx); err != nil {
 		return "", err
 	}
 	if resumeID != "" {

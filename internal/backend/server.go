@@ -674,6 +674,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleQueue(w, r, id, len(parts) == 3)
 		return
 	}
+	if len(parts) >= 2 && len(parts) <= 3 && parts[1] == "previews" {
+		s.handlePreviews(w, r, id, parts[2:])
+		return
+	}
 	if len(parts) == 2 && parts[1] == "mcp-ui" {
 		s.serveMCPUI(w, r, id)
 		return
@@ -1864,6 +1868,12 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, end func(),
 		_, _ = rt.publish(protocol.EventUsage, protocol.Usage{InputTokens: u.PromptTokens, OutputTokens: u.CompletionTokens, CachedTokens: u.Cached(), CacheWriteTokens: u.CacheWrite()}, "")
 	}}
 	ev = agent.FanIn(rt.recorder.Events(), ev)
+	var previews *previewTracker
+	if options.HTMLPreviews {
+		previews = newPreviewTracker(s, rt)
+		ctx = agent.WithPromptAddition(ctx, htmlPreviewHint)
+		ev = agent.FanIn(ev, agent.Events{OnText: previews.onText, OnToolStart: previews.onToolStart, OnToolResult: func(id, _ string, result tools.Result) { previews.onToolResult(id, result) }})
+	}
 	assistantCount := 0
 	for _, message := range rt.agent.MessagesSnapshot() {
 		if message.Role == protocol.RoleAssistant {
@@ -1885,6 +1895,9 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, end func(),
 	// so their persisted results cannot arrive after the stream has ended.
 	if ctx.Err() != nil {
 		rt.agent.WaitCancelledTasks()
+	}
+	if previews != nil {
+		previews.endMessage()
 	}
 	toolOutput.close()
 	progress.phase("persisting")

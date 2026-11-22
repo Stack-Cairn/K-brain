@@ -63,6 +63,9 @@ const (
 	EventRunCancelled         = "run.cancelled"
 	EventHookWarning          = "hook.warning"
 	EventGoalUpdated          = "goal.updated"
+	// EventPreviewCreated announces an HTML preview (PreviewCreated). Only runs
+	// started with options.html_previews receive it.
+	EventPreviewCreated = "preview.created"
 )
 
 type ModelRef struct {
@@ -672,6 +675,28 @@ type RunOptions struct {
 	// elicitation forms: the run publishes elicitation.requested and waits for
 	// an answer. Without it an MCP server's elicitation is declined at once.
 	MCPElicitation bool `json:"mcp_elicitation,omitempty"`
+	// HTMLPreviews (capability html_previews) says the client can show HTML
+	// previews: the model is told it may answer with an "html preview" fenced
+	// block, and such blocks and .html files written by the Write tool are
+	// published as preview.created.
+	HTMLPreviews bool `json:"html_previews,omitempty"`
+}
+
+// PreviewCreated is an HTML preview kept for a session.
+type PreviewCreated struct {
+	PreviewID string `json:"preview_id"`
+	// Source is "message" (a fenced block in the assistant's text) or "file"
+	// (an .html file written by a tool).
+	Source string `json:"source"`
+	Title  string `json:"title,omitempty"`
+	// Path is the written file's path as the tool received it (source "file").
+	Path       string `json:"path,omitempty"`
+	ToolCallID string `json:"tool_call_id,omitempty"`
+	Bytes      int    `json:"bytes"`
+	// URL is the backend path that returns the HTML
+	// (GET /v1/sessions/{id}/previews/{preview_id}), authenticated like other routes.
+	URL       string    `json:"url"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // RunSandbox is a run's request for OS-level confinement. Mode "workspace" lets

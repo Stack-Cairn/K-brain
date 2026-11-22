@@ -1,6 +1,10 @@
 package agent
 
-import "github.com/Stack-Cairn/K-brain/internal/ai"
+import (
+	"context"
+
+	"github.com/Stack-Cairn/K-brain/internal/ai"
+)
 
 // WithSystemPromptResolver refreshes factory instructions before each turn.
 func WithSystemPromptResolver(resolve func() (string, error)) Option {
@@ -17,7 +21,20 @@ func (a *Agent) SetPromptAddendum(addendum func() string) {
 	a.msgsMu.Unlock()
 }
 
-func (a *Agent) refreshSystemPrompt() error {
+type promptAdditionKey struct{}
+
+// WithPromptAddition appends text to the system prompt of turns run with ctx
+// (for agents with a system prompt resolver). It lets one run add guidance
+// that other runs of the same agent do not see.
+func WithPromptAddition(ctx context.Context, text string) context.Context {
+	if text == "" {
+		return ctx
+	}
+	previous, _ := ctx.Value(promptAdditionKey{}).(string)
+	return context.WithValue(ctx, promptAdditionKey{}, previous+text)
+}
+
+func (a *Agent) refreshSystemPrompt(ctx context.Context) error {
 	if a.systemPromptResolver == nil {
 		return nil
 	}
@@ -30,6 +47,9 @@ func (a *Agent) refreshSystemPrompt() error {
 	a.msgsMu.Unlock()
 	if addendum != nil {
 		prompt += addendum()
+	}
+	if addition, _ := ctx.Value(promptAdditionKey{}).(string); addition != "" {
+		prompt += addition
 	}
 	a.msgsMu.Lock()
 	defer a.msgsMu.Unlock()

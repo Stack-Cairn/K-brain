@@ -91,6 +91,11 @@ type healthCapabilities struct {
 	// uiResourceUri, and GET /v1/sessions/{id}/mcp-ui?server=&uri= returns the
 	// view's HTML (resources/read) with sandbox headers.
 	MCPApps int `json:"mcp_apps"`
+	// HTMLPreviews is 1 where runs accept options.html_previews: the model is
+	// told about "html preview" fenced blocks, which (and .html files written
+	// by the Write tool) are published as preview.created and served by
+	// GET /v1/sessions/{id}/previews/{previewId} with sandbox headers.
+	HTMLPreviews int `json:"html_previews"`
 }
 
 // healthRunSandboxV1 describes per-run sandboxing (options.sandbox). Clients
@@ -206,6 +211,7 @@ func (s *Server) health() healthResponse {
 			Plugins:                 1,
 			PluginUI:                1,
 			MCPApps:                 1,
+			HTMLPreviews:            1,
 		},
 		HostBridge: s.hostBridge.status(),
 	}

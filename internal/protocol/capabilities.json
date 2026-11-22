@@ -265,6 +265,15 @@
       "firstRelease": "v0.107.42",
       "evidenceCommit": "pending",
       "missing": "tool.result has no ui_resource and /v1/sessions/{id}/mcp-ui is not served; show MCP tool results as text only."
+    },
+    {
+      "name": "html_previews",
+      "type": "integer",
+      "compare": "eq",
+      "value": 1,
+      "firstRelease": "v0.107.42",
+      "evidenceCommit": "pending",
+      "missing": "options.html_previews is ignored: the model is not told about html preview blocks, no preview.created events are sent and /v1/sessions/{id}/previews is not served; render html blocks as code."
     }
   ]
 }

@@ -405,6 +405,11 @@ func (s *Server) deleteSession(w http.ResponseWriter, r *http.Request, id string
 		mutationError(w, err)
 		return
 	}
+	if dir := s.previewDir(id); dir == "" {
+	} else if err := os.RemoveAll(dir); err != nil {
+		mutationError(w, err)
+		return
+	}
 	cursor, cursorErr := s.store.SummaryCursor(r.Context())
 	if cursorErr != nil {
 		mutationError(w, cursorErr)

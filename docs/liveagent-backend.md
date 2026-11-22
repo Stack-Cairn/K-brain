@@ -106,6 +106,8 @@ VITE_KBRAIN_TOKEN=<backend-token>
 | POST | `/v1/plugins/{id}/tools/call` | 为插件界面执行该插件自己的工具；见下文“插件界面”，`capabilities.plugin_ui` 表示支持 |
 | GET / HEAD | `/v1/plugin-assets/{grant}/{plugin}/{path}` | 只读提供插件界面文件，供沙箱 iframe 加载；**不需要令牌**（能力 URL），见下文“插件界面” |
 | GET | `/v1/sessions/{id}/mcp-ui?server=&uri=` | 读取 MCP 工具声明的界面资源（`ui://`）HTML，带沙箱响应头；见下文“MCP 应用界面”，`capabilities.mcp_apps` 表示支持 |
+| GET | `/v1/sessions/{id}/previews` | 列出会话的 HTML 预览；见下文“HTML 预览”，`capabilities.html_previews` 表示支持 |
+| GET / HEAD | `/v1/sessions/{id}/previews/{previewId}` | 返回一个 HTML 预览，带沙箱响应头 |
 
 列表支持 `page`、`page_size`、`cwd`、`cwd_empty`、`shared`、`pinned`、`archived`，返回 `sessions`、`total_count`、`epoch` 和字符串 `revision`。`/v1/health` 的 `capabilities.session_changes: 2` 表示同时支持不可变快照、增量、pinned、workdirs、字符串游标和过期 reset；客户端必须探测完整契约后才能放宽旧轮询。
 
@@ -141,6 +143,7 @@ CLI 可用 `-config FILE -session-dir DIR` 指定配置与存储目录；省略�
 - `permission.requested`, `permission.resolved`, `permission.auto_resolved`
 - `question.requested`, `question.resolved`
 - `elicitation.requested`, `elicitation.resolved`（只在带 `options.mcp_elicitation` 的运行中出现）
+- `preview.created`（只在带 `options.html_previews` 的运行中出现）
 - `subagent.started`, `subagent.updated`, `subagent.completed`, `subagent.failed`
 - `trajectory.child.text`, `trajectory.child.thinking`, `trajectory.child.steer`, `trajectory.child.tool_start`, `trajectory.child.tool_end`（子代理自己的转录）
 - `usage.updated`
@@ -713,6 +716,30 @@ MCP 工具可以在 `tools/list` 的 `_meta` 里声明一个界面资源：`_met
   - 响应头 `Content-Security-Policy: sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline' <资源域>; style-src 'unsafe-inline' <资源域>; img-src data: blob: <资源域>; font-src data: <资源域>; media-src data: blob: <资源域>; connect-src <连接域或 'none'>; frame-src 'none'; worker-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'`，以及 `nosniff`、`no-store`、`no-referrer`。资源域与连接域取自资源内容的 `_meta.ui.csp.resourceDomains` / `connectDomains`，只保留纯 `https://host[:port]` 源（最多 16 个），其余丢弃。
   - 同一策略（不含 `sandbox`）还以 `<meta http-equiv="Content-Security-Policy">` 插到文档最前面（`<head>` 之后，否则 doctype 之后，否则开头），客户端用 `fetch` 带令牌取回后放进 `<iframe sandbox="allow-scripts" srcdoc=...>` 时限制同样生效。
 - 已知缺口：工具结果只转发拼好的文本（`output`），不转发 `structuredContent` 与原始 `CallToolResult`；`_meta.ui.visibility`（只给界面、不给模型的工具）没有处理，这类工具仍出现在模型的工具列表里；不处理 `_meta.ui.domain`、`prefersBorder` 等显示提示。界面与宿主之间的消息协议见 [sandboxed-ui.md](sandboxed-ui.md)。
+
+### HTML 预览（`capabilities.html_previews: 1`）
+
+客户端在 `POST /v1/sessions/{id}/runs` 的 `options` 里传 `"html_previews": true`，表示自己能显示 HTML 预览卡片。旧版后端不认识这个选项，会以 400（未知字段）拒绝整次运行，客户端必须先确认 `html_previews == 1`。只有带该选项的运行才会：
+
+1. 在系统提示末尾追加一段说明，告诉模型可以把完整的 HTML 文档放进信息串为 `html preview` 的围栏代码块（例如 ` ```html preview `），并说明预览在无网络的沙箱里运行。不传该选项的运行（其他客户端、CLI）系统提示不变。
+2. 识别预览并发布 `preview.created` 事件：
+   - 助手文本中的围栏块：开头围栏为至少 3 个 `` ` `` 或 `~`（最多缩进 3 个空格），信息串按空白归一后恰为 `html preview`；结束围栏为同一字符、长度不小于开头且没有信息串。未闭合、为空或超过 2 MiB 的块忽略。普通的 ` ```html ` 块不算预览。
+   - `Write`（以及 CLI 工具集的 `write`）成功写入扩展名为 `.html` / `.htm` 的文件：预览内容取自工具参数 `content`，不会回读磁盘。
+   - 每次运行最多 16 个预览。
+
+```json
+{"type": "preview.created", "run_id": "run_1", "payload": {
+  "preview_id": "3f2a9c0d1b7e4a56", "source": "message", "title": "销售图表",
+  "bytes": 2048, "url": "/v1/sessions/s_123/previews/3f2a9c0d1b7e4a56",
+  "created_at": "2026-11-22T08:00:00Z"
+}}
+```
+
+   `source` 为 `message` 或 `file`；`file` 时另有 `path`（工具收到的原样路径）与 `tool_call_id`。`title` 取文档的 `<title>`，没有时取文件名。`preview_id` 是内容 SHA-256 的前 16 个十六进制字符，同一内容得到同一 id。事件写入会话日志，重放历史时同样出现。
+- `GET /v1/sessions/{id}/previews`（需要令牌）：`{"version": "...", "previews": [<同上 payload>...]}`，按创建时间排序。
+- `GET /v1/sessions/{id}/previews/{previewId}`（需要令牌）：返回 HTML，`Content-Security-Policy: sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; connect-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'`，另有 `nosniff`、`no-store`、`no-referrer`；同一策略（不含 `sandbox`）以 `<meta>` 插在文档开头。id 不是 16 位小写十六进制或不存在：404。
+- 预览保存在事件目录的 `previews/<会话 id>/` 下，删除会话时一并删除。
+- 显示方式见 [sandboxed-ui.md](sandboxed-ui.md)：用带令牌的 `fetch` 取回，放进 `<iframe sandbox="allow-scripts" srcdoc=...>`；预览不提供任何宿主方法。
 
 ### 记住的权限规则（`capabilities.permission_rules: 1`、`readonly_auto_allow: 1`）
 
