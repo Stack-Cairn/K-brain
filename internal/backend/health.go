@@ -81,6 +81,11 @@ type healthCapabilities struct {
 	// /v1/plugins lists, enables, disables, installs and removes them, with
 	// since/wait long-polling for changes.
 	Plugins int `json:"plugins"`
+	// PluginUI is 1 where plugin.json may declare ui.panels, GET /v1/plugins
+	// lists them under contributes.ui with a url, /v1/plugin-assets serves
+	// their files read-only for sandboxed frames, and POST
+	// /v1/plugins/{id}/tools/call runs a plugin's own tools for its panel.
+	PluginUI int `json:"plugin_ui"`
 }
 
 // healthRunSandboxV1 describes per-run sandboxing (options.sandbox). Clients
@@ -194,6 +199,7 @@ func (s *Server) health() healthResponse {
 			UsageStats:              1,
 			FolderTrust:             1,
 			Plugins:                 1,
+			PluginUI:                1,
 		},
 		HostBridge: s.hostBridge.status(),
 	}

@@ -341,6 +341,9 @@ func (m *Manager) Invoke(ctx context.Context, name string, args json.RawMessage,
 	if !ok || !p.Enabled {
 		return "", fmt.Errorf("plugin %q is disabled", parts[1])
 	}
+	if len(p.Command) == 0 {
+		return "", fmt.Errorf("plugin %q has no command", p.Name)
+	}
 	cmdPath := p.Command[0]
 	if !filepath.IsAbs(cmdPath) {
 		if strings.ContainsAny(cmdPath, `/\\`) {

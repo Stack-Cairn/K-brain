@@ -247,6 +247,15 @@
       "firstRelease": "v0.107.42",
       "evidenceCommit": "pending",
       "missing": "/v1/plugins is not served (requests return 404) and backend sessions load no plugins; hide the plugin manager and tell the user to manage plugins with `kn plugin` in a terminal."
+    },
+    {
+      "name": "plugin_ui",
+      "type": "integer",
+      "compare": "eq",
+      "value": 1,
+      "firstRelease": "v0.107.42",
+      "evidenceCommit": "pending",
+      "missing": "Plugins cannot declare UI panels (a plugin.json with a ui section fails to load), contributes.ui is absent and /v1/plugin-assets is not served; show no plugin panels."
     }
   ]
 }

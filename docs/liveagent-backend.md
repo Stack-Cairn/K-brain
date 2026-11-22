@@ -103,6 +103,8 @@ VITE_KBRAIN_TOKEN=<backend-token>
 | POST | `/v1/skills/manage` | SkillsManager 操作：`list`、`read`、`validate`、`delete`、`create`、`install`、`install_start` 等 |
 | GET / POST / DELETE | `/v1/trust` | 读取 / 授予 / 撤销项目目录信任；见下文，`capabilities.folder_trust` 表示支持 |
 | GET / POST / DELETE | `/v1/plugins`、`/v1/plugins/{id}/enable|disable`、`/v1/plugins/install`、`/v1/plugins/reload` | 列出（可长轮询）/ 启用 / 停用 / 安装 / 删除 / 重新扫描插件；见下文，`capabilities.plugins` 表示支持 |
+| POST | `/v1/plugins/{id}/tools/call` | 为插件界面执行该插件自己的工具；见下文“插件界面”，`capabilities.plugin_ui` 表示支持 |
+| GET / HEAD | `/v1/plugin-assets/{grant}/{plugin}/{path}` | 只读提供插件界面文件，供沙箱 iframe 加载；**不需要令牌**（能力 URL），见下文“插件界面” |
 
 列表支持 `page`、`page_size`、`cwd`、`cwd_empty`、`shared`、`pinned`、`archived`，返回 `sessions`、`total_count`、`epoch` 和字符串 `revision`。`/v1/health` 的 `capabilities.session_changes: 2` 表示同时支持不可变快照、增量、pinned、workdirs、字符串游标和过期 reset；客户端必须探测完整契约后才能放宽旧轮询。
 
@@ -630,6 +632,64 @@ GET `/v1/settings`（以及 PUT 的响应）总是带 `webSearch`：
 - `revision` 是进程内的变化序号：本后端的启用、停用、安装、删除、重新扫描都会推进它并唤醒等待中的 GET；其他进程或手工做的改动在下一次 GET 发现列表变化时推进。客户端可循环 `GET /v1/plugins?since=<revision>&wait=30` 保持列表最新。后端重启后序号从 0 开始，客户端看到更小的 `revision` 时应直接采用新列表。
 - 清单目前只有工具、钩子、提示词三种贡献，没有命令、技能或 MCP server。
 - `id` 不存在返回 404；`workdir` 或 `path` 不是绝对路径、请求体有未知字段返回 400；其他方法与路径返回 404；嵌入方没有配置插件（`Options.Plugins` 为空）时所有插件路由返回 501。旧后端没有这些路由（404），客户端应隐藏插件管理并提示用户在终端用 `kn plugin`。
+
+### 插件界面（`capabilities.plugin_ui: 1`）
+
+插件可以在 `plugin.json` 里声明静态网页面板，客户端在沙箱 iframe 里显示。只有界面的插件不需要 `command`（`command` 只在有 `tools` 时必填）。
+
+```json
+{
+  "name": "board",
+  "version": "1.2.0",
+  "enabled": true,
+  "ui": {
+    "root": "ui",
+    "panels": [
+      {"id": "main", "title": "Board", "entry": "index.html", "placement": "sidePane"},
+      {"id": "prefs", "title": "Board settings", "entry": "settings/index.html", "placement": "settings"}
+    ]
+  }
+}
+```
+
+- `root`：插件目录下存放界面文件的子目录，默认 `ui`；只提供这个目录里的文件。
+- `panels`：最多 8 个。`id` 与插件名规则相同且不重复；`title` 1–80 个字符；`entry` 是 `root` 下的 `.html`/`.htm` 相对路径；`placement` 是 `sidePane`（侧边栏）或 `settings`（设置页）。路径段不能为空、`.`、`..` 或以 `.` 开头，不能含 `\`、`:`。
+- 不符合规则的清单整体加载失败，出现在列表的 `errors` 里。旧版 kn 不认识 `ui` 字段，同样加载失败。
+
+`GET /v1/plugins` 的每个插件多一项 `contributes.ui`：
+
+```json
+"contributes": {
+  "tools": [], "hooks": [], "prompt": false,
+  "ui": [
+    {"id": "main", "title": "Board", "placement": "sidePane", "entry": "index.html",
+     "url": "/v1/plugin-assets/3f9c0a6d2b7e4c1a8d5f0e2b6a9c7d41/board/index.html"}
+  ]
+}
+```
+
+`url` 只在插件启用时出现，是后端上的路径，客户端加上后端地址作为 iframe 的 `src`。页面里的相对路径（`app.js`、`assets/style.css`）解析到同一前缀下。
+
+`GET|HEAD /v1/plugin-assets/{grant}/{plugin}/{path}`：
+
+- 不检查 `Authorization`（iframe 发不出请求头）；`grant` 是后端进程内随机密钥对项目、插件名与插件目录的 HMAC，只由 `GET /v1/plugins` 发放。每次请求都重新确认：插件仍启用、目录没变、项目插件所在目录仍受信任；任何一项不满足、路径不合规、文件不存在或不是普通文件都返回 404。后端重启后旧 URL 全部失效，重新取列表即可。
+- 文件从 UI 根目录用 `os.Root` 打开，符号链接不能离开 UI 根目录；编码的 `/`（`%2F`）被拒绝；单个文件超过 10 MiB 返回 413；其他方法返回 405。
+- `Content-Type` 按扩展名取自白名单（html、js/mjs、css、json、map、txt、svg、png、jpg、gif、webp、avif、ico、woff/woff2、ttf/otf、mp3、wav、mp4、webm、wasm），其他一律 `application/octet-stream`。
+- 每个响应都带：
+
+```
+Content-Security-Policy: sandbox allow-scripts; default-src 'none'; script-src <base> 'unsafe-inline'; style-src <base> 'unsafe-inline'; img-src <base> data: blob:; font-src <base> data:; media-src <base> data: blob:; connect-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'
+X-Content-Type-Options: nosniff
+Cache-Control: no-store
+Referrer-Policy: no-referrer
+Cross-Origin-Resource-Policy: cross-origin
+```
+
+  `<base>` 是 `http://<请求的 Host>/v1/plugin-assets/{grant}/{plugin}/`，页面只能加载本插件的文件。从不设置 Cookie。
+
+`POST /v1/plugins/{id}/tools/call`，请求体 `{"name":"<清单里的工具名>","arguments":{...},"workdir"?:"<绝对路径>"}`，需要令牌：执行插件 `{id}` 自己的工具，返回 `{"version","name":"plugin_<id>_<工具>","output","failed","cancelled"}`。插件停用、项目未受信任或工具不存在返回 404，缺少 `name` 返回 400。这条调用不在运行中，不会弹出审批：客户端（面板的 `host.callTool`）必须先征得用户同意。
+
+面板与宿主之间的 postMessage 协议（JSON-RPC 2.0：`host.initialize`、`host.getTheme`、`host.notify`、`host.openFile`、`host.callTool` 与 `panel.*` 通知）和 iframe 的沙箱要求见 [sandboxed-ui.md](sandboxed-ui.md)。
 
 ### 记住的权限规则（`capabilities.permission_rules: 1`、`readonly_auto_allow: 1`）
 

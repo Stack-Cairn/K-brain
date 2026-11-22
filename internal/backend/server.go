@@ -474,6 +474,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.publicShare(w, r)
 		return
 	}
+	if strings.HasPrefix(r.URL.Path, pluginAssetPrefix) {
+		// Capability URLs: sandboxed frames cannot send the bearer token.
+		s.servePluginAsset(w, r)
+		return
+	}
 	if !s.authorized(r) {
 		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
 		return
