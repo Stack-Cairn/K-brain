@@ -145,6 +145,8 @@ func (s *Server) startCanonicalRunWith(ctx context.Context, rt *runtimeSession, 
 	}
 	// A desktop bridge may have connected or gone since the session loaded.
 	s.syncHostTools(rt.agent)
+	// Plugins may have been enabled, disabled or (un)trusted since the last turn.
+	s.syncPluginTools(rt.agent)
 	// Normalize after model selection so model-specific tools and MCP filters are current.
 	options, err := normalizeRunOptions(in.Options, rt.agent.WorkingDir, rt.agent.KnownTools())
 	if err != nil {

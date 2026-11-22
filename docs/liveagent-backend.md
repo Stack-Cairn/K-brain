@@ -102,6 +102,7 @@ VITE_KBRAIN_TOKEN=<backend-token>
 | PUT | `/v1/skills/settings` | 保存启用设置（全局或按 `workdir` 的项目设置）；`packs` 见下文，`capabilities.skill_packs` 表示支持 |
 | POST | `/v1/skills/manage` | SkillsManager 操作：`list`、`read`、`validate`、`delete`、`create`、`install`、`install_start` 等 |
 | GET / POST / DELETE | `/v1/trust` | 读取 / 授予 / 撤销项目目录信任；见下文，`capabilities.folder_trust` 表示支持 |
+| GET / POST / DELETE | `/v1/plugins`、`/v1/plugins/{id}/enable|disable`、`/v1/plugins/install`、`/v1/plugins/reload` | 列出（可长轮询）/ 启用 / 停用 / 安装 / 删除 / 重新扫描插件；见下文，`capabilities.plugins` 表示支持 |
 
 列表支持 `page`、`page_size`、`cwd`、`cwd_empty`、`shared`、`pinned`、`archived`，返回 `sessions`、`total_count`、`epoch` 和字符串 `revision`。`/v1/health` 的 `capabilities.session_changes: 2` 表示同时支持不可变快照、增量、pinned、workdirs、字符串游标和过期 reset；客户端必须探测完整契约后才能放宽旧轮询。
 
@@ -580,6 +581,55 @@ GET `/v1/settings`（以及 PUT 的响应）总是带 `webSearch`：
 - 每次请求都重新读取 `trusted_folders.toml`，修改后下一次 `/v1/prompts`、`/v1/commands` 或提示词命令运行立即反映，不需要重启后端；TUI 在下次启动时看到同一结果。
 - 同一后端进程内的修改串行写入（临时文件加重命名）；与同时运行的 TUI 之间没有跨进程锁。
 - 旧后端没有这个接口（返回 404），客户端在能力缺失时应隐藏信任开关，提示用户在 `kn` 终端界面中打开一次该目录来信任它。
+
+### 插件（`capabilities.plugins: 1`）
+
+`kn backend` 与 `kn run`、TUI、ACP 一样加载插件（`plugin.json`，格式见 `kn plugin` 与 `internal/plugins`）：每个会话都加载用户插件（数据目录 `plugins/<名称>/`），只有会话工作目录受信任（见上一节）时才加载项目自己的插件（`<项目>/.liveagent/plugins/<名称>/`）；同名时项目插件优先。信任与启用状态在每一轮开始时重新读取：信任、撤销信任、启用、停用都从下一轮生效，不需要重启后端或重建会话。
+
+插件给会话带来三样东西：
+
+- 工具：模型看到的名字是 `plugin_<插件>_<工具>`。每次调用先走本次运行的权限判定（与 Bash 等内置工具相同：计划模式与 `approval_policy:"deny"` 拒绝，`normal` 等模式弹出 `permission.requested`，`tool` 为该工具名），再运行插件命令；运行时再次确认插件仍然启用、目录仍然受信任。
+- 系统提示词：已启用插件的 `prompt` 追加在系统提示词末尾，每轮重新生成。
+- 钩子：`hooks` 里的生命周期事件（`SessionStart`、`PreToolUse`、`PostToolUse`、`Stop` 等）运行对应命令。
+
+接口需要后端令牌。`workdir` 是会话工作目录的绝对路径，GET/DELETE 放在查询参数里，POST 可放在请求体或查询参数里；省略时只看用户插件。
+
+| 方法 | 请求 | 作用 |
+|---|---|---|
+| GET | `/v1/plugins?workdir=&since=&wait=` | 列出插件；带 `since`（上次的 `revision`）与 `wait`（秒，最多 60）时，在 `revision` 超过 `since` 或超时前不返回 |
+| POST | `/v1/plugins/{id}/enable`、`/v1/plugins/{id}/disable`，请求体 `{"workdir"?}` | 启用 / 停用；状态保存在数据目录 `plugins.json`，与 `kn plugin enable|disable` 共用 |
+| POST | `/v1/plugins/install`，请求体 `{"path":"<插件目录绝对路径>","workdir"?}` | 把本机目录复制到用户插件目录（与 `kn plugin install` 相同），默认停用，除非清单写了 `"enabled":true`；已存在同名插件返回 409 |
+| DELETE | `/v1/plugins/{id}?workdir=` | 删除用户插件目录；项目插件属于项目，返回 409 |
+| POST | `/v1/plugins/reload`，请求体 `{"workdir"?}` | 重新扫描插件目录（命令行或手工改动后） |
+
+除错误外都返回列表：
+
+```json
+{
+  "version": "kbrain.agent.v1",
+  "workdir": "/Users/me/project",
+  "trusted": true,
+  "revision": 7,
+  "plugins": [
+    {
+      "id": "build",
+      "name": "build",
+      "version": "1.0.0",
+      "description": "Project build helpers",
+      "source": "workspace",
+      "enabled": true,
+      "path": "/Users/me/project/.liveagent/plugins/build",
+      "contributes": {"tools": ["plugin_build_run"], "hooks": ["SessionStart"], "prompt": true}
+    }
+  ],
+  "errors": ["plugin.json: json: unknown field \"foo\""]
+}
+```
+
+- `id` 等于 `name`，用于路由。`source` 是 `user` 或 `workspace`。`trusted` 是 `workdir` 当前是否受信任（未受信任时列表里没有项目插件）；`workdir` 是规范化后的路径。`errors` 是加载失败的插件目录（清单无效等），这些插件不出现在 `plugins` 里。
+- `revision` 是进程内的变化序号：本后端的启用、停用、安装、删除、重新扫描都会推进它并唤醒等待中的 GET；其他进程或手工做的改动在下一次 GET 发现列表变化时推进。客户端可循环 `GET /v1/plugins?since=<revision>&wait=30` 保持列表最新。后端重启后序号从 0 开始，客户端看到更小的 `revision` 时应直接采用新列表。
+- 清单目前只有工具、钩子、提示词三种贡献，没有命令、技能或 MCP server。
+- `id` 不存在返回 404；`workdir` 或 `path` 不是绝对路径、请求体有未知字段返回 400；其他方法与路径返回 404；嵌入方没有配置插件（`Options.Plugins` 为空）时所有插件路由返回 501。旧后端没有这些路由（404），客户端应隐藏插件管理并提示用户在终端用 `kn plugin`。
 
 ### 记住的权限规则（`capabilities.permission_rules: 1`、`readonly_auto_allow: 1`）
 

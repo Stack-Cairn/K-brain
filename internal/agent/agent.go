@@ -238,6 +238,7 @@ type Agent struct {
 	markdownMemoryReadOnly bool
 	memoryRuntime          MemoryRuntime
 	systemPromptResolver   func() (string, error)
+	promptAddendum         func() string
 	turnTimeContext        bool
 
 	usageMu    sync.Mutex

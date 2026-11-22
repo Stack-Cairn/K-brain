@@ -76,6 +76,11 @@ type healthCapabilities struct {
 	// revoke project folder trust, which gates project prompt templates and
 	// project slash commands.
 	FolderTrust int `json:"folder_trust"`
+	// Plugins is 1 where sessions load K-brain plugins (user plugins always,
+	// a workspace's own plugins only while its folder is trusted) and
+	// /v1/plugins lists, enables, disables, installs and removes them, with
+	// since/wait long-polling for changes.
+	Plugins int `json:"plugins"`
 }
 
 // healthRunSandboxV1 describes per-run sandboxing (options.sandbox). Clients
@@ -188,6 +193,7 @@ func (s *Server) health() healthResponse {
 			WebSearchFallback:       1,
 			UsageStats:              1,
 			FolderTrust:             1,
+			Plugins:                 1,
 		},
 		HostBridge: s.hostBridge.status(),
 	}

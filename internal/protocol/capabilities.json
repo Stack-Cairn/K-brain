@@ -238,6 +238,15 @@
       "firstRelease": "v0.107.40",
       "evidenceCommit": "pending",
       "missing": "/v1/trust is not served (requests return 404); hide the folder trust control and tell the user to trust the folder by opening it once in the kn terminal UI. Project prompt templates and project slash commands stay hidden until then."
+    },
+    {
+      "name": "plugins",
+      "type": "integer",
+      "compare": "eq",
+      "value": 1,
+      "firstRelease": "v0.107.42",
+      "evidenceCommit": "pending",
+      "missing": "/v1/plugins is not served (requests return 404) and backend sessions load no plugins; hide the plugin manager and tell the user to manage plugins with `kn plugin` in a terminal."
     }
   ]
 }

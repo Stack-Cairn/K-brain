@@ -228,6 +228,9 @@ func backendCLI(args []string) error {
 		SandboxMasked:           masked,
 		SandboxEnvKeep:          cfg.Sandbox.EnvKeep,
 		SSHDir:                  sshDir,
+		// Plugins load as in the other modes; a workspace's own plugins only
+		// while the folder is trusted.
+		Plugins: backend.NewPluginHost(),
 	})
 	if err != nil {
 		return err

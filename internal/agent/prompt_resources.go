@@ -7,6 +7,16 @@ func WithSystemPromptResolver(resolve func() (string, error)) Option {
 	return func(a *Agent) { a.systemPromptResolver = resolve }
 }
 
+// SetPromptAddendum sets a function whose text is appended to the resolved
+// system prompt before each turn (plugin prompts, client-specific hints). It
+// applies only to agents built with WithSystemPromptResolver, which rebuild
+// the system prompt every turn; nil removes it.
+func (a *Agent) SetPromptAddendum(addendum func() string) {
+	a.msgsMu.Lock()
+	a.promptAddendum = addendum
+	a.msgsMu.Unlock()
+}
+
 func (a *Agent) refreshSystemPrompt() error {
 	if a.systemPromptResolver == nil {
 		return nil
@@ -14,6 +24,12 @@ func (a *Agent) refreshSystemPrompt() error {
 	prompt, err := a.systemPromptResolver()
 	if err != nil {
 		return err
+	}
+	a.msgsMu.Lock()
+	addendum := a.promptAddendum
+	a.msgsMu.Unlock()
+	if addendum != nil {
+		prompt += addendum()
 	}
 	a.msgsMu.Lock()
 	defer a.msgsMu.Unlock()

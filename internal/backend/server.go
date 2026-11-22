@@ -81,6 +81,9 @@ type Options struct {
 	// SSHDir holds SSHManager's hosts (hosts.json) and K-brain's own
 	// known_hosts. Empty uses EventDir/ssh.
 	SSHDir string
+	// Plugins loads K-brain plugins into sessions and serves /v1/plugins;
+	// nil leaves plugins out (the routes answer 501).
+	Plugins *PluginHost
 }
 
 type Server struct {
@@ -115,6 +118,7 @@ type Server struct {
 	hookStore        *HookStore
 	hookRunner       *BackendHookRunner
 	mcp              *mcp.LiveManager
+	plugins          *PluginHost
 	build            protocol.Build
 	instance         instanceIdentity
 	// hostBridge is the LiveAgent desktop's tool bridge, kept in memory only.
@@ -301,7 +305,7 @@ func New(opts Options) (*Server, error) {
 		store:           opts.Store, factory: opts.Factory, token: opts.Token, models: append([]protocol.ModelRef(nil), opts.Models...),
 		settings: opts.Settings, usage: NewProviderUsageService(opts.Settings), prompts: opts.Prompts,
 		eventDir: opts.EventDir, permissionDir: opts.PermissionRulesDir, sandboxMasked: append([]string(nil), opts.SandboxMasked...), sandboxEnvKeep: append([]string(nil), opts.SandboxEnvKeep...), defaultCWD: opts.DefaultCWD, memoryStore: memoryStore, questionWait: opts.QuestionTimeout, memoryRuntimeFactory: opts.MemoryRuntimeFactory, cron: cron, hookStore: hookStore, hookRunner: NewBackendHookRunner(hookStore), mcp: opts.MCP, sessions: make(map[string]*runtimeSession), snapshots: make(map[string]sessionHTTPSnapshot),
-		build: opts.Build, ssh: sshmgr.New(sshHosts, sshmgr.Options{}),
+		build: opts.Build, ssh: sshmgr.New(sshHosts, sshmgr.Options{}), plugins: opts.Plugins,
 	}
 	if len(server.filesystemRoots) == 0 && opts.DefaultCWD != "" {
 		server.filesystemRoots = []string{opts.DefaultCWD}
@@ -592,6 +596,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.URL.Path == "/v1/mcp" || strings.HasPrefix(r.URL.Path, "/v1/mcp/") {
 		s.handleMCP(w, r)
+		return
+	}
+	if r.URL.Path == "/v1/plugins" || strings.HasPrefix(r.URL.Path, "/v1/plugins/") {
+		s.handlePlugins(w, r)
 		return
 	}
 	if r.Method == http.MethodPost && r.URL.Path == "/v1/sessions/exists" {
@@ -1148,6 +1156,7 @@ func (s *Server) rebuildAgentLocked(rt *runtimeSession, selected protocol.ModelR
 	s.attachPlanningTools(ag)
 	s.attachWebSearch(ag)
 	s.syncHostTools(ag)
+	s.attachPlugins(ag)
 	ag.ModelName, ag.Provider = selected.Model, selected.Provider
 	if s.mcp != nil {
 		mcpTools, filter := s.mcp.ToolsForTurn(context.Background(), cwd, nil, rt.mcpActivation)
@@ -1232,6 +1241,7 @@ func (s *Server) loadRuntime(id string, model protocol.ModelRef, cwd string) (*r
 	s.attachPlanningTools(ag)
 	s.attachWebSearch(ag)
 	s.syncHostTools(ag)
+	s.attachPlugins(ag)
 	ag.ModelName, ag.Provider = model.Model, model.Provider
 	if s.mcp != nil {
 		mcpTools, filter := s.mcp.ToolsForTurn(context.Background(), cwd, nil, activation)

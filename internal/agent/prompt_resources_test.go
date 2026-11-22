@@ -39,3 +39,33 @@ func TestSystemPromptResolverFailurePreservesHistory(t *testing.T) {
 		t.Fatalf("failed resolution changed history: %+v", messages)
 	}
 }
+
+func TestPromptAddendumFollowsEachRefresh(t *testing.T) {
+	a := New(nil, "model", 100, "base", WithSystemPromptResolver(func() (string, error) { return "base", nil }))
+	extra := "\nplugin prompt"
+	a.SetPromptAddendum(func() string { return extra })
+	for range 2 {
+		if err := a.refreshSystemPrompt(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := a.MessagesSnapshot()[0].Content; got != "base\nplugin prompt" {
+		t.Fatalf("system prompt = %q", got)
+	}
+	extra = ""
+	if err := a.refreshSystemPrompt(); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.MessagesSnapshot()[0].Content; got != "base" {
+		t.Fatalf("system prompt after clearing = %q", got)
+	}
+	// Without a resolver the prompt is fixed; the addendum is not applied.
+	fixed := New(nil, "model", 100, "fixed")
+	fixed.SetPromptAddendum(func() string { return "\nignored" })
+	if err := fixed.refreshSystemPrompt(); err != nil {
+		t.Fatal(err)
+	}
+	if got := fixed.MessagesSnapshot()[0].Content; got != "fixed" {
+		t.Fatalf("fixed prompt = %q", got)
+	}
+}
