@@ -150,8 +150,8 @@ func (m *model) statusLeft() string {
 	if m.transientNotice != "" {
 		return dimStyle.Render(ansi.Truncate(m.transientNotice, max(m.width/2, 16), "…"))
 	}
-	if line := m.statusLineText(); line != "" {
-		return dimStyle.Render(line)
+	if rows := m.statusLineRows(); len(rows) > 0 {
+		return rows[0]
 	}
 	left := m.git.render()
 	if m.goal != "" && !m.topPanelShown() {
