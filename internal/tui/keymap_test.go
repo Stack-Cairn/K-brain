@@ -51,7 +51,7 @@ var legacyHelpKeys = []string{
 	"Alt+E (busy) — edit the last queued message · click a queued message to select it, click it again to edit, its ✗ removes it",
 	"Ctrl+B (busy) — move the running shell command to the background; it keeps running and the agent is told when it exits",
 	"F2 — settings",
-	"Alt+↑ — focus the transcript: j/k select a block, Ctrl+U/Ctrl+D half a page, h/l fold / open, e toggle, E fold all, v view, / find, Esc back",
+	"Alt+↑ — focus the transcript: j/k select a block, [/] previous / next prompt, Ctrl+U/Ctrl+D half a page, h/l fold / open, e toggle, E fold all, y copy, r raw markdown, v view, / find, Esc back",
 	"in the block viewer: j/k scroll, Space/PgDn page, g/G top / end, / find, n/N next / previous, Esc back",
 	"F1 / ? (empty composer) — keyboard shortcuts and commands",
 }

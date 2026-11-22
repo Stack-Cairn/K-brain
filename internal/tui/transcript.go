@@ -336,6 +336,8 @@ type block struct {
 	// expandKey marks the block Alt+O toggles: only its fold row names the
 	// key (syncExpandTarget).
 	expandKey bool
+	// raw draws a reply as its markdown source (transcript_focus_copy.go).
+	raw bool
 }
 
 // invalidate drops the block's render cache; call it after changing
@@ -362,6 +364,8 @@ func (b *block) linesAt(width int, ancient bool) []string {
 	}
 	_, custom := blockKinds[b.kind]
 	switch {
+	case b.raw && hasRawView(b):
+		b.rows = rawReplyRows(b, width)
 	case ancient && (b.kind == blockAssistant || b.kind == blockUser):
 		b.rows = splitRows(accentStyle.Render(renderAncientText(ansi.Strip(b.render(width)), width)))
 	case b.kind == blockAssistant && !custom:

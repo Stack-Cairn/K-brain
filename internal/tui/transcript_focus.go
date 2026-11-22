@@ -8,6 +8,8 @@ package tui
 // h/l fold and open the focused one, e (or Enter, Space) flips it, E folds
 // or opens every tool result and thinking run at once, v opens it full
 // screen (blockviewer.go), and / searches the transcript, as /find does.
+// [ and ] jump between prompts, y copies the focused block and r shows a
+// reply's markdown source (transcript_focus_copy.go).
 // Esc gives the keyboard back. A bar above the composer says where focus is
 // and which keys apply.
 //
@@ -204,6 +206,14 @@ func (m *model) transcriptFocusKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.findStep(-1)
 	case k == "N":
 		m.findStep(1)
+	case k == "[":
+		m.focusTurn(bi, -1)
+	case k == "]":
+		m.focusTurn(bi, 1)
+	case k == "y":
+		return m, m.copyFocused(bi)
+	case k == "r":
+		m.toggleRaw(bi)
 	}
 	return m, nil
 }
@@ -656,7 +666,7 @@ func (m *model) transcriptBarView() string {
 		if bi >= 0 {
 			left += dimStyle.Render(chromeGlyphs(" · ") + m.tr(blockLabel(&m.blocks[bi])))
 		}
-		right = m.tr("j/k move · e fold · E all · v view · / find · Esc back")
+		right = m.tr("j/k move · [/] turn · e fold · E all · y copy · r raw · v view · / find · Esc back")
 		if fd := f.find; fd != nil {
 			state := m.tr("no match")
 			if len(fd.hits) > 0 {
