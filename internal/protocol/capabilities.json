@@ -238,6 +238,42 @@
       "firstRelease": "v0.107.40",
       "evidenceCommit": "pending",
       "missing": "/v1/trust is not served (requests return 404); hide the folder trust control and tell the user to trust the folder by opening it once in the kn terminal UI. Project prompt templates and project slash commands stay hidden until then."
+    },
+    {
+      "name": "plugins",
+      "type": "integer",
+      "compare": "eq",
+      "value": 1,
+      "firstRelease": "v0.107.42",
+      "evidenceCommit": "pending",
+      "missing": "/v1/plugins is not served (requests return 404) and backend sessions load no plugins; hide the plugin manager and tell the user to manage plugins with `kn plugin` in a terminal."
+    },
+    {
+      "name": "plugin_ui",
+      "type": "integer",
+      "compare": "eq",
+      "value": 1,
+      "firstRelease": "v0.107.42",
+      "evidenceCommit": "pending",
+      "missing": "Plugins cannot declare UI panels (a plugin.json with a ui section fails to load), contributes.ui is absent and /v1/plugin-assets is not served; show no plugin panels."
+    },
+    {
+      "name": "mcp_apps",
+      "type": "integer",
+      "compare": "eq",
+      "value": 1,
+      "firstRelease": "v0.107.42",
+      "evidenceCommit": "pending",
+      "missing": "tool.result has no ui_resource and /v1/sessions/{id}/mcp-ui is not served; show MCP tool results as text only."
+    },
+    {
+      "name": "html_previews",
+      "type": "integer",
+      "compare": "eq",
+      "value": 1,
+      "firstRelease": "v0.107.42",
+      "evidenceCommit": "pending",
+      "missing": "options.html_previews is ignored: the model is not told about html preview blocks, no preview.created events are sent and /v1/sessions/{id}/previews is not served; render html blocks as code."
     }
   ]
 }

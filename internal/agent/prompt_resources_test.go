@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -16,7 +17,7 @@ func TestSystemPromptResolverPreservesHistoryAndMemory(t *testing.T) {
 	a.Messages = append(a.Messages, ai.Message{Role: "user", Content: "history"})
 	current = "base AGENTS brain\nreplacement template"
 	for range 2 {
-		if err := a.refreshSystemPrompt(); err != nil {
+		if err := a.refreshSystemPrompt(context.Background()); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -37,5 +38,53 @@ func TestSystemPromptResolverFailurePreservesHistory(t *testing.T) {
 	}
 	if messages := a.MessagesSnapshot(); len(messages) != 1 || messages[0].Content != "original" {
 		t.Fatalf("failed resolution changed history: %+v", messages)
+	}
+}
+
+func TestPromptAddendumFollowsEachRefresh(t *testing.T) {
+	a := New(nil, "model", 100, "base", WithSystemPromptResolver(func() (string, error) { return "base", nil }))
+	extra := "\nplugin prompt"
+	a.SetPromptAddendum(func() string { return extra })
+	for range 2 {
+		if err := a.refreshSystemPrompt(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := a.MessagesSnapshot()[0].Content; got != "base\nplugin prompt" {
+		t.Fatalf("system prompt = %q", got)
+	}
+	extra = ""
+	if err := a.refreshSystemPrompt(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.MessagesSnapshot()[0].Content; got != "base" {
+		t.Fatalf("system prompt after clearing = %q", got)
+	}
+	// Without a resolver the prompt is fixed; the addendum is not applied.
+	fixed := New(nil, "model", 100, "fixed")
+	fixed.SetPromptAddendum(func() string { return "\nignored" })
+	if err := fixed.refreshSystemPrompt(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := fixed.MessagesSnapshot()[0].Content; got != "fixed" {
+		t.Fatalf("fixed prompt = %q", got)
+	}
+}
+
+func TestPromptAdditionAppliesOnlyToItsTurn(t *testing.T) {
+	a := New(nil, "model", 100, "base", WithSystemPromptResolver(func() (string, error) { return "base", nil }))
+	a.SetPromptAddendum(func() string { return "\nplugin" })
+	ctx := WithPromptAddition(WithPromptAddition(context.Background(), "\nfirst"), "\nsecond")
+	if err := a.refreshSystemPrompt(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.MessagesSnapshot()[0].Content; got != "base\nplugin\nfirst\nsecond" {
+		t.Fatalf("system prompt = %q", got)
+	}
+	if err := a.refreshSystemPrompt(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.MessagesSnapshot()[0].Content; got != "base\nplugin" {
+		t.Fatalf("system prompt of a later turn = %q", got)
 	}
 }

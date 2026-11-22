@@ -81,6 +81,9 @@ type Options struct {
 	// SSHDir holds SSHManager's hosts (hosts.json) and K-brain's own
 	// known_hosts. Empty uses EventDir/ssh.
 	SSHDir string
+	// Plugins loads K-brain plugins into sessions and serves /v1/plugins;
+	// nil leaves plugins out (the routes answer 501).
+	Plugins *PluginHost
 }
 
 type Server struct {
@@ -115,6 +118,7 @@ type Server struct {
 	hookStore        *HookStore
 	hookRunner       *BackendHookRunner
 	mcp              *mcp.LiveManager
+	plugins          *PluginHost
 	build            protocol.Build
 	instance         instanceIdentity
 	// hostBridge is the LiveAgent desktop's tool bridge, kept in memory only.
@@ -301,7 +305,7 @@ func New(opts Options) (*Server, error) {
 		store:           opts.Store, factory: opts.Factory, token: opts.Token, models: append([]protocol.ModelRef(nil), opts.Models...),
 		settings: opts.Settings, usage: NewProviderUsageService(opts.Settings), prompts: opts.Prompts,
 		eventDir: opts.EventDir, permissionDir: opts.PermissionRulesDir, sandboxMasked: append([]string(nil), opts.SandboxMasked...), sandboxEnvKeep: append([]string(nil), opts.SandboxEnvKeep...), defaultCWD: opts.DefaultCWD, memoryStore: memoryStore, questionWait: opts.QuestionTimeout, memoryRuntimeFactory: opts.MemoryRuntimeFactory, cron: cron, hookStore: hookStore, hookRunner: NewBackendHookRunner(hookStore), mcp: opts.MCP, sessions: make(map[string]*runtimeSession), snapshots: make(map[string]sessionHTTPSnapshot),
-		build: opts.Build, ssh: sshmgr.New(sshHosts, sshmgr.Options{}),
+		build: opts.Build, ssh: sshmgr.New(sshHosts, sshmgr.Options{}), plugins: opts.Plugins,
 	}
 	if len(server.filesystemRoots) == 0 && opts.DefaultCWD != "" {
 		server.filesystemRoots = []string{opts.DefaultCWD}
@@ -470,6 +474,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.publicShare(w, r)
 		return
 	}
+	if strings.HasPrefix(r.URL.Path, pluginAssetPrefix) {
+		// Capability URLs: sandboxed frames cannot send the bearer token.
+		s.servePluginAsset(w, r)
+		return
+	}
 	if !s.authorized(r) {
 		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
 		return
@@ -594,6 +603,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleMCP(w, r)
 		return
 	}
+	if r.URL.Path == "/v1/plugins" || strings.HasPrefix(r.URL.Path, "/v1/plugins/") {
+		s.handlePlugins(w, r)
+		return
+	}
 	if r.Method == http.MethodPost && r.URL.Path == "/v1/sessions/exists" {
 		s.sessionsExist(w, r)
 		return
@@ -659,6 +672,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(parts) >= 2 && parts[1] == "queue" && (len(parts) == 2 || (len(parts) == 3 && parts[2] == "actions")) {
 		s.handleQueue(w, r, id, len(parts) == 3)
+		return
+	}
+	if len(parts) >= 2 && len(parts) <= 3 && parts[1] == "previews" {
+		s.handlePreviews(w, r, id, parts[2:])
+		return
+	}
+	if len(parts) == 2 && parts[1] == "mcp-ui" {
+		s.serveMCPUI(w, r, id)
 		return
 	}
 	if len(parts) == 2 && parts[1] == "command-notes" {
@@ -1148,6 +1169,7 @@ func (s *Server) rebuildAgentLocked(rt *runtimeSession, selected protocol.ModelR
 	s.attachPlanningTools(ag)
 	s.attachWebSearch(ag)
 	s.syncHostTools(ag)
+	s.attachPlugins(ag)
 	ag.ModelName, ag.Provider = selected.Model, selected.Provider
 	if s.mcp != nil {
 		mcpTools, filter := s.mcp.ToolsForTurn(context.Background(), cwd, nil, rt.mcpActivation)
@@ -1232,6 +1254,7 @@ func (s *Server) loadRuntime(id string, model protocol.ModelRef, cwd string) (*r
 	s.attachPlanningTools(ag)
 	s.attachWebSearch(ag)
 	s.syncHostTools(ag)
+	s.attachPlugins(ag)
 	ag.ModelName, ag.Provider = model.Model, model.Provider
 	if s.mcp != nil {
 		mcpTools, filter := s.mcp.ToolsForTurn(context.Background(), cwd, nil, activation)
@@ -1840,11 +1863,17 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, end func(),
 		_, _ = rt.publish(protocol.EventToolCall, protocol.ToolCallEvent{ToolCall: protocol.ToolCall{ID: id, Name: name, Arguments: json.RawMessage(args)}}, "")
 	}, OnToolResult: func(id, name string, result tools.Result) {
 		toolOutput.finish(id)
-		_, _ = rt.publish(protocol.EventToolResult, protocol.ToolResultEvent{ToolResult: protocol.ToolResult{ID: id, Name: name, Output: result.Text, Content: protocol.FromAIMessage(ai.Message{Role: "tool", Parts: result.Parts}).Content, Failed: result.Failed, Cancelled: result.Cancelled, ToolRunInfo: toolRunInfo(result)}}, "")
+		_, _ = rt.publish(protocol.EventToolResult, protocol.ToolResultEvent{ToolResult: protocol.ToolResult{ID: id, Name: name, Output: result.Text, Content: protocol.FromAIMessage(ai.Message{Role: "tool", Parts: result.Parts}).Content, Failed: result.Failed, Cancelled: result.Cancelled, UIResource: s.toolUIResource(rt.id, rt.agent.WorkingDir, name, result), ToolRunInfo: toolRunInfo(result)}}, "")
 	}, OnToolOutput: toolOutput.update, OnUsage: func(u ai.Usage) {
 		_, _ = rt.publish(protocol.EventUsage, protocol.Usage{InputTokens: u.PromptTokens, OutputTokens: u.CompletionTokens, CachedTokens: u.Cached(), CacheWriteTokens: u.CacheWrite()}, "")
 	}}
 	ev = agent.FanIn(rt.recorder.Events(), ev)
+	var previews *previewTracker
+	if options.HTMLPreviews {
+		previews = newPreviewTracker(s, rt)
+		ctx = agent.WithPromptAddition(ctx, htmlPreviewHint)
+		ev = agent.FanIn(ev, agent.Events{OnText: previews.onText, OnToolStart: previews.onToolStart, OnToolResult: func(id, _ string, result tools.Result) { previews.onToolResult(id, result) }})
+	}
 	assistantCount := 0
 	for _, message := range rt.agent.MessagesSnapshot() {
 		if message.Role == protocol.RoleAssistant {
@@ -1866,6 +1895,9 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, end func(),
 	// so their persisted results cannot arrive after the stream has ended.
 	if ctx.Err() != nil {
 		rt.agent.WaitCancelledTasks()
+	}
+	if previews != nil {
+		previews.endMessage()
 	}
 	toolOutput.close()
 	progress.phase("persisting")

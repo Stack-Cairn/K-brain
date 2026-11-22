@@ -76,6 +76,26 @@ type healthCapabilities struct {
 	// revoke project folder trust, which gates project prompt templates and
 	// project slash commands.
 	FolderTrust int `json:"folder_trust"`
+	// Plugins is 1 where sessions load K-brain plugins (user plugins always,
+	// a workspace's own plugins only while its folder is trusted) and
+	// /v1/plugins lists, enables, disables, installs and removes them, with
+	// since/wait long-polling for changes.
+	Plugins int `json:"plugins"`
+	// PluginUI is 1 where plugin.json may declare ui.panels, GET /v1/plugins
+	// lists them under contributes.ui with a url, /v1/plugin-assets serves
+	// their files read-only for sandboxed frames, and POST
+	// /v1/plugins/{id}/tools/call runs a plugin's own tools for its panel.
+	PluginUI int `json:"plugin_ui"`
+	// MCPApps is 1 where tool.result carries ui_resource for MCP tools whose
+	// _meta declares a ui:// view, GET /v1/mcp/tools marks them with
+	// uiResourceUri, and GET /v1/sessions/{id}/mcp-ui?server=&uri= returns the
+	// view's HTML (resources/read) with sandbox headers.
+	MCPApps int `json:"mcp_apps"`
+	// HTMLPreviews is 1 where runs accept options.html_previews: the model is
+	// told about "html preview" fenced blocks, which (and .html files written
+	// by the Write tool) are published as preview.created and served by
+	// GET /v1/sessions/{id}/previews/{previewId} with sandbox headers.
+	HTMLPreviews int `json:"html_previews"`
 }
 
 // healthRunSandboxV1 describes per-run sandboxing (options.sandbox). Clients
@@ -188,6 +208,10 @@ func (s *Server) health() healthResponse {
 			WebSearchFallback:       1,
 			UsageStats:              1,
 			FolderTrust:             1,
+			Plugins:                 1,
+			PluginUI:                1,
+			MCPApps:                 1,
+			HTMLPreviews:            1,
 		},
 		HostBridge: s.hostBridge.status(),
 	}

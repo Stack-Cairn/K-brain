@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -53,9 +54,6 @@ func New(project string) (*Manager, error) {
 		return nil, err
 	}
 	m := &Manager{plugins: map[string]Plugin{}, state: map[string]bool{}, roots: Dirs(project), statePath: filepath.Join(home, "plugins.json"), project: project}
-	if data, err := os.ReadFile(m.statePath); err == nil {
-		_ = json.Unmarshal(data, &m.state)
-	}
 	if err := m.Reload(); err != nil {
 		return m, err
 	}
@@ -72,7 +70,46 @@ func pluginHome() string {
 
 func pluginHomeOrUserHome() (string, error) { return datapath.UserDir() }
 
+// Project is the workspace whose plugins this manager loads; empty when it
+// loads user plugins only.
+func (m *Manager) Project() string { return m.project }
+
+// Source reports where p was found: "workspace" for the project's plugin
+// directory, "user" for the user's.
+func (m *Manager) Source(p Plugin) string {
+	if m.project != "" {
+		root := filepath.Join(datapath.ProjectDir(m.project), "plugins")
+		if rel, err := filepath.Rel(root, p.Dir); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return "workspace"
+		}
+	}
+	return "user"
+}
+
+// Get returns the loaded plugin called name.
+func (m *Manager) Get(name string) (Plugin, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	p, ok := m.plugins[name]
+	return p, ok
+}
+
+// loadState reads the enabled state saved by any process sharing the data
+// directory (the kn CLI, the terminal UI, the backend).
+func (m *Manager) loadState() map[string]bool {
+	state := map[string]bool{}
+	if data, err := os.ReadFile(m.statePath); err == nil {
+		_ = json.Unmarshal(data, &state)
+	}
+	m.mu.Lock()
+	m.state = state
+	m.mu.Unlock()
+	return maps.Clone(state)
+}
+
+// Reload rescans the plugin directories and rereads the saved enabled state.
 func (m *Manager) Reload() error {
+	state := m.loadState()
 	found := map[string]Plugin{}
 	var errs []string
 	for _, root := range m.roots {
@@ -93,7 +130,7 @@ func (m *Manager) Reload() error {
 				errs = append(errs, filepath.Join(root, entry.Name())+": "+err.Error())
 				continue
 			}
-			if enabled, ok := m.state[p.Name]; ok {
+			if enabled, ok := state[p.Name]; ok {
 				p.Enabled = enabled
 			}
 			if previous, ok := found[p.Name]; ok && previous.Dir != p.Dir {
@@ -115,7 +152,9 @@ func (m *Manager) saveState() error {
 	if err := os.MkdirAll(filepath.Dir(m.statePath), 0o700); err != nil {
 		return err
 	}
+	m.mu.RLock()
 	data, err := json.MarshalIndent(m.state, "", "  ")
+	m.mu.RUnlock()
 	if err != nil {
 		return err
 	}
@@ -133,7 +172,10 @@ func (m *Manager) List() []Plugin {
 	return out
 }
 
+// SetEnabled saves name's enabled state on top of the state saved meanwhile
+// by other managers or processes.
 func (m *Manager) SetEnabled(name string, enabled bool) error {
+	m.loadState()
 	m.mu.Lock()
 	p, ok := m.plugins[name]
 	if !ok {
@@ -148,6 +190,7 @@ func (m *Manager) SetEnabled(name string, enabled bool) error {
 }
 
 func (m *Manager) Remove(name string) error {
+	m.loadState()
 	m.mu.Lock()
 	p, ok := m.plugins[name]
 	if ok {
@@ -173,7 +216,12 @@ func (m *Manager) Install(src string) error {
 	if err != nil {
 		return err
 	}
-	dst := filepath.Join(pluginHome(), p.Name)
+	home := pluginHome()
+	if home == "" {
+		return errors.New("plugin directory is unavailable")
+	}
+	// Install where Dirs looks for user plugins.
+	dst := filepath.Join(home, "plugins", p.Name)
 	if _, err := os.Stat(dst); err == nil {
 		return fmt.Errorf("plugin %q is already installed", p.Name)
 	}
@@ -292,6 +340,9 @@ func (m *Manager) Invoke(ctx context.Context, name string, args json.RawMessage,
 	m.mu.RUnlock()
 	if !ok || !p.Enabled {
 		return "", fmt.Errorf("plugin %q is disabled", parts[1])
+	}
+	if len(p.Command) == 0 {
+		return "", fmt.Errorf("plugin %q has no command", p.Name)
 	}
 	cmdPath := p.Command[0]
 	if !filepath.IsAbs(cmdPath) {

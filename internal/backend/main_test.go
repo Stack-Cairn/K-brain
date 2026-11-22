@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"context"
 	"os"
 	"testing"
 
@@ -9,6 +10,11 @@ import (
 )
 
 func TestMain(m *testing.M) {
+	if os.Getenv(mcptest.AppsServerEnv) != "" {
+		// Started by mcp_apps_test.go as a stdio MCP server.
+		_ = mcptest.ServeApps(context.Background())
+		os.Exit(0)
+	}
 	if os.Getenv(mcptest.ElicitServerEnv) != "" {
 		// Started by elicitations_test.go as a stdio MCP server.
 		_ = mcptest.ServeElicit(os.Stdin, os.Stdout)
