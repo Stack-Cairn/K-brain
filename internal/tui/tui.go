@@ -1010,8 +1010,12 @@ func (m *model) Update(msg tea.Msg) (_ tea.Model, statusCmd tea.Cmd) {
 		m.frameH, m.effortY, m.turnFloorH = 0, -1, 0
 		m.input.SetWidth(w - 2)
 		if resized {
-			m.refreshVP()
+			return m, m.onResizeReflow()
 		}
+		return m, nil
+
+	case reflowSettleMsg:
+		m.onReflowSettle(msg)
 		return m, nil
 
 	case themePollMsg:

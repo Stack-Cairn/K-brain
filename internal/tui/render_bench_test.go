@@ -236,7 +236,28 @@ func benchResize(b *testing.B, turns int) {
 	i := 0
 	for b.Loop() {
 		i++
+		forgetResizes(m)
 		frame(m, mkWinSize(120-i%2*20, 40))
+	}
+}
+
+// BenchmarkResizeDrag is dragging the terminal edge: twenty resizes in a
+// row, a frame after each, then the frame once the drag stops.
+func BenchmarkResizeDrag200Turns(b *testing.B)  { benchResizeDrag(b, 200) }
+func BenchmarkResizeDrag1000Turns(b *testing.B) { benchResizeDrag(b, 1000) }
+
+func benchResizeDrag(b *testing.B, turns int) {
+	m := benchFrameModel(b, turns)
+	b.ReportAllocs()
+	for b.Loop() {
+		b.StopTimer()
+		forgetResizes(m)
+		b.StartTimer()
+		for w := 100; w < 120; w++ {
+			frame(m, mkWinSize(w, 40))
+		}
+		settleResizes(m)
+		_ = m.View()
 	}
 }
 
@@ -259,3 +280,9 @@ func BenchmarkSeedSession1000Turns(b *testing.B) {
 // resetBenchMemos drops what earlier iterations left in process-wide
 // memos, where there are any.
 func resetBenchMemos() { resetSyntaxMemos() }
+
+// forgetResizes makes the next resize the first of a burst.
+func forgetResizes(m *model) { m.txs().hold.last = time.Time{} }
+
+// settleResizes delivers the end of a burst of resizes, as its tick would.
+func settleResizes(m *model) { frame(m, reflowSettleMsg{seq: m.txs().hold.seq}) }
