@@ -1,14 +1,13 @@
-[38;2;21;127;104m❯[0m [1mKeyboard shortcuts[0m                                                                                               [38;2;92;97;105m1/86[0m
+[38;2;21;127;104m❯[0m [1mKeyboard shortcuts[0m                                                                                              [38;2;92;97;105m1/108[0m
   [1;38;2;21;127;104m[Keys][0m [38;2;104;110;118m Commands [0m
   [38;2;21;127;104m/[0m [38;2;92;97;105mtype to filter[0m
 [38;2;213;218;222m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [38;2;104;110;118mAnywhere[0m
 [1;38;2;21;127;104;48;2;232;236;240m❯ Shift+Tab                          cycle the permission mode                                                         [0m
-  Ctrl+K                             [38;2;58;63;70mclear the conversation[0m[38;2;92;97;105m[0m
   Ctrl+T                             [38;2;58;63;70mfocus the subagent dock[0m[38;2;92;97;105m[0m
   Alt+T                              [38;2;58;63;70mexpand or collapse the top panel (goal, plan, subagents); a click on its header …[0m[38;2;92;97;105m[0m
   Ctrl+O                             [38;2;58;63;70mshow or hide thinking tokens[0m[38;2;92;97;105m[0m
-  Ctrl+E                             [38;2;58;63;70mexpand the last tool result[0m[38;2;92;97;105m[0m
+  Alt+O                              [38;2;58;63;70mexpand or collapse the last tool result[0m[38;2;92;97;105m[0m
   Ctrl+G                             [38;2;58;63;70medit the draft in an external editor[0m[38;2;92;97;105m[0m
   Ctrl+V                             [38;2;58;63;70mpaste an image[0m[38;2;92;97;105m[0m
   Ctrl+L                             [38;2;58;63;70mredraw the screen[0m[38;2;92;97;105m[0m
@@ -23,6 +22,7 @@
   Tab                                [38;2;58;63;70mcomplete a command, path or mention[0m[38;2;92;97;105m[0m
   Ctrl+J / Shift+Enter / Alt+Enter   [38;2;58;63;70minsert a newline[0m[38;2;92;97;105m[0m
   Esc                                [38;2;58;63;70mclear the draft[0m[38;2;92;97;105m[0m
+  End / Ctrl+End                     [38;2;58;63;70mback to the newest output[0m[38;2;92;97;105m[0m
   Enter                              [38;2;58;63;70msend the message[0m[38;2;92;97;105m[0m
   ↑                                  [38;2;58;63;70mprevious prompt from history[0m[38;2;92;97;105m[0m
   ↓ / Ctrl+N                         [38;2;58;63;70mnext prompt from history[0m[38;2;92;97;105m[0m
@@ -31,7 +31,7 @@
   Alt+Z                              [38;2;58;63;70mredo the draft edit[0m[38;2;92;97;105m[0m
   Ctrl+W / Alt+Backspace             [38;2;58;63;70mcut the word before the cursor[0m[38;2;92;97;105m[0m
   Ctrl+U                             [38;2;58;63;70mcut to the start of the line[0m[38;2;92;97;105m[0m
-[38;2;92;97;105m  ↓ 60 more[0m
+[38;2;92;97;105m  ↓ 82 more[0m
 [38;2;213;218;222m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [1mShift+Tab[0m  [38;2;58;63;70mcycle the permission mode[0m
   [38;2;92;97;105mShift+Tab — cycle Normal / Plan / Auto review / Always allow[0m

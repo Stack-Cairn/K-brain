@@ -5,9 +5,9 @@
 [1m│[0m [2m  48  [0m      line 1 stays                                                     [1m│[0m
 [1m│[0m [2m  49  [0m      line 2 stays                                                     [1m│[0m
 [1m│[0m [2m  50  [0m      line 3 stays                                                     [1m│[0m
-[1m│[0m [2m  51  [0m[1m-[0m [1m    verbose := flags.Bool("v1", false, "verbose")[0m                    [1m│[0m
-[1m│[0m [2m  51  [0m+     asJSON1 := flags.Bool("json1", false, "print JSON")              [1m│[0m
-[1m│[0m [2m  52  [0m[1m-[0m [1m    verbose := flags.Bool("v2", false, "verbose")[0m                    [1m│[0m
+[1m│[0m [2m  51  [0m[1m-[0m [1m    [0m[1;7mverbose[0m[1m := flags.Bool("[0m[1;7mv1[0m[1m", false, "[0m[1;7mverbose[0m[1m")[0m                    [1m│[0m
+[1m│[0m [2m  51  [0m+     [7masJSON1[0m := flags.Bool("[7mjson1[0m", false, "[7mprint JSON[0m")              [1m│[0m
+[1m│[0m [2m  52  [0m[1m-[0m [1m    [0m[1;7mverbose[0m[1m := flags.Bool("[0m[1;7mv2[0m[1m", false, "[0m[1;7mverbose[0m[1m")[0m                    [1m│[0m
 [1m│[0m [2m⋯ 1-7 / 14 · PgUp/PgDn[0m                                                       [1m│[0m
 [1m│[0m [1;7m❯ 1  Yes, once[2m (a)[0m [0m                                                          [1m│[0m
 [1m│[0m   2  Yes, always allow Edit(cmd/kn/**)[2m (A)[0m                                   [1m│[0m

@@ -10,7 +10,7 @@
 [2m◆[0m [1mBash[0m  grep -n [7mwidth[27m cache.go                                                  [0m
 [2m  └ [0mcache.go:10: key := [7mwidth[27m + 0                                               [0m
     cache.go:11: key := [7mwidth[27m + 1                                               
-[2m    ⋯ +8 lines · ctrl+e[0m                                                         [0m
+[2m    ⋯ +8 lines · alt+o[0m                                                          [0m
     cache.go:20: key := [7mwidth[27m + 10                                              
     cache.go:21: key := [7mwidth[27m + 11                                              
     cache.go:99: // the stale entry is dropped here                             

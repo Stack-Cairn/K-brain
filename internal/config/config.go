@@ -149,6 +149,8 @@ type Config struct {
 	Mouse           *bool                  `json:"mouse,omitempty"`
 	Thinking        *bool                  `json:"thinking,omitempty"`
 	CollapsePaste   *bool                  `json:"collapsePaste,omitempty"`
+	Vim             *bool                  `json:"vim,omitempty"`
+	OptionAsAlt     *bool                  `json:"optionAsAlt,omitempty"`
 	GoalMaxRounds   int                    `json:"goalMaxRounds,omitempty"`
 	// GoalVerify turns the independent check of a GOAL_MET claim on or off; nil is on.
 	GoalVerify *bool `json:"goalVerify,omitempty"`

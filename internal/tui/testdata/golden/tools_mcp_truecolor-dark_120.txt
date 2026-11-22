@@ -10,7 +10,7 @@
     # 8
     # 9
     # 10
-    ⋯ +4 lines · ctrl+e
+    ⋯ +4 lines · alt+o
 == failed ==
 ✗ docs:lookup  id=42                                                                                       failed · 0.1s
   └ Error: MCP server docs is not connected

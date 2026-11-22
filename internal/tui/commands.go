@@ -23,6 +23,8 @@ func busyCmd(text string) bool {
 		return true
 	case "/usage":
 		return true
+	case "/vim":
+		return true
 	case "/auth":
 		return true
 	case "/goal":
@@ -80,6 +82,8 @@ func (m *model) command(text string) (tea.Model, tea.Cmd) {
 		m.privacyCommand(fields[1:])
 	case "/ancient":
 		m.ancientCommand(fields[1:])
+	case "/vim":
+		m.vimCommand(fields[1:])
 	case "/memory":
 		m.memoryCommand(fields[1:])
 	case "/schedule":

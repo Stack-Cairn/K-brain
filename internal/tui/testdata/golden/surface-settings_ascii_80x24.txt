@@ -1,4 +1,4 @@
-> Settings                                                                 1/15
+> Settings                                                                 1/17
   / type to filter
 --------------------------------------------------------------------------------
   Display
@@ -6,6 +6,8 @@
   Language          interface language                                       en
   Thinking tokens   show model reasoning in the transcript                  off
   Mouse capture     wheel scroll and click-to-copy inside kn                 on
+  Vim mode          modal editing in the composer: Esc for normal mode, ... off
+  Option as Alt     read macOS Option+letter characters as Alt shortcuts    off
   Ancient mode      classical vertical layout for replies                   off
   Inline mode       transcript in the terminal's scrollback                 off
   Browser driver    automation engine that drives Chrome                    rod
@@ -13,9 +15,7 @@
   Agent
   Model             model and route for new turns        kimi-k3-fast@inference
   Reasoning effort  how hard the model thinks before answering              off
-  Permission mode   what tools may do without asking               Always allow
-  Subagent model    model subagents run on                        current model
-  Down 4 more
+  Down 6 more
 --------------------------------------------------------------------------------
   Theme  auto
   colour scheme for the transcript and chrome

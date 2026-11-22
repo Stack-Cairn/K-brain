@@ -114,6 +114,7 @@ func TestTok(t *testing.T) {
 // Inside a tmux whose extended-keys is off, /doctor says so and how to turn it
 // on; k-brain itself never changes the server-wide option.
 func TestDoctorRecommendsTmuxExtendedKeys(t *testing.T) {
+	useOnMac(t, false) // the Option-key line is macOS-only advice
 	t.Setenv("TMUX", "/tmp/tmux-test/default,1,0")
 	prev := tmuxExtKeysCheck
 	t.Cleanup(func() { tmuxExtKeysCheck = prev })

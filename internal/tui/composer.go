@@ -51,6 +51,12 @@ type composerState struct {
 	clickVal           string
 
 	mru *slashMRU
+
+	// vim is the vim mode state (vim.go).
+	vim vimState
+	// optionHinted is set once the Option-key note was shown
+	// (option_keys.go).
+	optionHinted bool
 }
 
 // composer returns the composer state, creating it on first use.

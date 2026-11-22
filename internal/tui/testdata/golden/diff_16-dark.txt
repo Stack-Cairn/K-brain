@@ -1,0 +1,28 @@
+== highlighted ==
+  10    func main() {
+  11  -     fmt.Println("hello")
+  11  +     fmt.Println("hello, world", strings.Repeat("=", 40), os.Args[1:])
+  12    }
+    ⋯ +3 more lines
+== wrapped ==
+  10    func main() {
+  11  -     fmt.Println("hello")
+  11  +     fmt.Println("hello, world",
+        strings.Repeat("=", 40),
+        os.Args[1:])
+  12    }
+    ⋯ +3 more lines
+== folded ==
+  10    func main() {
+  11  -     fmt.Println("hello")
+    ⋯ +3 lines · alt+o
+== unnumbered ==
+     + added
+     - removed
+       same
+== words ==
+  4  -     v, ok := cache.Get(key, width)
+  5  -     if !ok {
+  4  +     v, ok := cache.Get(key, height)
+  5  +     if !ok || v.stale {
+  6            return nil

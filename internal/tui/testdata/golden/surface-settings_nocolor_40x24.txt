@@ -1,4 +1,4 @@
-❯ Settings                         1/15
+❯ Settings                         1/17
   / type to filter
 ────────────────────────────────────────
   Display
@@ -6,15 +6,15 @@
   Language       interface language  en
   Thinking tok…  show model reason… off
   Mouse capture  wheel scroll and c… on
+  Vim mode       modal editing in … off
+  Option as Alt  read macOS Option… off
   Ancient mode   classical vertica… off
   Inline mode    transcript in the… off
   Browser driv…  automation engine… rod
 
   Agent
   Model           kimi-k3-fast@inference
-  Reasoning ef…  how hard the mode… off
-  Permission m…  what too… Always allow
-  ↓ 5 more
+  ↓ 7 more
 ────────────────────────────────────────
   Theme  auto
   colour scheme for the transcript and

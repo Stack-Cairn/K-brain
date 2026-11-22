@@ -50,10 +50,10 @@ func TestHelpShowsKeymap(t *testing.T) {
 	s.Press(tuicap.Esc) // close the completion menu
 	s.Press(tuicap.Enter)
 	s.WaitFor("Keyboard shortcuts")
-	s.WaitFor("clear the conversation")
+	s.WaitFor("insert a newline")
 	s.Type("dock")
 	screen := s.WaitFor("Subagent dock")
-	if strings.Contains(screen, "clear the conversation") {
+	if strings.Contains(screen, "insert a newline") {
 		t.Fatalf("the filter should hide unrelated keys:\n%s", screen)
 	}
 	t.Logf("cheatsheet filtered for \"dock\":\n%s", screen)
@@ -63,7 +63,7 @@ func TestHelpShowsKeymap(t *testing.T) {
 	s.Type("/help text")
 	s.Press(tuicap.Esc)
 	s.Press(tuicap.Enter)
-	s.WaitFor("Ctrl+K — clear the conversation")
+	s.WaitFor("Ctrl+J / Shift+Enter — newline")
 	if n := len(s.Requests()); n != 0 {
 		t.Fatalf("/help should not reach the provider, got %d requests", n)
 	}

@@ -55,7 +55,7 @@ func TestToolRowCollapsesOnCompletion(t *testing.T) {
 		t.Fatalf("an expanded read result should show the file, got %q", got)
 	}
 	if !row.toggle() {
-		t.Fatal("ctrl+e should still toggle the collapsed row")
+		t.Fatal("alt+o should still toggle the collapsed row")
 	}
 }
 
