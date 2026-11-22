@@ -1,8 +1,9 @@
-❯ Settings                                                                 1/14
+❯ Settings                                                                 1/15
   / type to filter
 ────────────────────────────────────────────────────────────────────────────────
   Display
 ❯ Theme             colour scheme for the transcript and chrome            auto
+  Density           compact folds tool output and drops blank rows  comfortable
   Language          interface language                                       en
   Thinking tokens   show model reasoning in the transcript                  off
   Mouse capture     wheel scroll and click-to-copy inside kn                 on
@@ -14,7 +15,6 @@
   Reasoning effort  how hard the model thinks before answering              off
   Permission mode   what tools may do without asking               Always allow
   Subagent model    model subagents run on                        current model
-
   ↓ 4 more
 ────────────────────────────────────────────────────────────────────────────────
   Theme  auto

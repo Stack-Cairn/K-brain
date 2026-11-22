@@ -19,7 +19,7 @@ func busyCmd(text string) bool {
 		return false
 	}
 	switch fields[0] {
-	case "/permissions", "/language", "/editor", "/copy", "/diff", "/prompts", "/help", "/theme", "/mouse", "/effort", "/subagents", "/tasks", "/subagent", "/cd", "/pwd", "/report", "/export", "/import", "/fork", "/forks", "/context", "/context-doctor", "/doctor", "/info", "/mcps", "/mcp", "/plugins", "/new", "/new-context", "/new_context", "/plan", "/session-info", "/status", "/title", "/undo", "/rewind", "/view-plan", "/privacy", "/ancient":
+	case "/permissions", "/language", "/editor", "/copy", "/diff", "/prompts", "/help", "/theme", "/density", "/mouse", "/effort", "/subagents", "/tasks", "/subagent", "/cd", "/pwd", "/report", "/export", "/import", "/fork", "/forks", "/context", "/context-doctor", "/doctor", "/info", "/mcps", "/mcp", "/plugins", "/new", "/new-context", "/new_context", "/plan", "/session-info", "/status", "/title", "/undo", "/rewind", "/view-plan", "/privacy", "/ancient":
 		return true
 	case "/usage":
 		return true
@@ -204,6 +204,9 @@ func (m *model) command(text string) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "/theme":
 		m.themeCommand(fields[1:])
+		return m, nil
+	case "/density":
+		m.densityCommand(fields[1:])
 		return m, nil
 	case "/mouse":
 		m.mouseOn = !m.mouseOn

@@ -323,6 +323,12 @@ var chinese = map[string]string{
 
 	"←/→ change · Enter opens its picker": "←/→ 修改 · Enter 打开选择器",
 
+	"Density": "密度",
+
+	"layout density": "布局密度",
+
+	"density: ": "密度：",
+
 	"Enter toggles":  "Enter 切换",
 	"read-only here": "此处只读",
 	"type to filter · searches titles and message text":          "输入以筛选 · 搜索标题和消息内容",
@@ -659,6 +665,12 @@ var traditionalChinese = map[string]string{
 	"←/→ change · Enter next": "←/→ 修改 · Enter 下一項",
 
 	"←/→ change · Enter opens its picker": "←/→ 修改 · Enter 開啟選擇器",
+
+	"Density": "密度",
+
+	"layout density": "版面密度",
+
+	"density: ": "密度：",
 
 	"Enter toggles":  "Enter 切換",
 	"read-only here": "此處唯讀",

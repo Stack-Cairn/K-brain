@@ -1,8 +1,9 @@
-[38;5;79m❯[0m [1mSettings[0m                                                                 [38;5;247m1/14[0m
+[38;5;79m❯[0m [1mSettings[0m                                                                 [38;5;247m1/15[0m
   [38;5;79m/[0m [38;5;247mtype to filter[0m
 [38;5;238m────────────────────────────────────────────────────────────────────────────────[0m
   [38;5;245mDisplay[0m
 [1;38;5;79;48;5;236m❯ Theme             colour scheme for the transcript and chrome            auto[0m
+  Density           [38;5;252mcompact folds tool output and drops blank rows[0m  [38;5;247mcomfortable[0m
   Language          [38;5;252minterface language[0m                                       [38;5;247men[0m
   Thinking tokens   [38;5;252mshow model reasoning in the transcript[0m                  [38;5;247moff[0m
   Mouse capture     [38;5;252mwheel scroll and click-to-copy inside kn[0m                 [38;5;247mon[0m
@@ -14,7 +15,6 @@
   Reasoning effort  [38;5;252mhow hard the model thinks before answering[0m              [38;5;247moff[0m
   Permission mode   [38;5;252mwhat tools may do without asking[0m               [38;5;247mAlways allow[0m
   Subagent model    [38;5;252mmodel subagents run on[0m                        [38;5;247mcurrent model[0m
-
 [38;5;247m  ↓ 4 more[0m
 [38;5;238m────────────────────────────────────────────────────────────────────────────────[0m
   [1mTheme[0m  [38;5;79mauto[0m

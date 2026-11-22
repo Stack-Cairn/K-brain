@@ -1,8 +1,9 @@
-> Settings                         1/14
+> Settings                         1/15
   / type to filter
 ----------------------------------------
   Display
 > Theme          colour scheme ... auto
+  Density        compact... comfortable
   Language       interface language  en
   Thinking t...  show model reas... off
   Mouse capture  wheel scroll and... on
@@ -13,8 +14,7 @@
   Model           kimi-k3-fast@inference
   Reasoning ...  how hard the mo... off
   Permission...  what t... Always allow
-  Subagent m...  model... current model
-  Down 4 more
+  Down 5 more
 ----------------------------------------
   Theme  auto
   colour scheme for the transcript and

@@ -78,6 +78,10 @@ func (m *model) applyCfgSync(msg cfgSyncMsg) {
 			}
 		}
 	}
+	if _, pinned := m.cfgExtra["density"]; !pinned && msg.loaded != nil && m.cfg != nil && msg.loaded.Density != m.cfg.Density {
+		m.cfg.Density = msg.loaded.Density
+		m.applyDensity()
+	}
 	if _, pinned := m.cfgExtra["theme"]; pinned {
 		return
 	}

@@ -374,6 +374,7 @@ func Run(cfg *config.Config, modelName, provName, sysPrompt, resumeID string, ca
 	// settled before anything is appended to the transcript.
 	reloadCustomThemes(true)
 	m.themeHow = m.applyTheme(cfg.Theme)
+	m.applyDensity()
 	m.applyColorEnv()
 	m.appendBanner()
 	for _, e := range customThemeErrors() {

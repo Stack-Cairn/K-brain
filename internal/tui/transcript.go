@@ -509,6 +509,11 @@ func (m *model) refreshVP() {
 			if ix.ent[start] >= 0 && (b.stale || b.width != width || b.ancient != m.ancientMode || b.rows == nil) {
 				break
 			}
+			// A block compact density folded away comes back when it changes
+			// (opened, or its call turned out to fail).
+			if ix.ent[start] < 0 && b.kind != blockBanner && b.stale {
+				break
+			}
 			start++
 		}
 	}
@@ -548,8 +553,15 @@ func (m *model) refreshVP() {
 			ix.ent[i] = -1
 			continue
 		}
+		if compactHidden(m.blocks, i) {
+			// Not drawn: drop its rows so it renders afresh when it shows.
+			b.y0, b.y1 = -1, -1
+			b.rows, b.stale = nil, false
+			ix.ent[i] = -1
+			continue
+		}
 		gap := 0
-		if len(ix.entries) > 0 && !gluedToPrev(m.blocks, i) {
+		if len(ix.entries) > 0 && !gluedToPrev(m.blocks, i) && (!compactDensity || b.kind == blockUser) {
 			gap = 1
 		}
 		rows := b.linesAt(width, m.ancientMode)

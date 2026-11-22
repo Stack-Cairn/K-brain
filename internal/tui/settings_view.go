@@ -70,6 +70,11 @@ func settingDefs() []settingDef {
 			},
 		},
 		{
+			section: "Display", name: "Density", desc: "compact folds tool output and drops blank rows", command: "/density",
+			value: func(m *model) string { return m.densityName() },
+			step:  func(m *model, d int) { m.setDensity(cycle(densityChoices, m.densityName(), d)) },
+		},
+		{
 			section: "Display", name: "Language", desc: "interface language", command: "/language",
 			value: func(m *model) string { return m.language() },
 			step: func(m *model, d int) {

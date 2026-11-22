@@ -17,11 +17,11 @@ func referenceRows(m *model) []string {
 	var b strings.Builder
 	wrote := false
 	for i := range m.blocks {
-		if m.blocks[i].kind == blockBanner && len(m.blocks) > 1 {
+		if m.blocks[i].kind == blockBanner && len(m.blocks) > 1 || compactHidden(m.blocks, i) {
 			continue
 		}
 		if wrote {
-			if gluedToPrev(m.blocks, i) {
+			if gluedToPrev(m.blocks, i) || compactDensity && m.blocks[i].kind != blockUser {
 				b.WriteString("\n")
 			} else {
 				b.WriteString("\n\n")

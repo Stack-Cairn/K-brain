@@ -199,7 +199,7 @@ const contextBarCells = 6
 func (m *model) contextCell() string {
 	pct := contextPercent(m.agent.ContextTokensNow(), m.agent.ContextLimit)
 	label := fmt.Sprintf(m.tr("%d%% ctx"), pct)
-	if m.width < 90 {
+	if m.width < 90 || compactDensity {
 		return label
 	}
 	return contextBar(pct, contextBarCells) + " " + label

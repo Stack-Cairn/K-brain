@@ -116,7 +116,7 @@
 
 subagent 面板和 subagent 视图的按键见下文。
 
-`/theme` 打开主题选择器（移动光标即预览，Enter 保存），`/theme <名称>` 直接切换配色（内置主题、自定义主题见[外观与状态行](13-appearance.md)），`/language zh_cn|zh_Hant|en` 切换界面语言。
+`/theme` 打开主题选择器（移动光标即预览，Enter 保存），`/theme <名称>` 直接切换配色（内置主题、自定义主题见[外观与状态行](13-appearance.md)），`/density compact|comfortable` 切换布局密度，`/language zh_cn|zh_Hant|en` 切换界面语言。
 
 在 tmux 里，`Shift+Enter` 需要 tmux 打开 `extended-keys`。`kn` 不会替你修改这个服务器级选项；没打开时启动会给出提示，`/doctor` 的 Terminal 一节也会显示当前状态。在 `~/.tmux.conf` 里加上 `set -s extended-keys on` 并执行 `tmux source ~/.tmux.conf` 即可；在此之前可以用 `Ctrl+J` 或 `Alt+Enter` 换行。
 
