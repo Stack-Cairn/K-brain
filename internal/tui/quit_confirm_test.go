@@ -1,10 +1,12 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/Stack-Cairn/K-brain/internal/agent"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 )
 
 func idleModel() *model {
@@ -98,5 +100,46 @@ func TestCtrlCBusyInterruptsNotQuits(t *testing.T) {
 		if _, isQuit := cmd().(tea.QuitMsg); isQuit {
 			t.Fatal("busy path must never quit")
 		}
+	}
+}
+
+// The "press again" hints are footer notices, not transcript lines: they go
+// when the window closes or on the next key.
+func TestPressAgainHintsAreTransient(t *testing.T) {
+	m := compactCmdModel()
+	m.queueSel = -1
+	m.Update(mkWinSize(80, 24))
+	blocks := len(m.blocks)
+
+	m.key(tea.KeyMsg{Type: tea.KeyCtrlC})
+	if len(m.blocks) != blocks {
+		t.Fatal("the quit hint must not become a transcript line")
+	}
+	if !strings.Contains(ansi.Strip(m.View()), "Press Ctrl+C again to quit") {
+		t.Fatalf("the quit hint should show in the footer:\n%s", ansi.Strip(m.View()))
+	}
+	m.Update(quitArmMsg{})
+	if m.transientNotice != "" {
+		t.Fatalf("the hint should go with the window: %q", m.transientNotice)
+	}
+
+	m.input.SetValue("draft")
+	m.key(tea.KeyMsg{Type: tea.KeyEsc})
+	if len(m.blocks) != blocks || !strings.Contains(m.transientNotice, "clear the input") {
+		t.Fatalf("esc hint: blocks %d→%d, notice %q", blocks, len(m.blocks), m.transientNotice)
+	}
+	m.key(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	if m.transientNotice != "" {
+		t.Fatalf("the next key should clear the hint: %q", m.transientNotice)
+	}
+
+	m.input.SetValue("")
+	m.key(tea.KeyMsg{Type: tea.KeyEsc})
+	if len(m.blocks) != blocks || !strings.Contains(m.transientNotice, "rewind") {
+		t.Fatalf("rewind hint: blocks %d→%d, notice %q", blocks, len(m.blocks), m.transientNotice)
+	}
+	m.Update(escArmMsg{})
+	if m.transientNotice != "" {
+		t.Fatalf("the rewind hint should go with the window: %q", m.transientNotice)
 	}
 }

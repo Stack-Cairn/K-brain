@@ -21,7 +21,9 @@ func (m *model) overlayOwnsKeys() bool {
 // composer's editing chords, then the global keys below; whatever is left is
 // a composer key (composer_keys.go).
 func (m *model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-
+	// A "press again" notice lasts until its window closes or the next key;
+	// a repeat of the same key shows it again below.
+	m.clearArmNotice()
 	if m.iactive != nil {
 		return m.iactiveKey(msg)
 	}
@@ -126,7 +128,7 @@ func (m *model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		m.quit1 = true
-		m.append(errStyle.Render("  · press Ctrl+C again to quit"))
+		m.showArmNotice(m.tr("Press Ctrl+C again to quit"))
 		return m, tea.Tick(2*time.Second, func(time.Time) tea.Msg { return quitArmMsg{} })
 
 	case tea.KeyPgUp, tea.KeyPgDown:
@@ -174,7 +176,7 @@ func (m *model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				m.escClr = true
-				m.append(errStyle.Render("  · Esc again: clear the input (↑ recalls it)"))
+				m.showArmNotice(m.tr("Esc again to clear the input (↑ recalls it)"))
 				return m, tea.Tick(time.Second, func(time.Time) tea.Msg { return escArmMsg{} })
 			}
 
@@ -187,7 +189,7 @@ func (m *model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.esc1 = true
-			m.append(dimStyle.Render("  · Esc again: rewind the conversation"))
+			m.showArmNotice(m.tr("Esc again to rewind the conversation"))
 			return m, tea.Tick(time.Second, func(time.Time) tea.Msg { return escArmMsg{} })
 		}
 		m.esc1 = false

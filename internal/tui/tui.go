@@ -203,7 +203,10 @@ type model struct {
 
 	// transientNotice briefly replaces the footer's status cell, e.g. after a
 	// copy; noticeGeneration lets a newer notice outlive an older one's timer.
-	transientNotice  string
+	transientNotice string
+	// armNotice says transientNotice is a "press again" hint, which the
+	// double-press window or the next key clears (showArmNotice).
+	armNotice        bool
 	noticeGeneration uint64
 
 	inputBodyOff int
@@ -1358,11 +1361,13 @@ func (m *model) Update(msg tea.Msg) (_ tea.Model, statusCmd tea.Cmd) {
 
 	case quitArmMsg:
 		m.quit1 = false
+		m.clearArmNotice()
 		return m, nil
 
 	case escArmMsg:
 		m.esc1 = false
 		m.escClr = false
+		m.clearArmNotice()
 		return m, nil
 
 	case copyDoneMsg:

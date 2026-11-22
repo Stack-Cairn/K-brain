@@ -48,6 +48,11 @@ var composerChinese = map[string]string{
 	"Alt+E edit last":                "Alt+E 编辑最后一条",
 	"Enter saves · Esc puts it back": "Enter 保存 · Esc 放回原处",
 	"clear the composer to pick a queued message · Ctrl+S stashes the draft · Alt+E edits the last one": "先清空输入框再选排队消息 · Ctrl+S 暂存草稿 · Alt+E 编辑最后一条",
+
+	// Double-press notices in the footer.
+	"Press Ctrl+C again to quit":                  "再按 Ctrl+C 退出",
+	"Esc again to clear the input (↑ recalls it)": "再按 Esc 清空输入（↑ 可找回）",
+	"Esc again to rewind the conversation":        "再按 Esc 回退对话",
 }
 
 var composerTraditionalChinese = map[string]string{
@@ -96,6 +101,11 @@ var composerTraditionalChinese = map[string]string{
 	"Alt+E edit last":                "Alt+E 編輯最後一則",
 	"Enter saves · Esc puts it back": "Enter 儲存 · Esc 放回原處",
 	"clear the composer to pick a queued message · Ctrl+S stashes the draft · Alt+E edits the last one": "先清空輸入框再選佇列訊息 · Ctrl+S 暫存草稿 · Alt+E 編輯最後一則",
+
+	// Double-press notices in the footer.
+	"Press Ctrl+C again to quit":                  "再按 Ctrl+C 退出",
+	"Esc again to clear the input (↑ recalls it)": "再按 Esc 清空輸入（↑ 可找回）",
+	"Esc again to rewind the conversation":        "再按 Esc 回退對話",
 }
 
 func init() {
