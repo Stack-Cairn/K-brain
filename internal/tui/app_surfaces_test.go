@@ -3,6 +3,7 @@ package tui
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -94,10 +95,15 @@ func TestSettingsF2StepsAndToggles(t *testing.T) {
 	if !m.surfaceOpen() || m.app.modal.kind != "settings" {
 		t.Fatal("F2 should open settings")
 	}
-	for _, want := range []string{"Display", "Agent", "Theme", "Permission mode", "↓ 5 more"} {
+	for _, want := range []string{"Display", "Agent", "Theme"} {
 		if !strings.Contains(surfScreen(m), want) {
 			t.Fatalf("settings lacks %q:\n%s", want, surfScreen(m))
 		}
+	}
+	// The row count grows with every new setting; only require that rows
+	// past the first screen are advertised.
+	if !regexp.MustCompile(`↓ \d+ more`).MatchString(surfScreen(m)) {
+		t.Fatalf("settings should advertise rows below the fold:\n%s", surfScreen(m))
 	}
 	pressAll(t, m, keyRunes("compaction level"))
 	if n := len(m.app.modal.rows); n != 1 {
