@@ -150,7 +150,20 @@ func (m *model) escInterrupts() bool {
 	if m.queueFocused() || m.editingQueued() != nil || m.menu != nil || m.namePrompt != nil {
 		return false
 	}
+	if m.vimInsert() {
+		// The first Esc goes to normal mode (vim.go).
+		return false
+	}
 	return m.tx == nil || (m.tx.focus == nil && m.tx.viewer == nil)
+}
+
+// escInterruptsInNormal is escInterrupts as it would be in vim normal mode.
+func (m *model) escInterruptsInNormal() bool {
+	v := &m.composer().vim
+	was := v.normal
+	v.normal = true
+	defer func() { v.normal = was }()
+	return m.escInterrupts()
 }
 
 // busyRights are the right-cell variants from fullest to tightest.
@@ -163,6 +176,8 @@ func (m *model) busyRights() []string {
 	case m.interrupt1:
 		// The first Ctrl+C armed the interrupt: the second is what sends it.
 		hint, short = m.tr("Ctrl+C again to interrupt"), "Ctrl+C"
+	case m.vimInsert() && m.escInterruptsInNormal():
+		hint, short = m.tr("Esc Esc to interrupt"), "Esc Esc"
 	case !m.escInterrupts():
 		// Esc would deal with the draft, the queue or the selection first.
 		hint, short = m.tr("Ctrl+C Ctrl+C to interrupt"), "Ctrl+C Ctrl+C"

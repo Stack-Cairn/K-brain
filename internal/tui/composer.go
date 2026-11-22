@@ -51,6 +51,9 @@ type composerState struct {
 	clickVal           string
 
 	mru *slashMRU
+
+	// vim is the vim mode state (vim.go).
+	vim vimState
 }
 
 // composer returns the composer state, creating it on first use.

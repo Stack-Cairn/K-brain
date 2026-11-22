@@ -54,6 +54,7 @@ var legacyHelpKeys = []string{
 	"Alt+↑ — focus the transcript: j/k select a block, [/] previous / next prompt, Ctrl+U/Ctrl+D half a page, h/l fold / open, e toggle, E fold all, y copy, r raw markdown, v view, / find, Esc back",
 	"in the block viewer: j/k scroll, Space/PgDn page, g/G top / end, / find, n/N next / previous, Esc back",
 	"F1 / ? (empty composer) — keyboard shortcuts and commands",
+	"/vim — vim mode: Esc for normal mode · h j k l w b e 0 ^ $ move · x dd dw D delete · cw cc C change · yy p yank / put · u undo · i a I A o O insert",
 }
 
 func TestKeymapHelpUnchanged(t *testing.T) {
@@ -73,7 +74,7 @@ func TestKeymapHelpUnchanged(t *testing.T) {
 }
 
 func TestKeymapRowsWellFormed(t *testing.T) {
-	known := []keyContext{keyGlobal, keyComposer, keyBusy, keyIdle, keyQueue, keyMenu, keyDock, keyTaskView, keyTranscript, keyViewer}
+	known := []keyContext{keyGlobal, keyComposer, keyBusy, keyIdle, keyQueue, keyMenu, keyDock, keyTaskView, keyTranscript, keyViewer, keyVim}
 	seen := map[string]bool{}
 	for _, b := range keymap {
 		if b.key == "" || b.action == "" {
@@ -95,6 +96,7 @@ var keyDispatchers = map[keyContext][]string{
 	keyTaskView:   {"taskViewKey"},
 	keyTranscript: {"transcriptFocusKey", "findTypingKey"},
 	keyViewer:     {"blockViewerKey"},
+	keyVim:        {"vimKey"},
 }
 
 func init() {

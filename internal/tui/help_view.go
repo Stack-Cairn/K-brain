@@ -27,6 +27,7 @@ var helpContexts = []struct {
 	{keyTaskView, "Subagent view"},
 	{keyTranscript, "Transcript focus (Alt+↑)"},
 	{keyViewer, "Block viewer"},
+	{keyVim, "Vim normal mode (/vim)"},
 }
 
 // helpActionDesc describes keymap actions whose rows carry no hint, or whose
@@ -114,6 +115,18 @@ var helpActionDesc = map[string]string{
 	"turnNext":        "next prompt",
 	"copyBlock":       "copy the block (a reply's markdown, or just the code)",
 	"rawView":         "show a reply's raw markdown",
+	"vimNormal":       "insert mode → normal mode; in normal mode the usual Esc",
+	"vimMove":         "move: left, down, up, right (j/k past the ends walk history)",
+	"vimWord":         "next word, back a word, end of word",
+	"vimLineEdge":     "line start, first non-blank, line end",
+	"vimDelete":       "delete: x a character, dd the line, dw a word, D to line end",
+	"vimChange":       "change: cw the word, cc the line, C to line end",
+	"vimYank":         "yy yanks the line",
+	"vimPut":          "put the yank after the cursor (a line below it)",
+	"vimUndo":         "undo",
+	"vimInsert":       "insert: before / after the cursor, at line start / end",
+	"vimOpenLine":     "open a line below / above and insert",
+	"vimSend":         "send, back in insert mode",
 	"findEdit":        "edit the search query",
 	"blur":            "back to the composer",
 	"viewerClose":     "back to the transcript",

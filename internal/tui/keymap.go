@@ -26,6 +26,8 @@ const (
 	keyTranscript keyContext = "transcript"
 	// keyViewer is while the block viewer is open.
 	keyViewer keyContext = "viewer"
+	// keyVim is while vim mode is on and the composer is in normal mode.
+	keyVim keyContext = "vim"
 )
 
 // keyBinding is one row of the keymap.
@@ -193,6 +195,33 @@ var keymap = []keyBinding{
 	{"backspace", keyViewer, "viewerFind", ""},
 	{"f1", keyGlobal, "help", "F1 / ? (empty composer) — keyboard shortcuts and commands"},
 	{"?", keyComposer, "help", ""},
+	{"esc", keyVim, "vimNormal", "/vim — vim mode: Esc for normal mode · h j k l w b e 0 ^ $ move · x dd dw D delete · cw cc C change · yy p yank / put · u undo · i a I A o O insert"},
+	{"h", keyVim, "vimMove", ""},
+	{"j", keyVim, "vimMove", ""},
+	{"k", keyVim, "vimMove", ""},
+	{"l", keyVim, "vimMove", ""},
+	{"space", keyVim, "vimMove", ""},
+	{"w", keyVim, "vimWord", ""},
+	{"b", keyVim, "vimWord", ""},
+	{"e", keyVim, "vimWord", ""},
+	{"0", keyVim, "vimLineEdge", ""},
+	{"^", keyVim, "vimLineEdge", ""},
+	{"$", keyVim, "vimLineEdge", ""},
+	{"x", keyVim, "vimDelete", ""},
+	{"d", keyVim, "vimDelete", ""},
+	{"D", keyVim, "vimDelete", ""},
+	{"c", keyVim, "vimChange", ""},
+	{"C", keyVim, "vimChange", ""},
+	{"y", keyVim, "vimYank", ""},
+	{"p", keyVim, "vimPut", ""},
+	{"u", keyVim, "vimUndo", ""},
+	{"i", keyVim, "vimInsert", ""},
+	{"a", keyVim, "vimInsert", ""},
+	{"I", keyVim, "vimInsert", ""},
+	{"A", keyVim, "vimInsert", ""},
+	{"o", keyVim, "vimOpenLine", ""},
+	{"O", keyVim, "vimOpenLine", ""},
+	{"enter", keyVim, "vimSend", ""},
 }
 
 // keymapHelp is /help's key section: every hint in keymap order, translated

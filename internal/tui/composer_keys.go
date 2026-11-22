@@ -242,6 +242,9 @@ func (m *model) composerPreKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 		return r, cmd, true
 	}
 	c.observe(m, msg)
+	if cmd, ok := m.vimKey(msg); ok {
+		return m, cmd, true
+	}
 
 	k := msg.String()
 	if m.input.Value() != "" && m.namePrompt == nil {

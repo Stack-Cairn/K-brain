@@ -89,6 +89,11 @@ func settingDefs() []settingDef {
 			},
 		},
 		{
+			section: "Display", name: "Vim mode", desc: "modal editing in the composer: Esc for normal mode, i to insert", command: "/vim",
+			value: func(m *model) string { return onOff(m.vimEnabled()) },
+			step:  func(m *model, _ int) { m.setVim(!m.vimEnabled()) },
+		},
+		{
 			section: "Display", name: "Ancient mode", desc: "classical vertical layout for replies", command: "/ancient",
 			value: func(m *model) string { return onOff(m.ancientMode) },
 			step:  func(m *model, _ int) { m.ancientCommand([]string{"toggle"}) },

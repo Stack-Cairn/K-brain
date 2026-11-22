@@ -64,6 +64,9 @@ func (m *model) infoRow() string {
 
 func (m *model) infoRowAt() (string, int) {
 	left := m.modeChip()
+	if tag := m.vimTag(); tag != "" {
+		left += "  " + tag
+	}
 	if st := m.statusLeft(); st != "" {
 		left += "  " + st
 	}
