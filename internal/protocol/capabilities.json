@@ -274,6 +274,69 @@
       "firstRelease": "v0.107.42",
       "evidenceCommit": "pending",
       "missing": "options.html_previews is ignored: the model is not told about html preview blocks, no preview.created events are sent and /v1/sessions/{id}/previews is not served; render html blocks as code."
+    },
+    {
+      "name": "mcp_apps_structured_content",
+      "type": "integer",
+      "compare": "eq",
+      "value": 1,
+      "firstRelease": "v0.107.43",
+      "evidenceCommit": "pending",
+      "missing": "tool.result ui_resource has no tool_name, result or result_url, history tool_calls[] carry no ui_resource and POST /v1/mcp/tools/call returns no result; send the view only the text output and do not re-render MCP App views from history."
+    },
+    {
+      "name": "mcp_tool_visibility",
+      "type": "integer",
+      "compare": "eq",
+      "value": 1,
+      "firstRelease": "v0.107.43",
+      "evidenceCommit": "pending",
+      "missing": "_meta.ui.visibility is ignored: app-only tools are offered to the model, GET /v1/mcp/tools has no audience filter or visibility field and POST /v1/mcp/tools/call ignores caller; filter app-only tools in the client and refuse tools a view may not call."
+    },
+    {
+      "name": "mcp_tool_call_approval",
+      "type": "integer",
+      "compare": "eq",
+      "value": 1,
+      "firstRelease": "v0.107.43",
+      "evidenceCommit": "pending",
+      "missing": "POST /v1/mcp/tools/call runs tools under an \"ask\" policy without approval and returns no status; ask the user before every such call."
+    },
+    {
+      "name": "mcp_tool_server_ids",
+      "type": "integer",
+      "compare": "eq",
+      "value": 1,
+      "firstRelease": "v0.107.43",
+      "evidenceCommit": "pending",
+      "missing": "GET /v1/mcp/tools serverId is the name key (it differs from the configured id for ids that are not simple names), and serverKey, serverToolName and a display-name serverLabel are absent; derive the configured id from the client's own settings."
+    },
+    {
+      "name": "plugin_tool_names",
+      "type": "integer",
+      "compare": "eq",
+      "value": 1,
+      "firstRelease": "v0.107.43",
+      "evidenceCommit": "pending",
+      "missing": "Plugin tools are named plugin_<id>_<tool> even when the id contains \"_\" (such tools fail to run), contributes.toolDetails is absent and POST /v1/plugins/{id}/tools/call takes only the plugin.json tool name; strip the plugin_<id>_ prefix to call a tool."
+    },
+    {
+      "name": "plugin_ui_errors",
+      "type": "integer",
+      "compare": "eq",
+      "value": 1,
+      "firstRelease": "v0.107.43",
+      "evidenceCommit": "pending",
+      "missing": "contributes.ui[] has no errorCode or error and a failed plugin asset is a plain 404 with no X-K-Brain-Asset-Error header or host.panelLoadError notification; detect broken panels with a load timeout."
+    },
+    {
+      "name": "plugin_manifest_unknown_fields",
+      "type": "integer",
+      "compare": "eq",
+      "value": 1,
+      "firstRelease": "v0.107.43",
+      "evidenceCommit": "pending",
+      "missing": "A plugin.json with a field this backend does not know fails to load and is reported in errors; avoid newer manifest fields."
     }
   ]
 }

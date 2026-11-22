@@ -65,9 +65,9 @@ VITE_KBRAIN_TOKEN=<backend-token>
 | GET | `/v1/usage/stats` | 所有工作区会话的跨会话用量统计（按天、按模型，含连续天数与费用）；`days`、`tz` 与口径见下文，`capabilities.usage_stats` 表示支持 |
 | GET / PUT | `/v1/mcp` | 读取脱敏 MCP 配置 / 原子持久化并 reload stdio/http servers |
 | POST | `/v1/mcp/reload` | 从 K-brain-owned MCP 配置重建 live manager |
-| GET | `/v1/mcp/tools` | 按 workspace 与 enabled server IDs 返回 discovered schemas |
+| GET | `/v1/mcp/tools` | 按 workspace 与 enabled server IDs 返回 discovered schemas；`audience=model|app` 按 `_meta.ui.visibility` 过滤，见下文“MCP 应用界面” |
 | POST | `/v1/mcp/search` | ToolSearch 语义的动态工具目录检索 |
-| POST | `/v1/mcp/tools/call` | 通过 Go manager 执行 MCP tool call |
+| POST | `/v1/mcp/tools/call` | 通过 Go manager 执行 MCP tool call；`ask` 策略先返回 `approval_required`，见下文“MCP 配置与运行选择” |
 | POST | `/v1/text/generate` | 无状态辅助文本生成；canonical `messages` 仅允许文本与 system/developer/user/assistant，后端不转发 tools |
 | GET / POST | `/v1/sessions` | 列出 / 创建会话；列表的 `archived=exclude|include|only` 见下文，`capabilities.session_archive` 表示支持 |
 | POST | `/v1/sessions/exists` | 传 `{"ids":[...]}`（最多 5000 个），返回 `{"existing":[...]}`；只看文件是否存在、不读会话内容，`capabilities.session_exists` 表示支持 |
@@ -106,6 +106,7 @@ VITE_KBRAIN_TOKEN=<backend-token>
 | POST | `/v1/plugins/{id}/tools/call` | 为插件界面执行该插件自己的工具；见下文“插件界面”，`capabilities.plugin_ui` 表示支持 |
 | GET / HEAD | `/v1/plugin-assets/{grant}/{plugin}/{path}` | 只读提供插件界面文件，供沙箱 iframe 加载；**不需要令牌**（能力 URL），见下文“插件界面” |
 | GET | `/v1/sessions/{id}/mcp-ui?server=&uri=` | 读取 MCP 工具声明的界面资源（`ui://`）HTML，带沙箱响应头；见下文“MCP 应用界面”，`capabilities.mcp_apps` 表示支持 |
+| GET / HEAD | `/v1/sessions/{id}/mcp-ui/results/{ref}` | 读取 MCP 应用界面对应工具调用保存的原始 `CallToolResult`（`ui_resource.result_url`）；见下文“MCP 应用界面”，`capabilities.mcp_apps_structured_content` 表示支持 |
 | GET | `/v1/sessions/{id}/previews` | 列出会话的 HTML 预览；见下文“HTML 预览”，`capabilities.html_previews` 表示支持 |
 | GET / HEAD | `/v1/sessions/{id}/previews/{previewId}` | 返回一个 HTML 预览，带沙箱响应头 |
 
@@ -176,7 +177,7 @@ CLI 可用 `-config FILE -session-dir DIR` 指定配置与存储目录；省略�
 子代理运行期间，后端把它自己的转录以 `trajectory.child.*` 事件写进同一事件日志，`run_id` 为父运行、`payload.task_id` 为子代理 id：
 
 - `trajectory.child.text` / `trajectory.child.thinking`：`{task_id,text}`，文本增量按约 100ms 或 8 KiB 合并后发出，类型切换或工具调用前先发出已积累的文本，因此每个子代理每秒最多约 10 条；
-- `trajectory.child.tool_start`：`{task_id,id,name,arguments}`；`trajectory.child.tool_end`：`{task_id,id,name,output,failed,cancelled}`，可选 `exit_code`/`timed_out`/`duration_ms`；
+- `trajectory.child.tool_start`：`{task_id,id,name,arguments}`；`trajectory.child.tool_end`：`{task_id,id,name,output,failed,cancelled}`，可选 `exit_code`/`timed_out`/`duration_ms`，MCP 应用界面工具还带 `ui_resource`（见“MCP 应用界面”）；
 - `trajectory.child.steer`：`{task_id,text}`，运行中插入给子代理的消息。
 
 这些事件不改变会话历史，旧客户端按未知事件忽略。父运行结束后仍在运行的后台子代理不会出现在主 SSE 中（主流在没有活动运行时关闭），客户端用 `/subagents/{task}/events` 跟随：它先重放 `after_seq` 之后属于该子代理的事件（`subagent.*` 与 `trajectory.child.*`），再持续推送，子代理结束并发出终态事件后关闭。
@@ -627,16 +628,22 @@ GET `/v1/settings`（以及 PUT 的响应）总是带 `webSearch`：
       "source": "workspace",
       "enabled": true,
       "path": "/Users/me/project/.liveagent/plugins/build",
-      "contributes": {"tools": ["plugin_build_run"], "hooks": ["SessionStart"], "prompt": true}
+      "contributes": {
+        "tools": ["plugin_build_run"],
+        "toolDetails": [{"name": "run", "modelName": "plugin_build_run", "description": "Run the build"}],
+        "hooks": ["SessionStart"], "prompt": true
+      }
     }
   ],
-  "errors": ["plugin.json: json: unknown field \"foo\""]
+  "errors": ["/Users/me/project/.liveagent/plugins/broken: invalid plugin name \"bad name\""]
 }
 ```
 
 - `id` 等于 `name`，用于路由。`source` 是 `user` 或 `workspace`。`trusted` 是 `workdir` 当前是否受信任（未受信任时列表里没有项目插件）；`workdir` 是规范化后的路径。`errors` 是加载失败的插件目录（清单无效等），这些插件不出现在 `plugins` 里。
 - `revision` 是进程内的变化序号：本后端的启用、停用、安装、删除、重新扫描都会推进它并唤醒等待中的 GET；其他进程或手工做的改动在下一次 GET 发现列表变化时推进。客户端可循环 `GET /v1/plugins?since=<revision>&wait=30` 保持列表最新。后端重启后序号从 0 开始，客户端看到更小的 `revision` 时应直接采用新列表。
-- 清单目前只有工具、钩子、提示词三种贡献，没有命令、技能或 MCP server。
+- `contributes.tools` 是模型看到的工具名；`contributes.toolDetails`（`capabilities.plugin_tool_names`）按同一顺序列出 `{name,modelName,description}`，`name` 是清单里的工具名，`modelName` 是模型看到的名字。
+- 模型看到的工具名是 `plugin_<key>_<工具>`。插件名不含 `_` 时 `key` 就是插件名（与以前相同）；含 `_` 时每个 `_` 换成 `-` 并追加 `-<8 位十六进制 FNV-1a 哈希>`，例如插件 `my_tools` 的 `run` 是 `plugin_my-tools-xxxxxxxx_run`，这样名字总能拆回唯一的插件和工具。客户端不要自己拼名字，取 `toolDetails[].modelName`；权限规则、`options.tools` 等需要工具名的地方都用它。旧后端上名字含 `_` 的插件工具无法运行。
+- 清单目前只有工具、钩子、提示词与界面四种贡献，没有命令、技能或 MCP server。清单里本后端不认识的字段被忽略（`capabilities.plugin_manifest_unknown_fields`），较新的插件可以在旧一些的后端上加载；旧后端会把这样的插件报在 `errors` 里。
 - `id` 不存在返回 404；`workdir` 或 `path` 不是绝对路径、请求体有未知字段返回 400；其他方法与路径返回 404；嵌入方没有配置插件（`Options.Plugins` 为空）时所有插件路由返回 501。旧后端没有这些路由（404），客户端应隐藏插件管理并提示用户在终端用 `kn plugin`。
 
 ### 插件界面（`capabilities.plugin_ui: 1`）
@@ -660,7 +667,7 @@ GET `/v1/settings`（以及 PUT 的响应）总是带 `webSearch`：
 
 - `root`：插件目录下存放界面文件的子目录，默认 `ui`；只提供这个目录里的文件。
 - `panels`：最多 8 个。`id` 与插件名规则相同且不重复；`title` 1–80 个字符；`entry` 是 `root` 下的 `.html`/`.htm` 相对路径；`placement` 是 `sidePane`（侧边栏）或 `settings`（设置页）。路径段不能为空、`.`、`..` 或以 `.` 开头，不能含 `\`、`:`。
-- 不符合规则的清单整体加载失败，出现在列表的 `errors` 里。旧版 kn 不认识 `ui` 字段，同样加载失败。
+- 不符合规则的清单整体加载失败，出现在列表的 `errors` 里。更旧的 kn 拒绝不认识的字段，所以不认识 `ui` 字段时同样加载失败。
 
 `GET /v1/plugins` 的每个插件多一项 `contributes.ui`：
 
@@ -676,9 +683,21 @@ GET `/v1/settings`（以及 PUT 的响应）总是带 `webSearch`：
 
 `url` 只在插件启用时出现，是后端上的路径，客户端加上后端地址作为 iframe 的 `src`。页面里的相对路径（`app.js`、`assets/style.css`）解析到同一前缀下。
 
+插件启用、但面板入口文件打不开时（`capabilities.plugin_ui_errors`），该面板多出 `errorCode` 与 `error`（给人看的说明），`url` 照常给出：
+
+| `errorCode` | 含义 |
+|---|---|
+| `ui_root_missing` | 插件目录下没有 `root` 目录（或它不是目录） |
+| `entry_missing` | `root` 下没有 `entry` 文件 |
+| `entry_not_file` | `entry` 不是普通文件（目录等） |
+| `entry_too_large` | `entry` 超过 10 MiB |
+
+客户端应把带 `errorCode` 的面板显示为错误状态（显示 `error`），而不是加载一个空白 iframe。这一检查只在列出插件时做一次；文件之后才被删除时由下面的资源错误发现。
+
 `GET|HEAD /v1/plugin-assets/{grant}/{plugin}/{path}`：
 
 - 不检查 `Authorization`（iframe 发不出请求头）；`grant` 是后端进程内随机密钥对项目、插件名与插件目录的 HMAC，只由 `GET /v1/plugins` 发放。每次请求都重新确认：插件仍启用、目录没变、项目插件所在目录仍受信任；任何一项不满足、路径不合规、文件不存在或不是普通文件都返回 404。后端重启后旧 URL 全部失效，重新取列表即可。
+- 失败的请求（`capabilities.plugin_ui_errors`）带响应头 `X-K-Brain-Asset-Error`：`asset_not_found`（插件有效，但 UI 根目录下没有这个文件，或它不是普通文件）、`plugin_unavailable`（插件停用、目录变了、项目不再受信任或链接已失效，应重新取列表）、`asset_too_large`（413）。状态码不变。请求的是 `.html`/`.htm` 时，响应体是一个沙箱小页面（`Content-Security-Policy: sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'`），显示说明并向父窗口发送通知 `{"jsonrpc":"2.0","method":"host.panelLoadError","params":{"status":404,"code":"asset_not_found","message":"..."}}`，宿主据此把面板显示为错误状态（见 [sandboxed-ui.md](sandboxed-ui.md)）；其他文件的响应体是纯文本。路径格式本身不合规（编码的 `/`、grant 长度不对等）的 404 不带这个头。
 - 文件从 UI 根目录用 `os.Root` 打开，符号链接不能离开 UI 根目录；编码的 `/`（`%2F`）被拒绝；单个文件超过 10 MiB 返回 413；其他方法返回 405。
 - `Content-Type` 按扩展名取自白名单（html、js/mjs、css、json、map、txt、svg、png、jpg、gif、webp、avif、ico、woff/woff2、ttf/otf、mp3、wav、mp4、webm、wasm），其他一律 `application/octet-stream`。
 - 每个响应都带：
@@ -693,7 +712,7 @@ Cross-Origin-Resource-Policy: cross-origin
 
   `<base>` 是 `http://<请求的 Host>/v1/plugin-assets/{grant}/{plugin}/`，页面只能加载本插件的文件。从不设置 Cookie。
 
-`POST /v1/plugins/{id}/tools/call`，请求体 `{"name":"<清单里的工具名>","arguments":{...},"workdir"?:"<绝对路径>"}`，需要令牌：执行插件 `{id}` 自己的工具，返回 `{"version","name":"plugin_<id>_<工具>","output","failed","cancelled"}`。插件停用、项目未受信任或工具不存在返回 404，缺少 `name` 返回 400。这条调用不在运行中，不会弹出审批：客户端（面板的 `host.callTool`）必须先征得用户同意。
+`POST /v1/plugins/{id}/tools/call`，请求体 `{"name":"<工具名>","arguments":{...},"workdir"?:"<绝对路径>"}`，需要令牌：执行插件 `{id}` 自己的工具，返回 `{"version","name":"<模型看到的工具名>","toolName":"<清单里的工具名>","output","failed","cancelled"}`。`name` 先按清单里的工具名查找，找不到再按模型看到的名字（`toolDetails[].modelName`，必须属于插件 `{id}`）查找；旧后端只接受清单里的名字，也不返回 `toolName`。插件停用、项目未受信任或工具不存在返回 404，缺少 `name` 返回 400。这条调用不在运行中，不会弹出审批：客户端（面板的 `host.callTool`）必须先征得用户同意。
 
 面板与宿主之间的 postMessage 协议（JSON-RPC 2.0：`host.initialize`、`host.getTheme`、`host.notify`、`host.openFile`、`host.callTool` 与 `panel.*` 通知）和 iframe 的沙箱要求见 [sandboxed-ui.md](sandboxed-ui.md)。
 
@@ -706,18 +725,26 @@ MCP 工具可以在 `tools/list` 的 `_meta` 里声明一个界面资源：`_met
 ```json
 {"tool_result": {
   "id": "call_1", "name": "mcp__apps__board", "output": "board ready",
-  "ui_resource": {"server_id": "apps", "uri": "ui://board/view.html",
-                  "url": "/v1/sessions/s_123/mcp-ui?server=apps&uri=ui%3A%2F%2Fboard%2Fview.html"}
+  "ui_resource": {"server_id": "apps", "uri": "ui://board/view.html", "tool_name": "board",
+                  "url": "/v1/sessions/s_123/mcp-ui?server=apps&uri=ui%3A%2F%2Fboard%2Fview.html",
+                  "result": {"content": [{"type": "text", "text": "board ready"}],
+                             "structuredContent": {"series": [1, 2, 3]}, "_meta": {"...": "..."}},
+                  "result_url": "/v1/sessions/s_123/mcp-ui/results/4f0c9a1e7b2d3c5a6e8f9a0b1c2d3e4f"}
 }}
 ```
 
-  失败、取消的调用与没有声明界面的工具不带这一项。子代理内部的工具结果不带。
+  失败、取消的调用与没有声明界面的工具不带这一项。
+- 原始结果（`capabilities.mcp_apps_structured_content`）：`server_id` 是配置里的 server id，`tool_name` 是 server 自己的工具名（不带 `mcp__` 前缀）。`result` 是 server 返回的 `CallToolResult` 原样 JSON（`content`、`structuredContent`、`_meta`、`isError`），客户端把它作为 MCP Apps 的 `ui/notifications/tool-result` 交给界面，而不是只给 `output` 文本。原始结果不超过 1 MiB 时保存在会话数据目录下，`result_url` 指向它；不超过 256 KiB 时还内联在 `result` 里。超过 1 MiB 的结果既不内联也不保存（没有 `result` 和 `result_url`），客户端只能退回 `output`。原始结果只给界面，模型看到的仍是 `output`。
+- 历史：`/v1/sessions/{id}/history`、`GET /v1/sessions/{id}`（及其快照）里 assistant 消息的 `tool_calls[]` 对这类调用带同样的 `ui_resource`（`server_id`、`uri`、`tool_name`、`url`，结果保存过时有 `result_url`），但不带内联的 `result`：客户端重新显示界面时从 `result_url` 取。公开分享的会话去掉 `ui_resource`。
+- 子代理：子代理调用这类工具时，`trajectory.child.tool_end` 带同样的 `ui_resource`（含内联 `result`），`/subagents/{task}` 的转录在对应的工具调用上带 `ui_resource`（不带内联 `result`）。
+- `GET|HEAD /v1/sessions/{id}/mcp-ui/results/{ref}`（需要令牌）：`ref` 只取自 `result_url`（32 位小写十六进制，按工具调用 id 生成）。返回 `application/json`、`Cache-Control: no-store`：`{"version":"kbrain.agent.v1","tool_call_id","server_id","tool_name","uri","result":<CallToolResult>}`。会话不存在、`ref` 格式不对或没有保存过：404；其他方法：405。删除会话时一起删除。
 - `GET /v1/mcp/tools` 与 `POST /v1/mcp/search` 的条目在工具声明界面时多一项 `uiResourceUri`。
+- 可见性（`capabilities.mcp_tool_visibility`）：工具的 `_meta.ui.visibility` 是 `["model"]`、`["app"]` 或两者。没有这一项、空数组或只有不认识的值时视为两者都可见。只含 `app` 的工具不出现在模型的工具列表里（也不能被模型或 ToolSearch 调用），只能由界面经 `POST /v1/mcp/tools/call` 带 `"caller":"app"` 调用；只含 `model` 的工具不能由界面调用。`GET /v1/mcp/tools?audience=model|app` 按调用方过滤（默认 `model`，其他值 400），每项带 `visibility`（例如 `["model","app"]`）；`POST /v1/mcp/search` 只搜模型可见的工具。
 - `GET /v1/sessions/{id}/mcp-ui?server=<server id>&uri=<ui:// URI>`（需要令牌）：按会话工作目录，用 MCP `resources/read` 读取该资源并返回 HTML。只读取**该 server 某个未被 deny 的工具声明过的** `ui://` URI，不能用来读任意资源。取 `mimeType` 以 `text/html` 开头（含 `text/html;profile=mcp-app`）的内容，`text` 或 `blob` 均可，最大 4 MiB，读取超时 30 秒。
   - 缺少 `server` 或 `uri` 不是 `ui://`：400；会话不存在、server 未启用或不允许、URI 未被声明：404；server 读取失败、没有 HTML 内容或超过大小：502；没有 MCP：501。
   - 响应头 `Content-Security-Policy: sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline' <资源域>; style-src 'unsafe-inline' <资源域>; img-src data: blob: <资源域>; font-src data: <资源域>; media-src data: blob: <资源域>; connect-src <连接域或 'none'>; frame-src 'none'; worker-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'`，以及 `nosniff`、`no-store`、`no-referrer`。资源域与连接域取自资源内容的 `_meta.ui.csp.resourceDomains` / `connectDomains`，只保留纯 `https://host[:port]` 源（最多 16 个），其余丢弃。
   - 同一策略（不含 `sandbox`）还以 `<meta http-equiv="Content-Security-Policy">` 插到文档最前面（`<head>` 之后，否则 doctype 之后，否则开头），客户端用 `fetch` 带令牌取回后放进 `<iframe sandbox="allow-scripts" srcdoc=...>` 时限制同样生效。
-- 已知缺口：工具结果只转发拼好的文本（`output`），不转发 `structuredContent` 与原始 `CallToolResult`；`_meta.ui.visibility`（只给界面、不给模型的工具）没有处理，这类工具仍出现在模型的工具列表里；不处理 `_meta.ui.domain`、`prefersBorder` 等显示提示。界面与宿主之间的消息协议见 [sandboxed-ui.md](sandboxed-ui.md)。
+- 已知缺口：不处理 `_meta.ui.domain`、`prefersBorder` 等显示提示；超过 1 MiB 的原始结果不转发。界面与宿主之间的消息协议见 [sandboxed-ui.md](sandboxed-ui.md)。
 
 ### HTML 预览（`capabilities.html_previews: 1`）
 
@@ -764,14 +791,38 @@ MCP 工具可以在 `tools/list` 的 `_meta` 里声明一个界面资源：`_met
 
 ### MCP 配置与运行选择
 
-`PUT /v1/mcp` 的请求体与 GET 相同：`{servers:[{id,enabled,transport:"stdio"|"http",command,args,env,cwd,url,headers,auth,timeoutMs,workspaceRoots,policy}],selected}`。
+`PUT /v1/mcp` 的请求体与 GET 相同：`{servers:[{id,name,enabled,transport:"stdio"|"http",command,args,env,cwd,url,headers,auth,timeoutMs,workspaceRoots,policy}],selected}`。`name` 是可选的显示名，只用于 `GET /v1/mcp/tools` 的 `serverLabel`，不影响工具名与策略。
 
 - 整体替换：请求里没有的 server 被删除，省略的 `selected`、`policy`、`workspaceRoots` 被清空。唯一的例外是凭据：已存在的 id 省略 `env`/`headers`（或给 `null`）时沿用旧值，给 `{}` 才清空；新旧都是 oauth 且新的 `credentialRef` 为空时沿用旧的。GET 对这些值脱敏，所以 GET 改完再 PUT 不会丢凭据。id 去掉首尾空白，空 id 与重复 id 直接丢弃；未知字段与校验失败返回 400。每次成功的 PUT 都会重连全部 server；重建失败时恢复之前的配置。
 - `policy` 按 server 配置，是 `{工具名: "allow"|"ask"|"deny"}`，值必须是这三个小写字符串。键是模型看到的完整工具名 `mcp__<serverKey>__<工具名>`（取 `GET /v1/mcp/tools` 返回的 `tools[].name`，不要自己拼：id 含 `[A-Za-z0-9_-]` 以外的字符或 `__` 时 serverKey 会加哈希后缀，工具名里的其他字符换成 `_`），原始 MCP 工具名不会匹配。查找先按完整名精确匹配（区分大小写），没有再用 `"*"`；没有其他通配。
   - `allow` 与不设相同。`deny`：工具仍出现在模型的工具列表里，调用时直接返回错误 `MCP tool "<name>" is denied by policy`，所有模式（含 `full_access`、无人值守运行）都生效。`ask`：调用前走本次运行的权限判定，规则与内置工具相同——计划模式与 `approval_policy:"deny"` 拒绝，deny/ask 规则任何模式都生效，`full_access`/`always` 直接放行，记住的 allow 规则放行，`normal`/`auto_edit`/`auto_review` 弹出 `permission.requested`（可"总是允许"，记成整个工具名的规则）；定时任务、loop 等无人值守运行里 `ask` 直接拒绝（`unattended scheduled runs cannot request interactive approval`）。
   - 没有 `policy`（或 `allow`）的 MCP 工具不经过权限判定：`normal`、`auto_edit`、`full_access` 和无人值守运行里都直接执行，`approval_policy:"deny"` 也拦不住；只有计划模式（MCP 工具被移出工具列表）、`mode:"chat"`（没有工具）、运行选项 `options.tools.policies` 里的 `deny`（移除）/`ask`/`allow`（走权限判定），以及 AI 审查（`auto_review` 或全局 AI 审批，审查不通过时询问）会拦它。客户端要求"每次确认"时应设 `ask`。
-  - `POST /v1/mcp/tools/call` 同样应用 `selected`、`workspaceRoots` 与 `policy`，但这条 HTTP 调用没有运行上下文：`deny` 生效，`ask` 不会弹出审批而是直接执行。
+  - `POST /v1/mcp/tools/call` 同样应用 `selected`、`workspaceRoots` 与 `policy`，但这条 HTTP 调用没有运行上下文，不会弹出 `permission.requested`。`deny` 生效；`ask` 见下文的审批流程（`capabilities.mcp_tool_call_approval`，旧后端直接执行）。
 - `selected` 是默认的 server id 白名单：为空表示全部已启用的 server；不校验 id 是否存在。
+
+`GET /v1/mcp/tools` 的每项（`capabilities.mcp_tool_server_ids`）：
+
+- `name`：模型看到的完整工具名 `mcp__<serverKey>__<工具名>`，策略键与 `POST /v1/mcp/tools/call` 的 `name` 都用它。
+- `serverId`：配置里的 server id（`PUT /v1/mcp` 的 `servers[].id`）。旧后端在这里给的是 serverKey，id 只含 `[A-Za-z0-9_-]` 且不含 `__` 时两者相同。
+- `serverKey`：工具名里的 server 部分。
+- `serverLabel`：server 的显示名 `name`，没有时等于 `serverId`。
+- `serverToolName`：server 自己的工具名（未经替换）；`toolName` 是工具名里替换过字符的部分。
+- `visibility`、`uiResourceUri`：见“MCP 应用界面”。
+
+`POST /v1/mcp/tools/call`，请求体 `{"name","arguments"?,"cwd"?,"caller"?:"model"|"app","approval_id"?}`：
+
+- `caller` 默认 `model`，界面发起的调用传 `app`；每种调用方只能调用自己可见的工具（见可见性），其他值 400。旧后端以 400（未知字段）拒绝 `caller` 与 `approval_id`：客户端只在 `capabilities.mcp_tool_visibility`、`capabilities.mcp_tool_call_approval` 为 1 时分别发送。
+- 响应：`{"name","output","failed","cancelled","status","result"?,"approval"?}`，`status` 是 `completed`、`failed`、`cancelled` 或 `approval_required`。工具不存在、被 deny 或对调用方不可见时仍是 200，`status:"failed"`。工具返回了原始 `CallToolResult`（不超过 1 MiB）时 `result` 是它的 JSON，界面的 `tools/call` 应直接返回它。
+- 策略为 `ask` 的工具不立即执行，而是返回 200：
+
+```json
+{"name": "mcp__apps__board", "output": "MCP tool mcp__apps__board needs the user's approval: repeat the call with approval_id",
+ "failed": true, "cancelled": false, "status": "approval_required",
+ "approval": {"id": "mcpa_9b2f0c3e4d5a6b7c8d9e0f1a2b3c4d5e", "name": "mcp__apps__board", "server_id": "apps",
+              "tool_name": "board", "policy": "ask", "arguments": {"x": 1}, "expires_at": "2026-11-22T10:05:00Z"}}
+```
+
+  客户端向用户显示 server、工具与参数，用户同意后用**相同的** `name`、`arguments`、`cwd`、`caller` 加上 `approval_id` 再请求一次，这次才执行。批准 5 分钟内有效、只能用一次，与调用绑定（参数的空白不计）；未知、过期、已用过或参数不一致的 `approval_id` 返回 409（不一致时该 id 也作废）。后端最多同时保留 256 个待批准的调用，多出时丢弃最早的。用户拒绝时客户端不再请求即可。
 - `workspaceRoots` 按路径层级判断会话工作目录是否在某个根之内（不是字符串前缀，不解析符号链接）；为空表示任何目录都可用。判断用的是会话工作目录，不是运行选项里的 `workspace_roots`。
 
 运行选项 `mcp_server_ids`（`RunOptions.MCPServerIDs`）：
