@@ -243,6 +243,35 @@ func (m *model) composerPreKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 	}
 	c.observe(m, msg)
 
+	k := msg.String()
+	if m.input.Value() != "" && m.namePrompt == nil {
+		// Shift+arrows select; checked before composerSelKey, which would
+		// otherwise drop the selection they extend.
+		mv := selMove(-1)
+		switch {
+		case k == "shift+left":
+			mv = selCharLeft
+		case k == "shift+right":
+			mv = selCharRight
+		case k == "shift+up":
+			mv = selLineUp
+		case k == "shift+down":
+			mv = selLineDown
+		case k == "shift+home":
+			mv = selLineStart
+		case k == "shift+end":
+			mv = selLineEnd
+		case k == "alt+shift+left":
+			mv = selWordLeft
+		case k == "alt+shift+right":
+			mv = selWordRight
+		}
+		if mv >= 0 {
+			m.composerSelectMove(mv)
+			return m, nil, true
+		}
+	}
+
 	if c.sel != nil {
 		if cmd, done := m.composerSelKey(msg); done {
 			return m, cmd, true
@@ -258,7 +287,6 @@ func (m *model) composerPreKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 		return r, cmd, true
 	}
 
-	k := msg.String()
 	if m.queueFocused() {
 		switch {
 		case msg.Type == tea.KeyEnter:

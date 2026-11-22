@@ -1,4 +1,4 @@
-> Keyboard shortcuts                                                                                               1/86
+> Keyboard shortcuts                                                                                               1/90
   [Keys]  Commands
   / type to filter
 ------------------------------------------------------------------------------------------------------------------------
@@ -31,7 +31,7 @@
   Ctrl+W / Alt+Backspace                    cut the word before the cursor
   Ctrl+U                                    cut to the start of the line
   Ctrl+K / Alt+K                            cut to the end of the line
-  Down 60 more
+  Down 64 more
 ------------------------------------------------------------------------------------------------------------------------
   Shift+Tab  cycle the permission mode
   Shift+Tab - cycle Normal / Plan / Auto review / Always allow

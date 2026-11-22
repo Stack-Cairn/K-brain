@@ -8,6 +8,7 @@ var keysChinese = map[string]string{
 	"Esc (empty composer) / Ctrl+C Ctrl+C — interrupt the agent": "Esc（输入框为空时）/ Ctrl+C Ctrl+C — 中断任务",
 	"Ctrl+C again to interrupt":                                  "再按 Ctrl+C 中断",
 	"Ctrl+C Ctrl+C to interrupt":                                 "Ctrl+C Ctrl+C 中断",
+	"Shift+←/→/↑/↓, Shift+Home/End, Alt+Shift+←/→ — select in the composer by character, row, to the line's start / end, by word; typing replaces it, Backspace deletes it, Ctrl+C copies it": "Shift+←/→/↑/↓、Shift+Home/End、Alt+Shift+←/→ — 在输入框中按字符、按行、到行首 / 行尾、按词选择；输入替换选区，Backspace 删除，Ctrl+C 复制",
 }
 
 var keysTraditionalChinese = map[string]string{
@@ -17,6 +18,7 @@ var keysTraditionalChinese = map[string]string{
 	"Esc (empty composer) / Ctrl+C Ctrl+C — interrupt the agent": "Esc（輸入框為空時）/ Ctrl+C Ctrl+C — 中斷任務",
 	"Ctrl+C again to interrupt":                                  "再按 Ctrl+C 中斷",
 	"Ctrl+C Ctrl+C to interrupt":                                 "Ctrl+C Ctrl+C 中斷",
+	"Shift+←/→/↑/↓, Shift+Home/End, Alt+Shift+←/→ — select in the composer by character, row, to the line's start / end, by word; typing replaces it, Backspace deletes it, Ctrl+C copies it": "Shift+←/→/↑/↓、Shift+Home/End、Alt+Shift+←/→ — 在輸入框中按字元、按行、到行首 / 行尾、按詞選取；輸入取代選取範圍，Backspace 刪除，Ctrl+C 複製",
 }
 
 func init() {

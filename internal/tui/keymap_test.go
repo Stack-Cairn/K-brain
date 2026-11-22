@@ -45,6 +45,7 @@ var legacyHelpKeys = []string{
 	"Ctrl+R — search prompt history (Tab: all directories)",
 	"Ctrl+S — stash the draft, or restore it on an empty composer",
 	"mouse in the composer: click moves the cursor, drag selects, double click a word, triple click / Alt+A all · with a selection: Backspace/Del deletes, typing or paste replaces, Ctrl+X cuts, Ctrl+C copies",
+	"Shift+←/→/↑/↓, Shift+Home/End, Alt+Shift+←/→ — select in the composer by character, row, to the line's start / end, by word; typing replaces it, Backspace deletes it, Ctrl+C copies it",
 	"with a queued message selected: Enter sends it now, Ctrl+E edits, Alt+↑/↓ moves",
 	"Alt+E (busy) — edit the last queued message · click a queued message to select it, click it again to edit, its ✗ removes it",
 	"Ctrl+B (busy) — move the running shell command to the background; it keeps running and the agent is told when it exits",
