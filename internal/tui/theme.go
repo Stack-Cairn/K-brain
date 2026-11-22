@@ -2,7 +2,6 @@ package tui
 
 import (
 	"os"
-	"slices"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -84,7 +83,9 @@ const (
 	tokenCount
 )
 
-// tokenDef is one row of the token table.
+// tokenDef is one row of the token table. dark and light are the active
+// theme's colours for the token; activateTheme rewrites them when the theme
+// changes, and the rest of the row never changes.
 type tokenDef struct {
 	name        string
 	dark, light themeColor
@@ -96,7 +97,14 @@ type tokenDef struct {
 	mono    monoAttr
 }
 
-var tokenTable = [tokenCount]tokenDef{
+// tokenTable is the active token table: what every style resolves through.
+// It starts as the default theme (defaultTokens) and activateTheme swaps the
+// colour columns for another theme's.
+var tokenTable = defaultTokens
+
+// defaultTokens is the default theme ("auto", "light", "dark") and the
+// metadata of every token.
+var defaultTokens = [tokenCount]tokenDef{
 	tokTextPrimary:   {name: "text.primary", termDefault: true},
 	tokTextSecondary: {name: "text.secondary", dark: themeColor{"#c8ccd4", "252", "7"}, light: themeColor{"#3a3f46", "238", "0"}},
 	tokTextMuted:     {name: "text.muted", dark: themeColor{"#868b95", "245", "8"}, light: themeColor{"#686e76", "242", "8"}, mono: monoDim},
@@ -288,17 +296,39 @@ func (m *model) applyColorEnv() {
 	setMonoMode(wantMono(os.Getenv, theme), stdoutIsTTY())
 }
 
-// themeCommand is /theme [auto|light|dark|mono]: a name applies that theme
-// the way the settings panel does, a bare /theme opens the panel.
+// themeCommand is /theme [name]: a name applies that theme the way the
+// settings panel does, a bare /theme opens the picker.
 func (m *model) themeCommand(args []string) {
 	if len(args) == 0 {
 		m.openPaletteOn("theme")
 		return
 	}
 	name := strings.ToLower(args[0])
-	if len(args) != 1 || !slices.Contains(themeNames, name) {
-		m.append(errStyle.Render("usage: /theme " + strings.Join(themeNames, "|")))
+	if _, ok := parseThemeSetting(name); len(args) != 1 || !ok {
+		m.append(errStyle.Render("usage: /theme " + strings.Join(themeChoices(), "|")))
 		return
 	}
 	m.pickTheme(name)
+}
+
+// previewTheme shows a theme without saving it, for the picker.
+func (m *model) previewTheme(name string) {
+	ch, ok := parseThemeSetting(name)
+	if !ok {
+		return
+	}
+	m.applyTheme(name)
+	setMonoMode(ch.mono || wantMono(os.Getenv, ""), stdoutIsTTY())
+	m.restyleTranscript()
+}
+
+// themeFollowsTerminal reports whether the saved theme switches variant with
+// the terminal's background.
+func (m *model) themeFollowsTerminal() bool {
+	theme := ""
+	if m.cfg != nil {
+		theme = m.cfg.Theme
+	}
+	ch, ok := parseThemeSetting(theme)
+	return ok && ch.pin == "" && !ch.mono
 }

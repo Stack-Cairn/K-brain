@@ -16,3 +16,4 @@
 - [Headless 与 ACP](10-headless-acp.md)
 - [Hooks 与 MCP](11-hooks-mcp.md)
 - [故障排查](12-troubleshooting.md)
+- [外观与状态行](13-appearance.md)

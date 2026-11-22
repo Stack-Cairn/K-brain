@@ -754,7 +754,8 @@ func (m *model) persist() bool {
 }
 
 func (m *model) setTheme(theme string) {
-	if theme != "light" && theme != "dark" {
+	theme = strings.ToLower(strings.TrimSpace(theme))
+	if _, ok := parseThemeSetting(theme); !ok || theme == "mono" || theme == "" {
 		theme = "auto"
 	}
 	how := m.applyTheme(theme)
@@ -785,7 +786,9 @@ func (m *model) setTheme(theme string) {
 }
 
 func (m *model) applyTheme(theme string) (how string) {
-	switch theme {
+	ch, _ := parseThemeSetting(theme)
+	activateTheme(lookupTheme(ch.family))
+	switch ch.pin {
 	case "light":
 		SetLightTheme(true)
 		lipgloss.SetHasDarkBackground(false)
@@ -797,6 +800,11 @@ func (m *model) applyTheme(theme string) (how string) {
 	default:
 		setSchemeOverride("")
 		how = detectColorScheme()
+		if ch.family != defaultThemeName && !schemeKnown() {
+			// Only the default family has a neutral palette for an
+			// undetected background; a named one shows its dark variant.
+			SetLightTheme(false)
+		}
 	}
 	return how
 }
@@ -1024,13 +1032,13 @@ func (m *model) Update(msg tea.Msg) (_ tea.Model, statusCmd tea.Cmd) {
 		return m, nil
 
 	case themePollMsg:
-		if m.cfg.Theme != "" {
+		if !m.themeFollowsTerminal() {
 			return m, themePollTick()
 		}
 		return m, tea.Batch(pollClientTheme, themePollTick())
 
 	case themeSyncMsg:
-		if !msg.ok || m.cfg.Theme != "" {
+		if !msg.ok || !m.themeFollowsTerminal() {
 			return m, nil
 		}
 		mdMu.Lock()

@@ -35,6 +35,6 @@
 [90m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [1mTheme[0m  [96mauto[0m
   [37mcolour scheme for the transcript and chrome[0m
-  [90m←/→ change · Enter next · /theme[0m
+  [90m←/→ change · Enter opens its picker · /theme[0m
 [90m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
   [37m↑/↓ select · ←/→ change · Enter toggle or open · Esc close[0m

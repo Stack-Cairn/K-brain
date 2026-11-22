@@ -36,9 +36,6 @@ type settingDef struct {
 // permissionModes is the order ←/→ walks the permission modes in.
 var permissionModes = []string{"normal", "plan", "auto_review", "auto_edit", "full_access", "always"}
 
-// themeNames are the themes /theme and the settings modal accept.
-var themeNames = []string{"auto", "light", "dark", "mono"}
-
 // cycle returns the entry delta steps from cur in list, wrapping round.
 func cycle(list []string, cur string, delta int) string {
 	if len(list) == 0 {
@@ -66,7 +63,11 @@ func settingDefs() []settingDef {
 		{
 			section: "Display", name: "Theme", desc: "colour scheme for the transcript and chrome", command: "/theme",
 			value: func(m *model) string { return m.currentThemeName() },
-			step:  func(m *model, d int) { m.pickTheme(cycle(themeNames, m.currentThemeName(), d)) },
+			step:  func(m *model, d int) { m.pickTheme(cycle(themeChoices(), m.currentThemeName(), d)) },
+			open: func(m *model) tea.Cmd {
+				m.openPaletteOn("theme")
+				return nil
+			},
 		},
 		{
 			section: "Display", name: "Language", desc: "interface language", command: "/language",
@@ -198,6 +199,8 @@ func settingRows(m *model) []surfaceRow {
 			}
 			how := "read-only here"
 			switch {
+			case d.open != nil && d.step != nil:
+				how = "←/→ change · Enter opens its picker"
 			case d.open != nil:
 				how = "Enter opens its picker"
 			case d.step != nil:

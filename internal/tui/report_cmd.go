@@ -36,7 +36,7 @@ func (m *model) envReport() envReport {
 	add("k-brain", Version)
 	add("model", m.modelName)
 	add("provider", m.provName)
-	theme := CurrentTheme()
+	theme := themeLabel()
 	if m.themeHow != "" {
 		theme += " (" + m.themeHow + ")"
 	}

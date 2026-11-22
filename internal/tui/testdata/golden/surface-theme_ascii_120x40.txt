@@ -1,0 +1,40 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ Commands > Theme
+
+ > auto      default palette, follows the terminal background  (current)
+   light     default palette, light variant
+   dark      default palette, dark variant
+   dusk      dark - amber accent on violet greys
+   harbor    sky-blue accent on slate, dark and light
+   paper     light - ink and rust on warm paper
+   contrast  high contrast, dark and light
+   mono      no colour: bold, dim and reverse only
+
+   > you  * reply  ~ running  v ok  ! warn  x error  muted
+   func total(n int) string { return fmt.Sprint(n * 42) } // sum
+   + added line   - removed line
+
+  Up/Down preview - Enter/<-/-> apply - Esc back
+

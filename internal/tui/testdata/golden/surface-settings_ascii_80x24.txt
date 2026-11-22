@@ -19,6 +19,6 @@
 --------------------------------------------------------------------------------
   Theme  auto
   colour scheme for the transcript and chrome
-  <-/-> change - Enter next - /theme
+  <-/-> change - Enter opens its picker - /theme
 --------------------------------------------------------------------------------
   Up/Down select - <-/-> change - Enter toggle or open - Esc close

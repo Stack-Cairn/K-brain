@@ -1,0 +1,23 @@
+
+
+
+
+
+
+
+[1;95m Commands › Theme[0m
+
+[1;95m ❯ auto    [0m  [90mdefault palette, follows t…[0m
+   light     [90mdefault palette, light var…[0m
+   dark      [90mdefault palette, dark vari…[0m
+   dusk      [90mdark · amber accent on vio…[0m
+   harbor    [90msky-blue accent on slate, …[0m
+   paper     [90mlight · ink and rust on wa…[0m
+   contrast  [90mhigh contrast, dark and li…[0m
+   mono      [90mno colour: bold, dim and r…[0m
+
+   [1;96m❯ you[0m  [1;95m● reply[0m  [36m◌ running[0m  [92m✓ ok[0m  [93m! w…[0m[91m[0m[90m[0m
+   [95mfunc[0m [96mtotal[0m(n [94mint[0m) [94mstring[0m { [95mreturn[0m fm…[96m[0m[93m[0m[3;90m[0m
+   + added line   − removed line 
+
+[90m  ↑/↓ preview · Enter/←/→ apply · Esc b…[0m

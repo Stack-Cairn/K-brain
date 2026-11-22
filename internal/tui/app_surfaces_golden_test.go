@@ -26,6 +26,7 @@ var surfaceScenes = []struct {
 }{
 	{"help", func(t *testing.T, m *model, _, _ int) string { m.command("/help"); return m.View() }},
 	{"settings", func(t *testing.T, m *model, _, _ int) string { m.command("/settings"); return m.View() }},
+	{"theme", func(t *testing.T, m *model, _, _ int) string { m.command("/theme"); return m.View() }},
 	{"extensions", func(t *testing.T, m *model, _, _ int) string {
 		goldenExtensions(t, m)
 		m.command("/extensions")

@@ -192,7 +192,10 @@ var chinese = map[string]string{
 	"no models configured in ~/.liveagent/config.json":                              "~/.liveagent/config.json 中尚未配置模型",
 	"  catalog stale for %s — /model refresh to pull newly announced models":        "  %s 的模型目录已过期 — 使用 /model refresh 刷新",
 	"  ↑/↓ select · Enter/←/→ apply · Esc back":                                     "  ↑/↓ 选择 · Enter/←/→ 应用 · Esc 返回",
-	"  (%d/%d) type to filter · ↑/↓ select · Enter/←/→ apply · Esc back":            "  (%d/%d) 输入筛选 · ↑/↓ 选择 · Enter/←/→ 应用 · Esc 返回",
+
+	"  ↑/↓ preview · Enter/←/→ apply · Esc back": "  ↑/↓ 预览 · Enter/←/→ 应用 · Esc 返回",
+
+	"  (%d/%d) type to filter · ↑/↓ select · Enter/←/→ apply · Esc back": "  (%d/%d) 输入筛选 · ↑/↓ 选择 · Enter/←/→ 应用 · Esc 返回",
 	"   ↑ %d more": "   ↑ 还有 %d 项",
 	"   ↓ %d more": "   ↓ 还有 %d 项",
 	"  (%d/%d) ↑ older · ↓ newer · Enter resume · Esc cancel": "  (%d/%d) ↑ 更早 · ↓ 更新 · Enter 恢复 · Esc 取消",
@@ -317,8 +320,11 @@ var chinese = map[string]string{
 	"Permission mode":         "权限模式",
 	"Enter opens its picker":  "Enter 打开选择器",
 	"←/→ change · Enter next": "←/→ 修改 · Enter 下一项",
-	"Enter toggles":           "Enter 切换",
-	"read-only here":          "此处只读",
+
+	"←/→ change · Enter opens its picker": "←/→ 修改 · Enter 打开选择器",
+
+	"Enter toggles":  "Enter 切换",
+	"read-only here": "此处只读",
 	"type to filter · searches titles and message text":          "输入以筛选 · 搜索标题和消息内容",
 	"↑/↓ select · Enter resume · Ctrl+D delete · Esc cancel":     "↑/↓ 选择 · Enter 恢复 · Ctrl+D 删除 · Esc 取消",
 	"searching message text…":                                    "正在搜索消息内容…",
@@ -523,7 +529,10 @@ var traditionalChinese = map[string]string{
 	"no models configured in ~/.liveagent/config.json":                              "~/.liveagent/config.json 中尚未配置模型",
 	"  catalog stale for %s — /model refresh to pull newly announced models":        "  %s 的模型目錄已過期 — 使用 /model refresh 重新整理",
 	"  ↑/↓ select · Enter/←/→ apply · Esc back":                                     "  ↑/↓ 選擇 · Enter/←/→ 應用 · Esc 返回",
-	"  (%d/%d) type to filter · ↑/↓ select · Enter/←/→ apply · Esc back":            "  (%d/%d) 輸入篩選 · ↑/↓ 選擇 · Enter/←/→ 應用 · Esc 返回",
+
+	"  ↑/↓ preview · Enter/←/→ apply · Esc back": "  ↑/↓ 預覽 · Enter/←/→ 應用 · Esc 返回",
+
+	"  (%d/%d) type to filter · ↑/↓ select · Enter/←/→ apply · Esc back": "  (%d/%d) 輸入篩選 · ↑/↓ 選擇 · Enter/←/→ 應用 · Esc 返回",
 	"   ↑ %d more": "   ↑ 還有 %d 項",
 	"   ↓ %d more": "   ↓ 還有 %d 項",
 	"  (%d/%d) ↑ older · ↓ newer · Enter resume · Esc cancel": "  (%d/%d) ↑ 更早 · ↓ 更新 · Enter 恢復 · Esc 取消",
@@ -648,8 +657,11 @@ var traditionalChinese = map[string]string{
 	"Permission mode":         "權限模式",
 	"Enter opens its picker":  "Enter 開啟選擇器",
 	"←/→ change · Enter next": "←/→ 修改 · Enter 下一項",
-	"Enter toggles":           "Enter 切換",
-	"read-only here":          "此處唯讀",
+
+	"←/→ change · Enter opens its picker": "←/→ 修改 · Enter 開啟選擇器",
+
+	"Enter toggles":  "Enter 切換",
+	"read-only here": "此處唯讀",
 	"type to filter · searches titles and message text":          "輸入以篩選 · 搜尋標題和訊息內容",
 	"↑/↓ select · Enter resume · Ctrl+D delete · Esc cancel":     "↑/↓ 選擇 · Enter 恢復 · Ctrl+D 刪除 · Esc 取消",
 	"searching message text…":                                    "正在搜尋訊息內容…",
