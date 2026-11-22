@@ -462,6 +462,11 @@ func Run(cfg *config.Config, modelName, provName, sysPrompt, resumeID string, ca
 	m.startupReport()
 
 	opts := []tea.ProgramOption{tea.WithAltScreen(), tea.WithReportFocus()}
+	if stdoutIsTTY() {
+		// Frames reach the terminal through syncOutput, which brackets each
+		// one for terminals that draw it atomically (syncoutput.go).
+		opts = append(opts, tea.WithOutput(newSyncOutput(os.Stdout, detectSyncOutput())))
+	}
 
 	fmt.Fprint(os.Stdout, "\x1b[9999;1H")
 

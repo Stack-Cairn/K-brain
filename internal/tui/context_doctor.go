@@ -133,10 +133,20 @@ func (m *model) doctorReport() string {
 	return b.String()
 }
 
-// terminalDoctor is the terminal part of /doctor: whether Shift+Enter can
-// reach k-brain through a multiplexer or mosh, and what to change if not.
-// It is empty where there is nothing to say.
+// terminalDoctor is the terminal part of /doctor: whether frames are
+// drawn with synchronized output, and whether Shift+Enter can reach k-brain
+// through a multiplexer or mosh, with what to change if not.
 func terminalDoctor() string {
+	rows := []string{syncDoctor()}
+	if k := keysDoctor(); k != "" {
+		rows = append(rows, k)
+	}
+	return strings.Join(rows, "\n")
+}
+
+// keysDoctor is whether Shift+Enter reaches k-brain; empty outside tmux and
+// mosh, where there is nothing to say.
+func keysDoctor() string {
 	switch {
 	case inMoshEnv():
 		return "  shift+enter          unavailable over mosh (it arrives as enter); use ctrl+j or alt+enter for a newline"

@@ -129,8 +129,8 @@ func TestDoctorRecommendsTmuxExtendedKeys(t *testing.T) {
 	}
 	t.Setenv("TMUX", "")
 	t.Setenv("TERM", "xterm-256color")
-	if out := tasksModel("http://unused").doctorReport(); strings.Contains(out, "Terminal\n") {
-		t.Fatalf("outside tmux /doctor has no terminal advice to give:\n%s", out)
+	if out := tasksModel("http://unused").doctorReport(); strings.Contains(out, "extended-keys") || strings.Contains(out, "shift+enter") {
+		t.Fatalf("outside tmux /doctor has no keyboard advice to give:\n%s", out)
 	}
 
 	entries, err := os.ReadDir(".")
