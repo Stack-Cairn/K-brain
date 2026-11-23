@@ -146,6 +146,7 @@ func TestForkWhileRewoundIntoFuture(t *testing.T) {
 	press(t, m, esc(m))
 	press(t, m, tea.KeyMsg{Type: tea.KeyUp})
 	press(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	press(t, m, tea.KeyMsg{Type: tea.KeyEnter}) // confirm
 	m.input.Reset()
 	if len(m.agent.Messages) != 1 || len(m.future) != 4 {
 		t.Fatalf("rewound: msgs=%d future=%d", len(m.agent.Messages), len(m.future))

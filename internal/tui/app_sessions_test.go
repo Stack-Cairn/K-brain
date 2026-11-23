@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Stack-Cairn/K-brain/internal/ai"
 	"github.com/Stack-Cairn/K-brain/internal/config"
@@ -262,15 +263,53 @@ func TestRewindCodeOnly(t *testing.T) {
 	}
 }
 
-func TestRewindWithoutSnapshotSkipsChoice(t *testing.T) {
+// With no snapshot there is nothing to choose, but rewinding still drops
+// turns: Enter asks, a second Enter rewinds, Esc goes back to the list.
+func TestRewindWithoutSnapshotAsksFirst(t *testing.T) {
 	m := rewindModel(t,
 		ai.Message{Role: "user", Content: "q1", Authored: true},
 		ai.Message{Role: "assistant", Content: "a1"},
 	)
 	m.openRewind()
 	m.rewindKey(tea.KeyMsg{Type: tea.KeyEnter})
+	if m.rew == nil || len(m.agent.Messages) != 3 {
+		t.Fatal("one Enter must not rewind")
+	}
+	if v := ansi.Strip(m.rewindView()); !strings.Contains(v, "Rewind to before this message?") || !strings.Contains(v, "Removes 1 turn(s)") {
+		t.Fatalf("confirm view: %q", v)
+	}
+	m.rewindKey(tea.KeyMsg{Type: tea.KeyEsc})
+	if m.rew == nil || m.rew.confirming || len(m.agent.Messages) != 3 {
+		t.Fatal("Esc goes back to the list without rewinding")
+	}
+	m.rewindKey(tea.KeyMsg{Type: tea.KeyEnter})
+	m.rewindKey(tea.KeyMsg{Type: tea.KeyEnter})
 	if m.rew != nil || len(m.agent.Messages) != 1 {
-		t.Fatal("with no snapshot there is nothing to choose: rewind at once")
+		t.Fatal("Enter on the confirmation rewinds")
+	}
+}
+
+// Esc Esc on an empty composer opens the browser; typing then goes to the
+// composer instead of vanishing, and Enter after it sends no rewind.
+func TestTypingInRewindGoesToComposer(t *testing.T) {
+	m := rewindModel(t,
+		ai.Message{Role: "user", Content: "q1", Authored: true},
+		ai.Message{Role: "assistant", Content: "a1"},
+	)
+	m.openRewind()
+	for _, r := range "hello there" {
+		k := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}}
+		if r == ' ' {
+			k = tea.KeyMsg{Type: tea.KeySpace, Runes: []rune{' '}}
+		}
+		tm, _ := m.Update(k)
+		m = tm.(*model)
+	}
+	if m.rew != nil || m.input.Value() != "hello there" {
+		t.Fatalf("browser open %v, composer %q", m.rew != nil, m.input.Value())
+	}
+	if len(m.agent.Messages) != 3 {
+		t.Fatal("typing must not rewind")
 	}
 }
 

@@ -27,6 +27,9 @@ type rewindState struct {
 	// selected entry; choice is the highlighted option.
 	choosing bool
 	choice   int
+	// confirming is set while "rewind here?" waits for a second Enter, for
+	// a rewind with no workspace snapshot to choose about.
+	confirming bool
 }
 
 // rewindMode says what a rewind restores.
@@ -164,6 +167,23 @@ func (m *model) rewindKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.rewindChoiceKey(msg)
 		return m, nil
 	}
+	if r.confirming {
+		r.confirming = false
+		switch msg.Type {
+		case tea.KeyEnter:
+			m.finishRewind(sel(), rewindBoth)
+			return m, nil
+		case tea.KeyEsc:
+			return m, nil
+		}
+	}
+	// Typing leaves the browser for the composer: Esc Esc on an empty
+	// composer must not swallow what comes next.
+	if (msg.Type == tea.KeyRunes && string(msg.Runes) != "f") || msg.Type == tea.KeySpace {
+		m.vp.SetYOffset(r.savedVP)
+		m.rew = nil
+		return m.key(msg)
+	}
 	switch msg.Type {
 	case tea.KeyEsc:
 		m.vp.SetYOffset(r.savedVP)
@@ -178,6 +198,11 @@ func (m *model) rewindKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		e := sel()
 		if _, ok := m.rewindSnapshot(e.cut); ok && !e.future {
 			r.choosing, r.choice = true, 0
+			return m, nil
+		}
+		if !e.future {
+			// Rewinding drops the turns after this one: ask once more.
+			r.confirming = true
 			return m, nil
 		}
 		m.finishRewind(e, rewindBoth)
@@ -378,6 +403,9 @@ func (m *model) rewindView() string {
 	if r.choosing {
 		return m.rewindChoiceView()
 	}
+	if r.confirming {
+		return m.rewindConfirmView()
+	}
 	const maxRows = 8
 
 	start := max(0, min(r.sel-maxRows/2, len(r.entries)-maxRows))
@@ -477,4 +505,25 @@ func (m *model) rewindChoiceView() string {
 	}
 	rows = append(rows, "", textHintStyle.Render(chromeGlyphs(m.tr("↑/↓ select · 1-3 pick · Enter apply · Esc back"))))
 	return renderCard(tokAccent, m.tr("Rewind"), rows, w)
+}
+
+// rewindConfirmView asks before a rewind that has no workspace choice to
+// make: it drops the selected turn and everything after it from the
+// conversation (they stay reachable as "rewound" entries until the next
+// message is sent).
+func (m *model) rewindConfirmView() string {
+	r := m.rew
+	e := r.entries[r.sel]
+	turns := 0
+	for _, x := range r.entries[r.sel:] {
+		if !x.future {
+			turns++
+		}
+	}
+	var b strings.Builder
+	b.WriteString(warnStyle.Render("⏪ " + m.tr("Rewind to before this message?")))
+	b.WriteString("\n" + youStyle.Render(glyphUser+e.text))
+	b.WriteString("\n" + dimStyle.Render("  "+fmt.Sprintf(m.tr("Removes %d turn(s) · Esc Esc ↓ undoes it"), turns)))
+	b.WriteString("\n" + dimStyle.Render("  "+m.tr("enter: rewind · esc: back")))
+	return b.String()
 }

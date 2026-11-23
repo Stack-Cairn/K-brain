@@ -363,6 +363,7 @@ func TestRewindTruncatesAndRestoresInput(t *testing.T) {
 	press(t, m, esc(m))
 	press(t, m, tea.KeyMsg{Type: tea.KeyUp})
 	press(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	press(t, m, tea.KeyMsg{Type: tea.KeyEnter}) // confirm
 
 	if len(m.agent.Messages) != 1 {
 		t.Fatalf("messages after rewind: %+v", m.agent.Messages)
@@ -442,6 +443,7 @@ func TestRewindForwardTravel(t *testing.T) {
 	press(t, m, esc(m))
 	press(t, m, tea.KeyMsg{Type: tea.KeyUp})
 	press(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	press(t, m, tea.KeyMsg{Type: tea.KeyEnter}) // confirm
 	m.input.Reset()
 	if len(m.agent.Messages) != 1 || len(m.future) != 4 {
 		t.Fatalf("after rewind: msgs=%d future=%d", len(m.agent.Messages), len(m.future))
@@ -481,6 +483,7 @@ func TestRewindNeverCutsToolCallPairs(t *testing.T) {
 	press(t, m, esc(m))
 	press(t, m, tea.KeyMsg{Type: tea.KeyUp})
 	press(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	press(t, m, tea.KeyMsg{Type: tea.KeyEnter}) // confirm
 	if len(m.agent.Messages) != 1 {
 		t.Fatalf("messages: %+v", m.agent.Messages)
 	}
@@ -517,6 +520,7 @@ func TestPartialRewindKeepsPrefixInDB(t *testing.T) {
 	press(t, m, esc(m))
 	press(t, m, tea.KeyMsg{Type: tea.KeyUp})
 	press(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	press(t, m, tea.KeyMsg{Type: tea.KeyEnter}) // confirm
 
 	if len(m.agent.Messages) != 3 {
 		t.Fatalf("messages: %+v", m.agent.Messages)
@@ -564,6 +568,7 @@ func TestResumeAfterRewindMatches(t *testing.T) {
 	press(t, m, esc(m))
 	press(t, m, tea.KeyMsg{Type: tea.KeyUp})
 	press(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	press(t, m, tea.KeyMsg{Type: tea.KeyEnter}) // confirm
 
 	_, stored, err := m.store.Load(m.sessionID)
 	if err != nil || len(stored) != 0 {
