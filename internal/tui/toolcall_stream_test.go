@@ -3,6 +3,7 @@ package tui
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 )
@@ -32,10 +33,10 @@ func TestToolCallQueuedRowReplacedOnStart(t *testing.T) {
 }
 
 func TestToolCallCommitsPendingContentBeforePreview(t *testing.T) {
-	m := compactCmdModel()
-	m.showThinking = true
+	m, clock := thinkingModel(80, 24)
 	m.Update(textMsg("before tool"))
 	m.Update(thinkMsg("plan tool"))
+	*clock = clock.Add(2 * time.Second)
 	m.Update(toolCallMsg{id: "c", name: "read", args: `{"path":"file"}`})
 	if len(m.blocks) != 3 || m.blocks[0].text != "before tool" || !strings.Contains(m.blocks[1].text, "plan tool") || m.blocks[2].kind != blockToolQueued {
 		t.Fatalf("preview overtook content: %+v", m.blocks)

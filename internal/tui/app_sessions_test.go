@@ -473,7 +473,10 @@ func TestOnboardingSteps(t *testing.T) {
 		t.Fatalf("trust:\n%s", v)
 	}
 	o.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
-	o.Update(tea.KeyMsg{Type: tea.KeyDown})
+	// The thinking step starts on "No, hide them": new installs hide it.
+	if v := o.View(); !strings.Contains(v, "❯ 2  No, hide them") {
+		t.Fatalf("thinking step does not start on No:\n%s", v)
+	}
 	_, cmd := o.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if !o.done || !o.trusted || o.thinking || cmd == nil {
 		t.Fatalf("answers: %+v", o)

@@ -39,10 +39,10 @@ func runSetupWizard(cfg *config.Config, stdin io.Reader, stderr io.Writer) error
 
 	fmt.Fprintln(w, "Configure your API provider baseUrl, apiKey, and model IDs in ~/.liveagent/config.json.")
 
-	if !askYN(r, w, "Show thinking (reasoning) tokens in the transcript?", true) {
-		off := false
-		cfg.Thinking = &off
-	}
+	// New installs start with thinking hidden; the answer is saved either
+	// way so a later change of default never flips it.
+	show := askYN(r, w, "Show thinking (reasoning) tokens in the transcript?", false)
+	cfg.Thinking = &show
 
 	if err := cfg.Save(); err != nil {
 		return fmt.Errorf("saving setup choices: %w", err)
@@ -113,7 +113,7 @@ type onboardModel struct {
 }
 
 func newOnboardModel(wd, configPath string, needTrust, firstRun bool) *onboardModel {
-	o := &onboardModel{wd: wd, configPath: configPath, thinking: true, trusted: !needTrust}
+	o := &onboardModel{wd: wd, configPath: configPath, trusted: !needTrust}
 	if firstRun {
 		o.steps = append(o.steps, stepWelcome)
 	}
@@ -123,6 +123,7 @@ func newOnboardModel(wd, configPath string, needTrust, firstRun bool) *onboardMo
 	if firstRun {
 		o.steps = append(o.steps, stepThinking)
 	}
+	o.sel = o.defaultSel()
 	return o
 }
 
@@ -137,6 +138,15 @@ func (o *onboardModel) options() []string {
 		return []string{"Yes, show thinking tokens", "No, hide them"}
 	}
 	return []string{"Continue"}
+}
+
+// defaultSel is the option a step starts on: thinking starts on "No", the
+// default for new installs.
+func (o *onboardModel) defaultSel() int {
+	if o.step < len(o.steps) && o.steps[o.step] == stepThinking {
+		return 1
+	}
+	return 0
 }
 
 func (o *onboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -188,7 +198,7 @@ func (o *onboardModel) choose(i int) (tea.Model, tea.Cmd) {
 		o.thinking = i == 0
 	}
 	o.step++
-	o.sel = 0
+	o.sel = o.defaultSel()
 	if o.step >= len(o.steps) {
 		o.done = true
 		return o, tea.Quit
@@ -326,10 +336,9 @@ func applyOnboarding(cfg *config.Config, wd string, o *onboardModel) (bool, erro
 		}
 	}
 	if slices.Contains(o.steps, stepThinking) {
-		if !o.thinking {
-			off := false
-			cfg.Thinking = &off
-		}
+		// Saved either way, like the permission default for the new install.
+		show := o.thinking
+		cfg.Thinking = &show
 		if err := cfg.Save(); err != nil {
 			return false, fmt.Errorf("saving setup choices: %w", err)
 		}

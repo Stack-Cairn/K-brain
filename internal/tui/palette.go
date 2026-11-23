@@ -304,8 +304,7 @@ func (m *model) paletteItems() []paletteItem {
 			dynDesc: func(m *model) string { return "show or hide model reasoning" },
 			dynHint: func(m *model) string { return palHintThinking },
 			run: func(m *model) (tea.Model, tea.Cmd) {
-				m.toggleThinking()
-				return m, nil
+				return m, m.toggleThinking()
 			},
 			stepBack: func(m *model) { m.setThinking(false) },
 			stepFwd:  func(m *model) { m.setThinking(true) },

@@ -69,8 +69,9 @@ func driveWizard(t *testing.T, input string) *config.Config {
 func TestWizardDefaultsOptOut(t *testing.T) {
 
 	saved := driveWizard(t, "\n\n\n")
-	if saved.Thinking != nil {
-		t.Fatalf("default thinking answer should leave the block absent, got %v", *saved.Thinking)
+	// A new install starts with thinking hidden, saved explicitly.
+	if saved.Thinking == nil || *saved.Thinking {
+		t.Fatalf("default thinking answer should save false, got %v", saved.Thinking)
 	}
 	if len(saved.Providers) != 1 || saved.Providers["demo"].APIKey != "" {
 		t.Fatal("setup must leave the API provider template unchanged")
@@ -80,8 +81,8 @@ func TestWizardDefaultsOptOut(t *testing.T) {
 func TestWizardThinkingOn(t *testing.T) {
 
 	saved := driveWizard(t, "y\n")
-	if saved.Thinking != nil && !*saved.Thinking {
-		t.Fatal("thinking should remain enabled")
+	if saved.Thinking == nil || !*saved.Thinking {
+		t.Fatal("thinking should be saved as enabled")
 	}
 }
 

@@ -89,6 +89,7 @@ import (
 	"time"
 
 	"github.com/Stack-Cairn/K-brain/internal/ai"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -100,8 +101,14 @@ func (m *model) seedTranscript(msgs []ai.Message, base int) {
 	// headers maps a tool call id to its header block, so its result, which
 	// arrives in a later message, lands directly under it as it did live.
 	headers := map[string]int{}
+	// thought is the current turn's thinking row: every reply of a turn adds
+	// its reasoning to one row, as the live transcript drew it.
+	thought := -1
 	insertAt := func(at int, b block) {
 		m.blocks = slices.Insert(m.blocks, at, b)
+		if thought >= at {
+			thought++
+		}
 		for id, j := range headers {
 			if j >= at {
 				headers[id] = j + 1
@@ -123,6 +130,7 @@ func (m *model) seedTranscript(msgs []ai.Message, base int) {
 				break
 			}
 			bi = len(m.blocks)
+			thought = -1
 			if msg.Origin == ai.OriginBackground {
 				m.blocks = append(m.blocks, m.noticeBlocks(msg.TextContent())...)
 				break
@@ -134,7 +142,12 @@ func (m *model) seedTranscript(msgs []ai.Message, base int) {
 			m.blocks = append(m.blocks, block{kind: blockUser, text: linkifyFilePaths(msg.TextContent(), realFileExists)})
 		case "assistant":
 			if r := strings.TrimSpace(msg.Reasoning); r != "" && m.showThinking {
-				m.blocks = append(m.blocks, thinkingBlock(r))
+				if thought >= 0 {
+					m.blocks[thought].text += "\n" + r
+				} else {
+					thought = len(m.blocks)
+					m.blocks = append(m.blocks, thinkingBlock(r))
+				}
 			}
 			if strings.TrimSpace(msg.TextContent()) != "" {
 				bi = len(m.blocks)
@@ -451,6 +464,9 @@ func (m *model) keepFollow() {
 }
 
 func (m *model) appendRaw(kind blockKind, text string) {
+	if kind == blockUser {
+		m.startThinkTurn()
+	}
 	m.keepFollow()
 	m.blocks = append(m.blocks, block{kind: kind, text: text})
 	m.refreshVP()
@@ -666,9 +682,14 @@ func indentLines(s string, n int) string {
 	return strings.Join(lines, "\n")
 }
 
-func (m *model) toggleThinking() {
+// toggleThinking is Ctrl+O. It says what changed in the footer for a moment
+// rather than in the transcript.
+func (m *model) toggleThinking() tea.Cmd {
 	m.setThinking(!m.showThinking)
-	m.append(dimStyle.Render("◌ thinking tokens: " + onOff(m.showThinking)))
+	if m.showThinking {
+		return m.showNotice(m.tr("Thinking tokens shown · Ctrl+O hides them"))
+	}
+	return m.showNotice(m.tr("Thinking tokens hidden · Ctrl+O shows them"))
 }
 
 func (m *model) setThinking(on bool) {

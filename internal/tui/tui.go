@@ -145,14 +145,18 @@ type model struct {
 	showThinking bool
 	curThink     string
 	inThink      bool
-	menu         *menu
-	picker       *picker
-	mpicker      *modelPicker
-	palette      *palette
-	cancel       context.CancelFunc
-	goalRequest  *goalFormulation
-	goalVerify   *goalVerification
-	prog         *tea.Program
+	// thinkTurn counts the turns for thinking rows; thinkCarry is the turn's
+	// thinking too short to show so far (thinking.go).
+	thinkTurn   int
+	thinkCarry  thinkCarry
+	menu        *menu
+	picker      *picker
+	mpicker     *modelPicker
+	palette     *palette
+	cancel      context.CancelFunc
+	goalRequest *goalFormulation
+	goalVerify  *goalVerification
+	prog        *tea.Program
 
 	store           *session.Store
 	sessionID       string

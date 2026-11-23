@@ -95,6 +95,7 @@ func (m *model) submitTurnAs(text string, authored, notice bool) (tea.Model, tea
 	}
 	m.turnSnapshotSeq = nil
 	m.busy = true
+	m.startThinkTurn()
 	m.panelTurnStarted(authored)
 	m.turnStart = m.nowFn()
 	prepared, parts := m.prepareTurn(text)

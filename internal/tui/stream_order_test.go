@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -36,6 +37,16 @@ func TestTUIStreamPreservesTextThinkingOrder(t *testing.T) {
 	m.agent = agent.New(ai.NewResponses(srv.URL, "key"), "m", 100, "system")
 	m.agent.Messages = messages
 	m.titled, m.showThinking = true, true
+	// Thinking under a second leaves no row; a clock that moves a second a
+	// read keeps this run on screen.
+	var clockMu sync.Mutex
+	clock := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	m.now = func() time.Time {
+		clockMu.Lock()
+		defer clockMu.Unlock()
+		clock = clock.Add(time.Second)
+		return clock
+	}
 	h := &historyHarness{model: m}
 	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 	defer cancel()

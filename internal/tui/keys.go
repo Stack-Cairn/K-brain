@@ -239,9 +239,7 @@ func (m *model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, pasteImageCmd
 
 	case tea.KeyCtrlO:
-
-		m.toggleThinking()
-		return m, nil
+		return m, m.toggleThinking()
 
 	case tea.KeyShiftTab:
 		if m.menu != nil {
