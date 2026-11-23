@@ -73,7 +73,7 @@ func TestRunShellFailingCommand(t *testing.T) {
 func TestRunShellTruncatesHugeOutput(t *testing.T) {
 	m := shellModel()
 	m.runShell("!" + testShellCommand(t, "seq 1 200000", "[Console]::Write(('x' * 400000))"))
-	if b := lastBlock(m); !strings.Contains(b, "truncated") {
+	if b := lastBlock(m); !strings.Contains(b, "not shown]") {
 		t.Fatalf("huge output should carry a truncation marker (len %d)", len(b))
 	}
 }

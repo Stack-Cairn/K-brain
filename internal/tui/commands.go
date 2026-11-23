@@ -392,6 +392,7 @@ func (m *model) command(text string) (tea.Model, tea.Cmd) {
 	default:
 		if !m.expandPromptCommand(text) {
 			m.append(errStyle.Render("unknown command " + fields[0]))
+			m.unknownCmd = fields[0]
 		}
 	}
 	return m, nil
@@ -498,4 +499,19 @@ func (m *model) setCompactPct(pct int) {
 	if err := m.cfg.Save(); err != nil {
 		m.append(errStyle.Render("config save failed: " + err.Error()))
 	}
+}
+
+// slashIsMessage reports whether a line that starts with "/" is a message
+// rather than a command: its first word reads as a file path (another "/",
+// a "." or a "\\", as in "/src/main.go crashes") and is no prompt template.
+// No command name has those characters.
+func (m *model) slashIsMessage(text string) bool {
+	fields := strings.Fields(text)
+	if len(fields) == 0 || !strings.HasPrefix(fields[0], "/") {
+		return false
+	}
+	if !strings.ContainsAny(fields[0][1:], "/.\\") {
+		return false
+	}
+	return !m.isPromptCommand(text)
 }

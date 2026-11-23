@@ -240,6 +240,7 @@ func TestEscDoesNotInterruptWhenIdle(t *testing.T) {
 
 func stubLLM() *ai.OpenAI {
 	return &ai.OpenAI{
+		BaseURL: "http://stub.test",
 		HTTP: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusOK,

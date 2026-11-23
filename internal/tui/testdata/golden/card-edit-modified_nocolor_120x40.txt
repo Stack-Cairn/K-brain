@@ -14,12 +14,12 @@
 │   54  -     verbose := flags.Bool("v4", false, "verbose")                                                            │
 │   54  +     asJSON4 := flags.Bool("json4", false, "print JSON")                                                      │
 │   55  -     verbose := flags.Bool("v5", false, "verbose")                                                            │
-│     ⋯ +11 lines · alt+o                                                                                              │
+│     ⋯ +11 lines                                                                                                      │
 │                                                                                                                      │
 │ Normal mode confirms commands and file changes                                                                       │
 │                                                                                                                      │
 │ ❯ 1  Yes, once (a)                                                                                                   │
-│   2  Yes, always allow Edit(cmd/kn/**) (A)                                                                           │
+│   2  Yes, always allow changes to cmd/kn/** (A)                                                                      │
 │      this file · [folder] · project · kept for this project                                                          │
 │   3  No, and tell the agent why (r)                                                                                  │
 │                                                                                                                      │

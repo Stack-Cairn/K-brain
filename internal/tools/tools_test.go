@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 func run(t *testing.T, name, args string) string {
@@ -81,7 +82,7 @@ func TestHelpersAndEdgeCases(t *testing.T) {
 	if !strings.Contains(out, "full output") {
 		t.Fatal("truncation should spill the full output and point at it")
 	}
-	if out2 := TruncateTail(long); !strings.HasPrefix(out2, "[... first 10 bytes truncated]") {
+	if out2 := TruncateTail(long); !strings.HasPrefix(out2, "[… first 10 bytes not shown]") {
 		t.Fatalf("truncateTail: %q", out2[:40])
 	}
 
@@ -200,6 +201,75 @@ func TestBashToolInteractiveHook(t *testing.T) {
 	}
 }
 
+// The context around a change is the line just before and the line just
+// after it, wherever the change sits in a longer text (the approval card
+// diffs the whole file).
+// Long command output keeps its end, cut where a line starts: the kept
+// text never opens mid-line or inside a multi-byte character, and the marker
+// says how many lines were left out.
+func TestTruncateTailCutsAtALineStart(t *testing.T) {
+	var b strings.Builder
+	for i := 0; b.Len() <= maxOutput+5000; i++ {
+		fmt.Fprintf(&b, "第%d行 output ✓\n", i)
+	}
+	s := b.String()
+	out := TruncateTail(s)
+	marker, kept, ok := strings.Cut(out, "]\n")
+	if !ok || !strings.HasPrefix(marker, "[… ") || !strings.Contains(marker, "earlier lines") {
+		t.Fatalf("marker: %q", out[:min(len(out), 80)])
+	}
+	if !utf8.ValidString(kept) || !strings.HasPrefix(kept, "第") || !strings.HasSuffix(s, kept) {
+		t.Fatalf("kept text should start a whole line: %q", kept[:40])
+	}
+	if len(kept) > maxOutput {
+		t.Fatalf("kept %d bytes, limit %d", len(kept), maxOutput)
+	}
+	if lines := strings.Count(s[:len(s)-len(kept)], "\n"); !strings.Contains(marker, fmt.Sprintf("%d earlier lines", lines)) {
+		t.Fatalf("marker %q should count %d lines", marker, lines)
+	}
+
+	// One huge line has no line start in reach: cut at a character boundary.
+	one := strings.Repeat("é", maxOutput)
+	out = TruncateTail(one)
+	marker, kept, _ = strings.Cut(out, "]\n")
+	if !utf8.ValidString(kept) || !strings.HasPrefix(marker, "[… first ") {
+		t.Fatalf("single line cut: %q / valid=%v", marker, utf8.ValidString(kept))
+	}
+}
+
+// The middle elision of a long result keeps whole lines and characters on
+// both sides of its marker.
+func TestMiddleElideKeepsWholeLines(t *testing.T) {
+	var b strings.Builder
+	for i := 0; b.Len() <= maxOutput+5000; i++ {
+		fmt.Fprintf(&b, "行%d — ✓\n", i)
+	}
+	out := truncate(b.String())
+	head, rest, ok := strings.Cut(out, "... [")
+	if !ok {
+		t.Fatalf("no marker in %q", out[:80])
+	}
+	_, tail, _ := strings.Cut(rest, "] ...\n")
+	if !strings.HasSuffix(head, "\n") || !strings.HasPrefix(tail, "行") || !utf8.ValidString(out) {
+		t.Fatalf("head ends %q, tail starts %q", head[len(head)-20:], tail[:20])
+	}
+}
+
+func TestEditDiffContextIsAdjacentToTheChange(t *testing.T) {
+	old := "one\ntwo\nthree\nfour\nfive\nsix\n"
+	next := "one\ntwo\nTHREE\nfour\nfive\nsix\n"
+	want := "2   two\n3 - three\n3 + THREE\n4   four"
+	if d := editDiff(old, next, 1); d != want {
+		t.Fatalf("diff:\n%s\nwant:\n%s", d, want)
+	}
+	// An insertion keeps the same neighbours.
+	next = "one\ntwo\nthree\nnew\nfour\nfive\nsix\n"
+	want = "3   three\n4 + new\n5   four"
+	if d := editDiff(old, next, 1); d != want {
+		t.Fatalf("insertion diff:\n%s\nwant:\n%s", d, want)
+	}
+}
+
 func TestEditDiffLineNumbers(t *testing.T) {
 	d := editDiff("ctx\nold\ntail", "ctx\nnew\ntail", 10)
 	want := "10   ctx\n11 - old\n11 + new\n12   tail"
@@ -303,5 +373,42 @@ func TestBinaryOutputPlaceholder(t *testing.T) {
 	}
 	if out := run(t, "read", fmt.Sprintf(`{"path":%q}`, txt)); !strings.Contains(out, "2\ttwo") {
 		t.Fatalf("text read should stay intact: %q", out)
+	}
+}
+
+// A file that ends in a newline has as many lines as it has newlines: no
+// empty extra line is numbered and sent, and line counts match the file.
+func TestReadCountsLinesOfANewlineTerminatedFile(t *testing.T) {
+	dir := t.TempDir()
+	f := filepath.Join(dir, "three.txt")
+	if err := os.WriteFile(f, []byte("one\ntwo\nthree\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if out := run(t, "read", fmt.Sprintf(`{"path":%q}`, f)); out != "1\tone\n2\ttwo\n3\tthree\n" {
+		t.Fatalf("read: %q", out)
+	}
+	if out := run(t, "read", fmt.Sprintf(`{"path":%q,"offset":4}`, f)); !strings.Contains(out, "past end of file (3 lines)") {
+		t.Fatalf("offset 4 of a 3-line file: %q", out)
+	}
+	// Without the final newline the count is the same; a blank last line counts.
+	for text, want := range map[string]string{
+		"one\ntwo\nthree": "1\tone\n2\ttwo\n3\tthree\n",
+		"one\n\n":         "1\tone\n2\t\n",
+	} {
+		if err := os.WriteFile(f, []byte(text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if out := run(t, "read", fmt.Sprintf(`{"path":%q}`, f)); out != want {
+			t.Fatalf("read %q: %q, want %q", text, out, want)
+		}
+	}
+
+	if err := os.WriteFile(f, []byte("one\ntwo\nthree\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	read := findToolForTest(LiveAgentCatalog(), "Read")
+	out, err := read.Run(WithWorkingDir(context.Background(), dir), json.RawMessage(`{"path":"three.txt"}`))
+	if err != nil || !strings.Contains(out, "lines=1-3/3 view=full") || strings.Contains(out, "4\t") {
+		t.Fatalf("Read: %q (%v)", out, err)
 	}
 }

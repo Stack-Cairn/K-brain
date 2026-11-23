@@ -45,6 +45,9 @@ type permDialog struct {
 	levelsReady bool
 	// expanded shows the whole edit preview instead of its first rows.
 	expanded bool
+	// unfolded is set by a render whose folded preview would have to scroll
+	// anyway: the whole diff scrolls instead, and there is nothing to expand.
+	unfolded bool
 	scroll   cardScroll
 }
 
@@ -413,8 +416,11 @@ func (m *model) permTitle(req tools.GateRequest) string {
 }
 
 // permBody is what the action will do, in full: the highlighted command, or
-// the file and the diff of the change.
-func (m *model) permBody(d *permDialog, w int) []string {
+// the file and the diff of the change. The scrolling part is rows; top and
+// bottom stay in view around it — an edit's path line with its +/- counts,
+// and the note of rows a folded preview leaves out — so the card's scroll
+// position counts diff rows, not the lines around them.
+func (m *model) permBody(d *permDialog, w int) (top, rows, bottom []string) {
 	req := d.req
 	if p := req.Preview; p != nil {
 		return m.permPreview(d, p, w)
@@ -423,11 +429,11 @@ func (m *model) permBody(d *permDialog, w int) []string {
 	if req.Tool == "bash" || req.Tool == "Bash" {
 		lexer = codeLexer("bash", "")
 	}
-	return cardCode(req.Command, lexer, w)
+	return nil, cardCode(req.Command, lexer, w), nil
 }
 
 // permPreview is an edit's path line and its diff, folded unless expanded.
-func (m *model) permPreview(d *permDialog, p *tools.EditPreview, w int) []string {
+func (m *model) permPreview(d *permDialog, p *tools.EditPreview, w int) (top, rows, bottom []string) {
 	inner := cardInner(w)
 	path := p.Path
 	if path == "" {
@@ -443,18 +449,21 @@ func (m *model) permPreview(d *permDialog, p *tools.EditPreview, w int) []string
 	if p.Truncated {
 		head += "  " + warnStyle.Render(m.tr("preview truncated"))
 	}
-	lines := cardLines([]string{head}, w)
+	top = cardLines([]string{head}, w)
 	switch {
 	case p.Diff == "" && p.Truncated:
-		return append(lines, textMutedStyle.Render(wrap(m.tr("the file or the change is too large to preview"), inner)))
+		return top, []string{textMutedStyle.Render(wrap(m.tr("the file or the change is too large to preview"), inner))}, nil
 	case p.Diff == "":
-		return append(lines, textMutedStyle.Render(m.tr("no lines change")))
+		return top, []string{textMutedStyle.Render(m.tr("no lines change"))}, nil
 	}
-	rows := permPreviewRows
-	if d.expanded {
-		rows = 0
+	all := strings.Split(strings.TrimRight(p.Diff, "\n"), "\n")
+	shown := all
+	if !d.expanded && !d.unfolded && len(all) > permPreviewRows {
+		shown = all[:permPreviewRows]
+		// The card's own hint row names the key (ctrl+e) that unfolds it.
+		bottom = []string{foldHint(len(all)-permPreviewRows, "lines", false)}
 	}
-	return append(lines, strings.Split(renderDiffFolded(p.Diff, path, inner, rows, true), "\n")...)
+	return top, strings.Split(renderDiffFolded(strings.Join(shown, "\n"), path, inner, 0, false), "\n"), bottom
 }
 
 // displayPath is path relative to the working directory when it is inside,
@@ -504,14 +513,26 @@ func (m *model) permView() string {
 	w := cardWidth(m.width)
 	head := cardTitleStyle.Inherit(fgTok(tokStateWarn)).Render(glyphs.Warn) + " " + cardTitleStyle.Render(m.permTitle(d.req))
 
-	body := m.permBody(d, w)
-	tail := m.permTail(d, w, false)
+	d.unfolded = false
+	top, rows, bottom := m.permBody(d, w)
+	compact := false
+	tail := m.permTail(d, w, compact)
+	room := func() int { return m.cardMaxHeight() - 2 - len(top) - len(bottom) - len(tail) }
 	// On a short screen the body would be cut to a sliver: drop the spacing
 	// and the mode note so the command or diff keeps a few rows.
-	if room := m.cardMaxHeight() - 2 - len(tail); room < min(len(body), permMinBody) {
-		tail = m.permTail(d, w, true)
+	if room() < min(len(rows), permMinBody) {
+		compact = true
+		tail = m.permTail(d, w, compact)
 	}
-	body = d.scroll.window(body, m.cardMaxHeight()-2-len(tail))
+	if len(bottom) > 0 && room() < len(rows) {
+		// Even folded, the preview has to scroll: scroll the whole diff
+		// instead of a fold of it, so the position counts every row.
+		d.unfolded = true
+		top, rows, bottom = m.permBody(d, w)
+		tail = m.permTail(d, w, compact)
+	}
+	rows = d.scroll.window(rows, room())
+	body := append(append(append([]string(nil), top...), rows...), bottom...)
 	return renderCard(tokStateWarn, head, append(body, tail...), w)
 }
 
@@ -542,10 +563,7 @@ func (m *model) permTail(d *permDialog, w int, compact bool) []string {
 		tail = append(append(tail, gap...), accentFgStyle.Render(m.tr("reject with message: "))+d.rejectIn+"█",
 			textHintStyle.Render(chromeGlyphs(m.tr("Enter sends · Esc back"))))
 	} else {
-		always := m.tr("Yes, always allow")
-		if rules := d.chosenRules(); len(rules) > 0 {
-			always += " " + strings.Join(rules, ", ")
-		}
+		always := m.alwaysLabel(d)
 		opts := []string{m.tr("Yes, once"), always, m.tr("No, and tell the agent why")}
 		keys := []string{"a", "A", "r"}
 		if len(tail) > 1 {
@@ -570,7 +588,7 @@ func (m *model) permTail(d *permDialog, w int, compact bool) []string {
 		if len(levels) > 1 {
 			hint += m.tr(" · Tab scope")
 		}
-		if p := d.req.Preview; p != nil && p.Diff != "" && len(strings.Split(strings.TrimRight(p.Diff, "\n"), "\n")) > permPreviewRows {
+		if p := d.req.Preview; p != nil && p.Diff != "" && !d.unfolded && len(strings.Split(strings.TrimRight(p.Diff, "\n"), "\n")) > permPreviewRows {
 			if d.expanded {
 				hint += m.tr(" · ctrl+e fold")
 			} else {
@@ -581,6 +599,32 @@ func (m *model) permTail(d *permDialog, w int, compact bool) []string {
 		tail = append(append(tail, gap...), textHintStyle.Render(chromeGlyphs(hint)))
 	}
 	return cardLines(tail, w)
+}
+
+// alwaysLabel is the "always allow" option with what it would remember.
+// A file rule is an Edit(...) rule whichever of write or edit asked, and it
+// allows both, so a file change names the files rather than one tool.
+func (m *model) alwaysLabel(d *permDialog) string {
+	label := m.tr("Yes, always allow")
+	rules := d.chosenRules()
+	if len(rules) == 0 {
+		return label
+	}
+	if permissions.IsEdit(d.req.Tool) {
+		pats := make([]string, 0, len(rules))
+		for _, r := range rules {
+			p, ok := strings.CutPrefix(r, "Edit(")
+			if p, ok = strings.CutSuffix(p, ")"); !ok {
+				pats = nil
+				break
+			}
+			pats = append(pats, p)
+		}
+		if len(pats) > 0 {
+			return m.tr("Yes, always allow changes to") + " " + strings.Join(pats, ", ")
+		}
+	}
+	return label + " " + strings.Join(rules, ", ")
 }
 
 // scopeLine is the row under "always allow": the breadths it can remember,

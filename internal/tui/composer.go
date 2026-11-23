@@ -35,6 +35,11 @@ type composerState struct {
 	pasteSeq int
 
 	stash []string
+	// stashNoted is set when a draft goes to the stash and cleared once one
+	// is restored or the composer holds a draft again: the "draft stashed"
+	// placeholder speaks of the draft just put aside, not of every draft
+	// kept since.
+	stashNoted bool
 
 	multiline bool
 
@@ -191,6 +196,9 @@ const maxUndo = 200
 func (c *composerState) observe(m *model, msg tea.KeyMsg) {
 	c.prevAct, c.lastAct = c.lastAct, actNone
 	cur := m.composerSnap()
+	if strings.TrimSpace(cur.val) != "" {
+		c.stashNoted = false
+	}
 	if c.primed && cur.val != c.before.val {
 		c.recordChange(c.before, c.beforeKind, cur)
 	}
@@ -457,6 +465,7 @@ func (c *composerState) pushStash(draft string) {
 		return
 	}
 	c.stash = append(c.stash, draft)
+	c.stashNoted = true
 	if len(c.stash) > 20 {
 		c.stash = c.stash[1:]
 	}
@@ -478,6 +487,7 @@ func (m *model) stashDraft() tea.Cmd {
 	}
 	d := c.stash[len(c.stash)-1]
 	c.stash = c.stash[:len(c.stash)-1]
+	c.stashNoted = false
 	m.setComposer(d, len([]rune(d)))
 	m.refreshMenu()
 	return m.showNotice(m.tr("draft restored"))

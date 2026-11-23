@@ -8,6 +8,7 @@ import (
 	"math"
 	"math/rand/v2"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -151,6 +152,11 @@ func retryable(err error) bool {
 	if _, ok := errors.AsType[*json.UnmarshalTypeError](err); ok {
 		return false
 	}
+	if ue, ok := errors.AsType[*url.Error](err); ok && !reachableURL(ue.URL) {
+		// "unsupported protocol scheme", "no Host in request URL": the
+		// address itself is wrong, and asking again cannot fix it.
+		return false
+	}
 	if he, ok := errors.AsType[*HTTPError](err); ok {
 		if he.RetryAfter > maxRetryAfter {
 			return false
@@ -169,6 +175,13 @@ func retryable(err error) bool {
 	}
 
 	return true
+}
+
+// reachableURL reports whether raw names an http/https host a request could
+// be sent to at all.
+func reachableURL(raw string) bool {
+	u, err := url.Parse(raw)
+	return err == nil && u.Host != "" && (u.Scheme == "http" || u.Scheme == "https")
 }
 
 func backoff(attempt int) time.Duration {

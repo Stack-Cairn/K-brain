@@ -142,11 +142,13 @@ var helpActionDesc = map[string]string{
 }
 
 // helpKeyLabel overrides the generated key label of a (context, action)
-// pair whose key is pressed more than once.
+// pair whose key is pressed more than once (a single Esc only arms clearing
+// a draft; the second one clears it).
 var helpKeyLabel = map[string]string{
-	"idle/rewind":    "Esc Esc",
-	"global/quit":    "Ctrl+C Ctrl+C",
-	"busy/interrupt": "Esc / Ctrl+C Ctrl+C",
+	"idle/rewind":         "Esc Esc",
+	"composer/clearDraft": "Esc Esc",
+	"global/quit":         "Ctrl+C Ctrl+C",
+	"busy/interrupt":      "Esc / Ctrl+C Ctrl+C",
 }
 
 // prettyKey turns a bubbletea key name into the label the cheatsheet shows.

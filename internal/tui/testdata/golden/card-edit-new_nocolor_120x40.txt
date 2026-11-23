@@ -13,7 +13,7 @@
 │ Normal mode confirms commands and file changes                                                                       │
 │                                                                                                                      │
 │ ❯ 1  Yes, once (a)                                                                                                   │
-│   2  Yes, always allow Edit(cmd/kn/**) (A)                                                                           │
+│   2  Yes, always allow changes to cmd/kn/** (A)                                                                      │
 │      this file · [folder] · project · kept for this project                                                          │
 │   3  No, and tell the agent why (r)                                                                                  │
 │                                                                                                                      │

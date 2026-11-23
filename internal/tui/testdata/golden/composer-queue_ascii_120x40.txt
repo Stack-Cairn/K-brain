@@ -36,5 +36,5 @@
 
 
 ------------------------------------------------------------------------------------------------------------------------
-  > busy - type to queue (sent after the current tool call)
+  > busy - type to queue (sent after this reply)
    Always allow                                                                                     kimi-k3-fast - * off

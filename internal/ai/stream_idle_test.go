@@ -48,9 +48,9 @@ func TestIdleStreamFiresOnStall(t *testing.T) {
 
 	select {
 	case err := <-done:
-		var stall errStreamIdle
+		var stall StreamStallError
 		if !errors.As(err, &stall) {
-			t.Fatalf("stalled read returned %v, want errStreamIdle", err)
+			t.Fatalf("stalled read returned %v, want StreamStallError", err)
 		}
 		if !strings.Contains(err.Error(), "TestProvider") {
 			t.Fatalf("error %q does not name the provider", err)
@@ -60,15 +60,15 @@ func TestIdleStreamFiresOnStall(t *testing.T) {
 	}
 }
 
-// errStreamIdle must stay retryable: it must not satisfy errors.Is for the
+// StreamStallError must stay retryable: it must not satisfy errors.Is for the
 // context sentinels the retry policy refuses to retry.
 func TestErrStreamIdleIsRetryable(t *testing.T) {
-	err := error(errStreamIdle{idle: time.Second, provider: "X"})
+	err := error(StreamStallError{Idle: time.Second, Provider: "X"})
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		t.Fatal("errStreamIdle must not wrap a context error, or it would be treated as non-retryable")
+		t.Fatal("StreamStallError must not wrap a context error, or it would be treated as non-retryable")
 	}
 	if !retryable(err) {
-		t.Fatal("errStreamIdle should be retryable")
+		t.Fatal("StreamStallError should be retryable")
 	}
 }
 
@@ -90,7 +90,7 @@ func TestIdleStreamParentCancelPassesThrough(t *testing.T) {
 
 	select {
 	case err := <-done:
-		var stall errStreamIdle
+		var stall StreamStallError
 		if errors.As(err, &stall) {
 			t.Fatal("parent cancel was masked as an idle stall")
 		}

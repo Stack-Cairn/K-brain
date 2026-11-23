@@ -20,5 +20,5 @@
 
   ⠋ Thinking…                                             ⇣73 · Esc to interrupt
 ────────────────────────────────────────────────────────────────────────────────
-  ❯ busy — type to queue (sent after the current tool call)
+  ❯ busy — type to queue (sent after this reply)
    Normal                                                   kimi-k3-fast · ✦ off

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"time"
@@ -187,15 +188,36 @@ func (m *model) syncInputPlaceholder() {
 		m.input.Placeholder = m.tr("search history…")
 	case !m.busy:
 		m.input.Placeholder = m.tr(inputPlaceholder)
+	case m.awaitingAnswer():
+		// A card above takes the keys until it is answered.
+		m.input.Placeholder = m.tr("waiting for your answer above")
 	case m.agent != nil && m.agent.WaitingOnSubagents():
 		m.input.Placeholder = m.tr("waiting on subagents — type to steer this turn")
 	default:
-		m.input.Placeholder = m.tr("busy — type to queue (sent after the current tool call)")
+		// A queued message reaches the turn at its next tool boundary, so
+		// while a tool runs it goes in once that call ends; otherwise after
+		// the reply being written (after its tool calls, or as the next
+		// turn when it calls none).
+		if _, _, running := m.runningToolActivity(); running {
+			m.input.Placeholder = m.tr("busy — type to queue (sent after the current tool call)")
+		} else {
+			m.input.Placeholder = m.tr("busy — type to queue (sent after this reply)")
+		}
 	}
-	if m.cmp != nil && m.cmp.hs == nil && len(m.cmp.stash) > 0 {
-		m.input.Placeholder = m.tr("draft stashed — Ctrl+S restores it")
+	if c := m.cmp; c != nil && c.hs == nil && c.stashNoted && len(c.stash) > 0 && !m.awaitingAnswer() {
+		if n := len(c.stash); n > 1 {
+			m.input.Placeholder = fmt.Sprintf(m.tr("%d drafts stashed — Ctrl+S restores the newest"), n)
+		} else {
+			m.input.Placeholder = m.tr("draft stashed — Ctrl+S restores it")
+		}
 	}
 	m.input.Placeholder = fitPlaceholder(m.input.Placeholder, m.input.Width())
+}
+
+// awaitingAnswer reports a card the running turn waits on (an approval, a
+// question, a form or a plan to review): it takes the keys, not the composer.
+func (m *model) awaitingAnswer() bool {
+	return m.permDialog != nil || m.askDialog != nil || m.elicitOpen() || m.planOpen()
 }
 
 // fitPlaceholder is the placeholder raw, chrome glyphs swapped in, cut to the
@@ -581,8 +603,12 @@ func (m *model) composerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
-		text := strings.TrimSpace(m.expandPasteChips(m.input.Value()))
-		if strings.HasPrefix(text, "/") {
+		raw := m.input.Value()
+		text := strings.TrimSpace(m.expandPasteChips(raw))
+		// A line that starts with a file path ("/src/main.go crashes") is a
+		// message, not a command.
+		slashCmd := strings.HasPrefix(text, "/") && !m.slashIsMessage(text)
+		if slashCmd {
 			m.noteSlashUse(text)
 		}
 		if m.busy {
@@ -650,8 +676,16 @@ func (m *model) composerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.histIdx = len(m.hist)
 		}
 		m.draft = ""
-		if strings.HasPrefix(text, "/") {
-			return m.command(text)
+		if slashCmd {
+			m.unknownCmd = ""
+			res, cmd := m.command(text)
+			if m.unknownCmd != "" {
+				// Not a command: keep what was typed so it can be fixed
+				// instead of retyped.
+				m.unknownCmd = ""
+				m.setComposer(raw, len([]rune(raw)))
+			}
+			return res, cmd
 		}
 		if strings.HasPrefix(text, "!") {
 			m.runShell(text)

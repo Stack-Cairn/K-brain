@@ -100,6 +100,10 @@ type (
 )
 
 type model struct {
+	// unknownCmd is set by command to the name it did not recognize, so
+	// the composer can keep the draft that held it.
+	unknownCmd string
+
 	promptCatalog promptCatalog
 
 	cfg *config.Config
@@ -1019,6 +1023,9 @@ func (m *model) Update(msg tea.Msg) (_ tea.Model, statusCmd tea.Cmd) {
 		vp.fn(m)
 		return m, nil
 	}
+	if k, ok := msg.(tea.KeyMsg); ok {
+		msg = literalRun(k)
+	}
 	if handled, cmd := m.appearanceMsg(msg); handled {
 		return m, cmd
 	}
@@ -1407,7 +1414,14 @@ func (m *model) Update(msg tea.Msg) (_ tea.Model, statusCmd tea.Cmd) {
 		return m, nil
 
 	case noticeMsg:
+		// An async result (a /copy confirmation, a background error) lands at
+		// the end of the transcript. Scrolled up, that is out of sight, so it
+		// also shows in the footer for a moment.
+		following := m.wantFollow()
 		m.append(dimStyle.Render(string(msg)))
+		if !following {
+			return m, m.showNotice(string(msg))
+		}
 		return m, nil
 
 	case gitStatusMsg:

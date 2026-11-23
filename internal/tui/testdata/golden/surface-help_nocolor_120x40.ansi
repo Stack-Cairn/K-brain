@@ -21,7 +21,7 @@
   [2mComposer[0m
   Tab                                complete a command, path or mention[2m[0m
   Ctrl+J / Shift+Enter / Alt+Enter   insert a newline[2m[0m
-  Esc                                clear the draft[2m[0m
+  Esc Esc                            clear the draft[2m[0m
   End / Ctrl+End                     back to the newest output[2m[0m
   Enter                              send the message[2m[0m
   ↑                                  previous prompt from history[2m[0m

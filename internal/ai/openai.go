@@ -46,6 +46,11 @@ type ToolCall struct {
 	// MCPApp is the MCP App view of a successful MCP tool call, so a client
 	// can render it again from history; for display.
 	MCPApp *MCPAppRef `json:"mcp_app,omitempty"`
+	// BadArgs is set when the model's arguments for this call were not a
+	// JSON object; it holds an excerpt of what was sent. Arguments is then
+	// "{}" so the call can be replayed to any provider, and the agent answers
+	// it with an error instead of running the tool.
+	BadArgs string `json:"bad_args,omitempty"`
 }
 
 // MCPAppRef is what history keeps of an MCP tool call's App view: enough to
@@ -88,6 +93,7 @@ func stripAuthored(msgs []Message) []Message {
 				calls[j].QuestionAnswers = nil
 				calls[j].Elicitations = nil
 				calls[j].MCPApp = nil
+				calls[j].BadArgs = ""
 			}
 			out[i].ToolCalls = calls
 		}
@@ -731,7 +737,7 @@ func (c *OpenAI) streamOnce(ctx context.Context, body []byte, onText, onThink fu
 	defer idleGuard.close()
 	resp, err := c.postJSONOnce(sctx, "/chat/completions", body, true, nil)
 	if err != nil {
-		return Message{}, Usage{}, err
+		return Message{}, Usage{}, idleGuard.stalled(err)
 	}
 	defer resp.Body.Close()
 
@@ -856,21 +862,34 @@ func (c *OpenAI) streamOnce(ctx context.Context, body []byte, onText, onThink fu
 		return finishMessage(msg, calls, finish, onText), usage, nil
 	}
 
-	kept := make([]ToolCall, 0, len(calls))
-	for _, tc := range calls {
+	for i, tc := range calls {
 		if tc.Function.Arguments != "" && !validToolCallArgs(tc.Function.Arguments) {
-			msg.Content += fmt.Sprintf("\n[tool call %q discarded: arguments are invalid JSON]", tc.Function.Name)
-			continue
+			calls[i] = malformedToolCall(tc)
 		}
-		kept = append(kept, tc)
 	}
-	calls = kept
 	return finishMessage(msg, calls, finish, onText), usage, nil
 }
 
 func validToolCallArgs(s string) bool {
 	var obj map[string]any
 	return json.Unmarshal([]byte(s), &obj) == nil && obj != nil
+}
+
+// malformedToolCall keeps a call whose arguments are not a JSON object rather
+// than dropping it: dropping it ended the turn with no visible failure and
+// gave the model nothing to correct. The call is answered with an error (see
+// ToolCall.BadArgs) so the model can send it again.
+func malformedToolCall(tc ToolCall) ToolCall {
+	raw := strings.TrimSpace(tc.Function.Arguments)
+	if r := []rune(raw); len(r) > 200 {
+		raw = string(r[:200]) + "…"
+	}
+	if raw == "" {
+		raw = "(empty)"
+	}
+	tc.BadArgs = raw
+	tc.Function.Arguments = "{}"
+	return tc
 }
 
 func (c *OpenAI) Complete(ctx context.Context, req Request) (string, Usage, error) {

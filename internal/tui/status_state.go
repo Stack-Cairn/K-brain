@@ -44,6 +44,9 @@ type retryState struct {
 	delay        time.Duration
 	at           time.Time
 	reason       string
+	// stall is how long the provider sent nothing before this retry, when
+	// that is why it is retried.
+	stall time.Duration
 }
 
 type statusState struct {
@@ -128,6 +131,9 @@ func (m *model) statusBefore(msg tea.Msg) (tea.Cmd, bool) {
 		return nil, true
 	case retryMsg:
 		st.retry = &retryState{attempt: msg.Attempt + 1, max: msg.Max, delay: msg.Delay, at: now, reason: retryReason(msg.Err)}
+		if idle, ok := ai.StreamStall(msg.Err); ok {
+			st.retry.stall, st.retry.reason = idle, ""
+		}
 		return nil, true
 	case toolOutcomeMsg:
 		if msg.failed {

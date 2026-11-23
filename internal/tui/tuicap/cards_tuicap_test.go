@@ -38,7 +38,7 @@ func TestPermissionCardPreviewsEditAndApplies(t *testing.T) {
 		"greet.go  +1 −1",
 		"6  -", `fmt.Println("hello")`, "6  +", `fmt.Println("hello, world")`,
 		"Normal mode confirms commands and file changes",
-		"1  Yes, once (a)", "2  Yes, always allow Edit(greet.go)", "3  No, and tell the agent why (r)",
+		"1  Yes, once (a)", "2  Yes, always allow changes to greet.go", "3  No, and tell the agent why (r)",
 		"kept for this project",
 	} {
 		if !strings.Contains(screen, want) {

@@ -3,7 +3,6 @@ package ai
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 )
 
@@ -112,11 +111,19 @@ func (c *responsesCalls) set(item responsesItem) (*ToolCall, error) {
 }
 
 func (c *Responses) Stream(ctx context.Context, req Request, onText, onThink func(string), onToolCall func(id, name, args string)) (Message, Usage, error) {
+	return retryStalled(ctx, c.policy(), streamCallbacks{onText, onThink, onToolCall}, func(cb streamCallbacks) (Message, Usage, error) {
+		return c.streamAttempt(ctx, req, cb.text, cb.think, cb.tool)
+	})
+}
+
+// streamAttempt is one Responses streaming request; Stream retries it when it
+// stalls before any output.
+func (c *Responses) streamAttempt(ctx context.Context, req Request, onText, onThink func(string), onToolCall func(id, name, args string)) (Message, Usage, error) {
 	sctx, idleGuard := newIdleStream(ctx, idleOr(c.StreamIdle), "Responses")
 	defer idleGuard.close()
 	resp, err := c.request(sctx, req, true)
 	if err != nil {
-		return Message{}, Usage{}, err
+		return Message{}, Usage{}, idleGuard.stalled(err)
 	}
 	defer resp.Body.Close()
 	msg := Message{Role: "assistant"}
@@ -277,7 +284,7 @@ func (c *Responses) Stream(ctx context.Context, req Request, onText, onThink fun
 					continue
 				}
 				if !validToolCallArgs(tc.Function.Arguments) {
-					msg.Content += fmt.Sprintf("\n[tool call %q discarded: arguments are invalid JSON]", tc.Function.Name)
+					msg.ToolCalls = append(msg.ToolCalls, malformedToolCall(*tc))
 					continue
 				}
 				msg.ToolCalls = append(msg.ToolCalls, *tc)
