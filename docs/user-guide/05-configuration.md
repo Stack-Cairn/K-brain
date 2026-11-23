@@ -28,7 +28,7 @@
 
 `baseUrl` 必须包含 `/v1`，模型目录固定从 `${baseUrl}/models`（即 `/v1/models`）读取。`context`、`maxOut`、`vision` 和采样参数都可按模型自定义，不会把特定模型写死在代码中。`apiKey` 可写明文、环境变量名或 `${VAR}` 引用。
 
-主要可选项：`defaultEffort`、`goalMaxRounds`、`goalVerify`、`goalVerifyMaxRejections`、`mouse`、`thinking`、`collapsePaste`、`density`、`maxContentWidth`、`maxRetries`、`sandbox`、`browser`、`computer`、`hooks`、`mcp`、`lsp` 和 `rulesCompat`。
+主要可选项：`defaultEffort`、`goalMaxRounds`、`goalVerify`、`goalVerifyMaxRejections`、`mouse`、`thinking`、`permissionMode`、`collapsePaste`、`density`、`maxContentWidth`、`maxRetries`、`sandbox`、`browser`、`computer`、`hooks`、`mcp`、`lsp` 和 `rulesCompat`。
 
 `theme`、`density`、`maxContentWidth` 等外观设置和自定义主题文件见[外观与状态行](13-appearance.md)。
 

@@ -153,7 +153,11 @@ type Config struct {
 	CollapsePaste   *bool                  `json:"collapsePaste,omitempty"`
 	Vim             *bool                  `json:"vim,omitempty"`
 	OptionAsAlt     *bool                  `json:"optionAsAlt,omitempty"`
-	GoalMaxRounds   int                    `json:"goalMaxRounds,omitempty"`
+	// PermissionMode is the mode kn starts in where no project has saved
+	// one ("normal", "always", …). Setup writes "normal" for a new install;
+	// empty keeps "always", what kn started in before it was saved.
+	PermissionMode string `json:"permissionMode,omitempty"`
+	GoalMaxRounds  int    `json:"goalMaxRounds,omitempty"`
 	// GoalVerify turns the independent check of a GOAL_MET claim on or off; nil is on.
 	GoalVerify *bool `json:"goalVerify,omitempty"`
 	// GoalVerifyMaxRejections caps verifier rejections per goal; 0 uses the default.

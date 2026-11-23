@@ -1,9 +1,12 @@
 package tui
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/Stack-Cairn/K-brain/internal/config"
 )
 
 func (m *model) cyclePermissionMode() {
@@ -28,7 +31,44 @@ func (m *model) setPermissionMode(mode string) {
 	if m.agent != nil {
 		m.agent.SetPlanMode(mode == "plan")
 	}
+	m.savePermissionMode(mode)
 	// No feedback line: the mode chip in the footer already shows the change.
+}
+
+// startModes are the permission modes a session can start in. Plan is left
+// out: it is a detour that returns to the mode it was entered from.
+var startModes = []string{"normal", "always", "auto_review", "auto_edit", "full_access"}
+
+// initialPermissionMode is the mode a session starts in: --cautious asks for
+// "normal" for this run; otherwise the folder's last choice, then the saved
+// default, then "normal" for a first run and "always" for an install from
+// before the mode was saved, so its behaviour does not change under it.
+func initialPermissionMode(cfg *config.Config, wd string, cautious, firstRun bool) string {
+	if cautious {
+		return "normal"
+	}
+	if mode := config.ProjectPermissionMode(wd); slices.Contains(startModes, mode) {
+		return mode
+	}
+	if cfg != nil && slices.Contains(startModes, cfg.PermissionMode) {
+		return cfg.PermissionMode
+	}
+	if firstRun {
+		return "normal"
+	}
+	return "always"
+}
+
+// savePermissionMode keeps mode as the folder's choice for the next session.
+// Only a session started by Run saves (permWD set): tests and embedded models
+// leave the user's files alone.
+func (m *model) savePermissionMode(mode string) {
+	if m.permWD == "" || !slices.Contains(startModes, mode) {
+		return
+	}
+	if err := config.SetProjectPermissionMode(m.permWD, mode); err != nil {
+		m.showNotice(m.tr("could not save the permission mode: ") + err.Error())
+	}
 }
 
 func (m *model) permissionModeLabel() string { return m.modeLabel(m.permissionMode) }
@@ -60,6 +100,16 @@ func (m *model) modeLabel(mode string) string {
 // Without colour the chip keeps its shape as a bracketed label, and the risky
 // ones stay reversed.
 func (m *model) modeChip() string {
+	chip := m.modeChipLabel()
+	if extra := m.modeBadge(); extra != "" && m.width >= 60 {
+		chip += " " + extra
+	}
+	return chip
+}
+
+// modeChipLabel is the chip without the second badge: the part of the info
+// row that is never cut, however narrow the terminal.
+func (m *model) modeChipLabel() string {
 	style := modeChipNormal
 	switch m.permissionMode {
 	case "plan":
@@ -70,14 +120,10 @@ func (m *model) modeChip() string {
 		style = modeChipReview
 	}
 	label := m.permissionModeLabel()
-	chip := style.Render(label)
 	if monoMode {
-		chip = style.Render("[" + label + "]")
+		return style.Render("[" + label + "]")
 	}
-	if extra := m.modeBadge(); extra != "" && m.width >= 60 {
-		chip += " " + extra
-	}
-	return chip
+	return style.Render(label)
 }
 
 // modeBadge is the second badge: what the current mode does besides asking,

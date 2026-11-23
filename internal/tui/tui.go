@@ -273,6 +273,9 @@ type model struct {
 	permDialog     *permDialog
 	askDialog      *askDialog
 	permissionMode string
+	// permWD is the folder whose permission mode a change saves; empty
+	// saves nothing (mode.go).
+	permWD         string
 	permissionDone chan struct{}
 
 	tasksFocus bool
@@ -429,10 +432,9 @@ func Run(cfg *config.Config, modelName, provName, sysPrompt, resumeID string, ca
 	tools.ComputerApprover = m.computerConsent
 	m.installAskHook()
 
-	m.permissionMode = "always"
-	if cautious {
-		m.permissionMode = "normal"
-	}
+	wd, _ := os.Getwd()
+	m.permissionMode = initialPermissionMode(cfg, wd, cautious, firstRun)
+	m.permWD = wd
 	m.permissionDone = make(chan struct{})
 	previousGate := tools.Gate
 	m.installPermGate()

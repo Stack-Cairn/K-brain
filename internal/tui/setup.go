@@ -38,6 +38,8 @@ func runSetupWizard(cfg *config.Config, stdin io.Reader, stderr io.Writer) error
 	fmt.Fprintln(w, "")
 
 	fmt.Fprintln(w, "Configure your API provider baseUrl, apiKey, and model IDs in ~/.liveagent/config.json.")
+	fmt.Fprintln(w, permissionIntro)
+	setupPermissionDefault(cfg)
 
 	// New installs start with thinking hidden; the answer is saved either
 	// way so a later change of default never flips it.
@@ -51,6 +53,18 @@ func runSetupWizard(cfg *config.Config, stdin io.Reader, stderr io.Writer) error
 	fmt.Fprintln(w, "Setup complete — starting k-brain.")
 	fmt.Fprintln(w, "")
 	return nil
+}
+
+// permissionIntro is the first run's one mention of the permission mode a
+// new install starts in.
+const permissionIntro = "Permissions: k-brain asks before it runs a command or changes a file (Normal mode). Shift+Tab or /permissions changes it; each folder keeps its choice."
+
+// setupPermissionDefault gives a new install the "normal" mode, which asks
+// before commands and edits. A mode already saved stays.
+func setupPermissionDefault(cfg *config.Config) {
+	if cfg.PermissionMode == "" {
+		cfg.PermissionMode = "normal"
+	}
 }
 
 func askYN(r *bufio.Reader, w io.Writer, question string, def bool) bool {
@@ -221,6 +235,8 @@ func (o *onboardModel) View() string {
 			"",
 			textSecondaryStyle.Render("Provider: set baseUrl, apiKey and model IDs in"),
 			accentFgStyle.Render(o.configPath),
+			"",
+			permissionIntro,
 		}
 	case stepTrust:
 		title = "Do you trust the files in this folder?"
@@ -339,6 +355,7 @@ func applyOnboarding(cfg *config.Config, wd string, o *onboardModel) (bool, erro
 		// Saved either way, like the permission default for the new install.
 		show := o.thinking
 		cfg.Thinking = &show
+		setupPermissionDefault(cfg)
 		if err := cfg.Save(); err != nil {
 			return false, fmt.Errorf("saving setup choices: %w", err)
 		}
