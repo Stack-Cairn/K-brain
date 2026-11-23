@@ -746,7 +746,11 @@ func (c *OpenAI) streamOnce(ctx context.Context, body []byte, onText, onThink fu
 	searchCompleted := false
 	defer func() { search.finish(!searchCompleted) }()
 	var serverToolCalls json.RawMessage
+	// reasoning is what is replayed to the provider; thought is everything the
+	// stream showed, kept on the message for display.
 	var reasoning strings.Builder
+	var thought thoughtText
+	onThink = thought.wrap(onThink)
 	var usage Usage
 	var calls []ToolCall
 	callPositions := make(map[int]int)
@@ -796,11 +800,9 @@ func (c *OpenAI) streamOnce(ctx context.Context, body []byte, onText, onThink fu
 		if d.Refusal != "" {
 			return Message{}, usage, providerStreamError(nil, "Chat Completions refusal: "+d.Refusal)
 		}
-		if thought := firstNonEmpty(d.ReasoningContent, d.Reasoning, d.ReasoningText); thought != "" {
-			reasoning.WriteString(thought)
-			if onThink != nil {
-				onThink(thought)
-			}
+		if delta := firstNonEmpty(d.ReasoningContent, d.Reasoning, d.ReasoningText); delta != "" {
+			reasoning.WriteString(delta)
+			onThink(delta)
 		}
 		if ch.Choices[0].ServerToolEvent.Type == "step_reasoning_done" {
 			// Earlier thinking belongs to server_tool_calls; only the final
@@ -843,6 +845,7 @@ func (c *OpenAI) streamOnce(ctx context.Context, body []byte, onText, onThink fu
 	if finish == "content_filter" {
 		return Message{}, usage, providerStreamError(nil, "Chat Completions content_filter")
 	}
+	msg.Reasoning = thought.String()
 	if reasoning.Len() > 0 {
 		raw, _ := json.Marshal(map[string]string{"text": reasoning.String()})
 		msg.Replay = &ProviderReplay{API: APIChatCompletions, Endpoint: c.Endpoint(), Blocks: []json.RawMessage{raw}}

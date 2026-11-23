@@ -40,6 +40,8 @@ func (c *OpenAI) streamDeepSeekFunctions(ctx context.Context, req Request, onTex
 	}
 	var total Usage
 	var transcript []Message
+	// Each search round streams its own reasoning; the reply keeps all of it.
+	var thoughts []string
 	search := newSearchStream(ctx, "deepseek")
 	defer search.finish(true)
 	for round := 0; round < 8; round++ {
@@ -50,6 +52,9 @@ func (c *OpenAI) streamDeepSeekFunctions(ctx context.Context, req Request, onTex
 		total.Add(usage)
 		if err != nil {
 			return Message{}, total, err
+		}
+		if strings.TrimSpace(msg.Reasoning) != "" {
+			thoughts = append(thoughts, msg.Reasoning)
 		}
 		var internal, local []ToolCall
 		for _, call := range msg.ToolCalls {
@@ -74,6 +79,7 @@ func (c *OpenAI) streamDeepSeekFunctions(ctx context.Context, req Request, onTex
 			}
 		}
 		if len(local) > 0 || len(internal) == 0 {
+			msg.Reasoning = strings.Join(thoughts, "\n\n")
 			msg.ToolCalls = local
 			msg.HostedSearch = append(search.blocks, msg.HostedSearch...)
 			if len(transcript) > 0 {

@@ -1976,7 +1976,7 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, end func(),
 		finish(protocol.EventRunCancelled, protocol.RunTerminal{State: "cancelled"})
 	} else if err != nil {
 		if failedAssistant != nil {
-			_, _ = rt.publish(protocol.EventAssistantMessage, *failedAssistant, "")
+			_, _ = rt.publish(protocol.EventAssistantMessage, assistantEventMessage(*failedAssistant), "")
 		}
 		s.evaluateGoal(ctx, rt, runID, "failed")
 		finish(protocol.EventRunFailed, protocol.RunTerminal{State: "failed", Error: err.Error()})
@@ -1987,13 +1987,31 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, end func(),
 				continue
 			}
 			if message, messageErr := protocol.FromAIMessageValidated(messages[i]); messageErr == nil {
-				_, _ = rt.publish(protocol.EventAssistantMessage, message, "")
+				_, _ = rt.publish(protocol.EventAssistantMessage, assistantEventMessage(message), "")
 			}
 			break
 		}
 		s.evaluateGoal(ctx, rt, runID, "completed")
 		finish(protocol.EventRunCompleted, protocol.RunTerminal{State: "completed"})
 	}
+}
+
+// assistantEventMessage is the assistant.message.created payload for a stored
+// reply. It leaves out the thinking block that history carries: clients already
+// collected the thinking of the whole run from assistant.thinking.delta, and
+// this message is only the last round, so its thinking would show twice.
+func assistantEventMessage(message protocol.Message) protocol.Message {
+	content := make([]protocol.ContentBlock, 0, len(message.Content))
+	for _, block := range message.Content {
+		if block.Type != protocol.ContentThinking {
+			content = append(content, block)
+		}
+	}
+	if len(content) == 0 {
+		content = nil
+	}
+	message.Content = content
+	return message
 }
 
 // toolRunInfo is the display metadata of a tool result for tool.result events.

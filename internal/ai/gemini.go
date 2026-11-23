@@ -171,6 +171,8 @@ func (c *Gemini) streamAttempt(ctx context.Context, req Request, onText, onThink
 	sse := newSSEReader(idleGuard.wrap(resp.Body))
 	var msg Message
 	msg.Role = "assistant"
+	var thought thoughtText
+	onThink = thought.wrap(onThink)
 	search := newSearchStream(ctx, "gemini")
 	var usage Usage
 	var calls []ToolCall
@@ -207,6 +209,7 @@ func (c *Gemini) streamAttempt(ctx context.Context, req Request, onText, onThink
 			}
 		}
 		if len(result.Candidates) > 0 && result.Candidates[0].FinishReason != "" {
+			msg.Reasoning = thought.String()
 			search.finish(false)
 			msg.HostedSearch = append([]HostedSearch(nil), search.blocks...)
 			if req.NativeWebSearch {
