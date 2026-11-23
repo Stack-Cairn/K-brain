@@ -375,3 +375,40 @@ func TestBinaryOutputPlaceholder(t *testing.T) {
 		t.Fatalf("text read should stay intact: %q", out)
 	}
 }
+
+// A file that ends in a newline has as many lines as it has newlines: no
+// empty extra line is numbered and sent, and line counts match the file.
+func TestReadCountsLinesOfANewlineTerminatedFile(t *testing.T) {
+	dir := t.TempDir()
+	f := filepath.Join(dir, "three.txt")
+	if err := os.WriteFile(f, []byte("one\ntwo\nthree\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if out := run(t, "read", fmt.Sprintf(`{"path":%q}`, f)); out != "1\tone\n2\ttwo\n3\tthree\n" {
+		t.Fatalf("read: %q", out)
+	}
+	if out := run(t, "read", fmt.Sprintf(`{"path":%q,"offset":4}`, f)); !strings.Contains(out, "past end of file (3 lines)") {
+		t.Fatalf("offset 4 of a 3-line file: %q", out)
+	}
+	// Without the final newline the count is the same; a blank last line counts.
+	for text, want := range map[string]string{
+		"one\ntwo\nthree": "1\tone\n2\ttwo\n3\tthree\n",
+		"one\n\n":         "1\tone\n2\t\n",
+	} {
+		if err := os.WriteFile(f, []byte(text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if out := run(t, "read", fmt.Sprintf(`{"path":%q}`, f)); out != want {
+			t.Fatalf("read %q: %q, want %q", text, out, want)
+		}
+	}
+
+	if err := os.WriteFile(f, []byte("one\ntwo\nthree\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	read := findToolForTest(LiveAgentCatalog(), "Read")
+	out, err := read.Run(WithWorkingDir(context.Background(), dir), json.RawMessage(`{"path":"three.txt"}`))
+	if err != nil || !strings.Contains(out, "lines=1-3/3 view=full") || strings.Contains(out, "4\t") {
+		t.Fatalf("Read: %q (%v)", out, err)
+	}
+}

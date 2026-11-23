@@ -419,7 +419,7 @@ func readTool(reads *readLedger) Tool {
 				return binaryPlaceholder(a.Path, len(data)), nil
 			}
 			reads.record(a.Path, data)
-			lines := strings.Split(string(data), "\n")
+			lines := textLines(string(data))
 			start := max(a.Offset-1, 0)
 			if start >= len(lines) {
 				return "", fmt.Errorf("offset %d past end of file (%d lines)", a.Offset, len(lines))
@@ -436,6 +436,13 @@ func readTool(reads *readLedger) Tool {
 			return truncate(b.String()), nil
 		},
 	}
+}
+
+// textLines splits file text into its lines. The newline that ends the last
+// line does not start another one: a three-line file ending in "\n" is three
+// lines, not three and an empty fourth.
+func textLines(s string) []string {
+	return strings.Split(strings.TrimSuffix(s, "\n"), "\n")
 }
 
 func writeTool(reads *readLedger) Tool {

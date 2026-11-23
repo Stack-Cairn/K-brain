@@ -115,7 +115,7 @@ func (s *liveagentState) read(ctx context.Context, a map[string]any) (string, er
 	if IsBinary(data) {
 		return "", errors.New("unsupported binary document format: " + ext)
 	}
-	lines := strings.Split(string(data), "\n")
+	lines := textLines(string(data))
 	start := laInt(a, "start_line", 1) - 1
 	if start >= len(lines) {
 		return "", fmt.Errorf("start_line past end of file (%d lines)", len(lines))
