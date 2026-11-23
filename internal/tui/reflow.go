@@ -55,10 +55,12 @@ func (m *model) layoutWidth() int {
 func (m *model) onResizeReflow() tea.Cmd {
 	tx := m.txs()
 	h := &tx.hold
-	now := time.Now()
+	// The model clock, so tests that pin it decide between reflowing and
+	// holding instead of the machine's speed.
+	now := m.nowFn()
 	if h.width == 0 && (h.cost < reflowSlow || now.Sub(h.last) >= resizeSettle || !tx.ix.valid) {
 		m.refreshVP()
-		h.last = time.Now()
+		h.last = m.nowFn()
 		return nil
 	}
 	if h.width == 0 {
@@ -78,5 +80,5 @@ func (m *model) onReflowSettle(msg reflowSettleMsg) {
 	}
 	m.tx.hold.width = 0
 	m.refreshVP()
-	m.tx.hold.last = time.Now()
+	m.tx.hold.last = m.nowFn()
 }

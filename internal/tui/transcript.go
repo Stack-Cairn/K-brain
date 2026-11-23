@@ -489,7 +489,7 @@ func (m *model) refreshVP() {
 	tx := m.txs()
 	ix := &tx.ix
 	width := m.layoutWidth()
-	began := time.Now()
+	began := m.nowFn()
 
 	var anchor txAnchor
 	if !m.follow && m.vp.ix == ix {
@@ -581,7 +581,7 @@ func (m *model) refreshVP() {
 	ix.total = line
 	if len(m.blocks) > 1 && start <= 1 {
 		// The whole transcript was laid out: what a resize costs.
-		tx.hold.cost = time.Since(began)
+		tx.hold.cost = m.nowFn().Sub(began)
 	}
 
 	m.vp.ix, m.vp.static = ix, nil
