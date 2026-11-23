@@ -22,12 +22,15 @@ import (
 
 func sseTextServer(t *testing.T, body string) *httptest.Server {
 	t.Helper()
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := json.Marshal(body)
 		w.Header().Set("Content-Type", "text/event-stream")
 		fmt.Fprintf(w, `data: {"choices":[{"delta":{"content":%s},"finish_reason":"stop"}]}`+"\n\n", b)
 		fmt.Fprint(w, "data: [DONE]\n\n")
 	}))
+	// Some callers only take the URL; Close is idempotent for those that defer it.
+	t.Cleanup(srv.Close)
+	return srv
 }
 
 func tasksModel(url string) *model {
@@ -643,8 +646,12 @@ func TestDockScrollsWithSelection(t *testing.T) {
 }
 
 func TestPanelClickOpensSubagent(t *testing.T) {
-	srv := sseTextServer(t, "ok")
+	// Both subagents must stay running for the whole test: a settled task
+	// reorders the dock (running rows sort first) and changes its row layout,
+	// so a provider that answers at once races every click and wheel below.
+	srv, release := blockingServer(t)
 	defer srv.Close()
+	defer close(release)
 	m := tasksModel(srv.URL)
 	t1 := m.agent.StartBackground("first", "p", agent.SubModel{})
 	defer m.agent.Tasks().Cancel(t1.ID)

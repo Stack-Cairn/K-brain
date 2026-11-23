@@ -41,7 +41,12 @@ func (b *lockedBuffer) String() string {
 func startTestChrome(t *testing.T, bin, profile string, args ...string) int {
 	t.Helper()
 	// Configure needs a context command; cleanup stops it, not the context.
-	cmd := exec.CommandContext(context.Background(), bin, append([]string{"--remote-debugging-port=0", "--user-data-dir=" + profile}, args...)...)
+	// A fresh profile otherwise asks the OS credential store for its cookie
+	// encryption key: the login Keychain on macOS (which can block on an
+	// access prompt until the test times out) or the desktop keyring on Linux.
+	// These flags only affect the throwaway test profile.
+	base := []string{"--remote-debugging-port=0", "--user-data-dir=" + profile, "--use-mock-keychain", "--password-store=basic"}
+	cmd := exec.CommandContext(context.Background(), bin, append(base, args...)...)
 	output := &lockedBuffer{}
 	cmd.Stdout, cmd.Stderr = output, output
 	process.Configure(cmd, false)

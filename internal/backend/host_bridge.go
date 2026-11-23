@@ -328,8 +328,13 @@ func hostBridgeTransportError(ctx, callCtx context.Context, base, command string
 
 // hostBridgeConnectionLost reports a request that failed on an established connection
 // (a reset, broken pipe or early EOF; Windows reports these with its own error codes).
+// net/http reports a pooled connection the server closed before the request was
+// written with an unexported error, so that one is matched by its message.
 func hostBridgeConnectionLost(err error) bool {
 	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+	if err != nil && strings.Contains(err.Error(), "http: server closed idle connection") {
 		return true
 	}
 	var opErr *net.OpError

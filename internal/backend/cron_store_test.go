@@ -286,3 +286,45 @@ func TestCronStoreIgnoresLateCompletionAfterTerminalOrClear(t *testing.T) {
 		t.Fatalf("late completion resurrected run: %+v %v", runs, err)
 	}
 }
+
+func TestCronStoreRunsSameMillisecondKeepStartOrder(t *testing.T) {
+	dir := t.TempDir()
+	sessions, err := session.Open(filepath.Join(dir, "sessions"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sessions.Close()
+	store, err := newCronStore(sessions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.apply(CronApplyInput{Ops: []CronOperation{{Op: "create", Item: map[string]any{"id": "task-1", "name": "test", "cron": "0 0 0 1 1 0", "type": "bash", "script": "printf ok", "workdir": dir}}}}); err != nil {
+		t.Fatal(err)
+	}
+	// Runs that start within one millisecond share StartedAt; every record
+	// prunes and re-sorts history, which must not reorder them.
+	started := time.Now().UnixMilli()
+	for _, id := range []string{"run-a", "run-b", "run-c"} {
+		if err := store.record(CronRunRecord{ID: id, TaskID: "task-1", State: "done", StartedAt: started, FinishedAt: &started}, false); err != nil {
+			t.Fatal(err)
+		}
+		runs, err := store.runs("task-1", 10)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(runs) == 0 || runs[0].ID != id {
+			t.Fatalf("after recording %s, latest run = %s (runs %+v)", id, runs[0].ID, runs)
+		}
+	}
+	runs, err := store.runs("task-1", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, r := range runs {
+		got = append(got, r.ID)
+	}
+	if fmt.Sprint(got) != "[run-c run-b run-a]" {
+		t.Fatalf("runs newest first = %v", got)
+	}
+}

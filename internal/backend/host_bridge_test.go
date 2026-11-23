@@ -11,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -1058,5 +1059,22 @@ func TestLiveAgentProjectPathKey(t *testing.T) {
 	}
 	if call, _ := bridge.lastCall("terminal_read_tail"); call.Body["project_path_key"] != "d:/work/repo" {
 		t.Fatalf("project_path_key = %v", call.Body["project_path_key"])
+	}
+}
+
+// A desktop that exits while a keep-alive connection is pooled can fail the next
+// call with net/http's "server closed idle connection" instead of a reset or EOF;
+// that must still be reported as a lost connection.
+func TestHostBridgeConnectionLostServerClosedIdle(t *testing.T) {
+	idle := &url.Error{Op: "Post", URL: "http://127.0.0.1:1/x", Err: errors.New("http: server closed idle connection")}
+	if !hostBridgeConnectionLost(idle) {
+		t.Fatal("server closed idle connection not treated as a lost connection")
+	}
+	if hostBridgeConnectionLost(errors.New("status 500")) {
+		t.Fatal("unrelated error treated as a lost connection")
+	}
+	err := hostBridgeTransportError(context.Background(), context.Background(), "http://127.0.0.1:1", "gateway_tunnel_state", idle)
+	if err == nil || !strings.Contains(err.Error(), hostBridgeNotConnected) {
+		t.Fatalf("closed idle connection to a stopped desktop = %v", err)
 	}
 }

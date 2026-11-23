@@ -11,6 +11,10 @@ import (
 // A fast transcript reflows on every resize, as it always has.
 func TestResizeReflowsAtOnceWhenFast(t *testing.T) {
 	m := compactCmdModel()
+	// A pinned clock measures every layout as instant; the wall clock would
+	// let a loaded machine or the race detector make this transcript slow.
+	clock := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	m.now = func() time.Time { return clock }
 	m.Update(mkWinSize(100, 30))
 	m.seedTranscript(benchSession(2), 1)
 	for _, w := range []int{90, 80, 70} {
@@ -25,6 +29,10 @@ func TestResizeReflowsAtOnceWhenFast(t *testing.T) {
 // first resize, and at the last width once the burst stops.
 func TestResizeBurstCoalescesWhenSlow(t *testing.T) {
 	m := compactCmdModel()
+	// The burst happens at one instant: resizes inside it never settle on
+	// their own, however slowly the machine runs the test.
+	clock := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	m.now = func() time.Time { return clock }
 	m.Update(mkWinSize(100, 30))
 	m.seedTranscript(benchSession(2), 1)
 	slow := func() { m.tx.hold.cost = time.Second }
