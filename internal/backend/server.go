@@ -1880,7 +1880,7 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, end func(),
 	}, OnToolOutput: toolOutput.update, OnUsage: func(u ai.Usage) {
 		_, _ = rt.publish(protocol.EventUsage, protocol.Usage{InputTokens: u.PromptTokens, OutputTokens: u.CompletionTokens, CachedTokens: u.Cached(), CacheWriteTokens: u.CacheWrite()}, "")
 	}}
-	ev = agent.FanIn(rt.recorder.Events(), ev)
+	ev = agent.FanIn(rt.recorder.Events(), ev, agent.Events{AtToolBoundary: rt.saveRunStep})
 	var previews *previewTracker
 	if options.HTMLPreviews {
 		previews = newPreviewTracker(s, rt)
