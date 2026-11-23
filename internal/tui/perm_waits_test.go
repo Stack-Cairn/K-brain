@@ -54,6 +54,9 @@ func TestSubagentApprovalCardAndRows(t *testing.T) {
 		if first != second || strings.Contains(first, "12s") {
 			t.Errorf("%s row ticks while it waits: %q then %q", id, first, second)
 		}
+		if dock := stripAll(m.taskDockRow(task, false)); !strings.Contains(dock, "waiting for approval") || strings.Contains(dock, "s ·") || strings.HasSuffix(strings.TrimSpace(dock), "s") {
+			t.Errorf("%s dock row: %q", id, dock)
+		}
 	}
 
 	// Answered, the other request takes the card: nothing more pending.

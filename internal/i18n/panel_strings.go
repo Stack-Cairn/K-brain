@@ -19,7 +19,7 @@ var panelChinese = map[string]string{
 	"apply this edit":           "应用此修改",
 	"write this file":           "写入此文件",
 	"use %s":                    "使用 %s",
-	"  · +%d pending":           "  · 另有 %d 个待批准",
+	" · +%d pending":            " · 另有 %d 个待批准",
 	"waiting for approval":      "等待批准",
 }
 
@@ -41,7 +41,7 @@ var panelTraditionalChinese = map[string]string{
 	"apply this edit":           "套用此修改",
 	"write this file":           "寫入此檔案",
 	"use %s":                    "使用 %s",
-	"  · +%d pending":           "  · 另有 %d 個待核准",
+	" · +%d pending":            " · 另有 %d 個待核准",
 	"waiting for approval":      "等待核准",
 }
 

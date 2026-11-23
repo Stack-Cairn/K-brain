@@ -534,7 +534,7 @@ func (m *model) permView() string {
 	w := cardWidth(m.width)
 	head := cardTitleStyle.Inherit(fgTok(tokStateWarn)).Render(glyphs.Warn) + " " + cardTitleStyle.Render(m.permTitle(d.req))
 	if n := m.pendingApprovals(); n > 0 {
-		head += textMutedStyle.Render(fmt.Sprintf(m.tr("  · +%d pending"), n))
+		head += textMutedStyle.Render(fmt.Sprintf(m.tr(" · +%d pending"), n))
 	}
 
 	d.unfolded = false
