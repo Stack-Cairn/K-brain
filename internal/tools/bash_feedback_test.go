@@ -19,7 +19,7 @@ func TestBashToolSpillOnTruncation(t *testing.T) {
 	}
 	out := run(t, "bash", fmt.Sprintf(`{"command":%q}`, cmd))
 
-	if !strings.Contains(out, "truncated") {
+	if !strings.Contains(out, "not shown]") {
 		t.Fatalf("expected truncation marker:\n%.300s", out)
 	}
 

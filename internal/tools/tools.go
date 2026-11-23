@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Stack-Cairn/K-brain/internal/ai"
 	"github.com/Stack-Cairn/K-brain/internal/sandbox"
@@ -226,9 +227,13 @@ func truncate(s string) string {
 
 func middleElide(s string) string {
 	keep := maxOutput / 2
-	head, tail := s[:keep], s[len(s)-keep:]
-	elided := len(s) - 2*keep
-	marker := fmt.Sprintf("\n... [%d bytes elided from the middle", elided)
+	headEnd, tailStart := headCut(s, keep), tailCut(s, keep)
+	head, tail := s[:headEnd], s[tailStart:]
+	elided := tailStart - headEnd
+	marker := fmt.Sprintf("... [%d bytes elided from the middle", elided)
+	if !strings.HasSuffix(head, "\n") {
+		marker = "\n" + marker
+	}
 	if path := bashrun.Spill(s); path != "" {
 		marker += fmt.Sprintf(" — full output (%d bytes): %s", len(s), path)
 	}
@@ -236,11 +241,63 @@ func middleElide(s string) string {
 	return head + marker + tail
 }
 
+// TruncateTail keeps the end of s — the part of a command's output that
+// usually matters — within maxOutput bytes, starting at a line boundary so
+// the kept text never opens mid-line or mid-character.
 func TruncateTail(s string) string {
 	if len(s) <= maxOutput {
 		return s
 	}
-	return fmt.Sprintf("[... first %d bytes truncated]\n", len(s)-maxOutput) + s[len(s)-maxOutput:]
+	start := tailCut(s, maxOutput)
+	if start == 0 || s[start-1] == '\n' {
+		lines := strings.Count(s[:start], "\n")
+		return fmt.Sprintf("[… %d earlier %s (%d bytes) not shown]\n", lines, plural(lines, "line", "lines"), start) + s[start:]
+	}
+	return fmt.Sprintf("[… first %d bytes not shown]\n", start) + s[start:]
+}
+
+// lineSnap is how far a cut may move to land on a line boundary: up to a
+// quarter of what is kept. A longer line is cut inside, at a character
+// boundary, rather than dropping most of the kept text.
+func lineSnap(keep int) int { return keep / 4 }
+
+// headCut returns where to end a head of at most keep bytes of s: after
+// the last newline within reach, else at a UTF-8 character boundary.
+func headCut(s string, keep int) int {
+	end := min(keep, len(s))
+	if end == len(s) || end == 0 || s[end-1] == '\n' {
+		return end
+	}
+	if nl := strings.LastIndexByte(s[:end], '\n'); nl >= 0 && end-(nl+1) <= lineSnap(keep) {
+		return nl + 1
+	}
+	for end > 0 && !utf8.RuneStart(s[end]) {
+		end--
+	}
+	return end
+}
+
+// tailCut returns where to start a tail of at most keep bytes of s: at the
+// first line start within reach, else at a UTF-8 character boundary.
+func tailCut(s string, keep int) int {
+	start := max(len(s)-keep, 0)
+	if start == 0 || s[start-1] == '\n' {
+		return start
+	}
+	if nl := strings.IndexByte(s[start:], '\n'); nl >= 0 && nl+1 <= lineSnap(keep) && start+nl+1 < len(s) {
+		return start + nl + 1
+	}
+	for start < len(s) && !utf8.RuneStart(s[start]) {
+		start++
+	}
+	return start
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
 }
 
 func bashTool() Tool {
