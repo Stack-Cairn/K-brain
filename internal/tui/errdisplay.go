@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"strconv"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Stack-Cairn/K-brain/internal/ai"
+	"github.com/Stack-Cairn/K-brain/internal/config"
 )
 
 type errKind string
@@ -32,6 +34,7 @@ const (
 	errModel       errKind = "model"
 	errBadRequest  errKind = "bad_request"
 	errOutputLimit errKind = "output_limit"
+	errNoProvider  errKind = "not_configured"
 	errOther       errKind = "other"
 )
 
@@ -61,6 +64,10 @@ func classifyError(err error) errInfo {
 	}
 	if _, ok := errors.AsType[*ai.OutputLimitError](err); ok {
 		info.kind = errOutputLimit
+		return info
+	}
+	if errors.Is(err, ai.ErrNoBaseURL) {
+		info.kind = errNoProvider
 		return info
 	}
 	if ai.IsContextLimit(err) {
@@ -200,6 +207,7 @@ func (i errInfo) title() string {
 		errModel:       "Model not available",
 		errBadRequest:  "Request rejected",
 		errOutputLimit: "Reply cut off at the output limit",
+		errNoProvider:  "No model provider configured",
 	}[i.kind]
 	if t == "" {
 		t = "Error"
@@ -223,6 +231,7 @@ func (i errInfo) hint() string {
 		errModel:       "Pick another model with /model.",
 		errBadRequest:  "The provider refused the request; /context shows what was sent.",
 		errOutputLimit: "Ask to continue, or raise the model's output limit.",
+		errNoProvider:  "Add the provider's baseUrl and apiKey to config.json, or pick a configured model with /model, then send again.",
 	}[i.kind]
 }
 
@@ -259,7 +268,35 @@ const errBannerPrefix = "error["
 // appendTurnError adds the banner for a failed turn.
 func (m *model) appendTurnError(err error) {
 	m.status().lastTurnFailed = true
-	m.appendRaw(blockText, errBannerText(classifyError(err)))
+	info := classifyError(err)
+	if info.kind == errNoProvider {
+		info.cause = m.noProviderCause()
+	}
+	m.appendRaw(blockText, errBannerText(info))
+}
+
+// noProviderCause names the provider that has no endpoint and the file and
+// setting that give it one.
+func (m *model) noProviderCause() string {
+	where := "~/.liveagent/config.json"
+	if p, err := config.Path(); err == nil {
+		where = p
+	}
+	name := m.provName
+	if name == "" {
+		return "Set a provider's baseUrl and apiKey in " + where + "."
+	}
+	return fmt.Sprintf("Provider %q has no baseUrl: set providers.%s.baseUrl and apiKey in %s.", name, name, where)
+}
+
+// providerUnconfigured reports whether the current route's provider has no
+// API endpoint, so nothing sent would reach a model.
+func (m *model) providerUnconfigured() bool {
+	if m.cfg == nil || m.provName == "" {
+		return false
+	}
+	p, ok := m.cfg.Providers[m.provName]
+	return ok && strings.TrimSpace(p.BaseURL) == ""
 }
 
 func errBannerText(i errInfo) string {

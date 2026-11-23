@@ -89,6 +89,9 @@ func (m *model) infoRowAt() (string, int) {
 // name and, when an agent is attached, the reasoning-effort chip.
 func (m *model) footerModelCell() string {
 	cell := chromeStyle.Render(m.modelName)
+	if m.providerUnconfigured() {
+		cell += " " + warnStyle.Render("(not configured)")
+	}
 	if m.agent == nil {
 		return cell
 	}

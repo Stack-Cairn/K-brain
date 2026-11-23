@@ -3,6 +3,8 @@ package ai
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"mime"
 	"net/http"
@@ -50,6 +52,9 @@ func (c *OpenAI) postJSONOnce(ctx context.Context, path string, body []byte, str
 }
 
 func (c *OpenAI) send(ctx context.Context, endpoint string, body []byte, stream bool, headers http.Header) (*http.Response, error) {
+	if err := checkEndpoint(c.BaseURL, endpoint); err != nil {
+		return nil, nonRetryable{err}
+	}
 	hr, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return nil, nonRetryable{err}
@@ -69,6 +74,24 @@ func (c *OpenAI) send(ctx context.Context, endpoint string, body []byte, stream 
 	}
 	c.applyCacheHeaders(hr)
 	return c.HTTP.Do(hr)
+}
+
+// ErrNoBaseURL is a request through a provider that has no API endpoint
+// (baseUrl) set: the placeholder provider a fresh configuration starts with,
+// or one whose baseUrl was left empty. Nothing can be sent until it is set.
+var ErrNoBaseURL = errors.New("no API endpoint (baseUrl) is set for this provider")
+
+// checkEndpoint refuses an endpoint no request can reach — no base URL at
+// all, or one without an http/https scheme and host — before anything is
+// sent, so it fails at once instead of being retried as a network error.
+func checkEndpoint(baseURL, endpoint string) error {
+	if strings.TrimSpace(baseURL) == "" {
+		return ErrNoBaseURL
+	}
+	if u, err := url.Parse(endpoint); err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		return fmt.Errorf("invalid baseUrl %q: set an http/https API endpoint", baseURL)
+	}
+	return nil
 }
 
 func checkedResponse(resp *http.Response, err error) (*http.Response, error) {
