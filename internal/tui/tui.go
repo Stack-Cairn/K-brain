@@ -100,6 +100,10 @@ type (
 )
 
 type model struct {
+	// unknownCmd is set by command to the name it did not recognize, so
+	// the composer can keep the draft that held it.
+	unknownCmd string
+
 	promptCatalog promptCatalog
 
 	cfg *config.Config

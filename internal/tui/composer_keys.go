@@ -581,8 +581,12 @@ func (m *model) composerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
-		text := strings.TrimSpace(m.expandPasteChips(m.input.Value()))
-		if strings.HasPrefix(text, "/") {
+		raw := m.input.Value()
+		text := strings.TrimSpace(m.expandPasteChips(raw))
+		// A line that starts with a file path ("/src/main.go crashes") is a
+		// message, not a command.
+		slashCmd := strings.HasPrefix(text, "/") && !m.slashIsMessage(text)
+		if slashCmd {
 			m.noteSlashUse(text)
 		}
 		if m.busy {
@@ -650,8 +654,16 @@ func (m *model) composerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.histIdx = len(m.hist)
 		}
 		m.draft = ""
-		if strings.HasPrefix(text, "/") {
-			return m.command(text)
+		if slashCmd {
+			m.unknownCmd = ""
+			res, cmd := m.command(text)
+			if m.unknownCmd != "" {
+				// Not a command: keep what was typed so it can be fixed
+				// instead of retyped.
+				m.unknownCmd = ""
+				m.setComposer(raw, len([]rune(raw)))
+			}
+			return res, cmd
 		}
 		if strings.HasPrefix(text, "!") {
 			m.runShell(text)

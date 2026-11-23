@@ -193,6 +193,10 @@ func (m *model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.input.SetValue(m.menu.base)
 			}
 			m.menu = nil
+			// A lone "/" only opened the menu; closing the menu drops it.
+			if strings.TrimSpace(m.input.Value()) == "/" {
+				m.input.Reset()
+			}
 		case m.queueSel >= 0:
 			m.queueSel = -1
 
