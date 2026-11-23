@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -46,6 +47,20 @@ func (a *Agent) runTools(ctx context.Context, calls []ai.ToolCall, ev Events) []
 			if ev.OnLifecycle != nil {
 				ev.OnLifecycle("tool_execution_start")
 				defer ev.OnLifecycle("tool_execution_end")
+			}
+			if tc.BadArgs != "" {
+				// The model's arguments were not a JSON object: nothing to run.
+				// Report it like a failed call so it shows and the model can
+				// send the call again.
+				out := badArgsError(name, tc.BadArgs)
+				if ev.OnToolStart != nil {
+					ev.OnToolStart(tc.ID, name, args)
+				}
+				if ev.OnToolEnd != nil {
+					ev.OnToolEnd(tc.ID, name, out)
+				}
+				outCh <- outcome{i, tools.Result{Text: out, Failed: true}, 0, 1}
+				return
 			}
 			if a.Hooks != nil || a.PluginHook != nil {
 				if err := a.runHook(ctx, hooks.Event{Name: hooks.PreToolUse, ToolID: tc.ID, ToolName: name, ToolArgs: args}); err != nil {
@@ -173,6 +188,28 @@ func mcpAppRef(result tools.Result) *ai.MCPAppRef {
 		return nil
 	}
 	return &ai.MCPAppRef{ServerID: app.ServerID, Tool: app.Tool, URI: app.URI, ResultStored: len(app.Result) > 0}
+}
+
+// maxBadArgRounds is how many rounds in a row may consist only of calls with
+// malformed arguments before the turn ends: the first is answered with an
+// error the model can correct, the second stops the turn.
+const maxBadArgRounds = 2
+
+// ErrMalformedToolCalls ends a turn whose model kept sending tool calls with
+// arguments that are not valid JSON.
+var ErrMalformedToolCalls = errors.New("the model sent tool calls with invalid JSON arguments twice in a row; the turn was stopped")
+
+func badArgsError(name, sent string) string {
+	return fmt.Sprintf("Error: the arguments for this %s call were not valid JSON, so it was not run. Received: %s\nSend the call again with the arguments as one JSON object.", name, sent)
+}
+
+func allBadArgs(calls []ai.ToolCall) bool {
+	for _, tc := range calls {
+		if tc.BadArgs == "" {
+			return false
+		}
+	}
+	return len(calls) > 0
 }
 
 const doomLoopMaxRun = 3

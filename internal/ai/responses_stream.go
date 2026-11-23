@@ -3,7 +3,6 @@ package ai
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 )
 
@@ -285,7 +284,7 @@ func (c *Responses) streamAttempt(ctx context.Context, req Request, onText, onTh
 					continue
 				}
 				if !validToolCallArgs(tc.Function.Arguments) {
-					msg.Content += fmt.Sprintf("\n[tool call %q discarded: arguments are invalid JSON]", tc.Function.Name)
+					msg.ToolCalls = append(msg.ToolCalls, malformedToolCall(*tc))
 					continue
 				}
 				msg.ToolCalls = append(msg.ToolCalls, *tc)

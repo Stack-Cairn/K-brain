@@ -826,6 +826,7 @@ func (a *Agent) turnPending(ctx context.Context, input string, parts []ai.Conten
 	rounds := 0
 	continuations := 0
 	stopBlocks := 0
+	badArgRounds := 0
 	for {
 		lifecycle.startRound()
 		if a.MaxTurns > 0 && rounds >= a.MaxTurns {
@@ -950,6 +951,18 @@ func (a *Agent) turnPending(ctx context.Context, input string, parts []ai.Conten
 			a.msgsMu.Unlock()
 			if ctx.Err() != nil {
 				return "", ctx.Err()
+			}
+			// A round whose calls all had malformed arguments was answered
+			// with errors for the model to correct; a second such round in a
+			// row ends the turn rather than looping on a model that cannot
+			// produce valid arguments.
+			if allBadArgs(msg.ToolCalls) {
+				badArgRounds++
+				if badArgRounds >= maxBadArgRounds {
+					return "", ErrMalformedToolCalls
+				}
+			} else {
+				badArgRounds = 0
 			}
 			revise := a.planRevise.Swap(false)
 			for i, call := range msg.ToolCalls {

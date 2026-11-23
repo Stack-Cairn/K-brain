@@ -8,8 +8,11 @@ import (
 	"testing"
 )
 
-func TestStreamDiscardsToolCallWithInvalidJSONArgs(t *testing.T) {
-
+// A call whose arguments are not valid JSON is kept, marked BadArgs with an
+// excerpt of what was sent and with replayable "{}" arguments, so the agent
+// can answer it with an error the model can act on. Dropping it ended the
+// turn silently.
+func TestStreamKeepsToolCallWithInvalidJSONArgsAsBadArgs(t *testing.T) {
 	srv := sseServer(t,
 		`data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"w1","type":"function","function":{"name":"write","arguments":"{\"path\":\"/tmp/x\""}}]}}]}`,
 		`data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}`,
@@ -21,11 +24,18 @@ func TestStreamDiscardsToolCallWithInvalidJSONArgs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(msg.ToolCalls) != 0 {
-		t.Fatalf("tool call with invalid JSON arguments must be discarded before history, got %+v", msg.ToolCalls)
+	if len(msg.ToolCalls) != 1 || msg.StopReason != StopReasonToolUse {
+		t.Fatalf("malformed call must be kept for an error reply, got %+v (stop %q)", msg.ToolCalls, msg.StopReason)
 	}
-	if !strings.Contains(msg.Content, "invalid JSON") {
-		t.Fatalf("expected a discard note in content, got %q", msg.Content)
+	tc := msg.ToolCalls[0]
+	if tc.ID != "w1" || tc.Function.Arguments != "{}" || tc.BadArgs != `{"path":"/tmp/x"` {
+		t.Fatalf("malformed call: %+v", tc)
+	}
+	if strings.Contains(msg.Content, "invalid JSON") {
+		t.Fatalf("no note in the reply text, got %q", msg.Content)
+	}
+	if got := stripAuthored([]Message{msg})[0].ToolCalls[0].BadArgs; got != "" {
+		t.Fatalf("requests must not carry BadArgs, got %q", got)
 	}
 }
 
@@ -66,7 +76,7 @@ func TestStreamKeepsToolCallWithValidJSONArgs(t *testing.T) {
 	}
 }
 
-func TestStreamDropsOnlyMalformedKeepsValidSibling(t *testing.T) {
+func TestStreamMarksOnlyMalformedKeepsValidSibling(t *testing.T) {
 	srv := sseServer(t,
 		`data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"good","type":"function","function":{"name":"read","arguments":"{\"path\":\"/a\"}"}}]}}]}`,
 		`data: {"choices":[{"delta":{"tool_calls":[{"index":1,"id":"bad","type":"function","function":{"name":"write","arguments":"{\"path\":\"/b\""}}]}}]}`,
@@ -79,15 +89,15 @@ func TestStreamDropsOnlyMalformedKeepsValidSibling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(msg.ToolCalls) != 1 {
-		t.Fatalf("only the malformed call should be dropped, got %+v", msg.ToolCalls)
+	if len(msg.ToolCalls) != 2 {
+		t.Fatalf("both calls should be kept, got %+v", msg.ToolCalls)
 	}
-	tc := msg.ToolCalls[0]
-	if tc.ID != "good" || tc.Function.Name != "read" || tc.Function.Arguments != `{"path":"/a"}` {
-		t.Fatalf("valid sibling changed: %+v", tc)
+	good, bad := msg.ToolCalls[0], msg.ToolCalls[1]
+	if good.ID != "good" || good.Function.Arguments != `{"path":"/a"}` || good.BadArgs != "" {
+		t.Fatalf("valid sibling changed: %+v", good)
 	}
-	if !strings.Contains(msg.Content, "write") || !strings.Contains(msg.Content, "invalid JSON") {
-		t.Fatalf("discard note should name the dropped call, got %q", msg.Content)
+	if bad.ID != "bad" || bad.Function.Name != "write" || bad.BadArgs == "" || bad.Function.Arguments != "{}" {
+		t.Fatalf("malformed sibling: %+v", bad)
 	}
 }
 

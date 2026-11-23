@@ -3,7 +3,6 @@ package ai
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 )
 
 type anthropicToolBlock struct {
@@ -206,7 +205,7 @@ func (c *Anthropic) streamAttempt(ctx context.Context, req Request, onText, onTh
 					return Message{}, usage.normalized(), providerStreamError(nil, "message stopped with an unfinished tool block")
 				}
 				if !validToolCallArgs(block.call.Function.Arguments) {
-					msg.Content += fmt.Sprintf("\n[tool call %q discarded: arguments are invalid JSON]", block.call.Function.Name)
+					msg.ToolCalls = append(msg.ToolCalls, malformedToolCall(block.call))
 					continue
 				}
 				msg.ToolCalls = append(msg.ToolCalls, block.call)
