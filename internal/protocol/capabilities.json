@@ -337,6 +337,15 @@
       "firstRelease": "v0.107.43",
       "evidenceCommit": "pending",
       "missing": "A plugin.json with a field this backend does not know fails to load and is reported in errors; avoid newer manifest fields."
+    },
+    {
+      "name": "filesystem_mention_list",
+      "type": "integer",
+      "compare": "eq",
+      "value": 1,
+      "firstRelease": "v0.107.45",
+      "evidenceCommit": "pending",
+      "missing": "POST /v1/fs rejects action mention_list with 422 \"unsupported filesystem action\" (and an older one rejects the query field with 400): build @ mention candidates from action list, which applies no ignore rules, or keep the desktop's own file index."
     }
   ]
 }

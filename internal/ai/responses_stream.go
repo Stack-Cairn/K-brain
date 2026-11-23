@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"strings"
 )
 
@@ -127,6 +128,8 @@ func (c *Responses) streamAttempt(ctx context.Context, req Request, onText, onTh
 	}
 	defer resp.Body.Close()
 	msg := Message{Role: "assistant"}
+	var thought thoughtText
+	think := thought.wrap(onThink)
 	reasoning := map[string]int{}
 	remember := func(item responsesItem) {
 		if item.Type != "reasoning" || len(item.Raw) == 0 {
@@ -168,6 +171,9 @@ func (c *Responses) streamAttempt(ctx context.Context, req Request, onText, onTh
 			ItemID    string          `json:"item_id"`
 			CallID    string          `json:"call_id"`
 			Arguments string          `json:"arguments"`
+			// SummaryIndex and ContentIndex tell apart the parts of a reasoning item.
+			SummaryIndex *int `json:"summary_index"`
+			ContentIndex *int `json:"content_index"`
 		}
 		search.accept(event.Data, event.Type)
 		if err := decodeStreamEvent(event.Data, &ev); err != nil {
@@ -204,9 +210,19 @@ func (c *Responses) streamAttempt(ctx context.Context, req Request, onText, onTh
 		case "response.refusal.delta", "response.refusal.done":
 			return Message{}, usage, providerStreamError(nil, "Responses refusal")
 		case "response.reasoning_summary_text.delta", "response.reasoning_text.delta":
-			if onThink != nil {
-				onThink(ev.Delta)
+			if ev.Delta == "" {
+				continue
 			}
+			index := ev.SummaryIndex
+			if ev.Type == "response.reasoning_text.delta" {
+				index = ev.ContentIndex
+			}
+			part := ev.Type + "\x00" + ev.ItemID
+			if index != nil {
+				part += "\x00" + strconv.Itoa(*index)
+			}
+			thought.startPart(part, think)
+			think(ev.Delta)
 		case "response.output_item.added", "response.output_item.done":
 			if err := ev.Item.resultError(); err != nil {
 				return Message{}, usage, err
@@ -264,9 +280,19 @@ func (c *Responses) streamAttempt(ctx context.Context, req Request, onText, onTh
 					}
 					notify(tc)
 				}
+				if item.Type == "reasoning" {
+					// Reasoning content is not reply text.
+					continue
+				}
 				for _, part := range item.Content {
 					finalText += part.Text
 				}
+			}
+			msg.Reasoning = thought.String()
+			if msg.Reasoning == "" && msg.Replay != nil {
+				// No reasoning was streamed as deltas; keep the summary the
+				// finished reasoning items carry.
+				msg.Reasoning = responsesReasoningText(msg.Replay.Blocks)
 			}
 			if finalText != "" && strings.HasPrefix(finalText, msg.Content) {
 				delta := strings.TrimPrefix(finalText, msg.Content)

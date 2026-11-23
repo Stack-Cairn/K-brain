@@ -33,6 +33,25 @@ func chromeColumns(left, right string, width int) string {
 	return ansi.Truncate(strings.Repeat(" ", lead)+left+strings.Repeat(" ", pad)+right, width, "")
 }
 
+// chromeColumnsKeep is chromeColumns with keep set first on the left and
+// never cut: the right cell, then the rest of the left, fit in what remains.
+func chromeColumnsKeep(keep, left, right string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	lead := min(chromeIndent, width)
+	keep, left, right = chromeGlyphs(keep), chromeGlyphs(left), chromeGlyphs(right)
+	room := width - lead - lipgloss.Width(keep)
+	if room <= 0 {
+		return ansi.Truncate(strings.Repeat(" ", lead)+keep, width, "")
+	}
+	tail := chromeGlyphs("…")
+	right = ansi.Truncate(right, max(room-1, 0), tail)
+	left = ansi.Truncate(left, max(room-lipgloss.Width(right)-1, 0), tail)
+	pad := max(room-lipgloss.Width(left)-lipgloss.Width(right), 0)
+	return strings.Repeat(" ", lead) + keep + left + strings.Repeat(" ", pad) + right
+}
+
 // footerHints is the single info row under the input box: permission mode,
 // git and goal on the left; context, spend, the model and reasoning effort on
 // the right. Shortcuts live in the composer placeholder.
@@ -63,7 +82,13 @@ func (m *model) infoRow() string {
 }
 
 func (m *model) infoRowAt() (string, int) {
-	left := m.modeChip()
+	// The mode chip is never cut: what is left of the row is shared by the
+	// rest, the right cell first.
+	chip := m.modeChipLabel()
+	left := ""
+	if extra := m.modeBadge(); extra != "" && m.width >= 60 {
+		left = " " + extra
+	}
 	if tag := m.vimTag(); tag != "" {
 		left += "  " + tag
 	}
@@ -74,7 +99,7 @@ func (m *model) infoRowAt() (string, int) {
 	if stats := m.footerStats(); stats != "" {
 		right = dimStyle.Render(stats+" · ") + right
 	}
-	row := chromeColumns(left, right, m.width)
+	row := chromeColumnsKeep(chip, left, right, m.width)
 
 	chipX := -1
 	if m.agent != nil {

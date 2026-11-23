@@ -272,9 +272,9 @@ func (m *model) panelHeader(expanded bool, tasks []agent.BackgroundTask, plan []
 	}
 	hint := ""
 	if width >= 80 {
-		label := m.tr("Alt+T expand")
+		label := m.tr("Ctrl+] expand")
 		if expanded {
-			label = m.tr("Alt+T collapse")
+			label = m.tr("Ctrl+] collapse")
 		}
 		hint = " " + textHintStyle.Render(label) + " " + chromeRuleStyle.Render(fill+fill)
 	}

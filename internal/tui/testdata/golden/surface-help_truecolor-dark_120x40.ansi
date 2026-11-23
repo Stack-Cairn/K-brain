@@ -5,9 +5,9 @@
   [38;2;134;139;149mAnywhere[0m
 [1;38;2;47;191;160;48;2;38;43;52m❯ Shift+Tab                          cycle the permission mode                                                         [0m
   Ctrl+T                             [38;2;200;204;211mfocus the subagent dock[0m[38;2;154;160;170m[0m
-  Alt+T                              [38;2;200;204;211mexpand or collapse the top panel (goal, plan, subagents); a click on its header …[0m[38;2;154;160;170m[0m
+  Ctrl+] / Alt+T                     [38;2;200;204;211mexpand or collapse the top panel (goal, plan, subagents); a click on its header …[0m[38;2;154;160;170m[0m
   Ctrl+O                             [38;2;200;204;211mshow or hide thinking tokens[0m[38;2;154;160;170m[0m
-  Alt+O                              [38;2;200;204;211mexpand or collapse the last tool result[0m[38;2;154;160;170m[0m
+  Ctrl+F / Alt+O                     [38;2;200;204;211mexpand or collapse the last tool result[0m[38;2;154;160;170m[0m
   Ctrl+G                             [38;2;200;204;211medit the draft in an external editor[0m[38;2;154;160;170m[0m
   Ctrl+V                             [38;2;200;204;211mpaste an image[0m[38;2;154;160;170m[0m
   Ctrl+L                             [38;2;200;204;211mredraw the screen[0m[38;2;154;160;170m[0m
@@ -15,7 +15,7 @@
   Ctrl+C Ctrl+C                      [38;2;200;204;211mquit[0m[38;2;154;160;170m[0m
   Ctrl+P                             [38;2;200;204;211mopen the command palette[0m[38;2;154;160;170m[0m
   F2                                 [38;2;200;204;211mopen settings[0m[38;2;154;160;170m[0m
-  Alt+↑                              [38;2;200;204;211mfocus the transcript, a block at a time[0m[38;2;154;160;170m[0m
+  Shift+↑ / Alt+↑                    [38;2;200;204;211mfocus the transcript, a block at a time[0m[38;2;154;160;170m[0m
   F1                                 [38;2;200;204;211mopen this cheatsheet (? only on an empty composer)[0m[38;2;154;160;170m[0m
 
   [38;2;134;139;149mComposer[0m

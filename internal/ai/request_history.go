@@ -10,7 +10,7 @@ import (
 // prepareRequestHistory is shared by every wire adapter. Canonical stored history
 // remains untouched; provider-private replay is used only on its originating route.
 func prepareRequestHistory(messages []Message, api, endpoint, model string) []Message {
-	out := repairToolHistory(stripAuthored(cancelledReplies(messages)))
+	out := repairToolHistory(stripAuthored(interruptedReplies(messages)))
 	for i := range out {
 		if !replayMatches(out[i], api, endpoint, model) {
 			out[i].Replay = nil
@@ -23,13 +23,23 @@ func prepareRequestHistory(messages []Message, api, endpoint, model string) []Me
 // was streaming. The stored message keeps exactly what the user saw.
 const cancelledReplyNote = "\n\n[response interrupted by the user]"
 
-// cancelledReplies renders replies recorded on a user stop. One with no text is
-// dropped: its thinking is display-only and an empty assistant turn is invalid
-// for several providers. Tool messages use the same stop reason and pass through.
-func cancelledReplies(messages []Message) []Message {
+// shutdownReplyNote marks, in requests only, a reply cut short because the
+// backend shut down while it was streaming.
+const shutdownReplyNote = "\n\n[response interrupted because the backend stopped]"
+
+// failedReplyNote marks, in requests only, a reply whose stream failed partway.
+const failedReplyNote = "\n\n[response interrupted by an error]"
+
+// interruptedReplies renders replies recorded on a user stop or a failed
+// stream. One with no text is dropped: its thinking is display-only and an
+// empty assistant turn is invalid for several providers. Tool messages use the
+// same stop reasons and pass through, and so does an error reply that holds
+// only the error text (it has no Error field).
+func interruptedReplies(messages []Message) []Message {
 	var out []Message
 	for i, m := range messages {
-		if m.Role != "assistant" || m.StopReason != StopReasonCancelled {
+		note := interruptionNote(m)
+		if note == "" {
 			if out != nil {
 				out = append(out, m)
 			}
@@ -42,7 +52,7 @@ func cancelledReplies(messages []Message) []Message {
 			continue
 		}
 		if m.Content != "" {
-			m.Content += cancelledReplyNote
+			m.Content += note
 		}
 		out = append(out, m)
 	}
@@ -50,6 +60,21 @@ func cancelledReplies(messages []Message) []Message {
 		return messages
 	}
 	return out
+}
+
+func interruptionNote(m Message) string {
+	if m.Role != "assistant" {
+		return ""
+	}
+	switch {
+	case m.StopReason == StopReasonCancelled && m.CancelReason == CancelReasonShutdown:
+		return shutdownReplyNote
+	case m.StopReason == StopReasonCancelled:
+		return cancelledReplyNote
+	case m.StopReason == StopReasonError && m.Error != "":
+		return failedReplyNote
+	}
+	return ""
 }
 
 // responsesMaxCallID is the Responses API limit for function_call.call_id.

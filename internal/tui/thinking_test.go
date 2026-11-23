@@ -6,8 +6,11 @@ import (
 	"testing"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Stack-Cairn/K-brain/internal/ai"
 )
 
 // thinkingModel is a model with thinking shown and a clock the test moves.
@@ -21,8 +24,9 @@ func thinkingModel(w, h int) (*model, *time.Time) {
 	return m, &clock
 }
 
-// While reasoning streams, its block shows the header and only the last
-// rows, the line still arriving included; the live area stays empty.
+// While reasoning streams, its block shows only the last rows, the line
+// still arriving included, with no "Thinking…" header: the status row's
+// spinner is the one live label. The live area stays empty.
 func TestThinkingShowsLiveTail(t *testing.T) {
 	m, _ := thinkingModel(80, 24)
 	m.Update(thinkMsg("first I read"))
@@ -30,14 +34,14 @@ func TestThinkingShowsLiveTail(t *testing.T) {
 	if b == nil {
 		t.Fatal("no live thinking block for a partial line")
 	}
-	if got := ansi.Strip(b.render(80)); got != "◌ Thinking…\n  first I read" {
+	if got := ansi.Strip(b.render(80)); got != "  first I read" {
 		t.Fatalf("partial line = %q", got)
 	}
 	for i := range 8 {
 		m.Update(thinkMsg(fmt.Sprintf(" step %d\nthen", i)))
 	}
 	got := ansi.Strip(m.blocks[len(m.blocks)-1].render(80))
-	want := "◌ Thinking…\n  then step 6\n  then step 7\n  then"
+	want := "  then step 6\n  then step 7\n  then"
 	if got != want {
 		t.Fatalf("live tail = %q, want %q", got, want)
 	}
@@ -68,7 +72,7 @@ func TestThinkingFoldsToDuration(t *testing.T) {
 	if b == nil || b.thought.live {
 		t.Fatalf("thinking block still live: %+v", b)
 	}
-	if got := ansi.Strip(b.render(80)); got != "◉ Thought for 4s · 3 lines" {
+	if got := ansi.Strip(b.render(80)); got != "◉ Thought for 4s" {
 		t.Fatalf("folded = %q", got)
 	}
 	if b.text != "look at the cache\nthen the config\ndecide" {
@@ -92,8 +96,9 @@ func TestThinkingFoldsToDuration(t *testing.T) {
 // A run that ends before any whole line, and one with nothing in it, leave
 // no empty block behind.
 func TestThinkingEdgeRuns(t *testing.T) {
-	m, _ := thinkingModel(80, 24)
+	m, clock := thinkingModel(80, 24)
 	m.Update(thinkMsg("only a fragment"))
+	*clock = clock.Add(2 * time.Second)
 	m.Update(textMsg("answer\n"))
 	if b := m.blocks[0]; b.kind != blockThinking || b.text != "only a fragment" {
 		t.Fatalf("fragment run = %+v", b)
@@ -106,6 +111,138 @@ func TestThinkingEdgeRuns(t *testing.T) {
 		if b.kind == blockThinking {
 			t.Fatalf("blank run left a block: %+v", b)
 		}
+	}
+}
+
+// A turn's thinking runs, one before each tool call, fold into one row
+// that sums their time; runs adding up to under a second leave no row.
+func TestThinkingMergesPerTurn(t *testing.T) {
+	m, clock := thinkingModel(100, 30)
+	m.appendRaw(blockUser, "run the four steps")
+	run := func(reason string, took time.Duration, id string) {
+		m.Update(thinkMsg(reason))
+		*clock = clock.Add(took)
+		m.Update(toolStartMsg{id: id, name: "bash", args: `{"command":"echo ` + id + `"}`})
+		m.Update(toolEndMsg{id: id, name: "bash", result: id})
+	}
+	run("first step\n", 300*time.Millisecond, "c1")
+	if n := countThinking(m); n != 0 {
+		t.Fatalf("a 0.3s thought left %d rows", n)
+	}
+	run("second step\n", 400*time.Millisecond, "c2")
+	run("a closer look\nat the third\n", 4*time.Second, "c3")
+	run("fourth step\n", 200*time.Millisecond, "c4")
+	m.Update(thinkMsg("all done\n"))
+	*clock = clock.Add(100 * time.Millisecond)
+	m.Update(textMsg("All four steps ran.\n"))
+
+	var rows []*block
+	for i := range m.blocks {
+		if m.blocks[i].kind == blockThinking {
+			rows = append(rows, &m.blocks[i])
+		}
+	}
+	if len(rows) != 1 {
+		t.Fatalf("%d thinking rows for one turn, want 1", len(rows))
+	}
+	b := rows[0]
+	if got := ansi.Strip(b.render(100)); got != "◉ Thought for 5s" {
+		t.Fatalf("turn row = %q", got)
+	}
+	want := "first step\nsecond step\na closer look\nat the third\nfourth step\nall done"
+	if b.text != want {
+		t.Fatalf("turn row text = %q, want every run's text %q", b.text, want)
+	}
+	// The row sits where the turn's thinking first ran past a second: above
+	// the third call, which follows the first two.
+	var order []string
+	for _, x := range m.blocks {
+		switch x.kind {
+		case blockThinking:
+			order = append(order, "thought")
+		case blockToolRun:
+			order = append(order, x.toolID)
+		}
+	}
+	if got := strings.Join(order, " "); got != "c1 c2 thought c3 c4" {
+		t.Fatalf("order = %q", got)
+	}
+
+	// The next turn starts a row of its own, and a short one shows nothing.
+	m.appendRaw(blockUser, "again")
+	m.Update(thinkMsg("quick\n"))
+	*clock = clock.Add(200 * time.Millisecond)
+	m.Update(textMsg("ok\n"))
+	if n := countThinking(m); n != 1 {
+		t.Fatalf("a short second turn changed the rows: %d", n)
+	}
+	m.appendRaw(blockUser, "and once more")
+	m.Update(thinkMsg("slow\n"))
+	*clock = clock.Add(2 * time.Second)
+	m.Update(textMsg("ok\n"))
+	if n := countThinking(m); n != 2 {
+		t.Fatalf("a long third turn should add its own row, have %d", n)
+	}
+}
+
+func countThinking(m *model) int {
+	n := 0
+	for _, b := range m.blocks {
+		if b.kind == blockThinking {
+			n++
+		}
+	}
+	return n
+}
+
+// Ctrl+O says what it did in the footer for a moment; the transcript gets
+// no "thinking tokens: off/on" rows.
+func TestCtrlOToggleIsTransient(t *testing.T) {
+	t.Setenv("K_BRAIN_HOME", t.TempDir())
+	m, _ := thinkingModel(80, 24)
+	m.busy = false
+	before := len(m.blocks)
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlO})
+	if m.showThinking {
+		t.Fatal("Ctrl+O did not hide thinking")
+	}
+	if len(m.blocks) != before {
+		t.Fatalf("Ctrl+O added %d transcript rows", len(m.blocks)-before)
+	}
+	if !strings.Contains(m.transientNotice, "Thinking tokens hidden") || cmd == nil {
+		t.Fatalf("footer notice = %q, cmd %v", m.transientNotice, cmd)
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyCtrlO})
+	if !m.showThinking || len(m.blocks) != before || !strings.Contains(m.transientNotice, "Thinking tokens shown") {
+		t.Fatalf("second Ctrl+O: shown %v, rows %d, notice %q", m.showThinking, len(m.blocks)-before, m.transientNotice)
+	}
+}
+
+// Reopening a session draws one thinking row per turn, however many replies
+// the turn's reasoning came in.
+func TestSeededThinkingMergesPerTurn(t *testing.T) {
+	m, _ := thinkingModel(80, 24)
+	m.busy = false
+	m.blocks = nil
+	var call ai.ToolCall
+	call.ID, call.Type = "t1", "function"
+	call.Function.Name, call.Function.Arguments = "bash", `{"command":"ls"}`
+	m.seedTranscript([]ai.Message{
+		{Role: "user", Content: "go", Authored: true},
+		{Role: "assistant", Reasoning: "plan it", ToolCalls: []ai.ToolCall{call}},
+		{Role: "tool", ToolCallID: "t1", Name: "bash", Content: "a.go"},
+		{Role: "assistant", Reasoning: "read it", Content: "done"},
+		{Role: "user", Content: "next", Authored: true},
+		{Role: "assistant", Reasoning: "fresh turn", Content: "ok"},
+	}, 0)
+	var texts []string
+	for _, b := range m.blocks {
+		if b.kind == blockThinking {
+			texts = append(texts, b.text)
+		}
+	}
+	if got := strings.Join(texts, "|"); got != "plan it\nread it|fresh turn" {
+		t.Fatalf("seeded thinking rows = %q", got)
 	}
 }
 

@@ -5,9 +5,9 @@
   [2mAnywhere[0m
 [1;7m❯ Shift+Tab                   cycle the permission mode                        [0m
   Ctrl+T                      focus the subagent dock[2m[0m
-  Alt+T                       expand or collapse the top panel (goal, plan, s…[2m[0m
+  Ctrl+] / Alt+T              expand or collapse the top panel (goal, plan, s…[2m[0m
   Ctrl+O                      show or hide thinking tokens[2m[0m
-  Alt+O                       expand or collapse the last tool result[2m[0m
+  Ctrl+F / Alt+O              expand or collapse the last tool result[2m[0m
   Ctrl+G                      edit the draft in an external editor[2m[0m
   Ctrl+V                      paste an image[2m[0m
   Ctrl+L                      redraw the screen[2m[0m

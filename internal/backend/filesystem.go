@@ -40,6 +40,7 @@ type filesystemInput struct {
 	ExpectedMtime *int64  `json:"expected_mtime_ms"`
 	ExpectedHash  *string `json:"expected_content_hash"`
 	ToPath        string  `json:"to_path"`
+	Query         string  `json:"query"`
 }
 
 // filesystemRoot confines each operation, including symlink traversal, to an
@@ -96,7 +97,7 @@ func (s *Server) filesystem(r *http.Request, in filesystemInput) (any, error) {
 		}
 		return map[string]any{"roots": roots}, nil
 	}
-	if in.Action != "list_dirs" && in.Action != "list" && in.Action != "read_text" && in.Action != "read_preview" && in.Action != "write_text" && in.Action != "mkdir" && in.Action != "rename" && in.Action != "delete" {
+	if in.Action != "list_dirs" && in.Action != "list" && in.Action != "read_text" && in.Action != "read_preview" && in.Action != "write_text" && in.Action != "mkdir" && in.Action != "rename" && in.Action != "delete" && in.Action != "mention_list" {
 		return nil, errors.New("unsupported filesystem action")
 	}
 	path := in.Path
@@ -188,6 +189,9 @@ func (s *Server) filesystem(r *http.Request, in filesystemInput) (any, error) {
 			}
 		}
 		return map[string]any{"path": filepath.ToSlash(filepath.Clean(in.Path)), "content": string(body), "mtime_ms": info.ModTime().UnixMilli(), "content_hash": hex.EncodeToString(hash[:]), "size_bytes": len(body), "total_lines": lines}, nil
+	}
+	if in.Action == "mention_list" {
+		return mentionList(r.Context(), root, rel, in)
 	}
 	base, err := root.OpenRoot(rel)
 	if err != nil {

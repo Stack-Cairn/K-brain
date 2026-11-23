@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"encoding/json"
 	"net/http"
 	"testing"
 	"time"
@@ -100,7 +101,10 @@ func TestServerCancelledRunPersistsStreamedReply(t *testing.T) {
 	}
 }
 
-func TestServerCancelBeforeOutputPersistsNoReply(t *testing.T) {
+// Stopping a run before the model wrote anything saves an empty
+// "assistant-stopped-<run>" reply with stop_reason "cancelled", so the stop
+// is still visible after reopening the conversation.
+func TestServerCancelBeforeOutputPersistsStoppedMarker(t *testing.T) {
 	store, err := session.Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -126,7 +130,60 @@ func TestServerCancelBeforeOutputPersistsNoReply(t *testing.T) {
 	if code := doJSON(t, http.MethodGet, httpServer.URL+"/v1/sessions/"+sess.ID+"/history?max_messages=100", nil, &page); code != http.StatusOK {
 		t.Fatalf("history status %d", code)
 	}
-	if len(page.Session.Messages) != 1 || page.Session.Messages[0].Role != protocol.RoleUser {
-		t.Fatalf("history after empty cancel = %+v", page.Session.Messages)
+	messages := page.Session.Messages
+	if len(messages) != 2 || messages[0].Role != protocol.RoleUser {
+		t.Fatalf("history after empty cancel = %+v", messages)
+	}
+	if marker := messages[1]; marker.ID != "assistant-stopped-"+accepted.RunID || marker.Role != protocol.RoleAssistant || marker.StopReason != "cancelled" || len(marker.Content) != 0 || marker.CancelReason != "" || marker.CreatedAt == nil {
+		t.Fatalf("stopped marker = %+v", marker)
+	}
+	var terminal protocol.RunTerminal
+	if err := json.Unmarshal(events[len(events)-1].Payload, &terminal); err != nil || terminal.State != "cancelled" || terminal.CancelReason != "" {
+		t.Fatalf("run.cancelled = %s (%v)", events[len(events)-1].Payload, err)
+	}
+}
+
+// A prompt stopped before any reply can still be resumed by its message id;
+// the reply takes the stop marker's place in history.
+func TestServerResumeReplacesStoppedMarker(t *testing.T) {
+	store, err := session.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	fixture := &scriptedClient{wait: true, streamed: make(chan struct{}, 1), response: "resumed answer"}
+	_, httpServer := newTestServer(t, store, t.TempDir(), fixture)
+	sess := createTestSession(t, httpServer.URL)
+	accepted := runRequest(t, httpServer.URL, sess.ID, "stop-early", "explain")
+	waitStreamed(t, fixture.streamed)
+	cancelRun(t, httpServer.URL, sess.ID, accepted.RunID)
+	waitForRun(t, httpServer.URL, sess.ID, 0)
+	stopped := getSession(t, httpServer.URL, sess.ID)
+	if len(stopped.Messages) != 2 || stopped.Messages[1].ID != "assistant-stopped-"+accepted.RunID {
+		t.Fatalf("history after stop = %+v", stopped.Messages)
+	}
+	fixture.mu.Lock()
+	fixture.wait = false
+	fixture.mu.Unlock()
+	prompt := stopped.Messages[0]
+	var resumed protocol.RunAccepted
+	if resp := postJSON(t, http.DefaultClient, httpServer.URL+"/v1/sessions/"+sess.ID+"/runs", protocol.PromptRequest{ConversationID: sess.ID, ClientRequestID: "resume", ResumeMessageID: prompt.ID, Prompt: "explain"}, &resumed); resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("resume status %d", resp.StatusCode)
+	}
+	if events := waitForRun(t, httpServer.URL, sess.ID, stopped.LastSeq); events[len(events)-1].Type != protocol.EventRunCompleted {
+		t.Fatalf("resume events = %+v", events)
+	}
+	_, saved, err := store.Load(sess.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var texts []string
+	for _, message := range saved {
+		if message.Role != "system" {
+			texts = append(texts, message.Role+":"+message.TextContent())
+		}
+	}
+	if len(texts) != 2 || texts[0] != "user:explain" || texts[1] != "assistant:resumed answer" {
+		t.Fatalf("saved history after resume = %v", texts)
 	}
 }

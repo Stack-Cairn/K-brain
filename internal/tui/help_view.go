@@ -25,7 +25,7 @@ var helpContexts = []struct {
 	{keyMenu, "Completion menu"},
 	{keyDock, "Subagent dock (Ctrl+T)"},
 	{keyTaskView, "Subagent view"},
-	{keyTranscript, "Transcript focus (Alt+↑)"},
+	{keyTranscript, "Transcript focus (Shift+↑ / Alt+↑)"},
 	{keyViewer, "Block viewer"},
 	{keyVim, "Vim normal mode (/vim)"},
 }

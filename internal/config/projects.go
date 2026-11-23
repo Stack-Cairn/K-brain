@@ -10,6 +10,8 @@ const DefaultGoalMaxRounds = 100
 
 type projectsFile struct {
 	GoalMaxRounds map[string]int `json:"goalMaxRounds,omitempty"`
+	// PermissionModes is the permission mode last chosen in each folder.
+	PermissionModes map[string]string `json:"permissionModes,omitempty"`
 }
 
 func projectsPath() (string, error) {
@@ -67,6 +69,25 @@ func SetProjectGoalMaxRounds(dir string, n int) error {
 		f.GoalMaxRounds[dir] = n
 	} else {
 		delete(f.GoalMaxRounds, dir)
+	}
+	return f.save()
+}
+
+// ProjectPermissionMode is the permission mode last chosen in dir, or "".
+func ProjectPermissionMode(dir string) string {
+	return loadProjects().PermissionModes[dir]
+}
+
+// SetProjectPermissionMode saves mode as dir's permission mode; "" forgets it.
+func SetProjectPermissionMode(dir, mode string) error {
+	f := loadProjects()
+	if f.PermissionModes == nil {
+		f.PermissionModes = map[string]string{}
+	}
+	if mode != "" {
+		f.PermissionModes[dir] = mode
+	} else {
+		delete(f.PermissionModes, dir)
 	}
 	return f.save()
 }

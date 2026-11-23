@@ -145,14 +145,18 @@ type model struct {
 	showThinking bool
 	curThink     string
 	inThink      bool
-	menu         *menu
-	picker       *picker
-	mpicker      *modelPicker
-	palette      *palette
-	cancel       context.CancelFunc
-	goalRequest  *goalFormulation
-	goalVerify   *goalVerification
-	prog         *tea.Program
+	// thinkTurn counts the turns for thinking rows; thinkCarry is the turn's
+	// thinking too short to show so far (thinking.go).
+	thinkTurn   int
+	thinkCarry  thinkCarry
+	menu        *menu
+	picker      *picker
+	mpicker     *modelPicker
+	palette     *palette
+	cancel      context.CancelFunc
+	goalRequest *goalFormulation
+	goalVerify  *goalVerification
+	prog        *tea.Program
 
 	store           *session.Store
 	sessionID       string
@@ -265,10 +269,15 @@ type model struct {
 	irunner *interactiveRunner
 	iactive *interactive
 
-	perms          permRules
-	permDialog     *permDialog
+	perms      permRules
+	permDialog *permDialog
+	// permWait counts the approval requests waiting for the card (perm_waits.go).
+	permWait       *permWait
 	askDialog      *askDialog
 	permissionMode string
+	// permWD is the folder whose permission mode a change saves; empty
+	// saves nothing (mode.go).
+	permWD         string
 	permissionDone chan struct{}
 
 	tasksFocus bool
@@ -425,10 +434,9 @@ func Run(cfg *config.Config, modelName, provName, sysPrompt, resumeID string, ca
 	tools.ComputerApprover = m.computerConsent
 	m.installAskHook()
 
-	m.permissionMode = "always"
-	if cautious {
-		m.permissionMode = "normal"
-	}
+	wd, _ := os.Getwd()
+	m.permissionMode = initialPermissionMode(cfg, wd, cautious, firstRun)
+	m.permWD = wd
 	m.permissionDone = make(chan struct{})
 	previousGate := tools.Gate
 	m.installPermGate()
@@ -1128,6 +1136,11 @@ func (m *model) Update(msg tea.Msg) (_ tea.Model, statusCmd tea.Cmd) {
 
 	case permRequest:
 		m.receivePermission(msg)
+		m.refreshSubagentRows()
+		return m, nil
+
+	case permWaitMsg:
+		m.refreshSubagentRows()
 		return m, nil
 
 	case permClose:

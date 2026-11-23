@@ -49,7 +49,7 @@ VITE_KBRAIN_TOKEN=<backend-token>
 | 流顺序 | durable event journal | 单会话单调递增 `seq` | 去重与续传游标 |
 | 用量 | `ai.Usage` | input/output/cache token 计数 | assistant usage |
 
-规范消息角色：`system`, `developer`, `user`, `assistant`, `tool`。内容块：`text`, `thinking`, `image`。工具参数必须为 JSON object；工具结果通过 `tool_call_id` 关联。供应商的 response item、chat chunk、Gemini candidate 留在后端适配边界。
+规范消息角色：`system`, `developer`, `user`, `assistant`, `tool`。内容块：`text`, `thinking`, `image`。assistant 消息可带 `stop_reason`（如 `stop`、`tool_use`、`length`、`cancelled`、`error`）；`stop_reason:"error"` 的部分回复另带 `error`（失败原因，见下文“模型流在中途失败”）。工具参数必须为 JSON object；工具结果通过 `tool_call_id` 关联。供应商的 response item、chat chunk、Gemini candidate 留在后端适配边界。
 
 ## HTTP 接口
 
@@ -62,6 +62,7 @@ VITE_KBRAIN_TOKEN=<backend-token>
 | GET | `/v1/models` | 当前后端模型路由目录 |
 | POST | `/v1/sandbox/setup` | 在 Windows 上通过 UAC 安装或修复沙箱账户（`sandbox-user`），返回 setup 状态与新的 `run_sandbox`；`capabilities.sandbox_setup` 表示支持 |
 | GET / PUT | `/v1/settings` | 读取脱敏配置 / 原子持久化供应商、模型与默认选择；记忆开关 `memory` 与记忆整理计划 `memoryOrganizer` 也在这里 |
+| POST | `/v1/settings/providers/{id}/models` | 用已保存的供应商（可被请求体里的草稿地址、key、请求头覆盖）向上游拉取模型列表，返回 `{version,provider,models}`；失败时见下文“模型发现失败” |
 | GET | `/v1/usage/stats` | 所有工作区会话的跨会话用量统计（按天、按模型，含连续天数与费用）；`days`、`tz` 与口径见下文，`capabilities.usage_stats` 表示支持 |
 | GET / PUT | `/v1/mcp` | 读取脱敏 MCP 配置 / 原子持久化并 reload stdio/http servers |
 | POST | `/v1/mcp/reload` | 从 K-brain-owned MCP 配置重建 live manager |
@@ -130,6 +131,14 @@ CLI 可用 `-config FILE -session-dir DIR` 指定配置与存储目录；省略�
 
 记忆总开关：GET 返回 `memory:{enabled}`（配置未写时为 `true`），PUT 接受 `memory:{enabled:true|false}`，开关不写入 config.json：关闭时写在配置文件旁的 `<配置文件名>.memory-switch.json`（默认是 `config.json.memory-switch.json`，内容 `{"enabled":false}`；该文件存在但读不出时按关闭处理），开启是默认值，重新开启会删掉这个文件。不带开关的旧版本解析 config.json 时不接受未知字段，也不读这个文件，所以无论开关处于哪种状态都能直接回退，回退后记忆照常开启；再升级回来时恢复之前的开关状态。早期构建写在 config.json 里的 `memory` 仍然有效，下次保存时迁到这个文件。关闭后从下一轮起（已打开的会话也一样）：不再注入 memory.md 与记忆索引；每个会话收到一次提示，说明用户已关闭记忆、之前注入的记忆不再适用，并要求模型不以任何方式（包括写 memory.md 等文件）保存记忆，遇到"记住"类请求时告诉用户记忆已关闭；隐藏提取器不运行；代理拿不到 `remember`、`forget`、`memory_manager`，运行选项里这三个名字的工具策略被忽略而不是报错。已存记忆不变，`/v1/memory/manage` 与记忆整理接口照常可用。TUI、ACP 与 `kn run` 读取同一配置。`/v1/health` 的 `capabilities.memory_switch: 1` 表示后端支持该开关，客户端据此决定是否显示。
 
+模型发现失败：上游没有给出可用的模型列表时返回 HTTP 502，`error` 仍是 `"model discovery failed"`（旧客户端照常显示），另带：
+
+- `errorCode`：`invalid_api_key`（上游 401/403）、`not_found`（上游 404，通常是地址或模型列表路径不对）、`rate_limited`（上游 429）、`unreachable`（没有拿到任何 HTTP 响应：DNS 失败、连接被拒或重置、TLS 失败、15 秒超时）、`upstream_error`（其他上游状态码，或上游 200 但返回的不是可解析的模型列表）。
+- `upstreamStatus`：上游的 HTTP 状态码（整数），只在上游回了错误状态码时出现。
+- `upstreamMessage`：可选，上游 JSON 错误体里的 `error.message`、`error`（字符串）、`message` 或 `detail`，合并空白、最多 200 个字符，去掉供应商 key、请求头值以及形似凭据的词；上游返回 HTML 等非 JSON 内容时不带。
+
+示例：`{"version":"kbrain.agent.v1","error":"model discovery failed","errorCode":"invalid_api_key","upstreamStatus":401,"upstreamMessage":"Incorrect API key provided: [redacted]."}`。请求本身有误时（400 缺少供应商、地址或 key 等；404 供应商不存在）仍是原来只有 `error` 的形状，不带 `errorCode`。旧客户端忽略新增字段。
+
 浏览器设置缓存只保留必要的界面偏好，加载旧缓存时清理其中的供应商和连接凭据。`VITE_KBRAIN_TOKEN` 会进入前端构建产物，应按客户端访问令牌管理；面向多用户的远程部署需要独立的认证与权限设计。
 
 `/v1/text/generate` 请求体为 `{model:{provider,model},messages:[{role,content:[{type:"text",text}]}],output?:"text"|"json"}`，响应为 `{version,text,model,usage?}`。请求使用后端 Bearer 鉴权并遵循 HTTP request context；客户端取消或断开连接会取消供应商请求。后端错误只返回通用生成失败/取消信息，不回显上游 URL、请求头或凭据。
@@ -148,7 +157,10 @@ CLI 可用 `-config FILE -session-dir DIR` 指定配置与存储目录；省略�
 - `subagent.started`, `subagent.updated`, `subagent.completed`, `subagent.failed`
 - `trajectory.child.text`, `trajectory.child.thinking`, `trajectory.child.steer`, `trajectory.child.tool_start`, `trajectory.child.tool_end`（子代理自己的转录）
 - `usage.updated`
+- `trajectory.request.started`, `trajectory.request.completed`, `trajectory.transport`, `trajectory.retry`, `trajectory.failover`（模型请求轨迹，见下文）
 - `run.completed`, `run.failed`, `run.cancelled`
+
+模型请求失败、将自动重试时，后端在本次运行的事件流中发 `trajectory.retry`，载荷为 `{request_id,task_id,provider,attempt,max,retries_remaining,delay_ms,error}`：`request_id` 对应该请求的 `trajectory.request.started`；`task_id` 为空字符串表示主对话的请求，否则是发出请求的子代理 id；`provider` 为供应商 id；`attempt` 是刚失败的那次尝试的序号（从 1 开始）；`max` 是这次请求总共允许的尝试次数（含第一次）；`retries_remaining` 是 `max - attempt`，即还会进行的尝试次数（发出该事件时至少为 1）；`delay_ms` 是开始下一次尝试前的等待毫秒数（供应商给出 `Retry-After` 时取其值，否则为退避时间）；`error` 是这次失败的原始错误文本。最后一次尝试失败、不可重试的错误（如 401、400）以及已经开始输出后的失败都不发该事件，而是以 `run.failed` 结束。例：`{"request_id":"run-…-2","task_id":"","provider":"my-provider","attempt":1,"max":8,"retries_remaining":7,"delay_ms":1000,"error":"503 Service Unavailable: …"}`。客户端可据此显示“第 n 次重试，m 秒后”。`retries_remaining` 是新增字段，其余字段与以前相同。
 
 `bash`/`Bash` 命令运行期间，后端以 `tool.status{tool_call_id,status:"running",message}` 推送输出：`message` 是截至此刻的输出尾部快照（最多 4 KiB，尽量从整行开始），客户端整体替换而非拼接；同一调用最多每 500ms 发一次，输出停住后补发最后一份，且全部排在该调用的 `tool.result` 之前。快照只进事件日志，会话历史仍只保存最终的 `tool.result`。不认识该字段的旧客户端可以忽略。
 
@@ -166,7 +178,21 @@ CLI 可用 `-config FILE -session-dir DIR` 指定配置与存储目录；省略�
 
 流连接结束与运行终态是两个不同事实。客户端只有消费终态事件后才能确认运行结束。
 
-用户停止运行时，模型已经流出的回复写入会话历史：一条 `stop_reason:"cancelled"` 的 assistant 消息，内容是已推送的文本与思考，不含尚未流完的工具调用。事件流不变，仍以 `run.cancelled` 结束、不另发 `assistant.message.created`（已发布的桌面端会把这类事件并进本地流式副本），客户端从历史读取这条回复。之前几轮已执行的工具调用和结果照常保留，停止时正在执行的工具得到 `stop_reason:"cancelled"` 的结果，历史里不会留下没有结果的调用。还没有任何输出就停止时不写 assistant 消息，历史只多出本轮用户消息。下一轮请求中，这条回复的文本后面附一行 `[response interrupted by the user]`（只在请求里，不写入历史）；只有思考、没有文本的停止回复不发给模型。`stop_reason` 原本就有 `cancelled`（工具结果使用），旧客户端按已有取值处理；旧版后端读到这条消息时当普通 assistant 文本发送。
+模型流出的思考在运行结束后保存在会话历史里：有思考的 assistant 消息，`content[]` 以一个 `{type:"thinking",text}` 块开头，内容是该轮通过 `assistant.thinking.delta` 推送的全部思考（Chat Completions 的 `reasoning_content`/`reasoning`/`reasoning_text`、Responses 的推理摘要与 `reasoning_text`、Anthropic 的 thinking、Gemini 的 thought 片段；DeepSeek 搜索的多轮请求合并为一段）。Responses 的多段推理摘要之间以空行分隔，分隔也通过 `assistant.thinking.delta` 推送，实时与历史一致；流里没有推理增量、只有完成的 reasoning 项带摘要时，历史取该摘要。`GET /v1/sessions/{id}` 与 `/history` 都返回这个块，重新打开对话即可显示。思考只用于展示：发给任何供应商的请求都不含它（需要回放的签名思考、加密推理仍走各自的回放通道，请求体不变）。运行结束时的 `assistant.message.created` 不带 `thinking` 块，形状与以前相同：客户端已从增量事件得到整次运行的思考，而该事件只是最后一轮。公开分享仍只含文本与图片。
+
+用户停止运行时，模型已经流出的回复写入会话历史：一条 `stop_reason:"cancelled"` 的 assistant 消息，内容是已推送的文本与思考，不含尚未流完的工具调用。事件流不变，仍以 `run.cancelled` 结束、不另发 `assistant.message.created`（已发布的桌面端会把这类事件并进本地流式副本），客户端从历史读取这条回复。之前几轮已执行的工具调用和结果照常保留，停止时正在执行的工具得到 `stop_reason:"cancelled"` 的结果，历史里不会留下没有结果的调用。还没有任何 assistant 回复就停止时，历史在本轮用户消息后写入一条空的停止标记：`id` 为 `assistant-stopped-<run_id>`、`stop_reason:"cancelled"`、没有 `content`，重新打开对话时据此显示“已停止”；它同样不发 `assistant.message.created`，也不发给模型。之后用 `resume_message_id` 继续这条用户消息时，后端把末尾的停止标记视为不存在，新回复在历史里取代它；客户端找“末尾用户消息”时应跳过这条标记。下一轮请求中，这条回复的文本后面附一行 `[response interrupted by the user]`（只在请求里，不写入历史）；只有思考、没有文本的停止回复不发给模型。`stop_reason` 原本就有 `cancelled`（工具结果使用），旧客户端按已有取值处理；旧版后端读到这条消息时当普通 assistant 文本发送。
+
+后端自己关闭（进程收到正常退出信号、`Close`）时正在进行的运行按上面的停止流程保存，并标出是被关闭打断而不是用户停止：`run.cancelled` 仍是 `{state:"cancelled"}`，另带 `cancel_reason:"shutdown"`；这一轮的部分回复（或没有回复时的 `assistant-stopped-<run_id>` 标记）以及停止时被取消的工具结果仍是 `stop_reason:"cancelled"`，另带 `cancel_reason:"shutdown"`。用户停止、排队消息打断、关闭会话等其他停止不带该字段。客户端可把带 `cancel_reason:"shutdown"` 的回复显示为“已中断”，其余 `cancelled` 显示为“已停止”；未知取值按停止处理。下一轮请求中，被关闭打断的回复文本后附 `[response interrupted because the backend stopped]`（只在请求里）。旧客户端忽略该字段，按停止显示；旧版后端读到时丢弃。
+
+模型流在中途失败（连接断开、流没有完成事件就结束、供应商在流中返回错误）且已经流出内容时，这部分回复同样写入会话历史：一条 `stop_reason:"error"` 的 assistant 消息，内容是已推送的思考与文本，不含尚未流完的工具调用，另带可选字段 `error`（字符串，与本次 `run.failed` 的 `error` 相同）。它就是这次运行的失败消息：事件流仍是 `assistant.message.created` 后接 `run.failed{state:"failed",error}`，`assistant.message.created` 的消息即这条部分回复（带 `stop_reason:"error"` 与 `error`，按上文不含 `thinking` 块），不再另加一条以错误文本为内容的 assistant 消息。还没有任何输出就失败时与以前相同：写入一条内容为错误文本、`stop_reason:"error"`、不带 `error` 字段的 assistant 消息。下一轮请求中，部分回复的文本后面附一行 `[response interrupted by an error]`，`error` 字段不发给模型；只有思考、没有文本的失败回复不发给模型；不带 `error` 字段的错误消息照旧作为 assistant 文本发送。客户端据 `stop_reason` 区分中断原因（`cancelled` 为用户停止、`error` 为失败），失败原因显示 `error`。旧客户端忽略 `error` 字段，历史里看到的是部分回复而不是错误文本；旧版后端读到这条消息时当普通 assistant 文本发送。会话历史除在一轮结束时保存外，每完成一轮工具调用（assistant 的工具调用及全部结果）也保存一次，所以后端进程在一轮进行中崩溃或被强制结束（SIGKILL）时，已完成的步骤留在历史里，只丢失最后一步正在流出的内容与正在执行的工具；重启后历史以本轮用户消息和已完成的工具轮结束。每次保存重写整个会话文件并更新 `.sync` 计数，与该轮模型请求本身发送的历史同一量级。
+
+失败的结构化信息：`run.failed` 与这次运行保存的失败消息（上述部分回复，或还没有输出时的 `assistant-error-<run_id>` 消息；`assistant.message.created` 与历史里都一样）另带可选对象 `error_detail`，原有的 `error`、`stop_reason:"error"` 和错误文本内容不变：
+
+- `kind`：`invalid_api_key`（上游 401/403）、`not_found`（404，地址或模型名不对）、`rate_limited`（429，或流内的限流/配额错误）、`context_limit`（上游判定提示超出上下文窗口）、`bad_request`（其他 4xx）、`server_error`（5xx，或流内的 overloaded/busy/internal 类错误）、`timeout`（408/504、请求超时、流长时间无数据）、`connection_lost`（流没有完成事件就结束、连接被重置）、`unreachable`（连接被拒、DNS、TLS 等，没有拿到响应）、`provider_error`（供应商在流里返回的其他错误）、`unknown`（不是模型请求造成的失败或无法识别）。客户端把未列出的取值当 `unknown`。
+- `upstream_status`：上游 HTTP 状态码（整数），只在上游回了错误状态码时出现。
+- `provider_message`：可选，供应商自己的错误说明（HTTP 错误体里的 `error.message`、`error`、`message` 或 `detail`，或流内错误的 message），合并空白、最多 200 个字符，去掉该供应商配置的 key、请求头值以及形似凭据的词；HTML 等非 JSON 错误体不带。
+
+示例：`run.failed` 为 `{"state":"failed","error":"401 Unauthorized: {…}","error_detail":{"kind":"invalid_api_key","upstream_status":401,"provider_message":"Incorrect API key provided: [redacted]"}}`；流中途断开时为 `{"state":"failed","error":"Chat Completions stream ended before a completion event: unexpected EOF","error_detail":{"kind":"connection_lost"}}`。`error_detail` 只用于展示，不发给模型。分类与模型发现失败（上文 `errorCode`）共用同一套判断和脱敏，但取值集合不同：运行失败把发现接口的 `upstream_error` 细分为上面的种类。旧客户端忽略该字段；旧版后端读到时丢弃。
 
 模型交给后台的工作（`wait` 轮询、未设 `isolated` 的 `ManagedProcess` 进程、`background=true` 的子代理）在本轮正常结束后继续运行，结果作为下一轮送回；用户停止运行、关闭或删除会话时它们照常一起结束。后台子代理运行期间会话不算忙：用户可以照常发起并完成新的运行，编辑、分支、压缩与目标续跑也不等它；报告在某一轮进行中送达时插进这一轮，会话空闲时则启动唤醒运行，唤醒运行与用户运行冲突时通知留在队列里，等那一轮结束再送。只有会孤立或干扰子代理的操作要等它结束：切换模型或工作目录（会重建持有子代理的 Agent）和检查点回滚（子代理可能仍在写这些文件）返回 409 `session has a running background subagent`，运行时也不会被闲置回收。后端启动会话运行时，把存储里仍标为 running、却已没有进程在跑的子代理记为 error（`interrupted — k-brain exited before this subagent finished`），与 TUI 一致。后端自己送来的通知——`wait` 结果、进程退出、后台子代理与工作流报告，无论是插进正在进行的一轮，还是作为唤醒运行（`client_request_id` 以 `wake-` 开头）的用户消息——在 `user.message.appended` 和会话历史里带 `origin:"background"`，客户端把它显示为系统通知，而不是用户发的消息；用户自己写的消息不带该字段。这类消息不计为用户输入，不进输入历史，也不附加本轮时间前缀。旧客户端忽略该字段，显示与以前相同；旧版后端读到该字段直接忽略。
 
@@ -417,7 +443,7 @@ MCP 服务器可以在自己的工具运行期间请用户填写一张表单（M
 - `read_session`/`send_input`/`resize` 第一次使用时在会话上开启交互式 shell（PTY），缓冲最近 256 KiB 输出。
 - `sftp_read_text` 默认仍为 200 KiB 字节分页；`limit`（兼容 `max_bytes`）限定在 4–256 KiB。返回的 `offset` 向前对齐至 UTF-8 字符起点，`bytesRead` 为返回文本的实际字节数，下一页从 `offset + bytesRead` 开始。非法 UTF-8 和 EOF 处不完整字符报错，不再用替换字符掩盖错误。完整读取显式传 `full: true`，不可同时传非 null 的 `offset`、`limit` 或 `max_bytes`；实际读取受 16 MiB 上限约束，超限失败。完整读取额外返回 SHA-256 `contentHash`，分页不返回该字段。
 - `sftp_write_text` 的 UTF-8 内容上限为 16 MiB。可同时携带完整读取的 `entry.mtime` → `expected_mtime_ms` 与 `contentHash` → `expected_content_hash`，仅用于允许覆盖时的版本校验；时间只有秒精度，哈希检测同秒修改。版本不匹配或目标消失时拒绝截断。旧调用不传版本字段时保留 `overwrite` 语义，`overwrite: false` 使用独占创建。远端写入仍为原位写入，不提供原子替换或跨进程事务，失败可能留下部分内容。
-- 上述 SFTP 能力由原生 `SSHManager` 工具提供，本仓库没有独立的 SFTP 文件资源 HTTP 路由。Gateway 的 SSH relay 需要配套转发这些字段和限制；本地文件 HTTP 请求体和范围预览契约见 [[2026-10-24-filesystem-resources]]。
+- 上述 SFTP 能力由原生 `SSHManager` 工具提供，本仓库没有独立的 SFTP 文件资源 HTTP 路由。Gateway 的 SSH relay 需要配套转发这些字段和限制；本地文件 HTTP 请求体和范围预览契约见 [[2026-10-24-filesystem-resources]]；其中 `POST /v1/fs` 的 `mention_list`（`capabilities.filesystem_mention_list`）为 @ 提及返回已排除忽略路径、按 `query` 排序并带 `truncated` 的文件与目录。
 - `sftp_upload`/`sftp_download` 在后台执行，立即返回 `transfer_id`，用 `sftp_transfer_status` 查询、`sftp_cancel_transfer` 取消；每个会话最多 32 个进行中的传输，目录最多 100000 个文件。`local_path` 按文件工具的规则解析（工作区相对路径、绝对路径、`~/...`、`file://`），必须在运行的工作区根内，上传要求可读、下载要求可写。不跟随本地符号链接；`sftp_delete` 不跟随远端符号链接。
 - 代理：`proxy.url` 非空时按 `proxy.type` 走 SOCKS5 或 HTTP CONNECT；`useSystemProxy` 时与供应商请求使用同一个代理（LiveAgent 管理的应用代理，否则 `HTTPS_PROXY`/`HTTP_PROXY`/`NO_PROXY`）。
 

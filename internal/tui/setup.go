@@ -38,11 +38,13 @@ func runSetupWizard(cfg *config.Config, stdin io.Reader, stderr io.Writer) error
 	fmt.Fprintln(w, "")
 
 	fmt.Fprintln(w, "Configure your API provider baseUrl, apiKey, and model IDs in ~/.liveagent/config.json.")
+	fmt.Fprintln(w, permissionIntro)
+	setupPermissionDefault(cfg)
 
-	if !askYN(r, w, "Show thinking (reasoning) tokens in the transcript?", true) {
-		off := false
-		cfg.Thinking = &off
-	}
+	// New installs start with thinking hidden; the answer is saved either
+	// way so a later change of default never flips it.
+	show := askYN(r, w, "Show thinking (reasoning) tokens in the transcript?", false)
+	cfg.Thinking = &show
 
 	if err := cfg.Save(); err != nil {
 		return fmt.Errorf("saving setup choices: %w", err)
@@ -51,6 +53,18 @@ func runSetupWizard(cfg *config.Config, stdin io.Reader, stderr io.Writer) error
 	fmt.Fprintln(w, "Setup complete — starting k-brain.")
 	fmt.Fprintln(w, "")
 	return nil
+}
+
+// permissionIntro is the first run's one mention of the permission mode a
+// new install starts in.
+const permissionIntro = "Permissions: k-brain asks before it runs a command or changes a file (Normal mode). Shift+Tab or /permissions changes it; each folder keeps its choice."
+
+// setupPermissionDefault gives a new install the "normal" mode, which asks
+// before commands and edits. A mode already saved stays.
+func setupPermissionDefault(cfg *config.Config) {
+	if cfg.PermissionMode == "" {
+		cfg.PermissionMode = "normal"
+	}
 }
 
 func askYN(r *bufio.Reader, w io.Writer, question string, def bool) bool {
@@ -113,7 +127,7 @@ type onboardModel struct {
 }
 
 func newOnboardModel(wd, configPath string, needTrust, firstRun bool) *onboardModel {
-	o := &onboardModel{wd: wd, configPath: configPath, thinking: true, trusted: !needTrust}
+	o := &onboardModel{wd: wd, configPath: configPath, trusted: !needTrust}
 	if firstRun {
 		o.steps = append(o.steps, stepWelcome)
 	}
@@ -123,6 +137,7 @@ func newOnboardModel(wd, configPath string, needTrust, firstRun bool) *onboardMo
 	if firstRun {
 		o.steps = append(o.steps, stepThinking)
 	}
+	o.sel = o.defaultSel()
 	return o
 }
 
@@ -137,6 +152,15 @@ func (o *onboardModel) options() []string {
 		return []string{"Yes, show thinking tokens", "No, hide them"}
 	}
 	return []string{"Continue"}
+}
+
+// defaultSel is the option a step starts on: thinking starts on "No", the
+// default for new installs.
+func (o *onboardModel) defaultSel() int {
+	if o.step < len(o.steps) && o.steps[o.step] == stepThinking {
+		return 1
+	}
+	return 0
 }
 
 func (o *onboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -188,7 +212,7 @@ func (o *onboardModel) choose(i int) (tea.Model, tea.Cmd) {
 		o.thinking = i == 0
 	}
 	o.step++
-	o.sel = 0
+	o.sel = o.defaultSel()
 	if o.step >= len(o.steps) {
 		o.done = true
 		return o, tea.Quit
@@ -211,6 +235,8 @@ func (o *onboardModel) View() string {
 			"",
 			textSecondaryStyle.Render("Provider: set baseUrl, apiKey and model IDs in"),
 			accentFgStyle.Render(o.configPath),
+			"",
+			permissionIntro,
 		}
 	case stepTrust:
 		title = "Do you trust the files in this folder?"
@@ -326,10 +352,10 @@ func applyOnboarding(cfg *config.Config, wd string, o *onboardModel) (bool, erro
 		}
 	}
 	if slices.Contains(o.steps, stepThinking) {
-		if !o.thinking {
-			off := false
-			cfg.Thinking = &off
-		}
+		// Saved either way, like the permission default for the new install.
+		show := o.thinking
+		cfg.Thinking = &show
+		setupPermissionDefault(cfg)
 		if err := cfg.Save(); err != nil {
 			return false, fmt.Errorf("saving setup choices: %w", err)
 		}

@@ -5,9 +5,9 @@
   [38;2;104;110;118mAnywhere[0m
 [1;38;2;21;127;104;48;2;232;236;240m❯ Shift+Tab                   cycle the permission mode                        [0m
   Ctrl+T                      [38;2;58;63;70mfocus the subagent dock[0m[38;2;92;97;105m[0m
-  Alt+T                       [38;2;58;63;70mexpand or collapse the top panel (goal, plan, s…[0m[38;2;92;97;105m[0m
+  Ctrl+] / Alt+T              [38;2;58;63;70mexpand or collapse the top panel (goal, plan, s…[0m[38;2;92;97;105m[0m
   Ctrl+O                      [38;2;58;63;70mshow or hide thinking tokens[0m[38;2;92;97;105m[0m
-  Alt+O                       [38;2;58;63;70mexpand or collapse the last tool result[0m[38;2;92;97;105m[0m
+  Ctrl+F / Alt+O              [38;2;58;63;70mexpand or collapse the last tool result[0m[38;2;92;97;105m[0m
   Ctrl+G                      [38;2;58;63;70medit the draft in an external editor[0m[38;2;92;97;105m[0m
   Ctrl+V                      [38;2;58;63;70mpaste an image[0m[38;2;92;97;105m[0m
   Ctrl+L                      [38;2;58;63;70mredraw the screen[0m[38;2;92;97;105m[0m

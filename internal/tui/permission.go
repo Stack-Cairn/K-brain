@@ -13,6 +13,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Stack-Cairn/K-brain/internal/agent"
 	"github.com/Stack-Cairn/K-brain/internal/approval"
 
 	"github.com/Stack-Cairn/K-brain/internal/permissions"
@@ -186,13 +187,29 @@ func (m *model) installPermGate() {
 	m.perms = loadPermRules()
 	prog := func() *tea.Program { return m.prog }
 	var promptMu sync.Mutex
+	waits := m.permWaits()
 	tools.Gate = func(req tools.GateRequest) (tools.GateDecision, string) {
-		promptMu.Lock()
-		defer promptMu.Unlock()
 		ctx := req.Context
 		if ctx == nil {
 			ctx = context.Background()
 		}
+		// Count the request while it waits its turn for the one card, so
+		// the card can say how many more wait and the subagent's row that
+		// it waits for an answer.
+		task := agent.RequestTaskID(ctx)
+		waits.add(task)
+		postWaits := func() {
+			if post := uiPoster(prog()); post != nil {
+				post(permWaitMsg{})
+			}
+		}
+		postWaits()
+		defer func() {
+			waits.done(task)
+			postWaits()
+		}()
+		promptMu.Lock()
+		defer promptMu.Unlock()
 		if ctx.Err() != nil {
 			return tools.GateReject, "cancelled"
 		}
@@ -351,7 +368,8 @@ func (m *model) permKey(msg tea.KeyMsg) bool {
 			}
 			d.sel = 1
 		}
-	case tea.KeyCtrlE:
+	case tea.KeyCtrlF, tea.KeyCtrlE:
+		// Ctrl+F, as for a tool result in the transcript; Ctrl+E as before.
 		d.toggleExpanded()
 	case tea.KeyEnter:
 		switch d.sel {
@@ -398,6 +416,9 @@ func (m *model) allowAlways(d *permDialog) permAnswer {
 
 // permTitle is the card's question, by what the action does.
 func (m *model) permTitle(req tools.GateRequest) string {
+	if who := m.permAsker(req); who != "" {
+		return fmt.Sprintf(m.tr("Subagent · %s wants to %s"), who, m.permAction(req))
+	}
 	switch {
 	case req.Tool == "bash" || req.Tool == "Bash":
 		return m.tr("Run this command?")
@@ -512,6 +533,9 @@ func (m *model) permView() string {
 	}
 	w := cardWidth(m.width)
 	head := cardTitleStyle.Inherit(fgTok(tokStateWarn)).Render(glyphs.Warn) + " " + cardTitleStyle.Render(m.permTitle(d.req))
+	if n := m.pendingApprovals(); n > 0 {
+		head += textMutedStyle.Render(fmt.Sprintf(m.tr(" · +%d pending"), n))
+	}
 
 	d.unfolded = false
 	top, rows, bottom := m.permBody(d, w)
@@ -590,9 +614,9 @@ func (m *model) permTail(d *permDialog, w int, compact bool) []string {
 		}
 		if p := d.req.Preview; p != nil && p.Diff != "" && !d.unfolded && len(strings.Split(strings.TrimRight(p.Diff, "\n"), "\n")) > permPreviewRows {
 			if d.expanded {
-				hint += m.tr(" · ctrl+e fold")
+				hint += m.tr(" · ctrl+f fold")
 			} else {
-				hint += m.tr(" · ctrl+e expand")
+				hint += m.tr(" · ctrl+f expand")
 			}
 		}
 		hint += m.tr(" · Esc reject")

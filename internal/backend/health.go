@@ -126,6 +126,10 @@ type healthCapabilities struct {
 	// PluginManifestUnknownFields is 1 where plugin.json fields this backend
 	// does not know are ignored instead of failing the load.
 	PluginManifestUnknownFields int `json:"plugin_manifest_unknown_fields"`
+	// FilesystemMentionList is 1 where POST /v1/fs accepts action
+	// "mention_list": workspace files and directories for @ mentions, without
+	// ignored paths, ranked by query and capped with truncated.
+	FilesystemMentionList int `json:"filesystem_mention_list"`
 }
 
 // healthRunSandboxV1 describes per-run sandboxing (options.sandbox). Clients
@@ -249,6 +253,7 @@ func (s *Server) health() healthResponse {
 			PluginToolNames:             1,
 			PluginUIErrors:              1,
 			PluginManifestUnknownFields: 1,
+			FilesystemMentionList:       1,
 		},
 		HostBridge: s.hostBridge.status(),
 	}

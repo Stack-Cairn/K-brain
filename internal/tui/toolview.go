@@ -711,16 +711,21 @@ func subagentErrorSummary(text string) string {
 }
 
 // foldHint is the row standing in for n folded rows: "⋯ +14 lines", and
-// " · alt+o" after it when key says Alt+O is what opens them. Only the
-// block Alt+O toggles says so (expandTarget); the others still open from
-// the transcript focus or a click.
+// " · ctrl+f" after it when key says Ctrl+F (or Alt+O) is what opens them,
+// the same key the approval card names. Only the block those keys toggle
+// says so (expandTarget); the others still open from the transcript focus
+// or a click.
 func foldHint(n int, unit string, key bool) string {
 	s := fmt.Sprintf("    %s +%d %s", glyphs.Fold, n, unit)
 	if key {
-		s += " · alt+o"
+		s += " · " + expandKeyHint
 	}
 	return textHintStyle.Render(chromeGlyphs(s))
 }
+
+// expandKeyHint names the key that opens a folded result, in the transcript
+// and on the approval card alike.
+const expandKeyHint = "ctrl+f"
 
 var hookNoteRE = regexp.MustCompile(`(?m)^Hook (PostToolUse|PostToolUseFailure) failed: (.*)$\n?`)
 

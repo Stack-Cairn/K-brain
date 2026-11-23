@@ -107,8 +107,5 @@ func providerStreamError(raw json.RawMessage, fallback string) error {
 	if code == "" {
 		code = e.Type
 	}
-	if code != "" {
-		detail = code + ": " + detail
-	}
-	return nonRetryable{fmt.Errorf("API stream error: %s", detail)}
+	return nonRetryable{&ProviderStreamError{Code: code, Message: detail}}
 }

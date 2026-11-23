@@ -3,6 +3,7 @@ package tui
 import (
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -64,15 +65,13 @@ func TestThinkingAndResponseScrollFullyOnSmallTerminal(t *testing.T) {
 }
 
 func TestFrameFitsWhileReasoningStreams(t *testing.T) {
-	m := compactCmdModel()
-	m.showThinking = true
-	m.busy = true
-	m.Update(mkWinSize(80, 12))
+	m, clock := thinkingModel(80, 12)
 
 	for range 30 {
 		um, _ := m.Update(thinkMsg("a long reasoning trace line that keeps coming\n"))
 		m = um.(*model)
 	}
+	*clock = clock.Add(7 * time.Second)
 	um, _ := m.Update(textMsg("the response begins"))
 	m = um.(*model)
 	m.layout()
@@ -84,7 +83,7 @@ func TestFrameFitsWhileReasoningStreams(t *testing.T) {
 	// The run folded to its summary when the response began.
 	m.vp.GotoTop()
 	top := m.viewportView()
-	if !strings.Contains(top, "Thought for") || !strings.Contains(top, "30 lines") {
+	if !strings.Contains(top, "Thought for 7s") {
 		t.Errorf("top of transcript doesn't show the folded reasoning:\n%s", top)
 	}
 }
@@ -134,8 +133,7 @@ func TestFrameHeightDuringLongInflightResponse(t *testing.T) {
 // Scrolled back while reasoning streams, the window stays put when the
 // response begins and the run folds to its summary.
 func TestScrollPositionStableWhileResponseStreams(t *testing.T) {
-	m := compactCmdModel()
-	m.showThinking = true
+	m, clock := thinkingModel(80, 12)
 	m.busy = true
 	m.Update(mkWinSize(80, 12))
 	for i := range 20 {
@@ -153,6 +151,7 @@ func TestScrollPositionStableWhileResponseStreams(t *testing.T) {
 		t.Fatalf("setup: top should show the first line:\n%s", before)
 	}
 
+	*clock = clock.Add(3 * time.Second)
 	um, _ := m.Update(textMsg("response begins\n"))
 	m = um.(*model)
 	m.layout()

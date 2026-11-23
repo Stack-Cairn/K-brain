@@ -220,8 +220,11 @@ type runtimeSession struct {
 	// runLease is held while a turn or compaction runs, so the kn terminal UI
 	// and other processes sharing the data root cannot run in this session at
 	// the same time (session.Store.AcquireRun).
-	runLease         *session.RunLease
-	cancel           context.CancelFunc
+	runLease *session.RunLease
+	cancel   context.CancelFunc
+	// interruptRun cancels the active run with a cause; shutdown uses it so the
+	// run records that the backend, not the user, stopped it.
+	interruptRun     context.CancelCauseFunc
 	checkpoint       *checkpointCapture
 	runID            string
 	runDone          bool
@@ -374,6 +377,9 @@ func (s *Server) Close() error {
 		old := rt.changed
 		rt.changed = make(chan struct{})
 		close(old)
+		if rt.interruptRun != nil {
+			rt.interruptRun(errBackendShutdown)
+		}
 		if rt.cancel != nil {
 			rt.cancel()
 		}
@@ -1567,6 +1573,7 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, end func(),
 		end()
 		rt.runDone = true
 		rt.cancel = nil
+		rt.interruptRun = nil
 		rt.releaseRunLeaseLocked()
 		rt.closeJournalLocked()
 		if rec, ok := rt.runs[in.ClientRequestID]; ok {
@@ -1873,12 +1880,19 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, end func(),
 	}, OnToolOutput: toolOutput.update, OnUsage: func(u ai.Usage) {
 		_, _ = rt.publish(protocol.EventUsage, protocol.Usage{InputTokens: u.PromptTokens, OutputTokens: u.CompletionTokens, CachedTokens: u.Cached(), CacheWriteTokens: u.CacheWrite()}, "")
 	}}
-	ev = agent.FanIn(rt.recorder.Events(), ev)
+	ev = agent.FanIn(rt.recorder.Events(), ev, agent.Events{AtToolBoundary: rt.saveRunStep})
 	var previews *previewTracker
 	if options.HTMLPreviews {
 		previews = newPreviewTracker(s, rt)
 		ctx = agent.WithPromptAddition(ctx, htmlPreviewHint)
 		ev = agent.FanIn(ev, agent.Events{OnText: previews.onText, OnToolStart: previews.onToolStart, OnToolResult: func(id, _ string, result tools.Result) { previews.onToolResult(id, result) }})
+	}
+	if in.ResumeMessageID != "" {
+		// Resuming a prompt whose run was stopped before any reply replaces
+		// that run's stop marker; the run always ends by appending a message.
+		if messages := rt.agent.MessagesSnapshot(); len(withoutStoppedMarker(messages)) < len(messages) {
+			rt.agent.RestoreMessages(withoutStoppedMarker(messages))
+		}
 	}
 	assistantCount := 0
 	for _, message := range rt.agent.MessagesSnapshot() {
@@ -1907,33 +1921,48 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, end func(),
 	}
 	toolOutput.close()
 	progress.phase("persisting")
+	cancelled := errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+	cancelReason := ""
+	if cancelled && errors.Is(context.Cause(ctx), errBackendShutdown) {
+		cancelReason = ai.CancelReasonShutdown
+	}
+	if cancelled {
+		markStoppedRun(rt.agent, runID, assistantCount, cancelReason)
+	}
 	var failedAssistant *protocol.Message
-	if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+	var failure *ai.ErrorDetail
+	if err != nil && !cancelled {
+		detail := ai.ClassifyError(err, s.providerLiteralSecrets(rt.agent.Provider)...)
+		failure = &detail
 		messages := rt.agent.MessagesSnapshot()
 		currentAssistantCount := 0
-		var latestAssistant ai.Message
-		for _, message := range messages {
+		latestAssistant := -1
+		for i, message := range messages {
 			if message.Role != protocol.RoleAssistant {
 				continue
 			}
 			currentAssistantCount++
 			if currentAssistantCount > assistantCount {
-				latestAssistant = message
+				latestAssistant = i
 			}
 		}
-		if currentAssistantCount > assistantCount && latestAssistant.StopReason == ai.StopReasonError {
-			if canonical, canonicalErr := protocol.FromAIMessageValidated(latestAssistant); canonicalErr == nil {
+		if latestAssistant >= 0 && messages[latestAssistant].StopReason == ai.StopReasonError {
+			// The partial reply kept when the stream failed.
+			messages[latestAssistant].ErrorDetail = failure
+			rt.agent.RestoreMessages(messages)
+			if canonical, canonicalErr := protocol.FromAIMessageValidated(messages[latestAssistant]); canonicalErr == nil {
 				failedAssistant = &canonical
 			}
 		} else {
 			now := time.Now().UTC()
 			failureMessage := ai.Message{
-				ID:         "assistant-error-" + runID,
-				Role:       protocol.RoleAssistant,
-				Content:    err.Error(),
-				Model:      rt.agent.Model + " @ " + rt.agent.Provider,
-				StopReason: ai.StopReasonError,
-				SentAt:     &now,
+				ID:          "assistant-error-" + runID,
+				Role:        protocol.RoleAssistant,
+				Content:     err.Error(),
+				Model:       rt.agent.Model + " @ " + rt.agent.Provider,
+				StopReason:  ai.StopReasonError,
+				ErrorDetail: failure,
+				SentAt:      &now,
 			}
 			messages = append(messages, failureMessage)
 			rt.agent.RestoreMessages(messages)
@@ -1973,13 +2002,13 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, end func(),
 	}
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		s.evaluateGoal(ctx, rt, runID, "cancelled")
-		finish(protocol.EventRunCancelled, protocol.RunTerminal{State: "cancelled"})
+		finish(protocol.EventRunCancelled, protocol.RunTerminal{State: "cancelled", CancelReason: cancelReason})
 	} else if err != nil {
 		if failedAssistant != nil {
-			_, _ = rt.publish(protocol.EventAssistantMessage, *failedAssistant, "")
+			_, _ = rt.publish(protocol.EventAssistantMessage, assistantEventMessage(*failedAssistant), "")
 		}
 		s.evaluateGoal(ctx, rt, runID, "failed")
-		finish(protocol.EventRunFailed, protocol.RunTerminal{State: "failed", Error: err.Error()})
+		finish(protocol.EventRunFailed, protocol.RunTerminal{State: "failed", Error: err.Error(), ErrorDetail: protocol.FromAIErrorDetail(failure)})
 	} else {
 		messages := rt.agent.MessagesSnapshot()
 		for i := len(messages) - 1; i >= 0; i-- {
@@ -1987,13 +2016,31 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, end func(),
 				continue
 			}
 			if message, messageErr := protocol.FromAIMessageValidated(messages[i]); messageErr == nil {
-				_, _ = rt.publish(protocol.EventAssistantMessage, message, "")
+				_, _ = rt.publish(protocol.EventAssistantMessage, assistantEventMessage(message), "")
 			}
 			break
 		}
 		s.evaluateGoal(ctx, rt, runID, "completed")
 		finish(protocol.EventRunCompleted, protocol.RunTerminal{State: "completed"})
 	}
+}
+
+// assistantEventMessage is the assistant.message.created payload for a stored
+// reply. It leaves out the thinking block that history carries: clients already
+// collected the thinking of the whole run from assistant.thinking.delta, and
+// this message is only the last round, so its thinking would show twice.
+func assistantEventMessage(message protocol.Message) protocol.Message {
+	content := make([]protocol.ContentBlock, 0, len(message.Content))
+	for _, block := range message.Content {
+		if block.Type != protocol.ContentThinking {
+			content = append(content, block)
+		}
+	}
+	if len(content) == 0 {
+		content = nil
+	}
+	message.Content = content
+	return message
 }
 
 // toolRunInfo is the display metadata of a tool result for tool.result events.

@@ -216,7 +216,98 @@ func TestRequestHistoryRendersCancelledReplies(t *testing.T) {
 		t.Fatal("stored history mutated")
 	}
 	plain := []Message{{Role: "user", Content: "q"}, {Role: "assistant", Content: "a"}}
-	if got := cancelledReplies(plain); &got[0] != &plain[0] {
+	if got := interruptedReplies(plain); &got[0] != &plain[0] {
 		t.Fatal("history without cancelled replies must not be copied")
+	}
+}
+
+// A reply whose stream failed partway is sent with an error note and without
+// its display-only error text; one that only thought is dropped. An error reply
+// that holds just the error text (no Error field) is sent as before.
+func TestRequestHistoryRendersFailedReplies(t *testing.T) {
+	messages := []Message{
+		{Role: "user", Content: "first"},
+		{Role: "assistant", Content: "partial", Reasoning: "seen", StopReason: StopReasonError, Error: "stream ended early"},
+		{Role: "user", Content: "second"},
+		{Role: "assistant", Reasoning: "only thinking", StopReason: StopReasonError, Error: "connection reset"},
+		{Role: "user", Content: "third"},
+		{Role: "assistant", Content: "upstream request failed", StopReason: StopReasonError},
+		{Role: "user", Content: "fourth"},
+	}
+	before, _ := json.Marshal(messages)
+	for _, api := range []string{APIChatCompletions, APIResponses, APIMessages, APIGemini} {
+		out := prepareRequestHistory(messages, api, "https://e.test", "m")
+		if len(out) != len(messages)-1 {
+			t.Fatalf("%s: thinking-only failed reply was sent: %+v", api, out)
+		}
+		if out[1].Content != "partial"+failedReplyNote || out[1].Reasoning != "" || out[1].StopReason != "" || out[1].Error != "" {
+			t.Fatalf("%s: failed reply = %+v", api, out[1])
+		}
+		if out[2].Content != "second" || out[3].Content != "third" || out[5].Content != "fourth" {
+			t.Fatalf("%s: order changed: %+v", api, out)
+		}
+		if out[4].Content != "upstream request failed" {
+			t.Fatalf("%s: error-text reply changed: %+v", api, out[4])
+		}
+	}
+	if after, _ := json.Marshal(messages); string(before) != string(after) {
+		t.Fatal("stored history mutated")
+	}
+}
+
+// The failure text survives a save and reload but never reaches a request body.
+func TestFailedReplyErrorIsStoredButNotSent(t *testing.T) {
+	stored := Message{Role: "assistant", Content: "partial", StopReason: StopReasonError, Error: "stream ended early"}
+	data, err := json.Marshal(stored)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var loaded Message
+	if err := json.Unmarshal(data, &loaded); err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Error != "stream ended early" || loaded.StopReason != StopReasonError || loaded.Content != "partial" {
+		t.Fatalf("reloaded = %+v from %s", loaded, data)
+	}
+	wire, err := json.Marshal(stripAuthored([]Message{loaded}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(wire), "stream ended early") {
+		t.Fatalf("error text reached the request: %s", wire)
+	}
+}
+
+// A reply cut short by a backend shutdown gets its own request note, and the
+// empty marker of a run stopped before any output is left out of requests.
+func TestRequestHistoryRendersShutdownAndStoppedMarkers(t *testing.T) {
+	messages := []Message{
+		{Role: "user", Content: "first"},
+		{Role: "assistant", Content: "partial", StopReason: StopReasonCancelled, CancelReason: CancelReasonShutdown},
+		{Role: "user", Content: "second"},
+		{Role: "assistant", Content: "", StopReason: StopReasonCancelled},
+		{Role: "user", Content: "third"},
+		{Role: "assistant", Content: "", StopReason: StopReasonCancelled, CancelReason: CancelReasonShutdown},
+		{Role: "user", Content: "fourth"},
+	}
+	for _, api := range []string{APIChatCompletions, APIResponses, APIMessages, APIGemini} {
+		out := prepareRequestHistory(messages, api, "https://e.test", "m")
+		if len(out) != len(messages)-2 {
+			t.Fatalf("%s: stopped markers were sent: %+v", api, out)
+		}
+		if out[1].Content != "partial"+shutdownReplyNote || out[1].CancelReason != "" || out[1].StopReason != "" {
+			t.Fatalf("%s: interrupted reply = %+v", api, out[1])
+		}
+		if out[2].Content != "second" || out[3].Content != "third" || out[4].Content != "fourth" {
+			t.Fatalf("%s: order changed: %+v", api, out)
+		}
+	}
+	data, err := json.Marshal(messages[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var loaded Message
+	if err := json.Unmarshal(data, &loaded); err != nil || loaded.CancelReason != CancelReasonShutdown {
+		t.Fatalf("cancel_reason did not round-trip: %s (%v)", data, err)
 	}
 }

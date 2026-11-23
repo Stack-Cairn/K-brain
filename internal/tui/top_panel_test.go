@@ -60,7 +60,7 @@ func TestTopPanelHiddenWithoutWork(t *testing.T) {
 	if v := m.topPanelView(); v != "" || m.tp.rows != 0 || m.topPanelShown() {
 		t.Fatalf("no goal, plan or subagent: no panel, got %q (%d rows)", v, m.tp.rows)
 	}
-	if strings.Contains(stripAll(m.View()), "Alt+T") {
+	if strings.Contains(stripAll(m.View()), "Ctrl+]") {
 		t.Fatal("the empty panel must not draw its header")
 	}
 }
@@ -72,7 +72,7 @@ func TestTopPanelCollapsedIsOneSummaryRow(t *testing.T) {
 	if len(lines) != 1 || m.tp.rows != 1 {
 		t.Fatalf("collapsed panel should be one row, got %d:\n%s", len(lines), strings.Join(lines, "\n"))
 	}
-	for _, want := range []string{"▸", "Goal", "Executing", "Ship the v1.4", "round 2/", "1m02s", "Plan 1/4", "1 error · 1 done", "Alt+T expand"} {
+	for _, want := range []string{"▸", "Goal", "Executing", "Ship the v1.4", "round 2/", "1m02s", "Plan 1/4", "1 error · 1 done", "Ctrl+] expand"} {
 		if !strings.Contains(lines[0], want) {
 			t.Fatalf("collapsed header missing %q: %q", want, lines[0])
 		}
@@ -89,7 +89,7 @@ func TestTopPanelExpandedListsEachItem(t *testing.T) {
 	m.tp.expanded, m.tp.userSet = true, true
 	lines := panelLines(m)
 	text := strings.Join(lines, "\n")
-	for _, want := range []string{"▾", "Alt+T collapse", "◎ Ship the v1.4 release checklist", "Idle · round 2/", "☰ Plan 1/4", "◐ Step number 2", "sub-1", "Audit changelog entries", "sub-2", "Verify build matrix"} {
+	for _, want := range []string{"▾", "Ctrl+] collapse", "◎ Ship the v1.4 release checklist", "Idle · round 2/", "☰ Plan 1/4", "◐ Step number 2", "sub-1", "Audit changelog entries", "sub-2", "Verify build matrix"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("expanded panel missing %q:\n%s", want, text)
 		}
@@ -409,7 +409,7 @@ func TestSubagentResultFoldsToOneLine(t *testing.T) {
 	}
 	b := block{kind: blockTool, toolName: "subagent", text: raw, expandKey: true}
 	out := stripAll(b.render(100))
-	if strings.Contains(out, `"type"`) || !strings.Contains(out, "scripted failure") || !strings.Contains(out, "alt+o") {
+	if strings.Contains(out, `"type"`) || !strings.Contains(out, "scripted failure") || !strings.Contains(out, "ctrl+f") {
 		t.Fatalf("failed subagent result should fold to its message:\n%s", out)
 	}
 	b.expanded = true
@@ -422,7 +422,7 @@ func TestSubagentResultFoldsToOneLine(t *testing.T) {
 		t.Fatalf("report should fold to its first line and a hint:\n%s", out)
 	}
 	one := block{kind: blockTool, toolName: "subagent", text: "done"}
-	if out := stripAll(one.render(100)); strings.Contains(out, "alt+o") {
+	if out := stripAll(one.render(100)); strings.Contains(out, "ctrl+f") {
 		t.Fatalf("a one-line report needs no fold hint: %q", out)
 	}
 }

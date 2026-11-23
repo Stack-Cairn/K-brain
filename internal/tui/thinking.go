@@ -1,10 +1,12 @@
 package tui
 
-// Thinking blocks. While a reasoning run streams in, its block shows a
-// "Thinking…" header over the run's last few lines, the line still arriving
-// included. When the reply or a tool call starts, the run is over: the block
-// folds to "Thought for Xs" and opens to the whole text when toggled (a
-// click, or e / Enter while the transcript has focus).
+// Thinking blocks. While a reasoning run streams in, its block shows the
+// run's last few lines, the line still arriving included, with no header of
+// its own: the status row's spinner already says "Thinking…". When the reply
+// or a tool call starts, the run is over and joins the turn's one thinking
+// row, which reads "Thought for Xs" for every run of the turn together and
+// opens to the whole text when toggled (a click, or e / Enter while the
+// transcript has focus). Runs adding up to less than a second leave no row.
 
 import (
 	"fmt"
@@ -15,12 +17,25 @@ import (
 // thinkingLiveRows is how many rows of a streaming run stay on screen.
 const thinkingLiveRows = 3
 
+// thinkMinShown is how long a turn has to think before its row shows.
+const thinkMinShown = time.Second
+
 // thinkMeta is a thinking block's timing. took is zero for a run restored
-// from history, which recorded no time.
+// from history, which recorded no time; turn is the turn it belongs to
+// (model.thinkTurn).
 type thinkMeta struct {
 	start time.Time
 	took  time.Duration
 	live  bool
+	turn  int
+}
+
+// thinkCarry is the turn's thinking too short to show so far: the next run
+// of the same turn starts from it.
+type thinkCarry struct {
+	text string
+	took time.Duration
+	turn int
 }
 
 func init() {
@@ -34,7 +49,6 @@ func renderThinking(b *block, width int) string {
 	if t == nil {
 		t = &thinkMeta{}
 	}
-	head := thinkingStyle.Render(chromeGlyphs(thinkingHead(b.text, t)))
 	var body string
 	switch {
 	case t.live:
@@ -47,9 +61,22 @@ func renderThinking(b *block, width int) string {
 	case b.expanded:
 		body = wrap(b.text, max(width-2, 1))
 	}
+	if t.live {
+		// The status row names the phase; the live block is only its tail.
+		if strings.TrimSpace(body) == "" {
+			body = "…"
+		}
+		return thinkingRows(body)
+	}
+	head := thinkingStyle.Render(chromeGlyphs(thinkingHead(b.text, t)))
 	if strings.TrimSpace(body) == "" {
 		return head
 	}
+	return head + "\n" + thinkingRows(body)
+}
+
+// thinkingRows indents and styles a thinking body.
+func thinkingRows(body string) string {
 	// Styled a row at a time: one Render over several rows pads them all
 	// to the widest.
 	rows := strings.Split(indentPlain(body, 2), "\n")
@@ -58,16 +85,14 @@ func renderThinking(b *block, width int) string {
 			rows[i] = thinkingStyle.Render(r)
 		}
 	}
-	return head + "\n" + strings.Join(rows, "\n")
+	return strings.Join(rows, "\n")
 }
 
-// thinkingHead is the header row's text.
+// thinkingHead is a settled block's header row: how long the turn thought,
+// or, for a run restored from history, how much it wrote.
 func thinkingHead(text string, t *thinkMeta) string {
-	switch {
-	case t.live:
-		return glyphs.ToolRun + " Thinking…"
-	case t.took > 0:
-		return fmt.Sprintf("%s Thought for %s · %s", glyphs.Thought, fmtThinkDuration(t.took), linesLabel(text))
+	if t.took > 0 {
+		return fmt.Sprintf("%s Thought for %s", glyphs.Thought, fmtThinkDuration(t.took))
 	}
 	return glyphs.Thought + " Thought · " + linesLabel(text)
 }
@@ -154,8 +179,29 @@ func (m *model) appendThink(s string) {
 		return
 	}
 	m.inThink = true
-	m.blocks = append(m.blocks, block{kind: blockThinking, text: s, thought: &thinkMeta{start: m.nowFn(), live: true}})
+	m.blocks = append(m.blocks, block{kind: blockThinking, text: s, thought: &thinkMeta{start: m.nowFn(), live: true, turn: m.thinkTurn}})
 	m.refreshVP()
+}
+
+// turnThought is the current turn's settled thinking row, if it has one.
+func (m *model) turnThought() *block {
+	for i := len(m.blocks) - 1; i >= 0; i-- {
+		b := &m.blocks[i]
+		if b.kind == blockUser {
+			return nil
+		}
+		if b.kind == blockThinking && b.thought != nil && !b.thought.live && b.thought.took > 0 && b.thought.turn == m.thinkTurn {
+			return b
+		}
+	}
+	return nil
+}
+
+// startThinkTurn begins a new turn for thinking: its runs gather in a row of
+// their own.
+func (m *model) startThinkTurn() {
+	m.thinkTurn++
+	m.thinkCarry = thinkCarry{}
 }
 
 // flushThink ends the reasoning run: its last line joins the block, which
@@ -170,18 +216,43 @@ func (m *model) flushThink() {
 		m.appendThink(cur)
 	}
 	if b := m.liveThinking(); b != nil {
-		b.thought.live = false
-		b.thought.took = m.nowFn().Sub(b.thought.start)
-		b.live = ""
-		b.text = strings.TrimRight(b.text, " \n")
-		if b.text == "" {
-			m.dropBlock(b)
-		} else {
-			b.invalidate()
-		}
+		m.settleThought(b)
 		m.refreshVP()
 	}
 	m.inThink = false
+}
+
+// settleThought ends the live run b: it joins the turn's thinking row, or
+// becomes that row once the turn has thought for a second; until then it is
+// carried, unseen, to the turn's next run.
+func (m *model) settleThought(b *block) {
+	took := max(m.nowFn().Sub(b.thought.start), time.Nanosecond)
+	text := strings.TrimRight(b.text, " \n")
+	if text == "" {
+		m.dropBlock(b)
+		return
+	}
+	if row := m.turnThought(); row != nil {
+		row.text += "\n" + text
+		row.thought.took += took
+		row.invalidate()
+		m.dropBlock(b)
+		return
+	}
+	if c := m.thinkCarry; c.turn == m.thinkTurn && c.text != "" {
+		text, took = c.text+"\n"+text, took+c.took
+	}
+	m.thinkCarry = thinkCarry{}
+	if took < thinkMinShown {
+		m.thinkCarry = thinkCarry{text: text, took: took, turn: m.thinkTurn}
+		m.dropBlock(b)
+		return
+	}
+	b.thought.live = false
+	b.thought.took = took
+	b.live = ""
+	b.text = text
+	b.invalidate()
 }
 
 // dropBlock removes b from the transcript.

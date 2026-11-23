@@ -362,7 +362,7 @@ func (s *Server) handleProviderModels(w http.ResponseWriter, r *http.Request) {
 	}
 	models, err := client.Models(ctx)
 	if err != nil {
-		writeJSONError(w, 502, "model discovery failed")
+		writeJSON(w, 502, discoveryFailure(err, p))
 		return
 	}
 	out := make([]settingsModel, 0, len(models))

@@ -98,11 +98,14 @@ func (m *model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return r, cmd
 	}
 
-	if msg.String() == "alt+t" {
+	// Each Alt key here has a Ctrl twin for terminals where Option is not
+	// Meta: Ctrl+] for the top panel, and Ctrl+F on an empty composer (where
+	// it would move the cursor nowhere) for the last tool result.
+	if k := msg.String(); k == "alt+t" || k == "ctrl+]" {
 		m.toggleTopPanel()
 		return m, nil
 	}
-	if msg.String() == "alt+o" {
+	if k := msg.String(); k == "alt+o" || (k == "ctrl+f" && m.input.Value() == "" && m.expandTarget() >= 0) {
 		// Alt+O opens or folds the last tool result. Ctrl+E is the composer's
 		// end of line and Ctrl+O the thinking toggle; Option+E is a dead key
 		// on a Mac, Option+O a plain character the Option fallback can map.
@@ -239,9 +242,7 @@ func (m *model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, pasteImageCmd
 
 	case tea.KeyCtrlO:
-
-		m.toggleThinking()
-		return m, nil
+		return m, m.toggleThinking()
 
 	case tea.KeyShiftTab:
 		if m.menu != nil {

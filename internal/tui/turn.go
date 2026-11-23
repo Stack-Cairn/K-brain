@@ -95,6 +95,7 @@ func (m *model) submitTurnAs(text string, authored, notice bool) (tea.Model, tea
 	}
 	m.turnSnapshotSeq = nil
 	m.busy = true
+	m.startThinkTurn()
 	m.panelTurnStarted(authored)
 	m.turnStart = m.nowFn()
 	prepared, parts := m.prepareTurn(text)
@@ -233,6 +234,12 @@ func (m *model) submitTurnAs(text string, authored, notice bool) (tea.Model, tea
 		m.append(row)
 	default:
 		m.appendRaw(blockUser, linkifyFilePaths(text, realFileExists))
+		if typed := m.typedPrompt(text); typed != "" {
+			b := &m.blocks[len(m.blocks)-1]
+			b.typed = linkifyFilePaths(typed, realFileExists)
+			b.invalidate()
+			m.refreshVP()
+		}
 	}
 	if authored {
 

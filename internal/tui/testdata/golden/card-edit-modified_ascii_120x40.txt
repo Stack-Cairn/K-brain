@@ -23,7 +23,7 @@
 |      this file - folder - project - kept for this project                                                            |
 |   3  No, and tell the agent why (r)                                                                                  |
 |                                                                                                                      |
-| Up/Down select - 1-3 or a/A/r - Tab scope - ctrl+e expand - Esc reject                                               |
+| Up/Down select - 1-3 or a/A/r - Tab scope - ctrl+f expand - Esc reject                                               |
 +----------------------------------------------------------------------------------------------------------------------+
 
 

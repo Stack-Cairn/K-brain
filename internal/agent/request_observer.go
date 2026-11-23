@@ -32,6 +32,21 @@ func WithRequestObserver(ctx context.Context, observer RequestObserver) context.
 	return context.WithValue(ctx, requestObserverKey{}, observer)
 }
 
+// RequestTaskID is the subagent or background task ctx runs in, innermost
+// first; "" for the main agent.
+func RequestTaskID(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	scope, _ := ctx.Value(requestTaskKey{}).(requestTaskScope)
+	return scope.ID
+}
+
+// WithRequestTask scopes ctx to the task id, as a subagent's requests run.
+func WithRequestTask(ctx context.Context, id string) context.Context {
+	return withRequestTask(ctx, id)
+}
+
 func withRequestTask(ctx context.Context, id string) context.Context {
 	parent, _ := ctx.Value(requestTaskKey{}).(requestTaskScope)
 	return context.WithValue(ctx, requestTaskKey{}, requestTaskScope{ID: id, Parent: parent.ID})
@@ -72,10 +87,14 @@ func (a *Agent) streamObserved(ctx context.Context, request ai.Request, ev Event
 	if observer != nil {
 		observer.End(ctx, message, usage, err)
 	}
-	if err != nil && ctx.Err() != nil {
-		// Clients return no message on error; a user stop keeps what was already
-		// streamed so the turn loop can record it.
-		message = partial.message()
+	if err != nil {
+		// Clients return no message on error. A user stop or a failed stream
+		// keeps what was already streamed so the turn loop can record it.
+		if ctx.Err() != nil {
+			message = partial.message(ai.StopReasonCancelled, "")
+		} else {
+			message = partial.message(ai.StopReasonError, err.Error())
+		}
 	}
 	return message, usage, err
 }
@@ -104,8 +123,9 @@ func (p *partialReply) think(next func(string)) func(string) {
 	}
 }
 
-// message is the cancelled reply, or a zero Message when nothing was streamed.
-func (p *partialReply) message() ai.Message {
+// message is the interrupted reply, or a zero Message when nothing was
+// streamed. failure is the error text of a failed stream.
+func (p *partialReply) message(stop ai.StopReason, failure string) ai.Message {
 	content, reasoning := p.content.String(), p.reasoning.String()
 	if strings.TrimSpace(content) == "" {
 		content = ""
@@ -116,7 +136,7 @@ func (p *partialReply) message() ai.Message {
 	if content == "" && reasoning == "" {
 		return ai.Message{}
 	}
-	return ai.Message{Role: "assistant", Content: content, Reasoning: reasoning, StopReason: ai.StopReasonCancelled}
+	return ai.Message{Role: "assistant", Content: content, Reasoning: reasoning, StopReason: stop, Error: failure}
 }
 
 func withPromptContext(messages []ai.Message) []ai.Message {

@@ -22,11 +22,18 @@ func (a *Agent) appendResponse(msg ai.Message, usage ai.Usage) {
 	a.msgsMu.Unlock()
 }
 
-// appendCancelledReply records the part of a reply that streamed before the user
-// stopped the turn, so history keeps what the user already saw. It adds nothing
-// for other failures or when nothing was streamed.
-func (a *Agent) appendCancelledReply(ctx context.Context, msg ai.Message, usage ai.Usage) {
-	if ctx.Err() == nil || msg.Role != "assistant" || msg.StopReason != ai.StopReasonCancelled {
+// appendInterruptedReply records the part of a reply that streamed before the
+// user stopped the turn or the stream failed, so history keeps what the user
+// already saw. A failed reply keeps the error text in Error. It adds nothing
+// when nothing was streamed.
+func (a *Agent) appendInterruptedReply(ctx context.Context, msg ai.Message, usage ai.Usage) {
+	if msg.Role != "assistant" {
+		return
+	}
+	switch {
+	case msg.StopReason == ai.StopReasonCancelled && ctx.Err() != nil:
+	case msg.StopReason == ai.StopReasonError && msg.Error != "" && ctx.Err() == nil:
+	default:
 		return
 	}
 	a.appendResponse(msg, usage)

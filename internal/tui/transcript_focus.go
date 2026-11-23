@@ -69,6 +69,12 @@ func (m *model) transcriptKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 			m.focusTranscript()
 			return m, nil, true
 		}
+		// Shift+↑ does the same where it selects nothing: on an empty
+		// composer, the queue pane not holding it.
+		if msg.String() == "shift+up" && m.input.Value() == "" && !m.queueFocused() && m.menu == nil && m.canFocusTranscript() {
+			m.focusTranscript()
+			return m, nil, true
+		}
 	case msg.Type == tea.KeyRunes && len(msg.Runes) > 1 && !msg.Paste:
 		// Keys typed faster than the terminal is read arrive together:
 		// each is its own command here.
@@ -293,8 +299,7 @@ func blockOpen(b *block) bool {
 }
 
 func hasToggle(b *block) bool {
-	spec, ok := blockKinds[b.kind]
-	return ok && spec.toggle != nil
+	return kindToggle(b) != nil
 }
 
 // genericFoldable reports whether b, a kind without a toggle, has anything

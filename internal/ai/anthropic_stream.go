@@ -31,6 +31,8 @@ func (c *Anthropic) streamAttempt(ctx context.Context, req Request, onText, onTh
 	}
 	defer resp.Body.Close()
 	msg := Message{Role: "assistant"}
+	var thought thoughtText
+	onThink = thought.wrap(onThink)
 	search := newSearchStream(ctx, "claude_code")
 	var usage anthropicUsage
 	blocks := map[int]*anthropicToolBlock{}
@@ -109,7 +111,7 @@ func (c *Anthropic) streamAttempt(ctx context.Context, req Request, onText, onTh
 					onText(b.Text)
 				}
 			}
-			if b.Thinking != "" && onThink != nil {
+			if b.Thinking != "" {
 				onThink(b.Thinking)
 			}
 			if b.Type == "tool_use" {
@@ -136,7 +138,7 @@ func (c *Anthropic) streamAttempt(ctx context.Context, req Request, onText, onTh
 					onText(d.Text)
 				}
 			}
-			if d.Thinking != "" && onThink != nil {
+			if d.Thinking != "" {
 				onThink(d.Thinking)
 			}
 			if block := thinking[v.Index]; block != nil {
@@ -192,6 +194,7 @@ func (c *Anthropic) streamAttempt(ctx context.Context, req Request, onText, onTh
 			if !started {
 				return Message{}, usage.normalized(), providerStreamError(nil, "message_stop without message_start")
 			}
+			msg.Reasoning = thought.String()
 			if stopReason == "max_tokens" {
 				return finishTruncatedMessage(msg, stopReason, len(order) > 0, onText), usage.normalized(), nil
 			}

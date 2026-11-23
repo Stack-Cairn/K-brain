@@ -311,7 +311,9 @@ func assertChainHistory(t *testing.T, view protocol.Session, rounds int) {
 			}
 		}
 		for _, block := range message.Content {
-			if strings.Contains(block.Text, "incomplete-answer") || strings.Contains(block.Text, "private-thought") {
+			// Streamed reasoning is kept for display as a thinking block (it is
+			// never sent back, see the request checks); it must not leak into text.
+			if strings.Contains(block.Text, "incomplete-answer") || block.Type != protocol.ContentThinking && strings.Contains(block.Text, "private-thought") {
 				t.Fatalf("failed/private message persisted: %+v", message)
 			}
 			if block.Type == protocol.ContentImage {
