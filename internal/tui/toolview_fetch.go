@@ -16,7 +16,7 @@ import (
 //	◆ Web search  "bubbletea viewport"                     ✓ 5 sources
 //	  └ Viewport — github.com
 //	    Bubbles docs — pkg.go.dev
-//	    ⋯ +3 sources · alt+o   (on the block Alt+O toggles)
+//	    ⋯ +3 sources · ctrl+f  (on the block Ctrl+F / Alt+O toggles)
 
 // blockHostedSearch is a provider-side web search with its sources.
 const blockHostedSearch blockKind = 200

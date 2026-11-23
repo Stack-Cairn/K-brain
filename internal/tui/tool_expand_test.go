@@ -18,7 +18,7 @@ func TestToolExpand(t *testing.T) {
 	m.appendRaw(blockTool, result)
 
 	out := ansi.Strip(m.blocks[0].render(m.width))
-	if strings.Contains(out, "line8") || !strings.Contains(out, glyphs.Fold+" +5 lines · alt+o") {
+	if strings.Contains(out, "line8") || !strings.Contains(out, glyphs.Fold+" +5 lines · ctrl+f") {
 		t.Fatalf("collapsed render wrong: %q", out)
 	}
 
@@ -57,11 +57,11 @@ func TestFoldHintNamesCtrlEOnlyOnItsTarget(t *testing.T) {
 	m.refreshVP()
 	first := ansi.Strip(strings.Join(m.blocks[0].linesAt(m.width, false), "\n"))
 	last := ansi.Strip(strings.Join(m.blocks[1].linesAt(m.width, false), "\n"))
-	if strings.Contains(first, "alt+o") || !strings.Contains(first, glyphs.Fold+" +5 lines") {
-		t.Fatalf("an earlier block must not claim alt+o:\n%s", first)
+	if strings.Contains(first, "ctrl+f") || !strings.Contains(first, glyphs.Fold+" +5 lines") {
+		t.Fatalf("an earlier block must not claim ctrl+f:\n%s", first)
 	}
-	if !strings.Contains(last, glyphs.Fold+" +5 lines · alt+o") {
-		t.Fatalf("the last block names alt+o:\n%s", last)
+	if !strings.Contains(last, glyphs.Fold+" +5 lines · ctrl+f") {
+		t.Fatalf("the last block names ctrl+f:\n%s", last)
 	}
 
 	var srcs []ai.SearchSource
@@ -72,7 +72,7 @@ func TestFoldHintNamesCtrlEOnlyOnItsTarget(t *testing.T) {
 	search := len(m.blocks) - 1
 	last = ansi.Strip(strings.Join(m.blocks[1].linesAt(m.width, false), "\n"))
 	got := ansi.Strip(strings.Join(m.blocks[search].linesAt(m.width, false), "\n"))
-	if strings.Contains(last, "alt+o") || !strings.Contains(got, "+2 sources · alt+o") {
+	if strings.Contains(last, "ctrl+f") || !strings.Contains(got, "+2 sources · ctrl+f") {
 		t.Fatalf("the hint should move to the search:\ntool:\n%s\nsearch:\n%s", last, got)
 	}
 	tm, _ := m.key(altKey("o"))

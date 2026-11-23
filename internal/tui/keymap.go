@@ -22,7 +22,7 @@ const (
 	keyDock keyContext = "dock"
 	// keyTaskView is while a subagent's own view is open.
 	keyTaskView keyContext = "taskview"
-	// keyTranscript is while the transcript has focus (Alt+↑).
+	// keyTranscript is while the transcript has focus (Shift+↑ / Alt+↑).
 	keyTranscript keyContext = "transcript"
 	// keyViewer is while the block viewer is open.
 	keyViewer keyContext = "viewer"
@@ -57,7 +57,8 @@ var keymap = []keyBinding{
 	{"space", keyDock, "dockPreview", ""},
 	{"enter", keyDock, "dockOpen", ""},
 	{"ctrl+x", keyDock, "dockStop", ""},
-	{"alt+t", keyGlobal, "topPanelToggle", "Alt+T — expand or collapse the top panel (goal, plan, subagents); a click on its header does the same"},
+	{"ctrl+]", keyGlobal, "topPanelToggle", "Ctrl+] / Alt+T — expand or collapse the top panel (goal, plan, subagents); a click on its header does the same"},
+	{"alt+t", keyGlobal, "topPanelToggle", ""},
 	{"enter", keyTaskView, "taskSend", "in a subagent view: Enter steers or follows up, Ctrl+X stops, PgUp/PgDn scroll, Esc returns"},
 	{"ctrl+x", keyTaskView, "taskStop", ""},
 	{"pgup", keyTaskView, "taskScroll", ""},
@@ -69,7 +70,8 @@ var keymap = []keyBinding{
 	{"esc", keyTaskView, "taskClose", ""},
 	{"ctrl+t", keyTaskView, "taskClose", ""},
 	{"ctrl+o", keyGlobal, "toggleThinking", palHintThinking + " — toggle thinking tokens"},
-	{"alt+o", keyGlobal, "expandTool", "Alt+O — expand or collapse the last tool result"},
+	{"ctrl+f", keyGlobal, "expandTool", "Ctrl+F (empty composer) / Alt+O — expand or collapse the last tool result"},
+	{"alt+o", keyGlobal, "expandTool", ""},
 	{"ctrl+j", keyComposer, "newline", "Ctrl+J / Shift+Enter — newline"},
 	{"shift+enter", keyComposer, "newline", ""},
 	{"alt+enter", keyComposer, "newline", ""},
@@ -133,17 +135,19 @@ var keymap = []keyBinding{
 	{"alt+shift+right", keyComposer, "selectWord", ""},
 	{"left", keyComposer, "chipSkip", ""},
 	{"right", keyComposer, "chipSkip", ""},
-	{"enter", keyQueue, "queueSendNow", "with a queued message selected: Enter sends it now, Ctrl+E edits, Alt+↑/↓ moves"},
+	{"enter", keyQueue, "queueSendNow", "with a queued message selected: Enter sends it now, Ctrl+E edits, Shift+↑/↓ moves"},
 	{"ctrl+e", keyQueue, "queueEdit", ""},
 	{"alt+up", keyQueue, "queueMove", ""},
 	{"shift+up", keyQueue, "queueMove", ""},
 	{"alt+down", keyQueue, "queueMove", ""},
 	{"shift+down", keyQueue, "queueMove", ""},
 	{"esc", keyQueue, "queueDeselect", ""},
-	{"alt+e", keyBusy, "queueEditLast", "Alt+E (busy) — edit the last queued message · click a queued message to select it, click it again to edit, its ✗ removes it"},
+	{"ctrl+e", keyBusy, "queueEditLast", "Ctrl+E (busy, empty composer) / Alt+E — edit the last queued message · click a queued message to select it, click it again to edit, its ✗ removes it"},
+	{"alt+e", keyBusy, "queueEditLast", ""},
 	{"ctrl+b", keyBusy, "backgroundTool", "Ctrl+B (busy) — move the running shell command to the background; it keeps running and the agent is told when it exits"},
 	{"f2", keyGlobal, "settings", "F2 — settings"},
-	{"alt+up", keyGlobal, "focusTranscript", "Alt+↑ — focus the transcript: j/k select a block, [/] previous / next prompt, Ctrl+U/Ctrl+D half a page, h/l fold / open, e toggle, E fold all, y copy, r raw markdown, v view, / find, Esc back"},
+	{"shift+up", keyGlobal, "focusTranscript", "Shift+↑ (empty composer) / Alt+↑ — focus the transcript: j/k select a block, [/] previous / next prompt, Ctrl+U/Ctrl+D half a page, h/l fold / open, e toggle, E fold all, y copy, r raw markdown, v view, / find, Esc back"},
+	{"alt+up", keyGlobal, "focusTranscript", ""},
 	{"down", keyTranscript, "focusNext", ""},
 	{"j", keyTranscript, "focusNext", ""},
 	{"up", keyTranscript, "focusPrev", ""},

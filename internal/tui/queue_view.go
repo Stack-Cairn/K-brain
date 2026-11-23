@@ -50,14 +50,14 @@ func (m *model) queueView() string {
 		hints = []string{m.tr("Enter saves"), m.tr("Esc puts it back")}
 	case m.queueFocused():
 		header = fmt.Sprintf(m.tr("queued (%d)"), len(m.queue))
-		hints = []string{m.tr("Enter send now"), m.tr("Ctrl+E/click edit"), m.tr("Del remove"), m.tr("Esc back"), m.tr("↑↓ select"), m.tr("Alt+↑↓ move")}
+		hints = []string{m.tr("Enter send now"), m.tr("Ctrl+E/click edit"), m.tr("Del remove"), m.tr("Esc back"), m.tr("↑↓ select"), m.tr("Shift+↑↓ move")}
 	case m.busy && m.input.Value() == "":
 		header = fmt.Sprintf(m.tr("queued (%d)"), len(m.queue))
-		hints = []string{m.tr("↑/click select"), m.tr("Alt+E edit last"), m.tr("Enter on empty input sends now")}
+		hints = []string{m.tr("↑/click select"), m.tr("Ctrl+E edit last"), m.tr("Enter on empty input sends now")}
 	default:
 		header = fmt.Sprintf(m.tr("queued (%d) · sent after the current tool call"), len(m.queue))
 		if m.busy && len(m.queue) > 0 {
-			hints = []string{m.tr("Alt+E edit last")}
+			hints = []string{m.tr("Ctrl+E edit last")}
 		}
 	}
 	// The pane sits in the composer's gutter, and a row's mark in the column
@@ -158,7 +158,7 @@ func (m *model) queueRemoveSelected() {
 	}
 }
 
-// queueEditLast is Alt+E: the newest queued message comes into the composer
+// queueEditLast is Ctrl+E on an empty composer, or Alt+E: the newest queued message comes into the composer
 // for editing, whatever the composer holds. A draft goes to the stash first.
 func (m *model) queueEditLast() tea.Cmd {
 	if len(m.queue) == 0 {

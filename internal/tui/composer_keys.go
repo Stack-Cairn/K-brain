@@ -332,7 +332,10 @@ func (m *model) composerPreKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 			return m, nil, true
 		}
 	}
-	if k == "alt+e" && m.busy && len(m.queue) > 0 && m.editingQueued() == nil && m.namePrompt == nil {
+	// Alt+E, or Ctrl+E on an empty composer (its end of line goes nowhere),
+	// edits the newest queued message; the queue pane's Ctrl+E above edits
+	// the selected one.
+	if (k == "alt+e" || (k == "ctrl+e" && m.input.Value() == "")) && m.busy && len(m.queue) > 0 && m.editingQueued() == nil && m.namePrompt == nil {
 		return m, m.queueEditLast(), true
 	}
 	if k == "alt+a" && m.namePrompt == nil && m.input.Value() != "" {

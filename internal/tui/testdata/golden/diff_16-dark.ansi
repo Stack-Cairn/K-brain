@@ -15,7 +15,7 @@
 == folded ==
 [90m  10  [0m  [95mfunc[0m [96mmain[0m() {
 [90m  11  [0m[91m-[0m [91m    fmt.Println("hello")[0m
-[37m    ⋯ +3 lines · alt+o[0m
+[37m    ⋯ +3 lines · ctrl+f[0m
 == unnumbered ==
 [90m     [0m[92m+[0m [92madded[0m
 [90m     [0m[91m-[0m [91mremoved[0m

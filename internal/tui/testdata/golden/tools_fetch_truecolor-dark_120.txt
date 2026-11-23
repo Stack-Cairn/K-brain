@@ -6,7 +6,7 @@
   └ Bubbles: TUI components — github.com
     viewport package — pkg.go.dev
     example.com
-    ⋯ +2 sources · alt+o
+    ⋯ +2 sources · ctrl+f
 == hosted-search-failed ==
 ✗ Web search  "kn release notes"                                                                                  failed
   └ search quota exceeded

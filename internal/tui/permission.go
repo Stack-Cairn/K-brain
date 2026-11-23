@@ -351,7 +351,8 @@ func (m *model) permKey(msg tea.KeyMsg) bool {
 			}
 			d.sel = 1
 		}
-	case tea.KeyCtrlE:
+	case tea.KeyCtrlF, tea.KeyCtrlE:
+		// Ctrl+F, as for a tool result in the transcript; Ctrl+E as before.
 		d.toggleExpanded()
 	case tea.KeyEnter:
 		switch d.sel {
@@ -590,9 +591,9 @@ func (m *model) permTail(d *permDialog, w int, compact bool) []string {
 		}
 		if p := d.req.Preview; p != nil && p.Diff != "" && !d.unfolded && len(strings.Split(strings.TrimRight(p.Diff, "\n"), "\n")) > permPreviewRows {
 			if d.expanded {
-				hint += m.tr(" · ctrl+e fold")
+				hint += m.tr(" · ctrl+f fold")
 			} else {
-				hint += m.tr(" · ctrl+e expand")
+				hint += m.tr(" · ctrl+f expand")
 			}
 		}
 		hint += m.tr(" · Esc reject")

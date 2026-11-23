@@ -15,7 +15,7 @@
 == folded ==
   10    func main() {
   11  -     fmt.Println("hello")
-    ⋯ +3 lines · alt+o
+    ⋯ +3 lines · ctrl+f
 == unnumbered ==
      + added
      - removed

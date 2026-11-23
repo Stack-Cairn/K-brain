@@ -355,7 +355,7 @@ func TestBackgroundNoticesRenderAsStatusRows(t *testing.T) {
 	if strings.Contains(view, "(steered)") || strings.Contains(view, "❯ [subagent") {
 		t.Fatalf("notice rendered like a steer: %s", view)
 	}
-	for _, want := range []string{glyphs.ToolDone + " subagent scan-docs-3 done · Scan docs", glyphs.Result + " found 2 TODOs", "+1 lines · alt+o"} {
+	for _, want := range []string{glyphs.ToolDone + " subagent scan-docs-3 done · Scan docs", glyphs.Result + " found 2 TODOs", "+1 lines · ctrl+f"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("notice view missing %q:\n%s", want, view)
 		}

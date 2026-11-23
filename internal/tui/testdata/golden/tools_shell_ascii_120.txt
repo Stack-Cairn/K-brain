@@ -5,7 +5,7 @@
 x Bash  make lint                                                                                          exit 2 - 2.8s
   ` lint: warning 1
     lint: warning 2
-    ... +7 lines - alt+o
+    ... +7 lines - ctrl+f
     lint: warning 10
     lint: warning 11
     make: *** [lint] Error 2

@@ -5,9 +5,9 @@
   [38;5;245mAnywhere[0m
 [1;38;5;79;48;5;236m❯ Shift+Tab      cycle the permission… [0m
   Ctrl+T         [38;5;252mfocus the subagent d…[0m[38;5;247m[0m
-  Alt+T          [38;5;252mexpand or collapse t…[0m[38;5;247m[0m
+  Ctrl+] / Alt…  [38;5;252mexpand or collapse t…[0m[38;5;247m[0m
   Ctrl+O         [38;5;252mshow or hide thinkin…[0m[38;5;247m[0m
-  Alt+O          [38;5;252mexpand or collapse t…[0m[38;5;247m[0m
+  Ctrl+F / Alt…  [38;5;252mexpand or collapse t…[0m[38;5;247m[0m
   Ctrl+G         [38;5;252medit the draft in an…[0m[38;5;247m[0m
   Ctrl+V         [38;5;252mpaste an image[0m[38;5;247m[0m
   Ctrl+L         [38;5;252mredraw the screen[0m[38;5;247m[0m

@@ -124,12 +124,13 @@ func TestPermPreviewExpandsAndScrolls(t *testing.T) {
 	}
 	reply := openPerm(m, tools.GateRequest{Tool: "write", Command: filepath.Join(cwd(), "big.go"), Preview: &tools.EditPreview{Path: "big.go", NewFile: true, Diff: diff.String()}})
 	v := ansi.Strip(m.permView())
-	if !strings.Contains(v, "ctrl+e expand") || strings.Contains(v, "added line 40") {
+	if !strings.Contains(v, "ctrl+f expand") || strings.Contains(v, "added line 40") {
 		t.Fatalf("a long preview starts folded:\n%s", v)
 	}
-	m.permKey(ck(tea.KeyCtrlE))
+	// Ctrl+F, the key a folded tool result names too, opens it.
+	m.permKey(ck(tea.KeyCtrlF))
 	v = ansi.Strip(m.permView())
-	if !strings.Contains(v, "ctrl+e fold") || !strings.Contains(v, "PgUp/PgDn") {
+	if !strings.Contains(v, "ctrl+f fold") || !strings.Contains(v, "PgUp/PgDn") {
 		t.Fatalf("expanded, the preview scrolls inside the card:\n%s", v)
 	}
 	if h := strings.Count(m.permView(), "\n") + 1; h > m.cardMaxHeight() {
@@ -477,7 +478,7 @@ func TestWriteCardCountsDiffRowsAndNamesFiles(t *testing.T) {
 		if rows := len(diffRow.FindAllString(v, -1)); rows != to-from+1 || p[3] != "17" {
 			t.Fatalf("height %d: %q but %d diff rows shown of 17:\n%s", h, p[0], rows, v)
 		}
-		if strings.Contains(v, "more lines") || strings.Contains(v, "+5 lines") || strings.Contains(v, "ctrl+e expand") {
+		if strings.Contains(v, "more lines") || strings.Contains(v, "+5 lines") || strings.Contains(v, "ctrl+f expand") {
 			t.Fatalf("height %d: a scrolling preview has nothing folded:\n%s", h, v)
 		}
 		m.permKey(keyRunes("a"))
@@ -491,7 +492,7 @@ func TestWriteCardCountsDiffRowsAndNamesFiles(t *testing.T) {
 	m.permissionMode = "normal"
 	reply := openPerm(m, tools.GateRequest{Tool: "write", Command: filepath.Join(cwd(), "notes.txt"), Preview: &tools.EditPreview{Path: "notes.txt", Diff: diff.String()}})
 	v := ansi.Strip(m.permView())
-	if !strings.Contains(v, "+5 lines") || strings.Contains(v, "alt+o") || !strings.Contains(v, "ctrl+e expand") || pos.MatchString(v) {
+	if !strings.Contains(v, "+5 lines") || strings.Contains(v, "alt+o") || !strings.Contains(v, "ctrl+f expand") || pos.MatchString(v) {
 		t.Fatalf("folded preview:\n%s", v)
 	}
 	m.permKey(keyRunes("a"))

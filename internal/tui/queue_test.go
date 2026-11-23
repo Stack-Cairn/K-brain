@@ -343,7 +343,7 @@ func TestQueueViewShowsSelection(t *testing.T) {
 	if !strings.Contains(view, "Del remove") || !strings.Contains(view, "Esc back") {
 		t.Errorf("selected queued message should show delete and back hints:\n%s", view)
 	}
-	if !strings.Contains(view, "↑↓ select") || !strings.Contains(view, "Alt+↑↓ move") || !strings.Contains(view, "Ctrl+E/click edit") {
+	if !strings.Contains(view, "↑↓ select") || !strings.Contains(view, "Shift+↑↓ move") || !strings.Contains(view, "Ctrl+E/click edit") {
 		t.Errorf("queue footer should advertise navigation:\n%s", view)
 	}
 }

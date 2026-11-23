@@ -10,7 +10,7 @@
 ◆ Bash  grep -n width cache.go
   └ cache.go:10: key := width + 0
     cache.go:11: key := width + 1
-    ⋯ +8 lines · alt+o
+    ⋯ +8 lines · ctrl+f
     cache.go:20: key := width + 10
     cache.go:21: key := width + 11
     cache.go:99: // the stale entry is

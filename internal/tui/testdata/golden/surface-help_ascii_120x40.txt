@@ -5,9 +5,9 @@
   Anywhere
 > Shift+Tab                                 cycle the permission mode
   Ctrl+T                                    focus the subagent dock
-  Alt+T                                     expand or collapse the top panel (goal, plan, subagents); a click on it...
+  Ctrl+] / Alt+T                            expand or collapse the top panel (goal, plan, subagents); a click on it...
   Ctrl+O                                    show or hide thinking tokens
-  Alt+O                                     expand or collapse the last tool result
+  Ctrl+F / Alt+O                            expand or collapse the last tool result
   Ctrl+G                                    edit the draft in an external editor
   Ctrl+V                                    paste an image
   Ctrl+L                                    redraw the screen
@@ -15,7 +15,7 @@
   Ctrl+C Ctrl+C                             quit
   Ctrl+P                                    open the command palette
   F2                                        open settings
-  Alt+Up                                    focus the transcript, a block at a time
+  Shift+Up / Alt+Up                         focus the transcript, a block at a time
   F1                                        open this cheatsheet (? only on an empty composer)
 
   Composer

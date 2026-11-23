@@ -18,16 +18,17 @@ import (
 
 // legacyHelpKeys is /help's key section as it was written out by hand before
 // the keymap existed, plus the rows given a hint since (Ctrl+P, F2, F1 / ?) and the keys
-// rebound since (Ctrl+K kills to line end, Alt+O expands, Ctrl+E ends the line).
+// rebound since (Ctrl+K kills to line end, Alt+O expands, Ctrl+E ends the line)
+// and the Ctrl and Shift twins of the Alt keys.
 // Generating it from the keymap must not change a byte, in any language.
 var legacyHelpKeys = []string{
 	"Tab — complete",
 	"Shift+Tab — cycle Normal / Plan / Auto review / Always allow",
 	"Ctrl+T — subagents dock: ↑/↓ select, Space preview, Enter open, Ctrl+X stop",
-	"Alt+T — expand or collapse the top panel (goal, plan, subagents); a click on its header does the same",
+	"Ctrl+] / Alt+T — expand or collapse the top panel (goal, plan, subagents); a click on its header does the same",
 	"in a subagent view: Enter steers or follows up, Ctrl+X stops, PgUp/PgDn scroll, Esc returns",
 	palHintThinking + " — toggle thinking tokens",
-	"Alt+O — expand or collapse the last tool result",
+	"Ctrl+F (empty composer) / Alt+O — expand or collapse the last tool result",
 	"Ctrl+J / Shift+Enter — newline",
 	"Ctrl+G — edit the current draft in an external editor",
 	"Ctrl+V — paste image",
@@ -47,11 +48,11 @@ var legacyHelpKeys = []string{
 	"Ctrl+S — stash the draft, or restore it on an empty composer",
 	"mouse in the composer: click moves the cursor, drag selects, double click a word, triple click / Alt+A all · with a selection: Backspace/Del deletes, typing or paste replaces, Ctrl+X cuts, Ctrl+C copies",
 	"Shift+←/→/↑/↓, Shift+Home/End, Alt+Shift+←/→ — select in the composer by character, row, to the line's start / end, by word; typing replaces it, Backspace deletes it, Ctrl+C copies it",
-	"with a queued message selected: Enter sends it now, Ctrl+E edits, Alt+↑/↓ moves",
-	"Alt+E (busy) — edit the last queued message · click a queued message to select it, click it again to edit, its ✗ removes it",
+	"with a queued message selected: Enter sends it now, Ctrl+E edits, Shift+↑/↓ moves",
+	"Ctrl+E (busy, empty composer) / Alt+E — edit the last queued message · click a queued message to select it, click it again to edit, its ✗ removes it",
 	"Ctrl+B (busy) — move the running shell command to the background; it keeps running and the agent is told when it exits",
 	"F2 — settings",
-	"Alt+↑ — focus the transcript: j/k select a block, [/] previous / next prompt, Ctrl+U/Ctrl+D half a page, h/l fold / open, e toggle, E fold all, y copy, r raw markdown, v view, / find, Esc back",
+	"Shift+↑ (empty composer) / Alt+↑ — focus the transcript: j/k select a block, [/] previous / next prompt, Ctrl+U/Ctrl+D half a page, h/l fold / open, e toggle, E fold all, y copy, r raw markdown, v view, / find, Esc back",
 	"in the block viewer: j/k scroll, Space/PgDn page, g/G top / end, / find, n/N next / previous, Esc back",
 	"F1 / ? (empty composer) — keyboard shortcuts and commands",
 	"/vim — vim mode: Esc for normal mode · h j k l w b e 0 ^ $ move · x dd dw D delete · cw cc C change · yy p yank / put · u undo · i a I A o O insert",
@@ -121,6 +122,7 @@ var teaKeys = map[string]tea.KeyType{
 	"KeyCtrlO": tea.KeyCtrlO, "KeyCtrlP": tea.KeyCtrlP, "KeyCtrlQ": tea.KeyCtrlQ, "KeyCtrlR": tea.KeyCtrlR,
 	"KeyCtrlS": tea.KeyCtrlS, "KeyCtrlT": tea.KeyCtrlT, "KeyCtrlU": tea.KeyCtrlU, "KeyCtrlV": tea.KeyCtrlV,
 	"KeyCtrlW": tea.KeyCtrlW, "KeyCtrlX": tea.KeyCtrlX, "KeyCtrlY": tea.KeyCtrlY, "KeyCtrlZ": tea.KeyCtrlZ,
+	"KeyShiftUp": tea.KeyShiftUp,
 }
 
 // notKeys are tea identifiers that show up in dispatch without naming a key

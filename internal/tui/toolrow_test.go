@@ -80,11 +80,11 @@ func TestDiffPreviewCapAndExpand(t *testing.T) {
 	b := block{kind: blockTool, text: "Wrote 1 bytes to a.go\n```diff\n" + strings.Join(rows, "\n") + "\n```", expandKey: true}
 	out := ansi.Strip(b.render(80))
 	// Drawn without a header, the result says the counts itself.
-	if !strings.Contains(out, glyphs.Fold+" +5 lines · alt+o") || !strings.Contains(out, "Added 35 lines") {
+	if !strings.Contains(out, glyphs.Fold+" +5 lines · ctrl+f") || !strings.Contains(out, "Added 35 lines") {
 		t.Fatalf("collapsed diff should cap:\n%s", out)
 	}
 	b.expanded, b.stale = true, true
-	if out := ansi.Strip(b.render(80)); strings.Contains(out, "lines · alt+o") {
+	if out := ansi.Strip(b.render(80)); strings.Contains(out, "lines · ctrl+f") {
 		t.Fatal("expanded diff should show everything")
 	}
 }
