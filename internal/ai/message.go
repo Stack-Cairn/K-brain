@@ -41,6 +41,10 @@ type Message struct {
 	// StopReasonError); Content and Reasoning hold what streamed before it.
 	// Display-only: requests carry a short interruption note instead.
 	Error string `json:"error,omitempty"`
+	// ErrorDetail classifies a failed reply (StopReasonError): the kind of
+	// failure, the provider's HTTP status and its own short message.
+	// Display-only, like Error.
+	ErrorDetail *ErrorDetail `json:"error_detail,omitempty"`
 
 	RewoundFrom string `json:"rewound_from,omitempty"`
 }
@@ -120,6 +124,7 @@ type messageWire struct {
 	StopReason      StopReason       `json:"stop_reason,omitempty"`
 	RawStopReason   string           `json:"raw_stop_reason,omitempty"`
 	Error           string           `json:"error,omitempty"`
+	ErrorDetail     *ErrorDetail     `json:"error_detail,omitempty"`
 	RewoundFrom     string           `json:"rewound_from,omitempty"`
 }
 
@@ -133,7 +138,7 @@ func (m Message) MarshalJSON() ([]byte, error) {
 		PromptSnapshots: m.PromptSnapshots,
 		HostedSearch:    m.HostedSearch,
 		Model:           m.Model, RewoundFrom: m.RewoundFrom,
-		StopReason: m.StopReason, RawStopReason: m.RawStopReason, Error: m.Error,
+		StopReason: m.StopReason, RawStopReason: m.RawStopReason, Error: m.Error, ErrorDetail: m.ErrorDetail,
 	}
 	if len(m.Parts) > 0 {
 		w.Content = m.ContentParts()
@@ -154,7 +159,7 @@ func (m *Message) UnmarshalJSON(data []byte) error {
 	m.Authored, m.Origin, m.SentAt, m.Usage, m.Model, m.RewoundFrom = raw.Authored, raw.Origin, raw.SentAt, raw.Usage, raw.Model, raw.RewoundFrom
 	m.PromptContext = raw.PromptContext
 	m.PromptSnapshots = raw.PromptSnapshots
-	m.StopReason, m.RawStopReason, m.Error = raw.StopReason, raw.RawStopReason, raw.Error
+	m.StopReason, m.RawStopReason, m.Error, m.ErrorDetail = raw.StopReason, raw.RawStopReason, raw.Error, raw.ErrorDetail
 	if len(raw.Content) == 0 {
 		return nil
 	}

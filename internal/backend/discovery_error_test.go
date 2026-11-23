@@ -135,12 +135,12 @@ func TestProviderModelDiscoveryReportsMalformedCatalog(t *testing.T) {
 
 func TestUpstreamMessageDropsSecretsAndLongText(t *testing.T) {
 	p := config.Provider{APIKey: "plain-provider-key", CustomHeaders: []config.CustomHeader{{Key: "X-Token", Value: "header-secret-value"}}}
-	got := upstreamMessage(`{"error":{"message":"bad plain-provider-key and header-secret-value, token_abcdefgh1234 rejected"}}`, p)
+	got := ai.ProviderMessage(`{"error":{"message":"bad plain-provider-key and header-secret-value, token_abcdefgh1234 rejected"}}`, literalSecrets(p)...)
 	if got != "bad [redacted] and [redacted], [redacted] rejected" {
 		t.Fatalf("message = %q", got)
 	}
-	long := upstreamMessage(`{"message":"`+strings.Repeat("word ", 100)+`"}`, config.Provider{})
-	if n := len([]rune(long)); n != maxUpstreamMessageRunes || !strings.HasSuffix(long, "…") {
+	long := ai.ProviderMessage(`{"message":"` + strings.Repeat("word ", 100) + `"}`)
+	if n := len([]rune(long)); n != 200 || !strings.HasSuffix(long, "…") {
 		t.Fatalf("long message has %d runes: %q", n, long)
 	}
 }

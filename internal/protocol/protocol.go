@@ -185,8 +185,12 @@ type Message struct {
 	// Error is the failure that cut an assistant reply short. It appears only
 	// with stop_reason "error" on the partial reply kept when the model stream
 	// failed; content holds what streamed before the failure.
-	Error     string     `json:"error,omitempty"`
-	CreatedAt *time.Time `json:"created_at,omitempty"`
+	Error string `json:"error,omitempty"`
+	// ErrorDetail classifies that failure; see ErrorDetail. It accompanies
+	// stop_reason "error" both on a kept partial reply and on the
+	// "assistant-error-<run>" message saved when nothing streamed.
+	ErrorDetail *ErrorDetail `json:"error_detail,omitempty"`
+	CreatedAt   *time.Time   `json:"created_at,omitempty"`
 	// Origin is "background" on a user-role notice the runtime delivered on its
 	// own (a wait result, a process exit, a background task report, a goal
 	// continuation round, the new-context notice, the output-limit continuation
@@ -662,7 +666,38 @@ type RunTerminal struct {
 	State   string `json:"state"`
 	Message string `json:"message,omitempty"`
 	Error   string `json:"error,omitempty"`
-	Usage   *Usage `json:"usage,omitempty"`
+	// ErrorDetail classifies Error on a failed run when it came from the model
+	// request.
+	ErrorDetail *ErrorDetail `json:"error_detail,omitempty"`
+	Usage       *Usage       `json:"usage,omitempty"`
+}
+
+// ErrorDetail is the structured form of a model failure. Kind is one of
+// invalid_api_key, not_found, rate_limited, context_limit, bad_request,
+// server_error, unreachable, connection_lost, timeout, provider_error and
+// unknown; clients treat other values as unknown.
+type ErrorDetail struct {
+	Kind string `json:"kind"`
+	// UpstreamStatus is the provider's HTTP status when it answered with one.
+	UpstreamStatus int `json:"upstream_status,omitempty"`
+	// ProviderMessage is the provider's own message, at most 200 characters,
+	// with credentials removed.
+	ProviderMessage string `json:"provider_message,omitempty"`
+}
+
+// FromAIErrorDetail converts a model failure classification.
+func FromAIErrorDetail(d *ai.ErrorDetail) *ErrorDetail {
+	if d == nil {
+		return nil
+	}
+	return &ErrorDetail{Kind: d.Kind, UpstreamStatus: d.UpstreamStatus, ProviderMessage: d.ProviderMessage}
+}
+
+func (d *ErrorDetail) toAI() *ai.ErrorDetail {
+	if d == nil {
+		return nil
+	}
+	return &ai.ErrorDetail{Kind: d.Kind, UpstreamStatus: d.UpstreamStatus, ProviderMessage: d.ProviderMessage}
 }
 
 type CreateSessionRequest struct {
@@ -1004,7 +1039,7 @@ func FromAIMessage(m ai.Message) Message {
 	if left, right, ok := strings.Cut(m.Model, " @ "); ok {
 		model, provider = left, right
 	}
-	out := Message{ID: m.ID, Role: m.Role, ToolCallID: m.ToolCallID, Name: m.Name, Model: model, Provider: provider, Usage: FromAIUsage(m.Usage), HostedSearch: fromAIHostedSearch(m.HostedSearch), StopReason: string(m.StopReason), Error: m.Error, CreatedAt: m.SentAt, Origin: m.Origin, Authored: m.Role == RoleUser && m.Authored}
+	out := Message{ID: m.ID, Role: m.Role, ToolCallID: m.ToolCallID, Name: m.Name, Model: model, Provider: provider, Usage: FromAIUsage(m.Usage), HostedSearch: fromAIHostedSearch(m.HostedSearch), StopReason: string(m.StopReason), Error: m.Error, ErrorDetail: FromAIErrorDetail(m.ErrorDetail), CreatedAt: m.SentAt, Origin: m.Origin, Authored: m.Role == RoleUser && m.Authored}
 	if m.Reasoning != "" {
 		out.Content = append(out.Content, ContentBlock{Type: ContentThinking, Text: m.Reasoning})
 	}
@@ -1185,6 +1220,7 @@ func (m Message) ToAIMessage() (ai.Message, error) {
 	out.StopReason = ai.StopReason(m.StopReason)
 	if m.Role == RoleAssistant {
 		out.Error = m.Error
+		out.ErrorDetail = m.ErrorDetail.toAI()
 	}
 	if m.Usage != nil {
 		out.Usage = &ai.Usage{PromptTokens: m.Usage.InputTokens, CompletionTokens: m.Usage.OutputTokens, PromptCacheHitTokens: m.Usage.CachedTokens, PromptCacheWriteTokens: m.Usage.CacheWriteTokens}

@@ -1908,32 +1908,39 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, end func(),
 	toolOutput.close()
 	progress.phase("persisting")
 	var failedAssistant *protocol.Message
+	var failure *ai.ErrorDetail
 	if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+		detail := ai.ClassifyError(err, s.providerLiteralSecrets(rt.agent.Provider)...)
+		failure = &detail
 		messages := rt.agent.MessagesSnapshot()
 		currentAssistantCount := 0
-		var latestAssistant ai.Message
-		for _, message := range messages {
+		latestAssistant := -1
+		for i, message := range messages {
 			if message.Role != protocol.RoleAssistant {
 				continue
 			}
 			currentAssistantCount++
 			if currentAssistantCount > assistantCount {
-				latestAssistant = message
+				latestAssistant = i
 			}
 		}
-		if currentAssistantCount > assistantCount && latestAssistant.StopReason == ai.StopReasonError {
-			if canonical, canonicalErr := protocol.FromAIMessageValidated(latestAssistant); canonicalErr == nil {
+		if latestAssistant >= 0 && messages[latestAssistant].StopReason == ai.StopReasonError {
+			// The partial reply kept when the stream failed.
+			messages[latestAssistant].ErrorDetail = failure
+			rt.agent.RestoreMessages(messages)
+			if canonical, canonicalErr := protocol.FromAIMessageValidated(messages[latestAssistant]); canonicalErr == nil {
 				failedAssistant = &canonical
 			}
 		} else {
 			now := time.Now().UTC()
 			failureMessage := ai.Message{
-				ID:         "assistant-error-" + runID,
-				Role:       protocol.RoleAssistant,
-				Content:    err.Error(),
-				Model:      rt.agent.Model + " @ " + rt.agent.Provider,
-				StopReason: ai.StopReasonError,
-				SentAt:     &now,
+				ID:          "assistant-error-" + runID,
+				Role:        protocol.RoleAssistant,
+				Content:     err.Error(),
+				Model:       rt.agent.Model + " @ " + rt.agent.Provider,
+				StopReason:  ai.StopReasonError,
+				ErrorDetail: failure,
+				SentAt:      &now,
 			}
 			messages = append(messages, failureMessage)
 			rt.agent.RestoreMessages(messages)
@@ -1979,7 +1986,7 @@ func (s *Server) executeRun(rt *runtimeSession, ctx context.Context, end func(),
 			_, _ = rt.publish(protocol.EventAssistantMessage, assistantEventMessage(*failedAssistant), "")
 		}
 		s.evaluateGoal(ctx, rt, runID, "failed")
-		finish(protocol.EventRunFailed, protocol.RunTerminal{State: "failed", Error: err.Error()})
+		finish(protocol.EventRunFailed, protocol.RunTerminal{State: "failed", Error: err.Error(), ErrorDetail: protocol.FromAIErrorDetail(failure)})
 	} else {
 		messages := rt.agent.MessagesSnapshot()
 		for i := len(messages) - 1; i >= 0; i-- {

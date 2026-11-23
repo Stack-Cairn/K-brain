@@ -181,6 +181,14 @@ CLI 可用 `-config FILE -session-dir DIR` 指定配置与存储目录；省略�
 
 模型流在中途失败（连接断开、流没有完成事件就结束、供应商在流中返回错误）且已经流出内容时，这部分回复同样写入会话历史：一条 `stop_reason:"error"` 的 assistant 消息，内容是已推送的思考与文本，不含尚未流完的工具调用，另带可选字段 `error`（字符串，与本次 `run.failed` 的 `error` 相同）。它就是这次运行的失败消息：事件流仍是 `assistant.message.created` 后接 `run.failed{state:"failed",error}`，`assistant.message.created` 的消息即这条部分回复（带 `stop_reason:"error"` 与 `error`，按上文不含 `thinking` 块），不再另加一条以错误文本为内容的 assistant 消息。还没有任何输出就失败时与以前相同：写入一条内容为错误文本、`stop_reason:"error"`、不带 `error` 字段的 assistant 消息。下一轮请求中，部分回复的文本后面附一行 `[response interrupted by an error]`，`error` 字段不发给模型；只有思考、没有文本的失败回复不发给模型；不带 `error` 字段的错误消息照旧作为 assistant 文本发送。客户端据 `stop_reason` 区分中断原因（`cancelled` 为用户停止、`error` 为失败），失败原因显示 `error`。旧客户端忽略 `error` 字段，历史里看到的是部分回复而不是错误文本；旧版后端读到这条消息时当普通 assistant 文本发送。后端进程在一轮进行中崩溃时，这一轮尚未保存的内容仍会丢失。
 
+失败的结构化信息：`run.failed` 与这次运行保存的失败消息（上述部分回复，或还没有输出时的 `assistant-error-<run_id>` 消息；`assistant.message.created` 与历史里都一样）另带可选对象 `error_detail`，原有的 `error`、`stop_reason:"error"` 和错误文本内容不变：
+
+- `kind`：`invalid_api_key`（上游 401/403）、`not_found`（404，地址或模型名不对）、`rate_limited`（429，或流内的限流/配额错误）、`context_limit`（上游判定提示超出上下文窗口）、`bad_request`（其他 4xx）、`server_error`（5xx，或流内的 overloaded/busy/internal 类错误）、`timeout`（408/504、请求超时、流长时间无数据）、`connection_lost`（流没有完成事件就结束、连接被重置）、`unreachable`（连接被拒、DNS、TLS 等，没有拿到响应）、`provider_error`（供应商在流里返回的其他错误）、`unknown`（不是模型请求造成的失败或无法识别）。客户端把未列出的取值当 `unknown`。
+- `upstream_status`：上游 HTTP 状态码（整数），只在上游回了错误状态码时出现。
+- `provider_message`：可选，供应商自己的错误说明（HTTP 错误体里的 `error.message`、`error`、`message` 或 `detail`，或流内错误的 message），合并空白、最多 200 个字符，去掉该供应商配置的 key、请求头值以及形似凭据的词；HTML 等非 JSON 错误体不带。
+
+示例：`run.failed` 为 `{"state":"failed","error":"401 Unauthorized: {…}","error_detail":{"kind":"invalid_api_key","upstream_status":401,"provider_message":"Incorrect API key provided: [redacted]"}}`；流中途断开时为 `{"state":"failed","error":"Chat Completions stream ended before a completion event: unexpected EOF","error_detail":{"kind":"connection_lost"}}`。`error_detail` 只用于展示，不发给模型。分类与模型发现失败（上文 `errorCode`）共用同一套判断和脱敏，但取值集合不同：运行失败把发现接口的 `upstream_error` 细分为上面的种类。旧客户端忽略该字段；旧版后端读到时丢弃。
+
 模型交给后台的工作（`wait` 轮询、未设 `isolated` 的 `ManagedProcess` 进程、`background=true` 的子代理）在本轮正常结束后继续运行，结果作为下一轮送回；用户停止运行、关闭或删除会话时它们照常一起结束。后台子代理运行期间会话不算忙：用户可以照常发起并完成新的运行，编辑、分支、压缩与目标续跑也不等它；报告在某一轮进行中送达时插进这一轮，会话空闲时则启动唤醒运行，唤醒运行与用户运行冲突时通知留在队列里，等那一轮结束再送。只有会孤立或干扰子代理的操作要等它结束：切换模型或工作目录（会重建持有子代理的 Agent）和检查点回滚（子代理可能仍在写这些文件）返回 409 `session has a running background subagent`，运行时也不会被闲置回收。后端启动会话运行时，把存储里仍标为 running、却已没有进程在跑的子代理记为 error（`interrupted — k-brain exited before this subagent finished`），与 TUI 一致。后端自己送来的通知——`wait` 结果、进程退出、后台子代理与工作流报告，无论是插进正在进行的一轮，还是作为唤醒运行（`client_request_id` 以 `wake-` 开头）的用户消息——在 `user.message.appended` 和会话历史里带 `origin:"background"`，客户端把它显示为系统通知，而不是用户发的消息；用户自己写的消息不带该字段。这类消息不计为用户输入，不进输入历史，也不附加本轮时间前缀。旧客户端忽略该字段，显示与以前相同；旧版后端读到该字段直接忽略。
 
 ### 子代理转录（`capabilities.subagent_transcripts: 1`）
