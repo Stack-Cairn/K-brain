@@ -44,6 +44,9 @@ func (m *model) taskState(task agent.BackgroundTask) (string, lipgloss.Style, st
 	if m.subStop[task.ID] && m.subRunning(task) {
 		return m.tr("stopping…"), errStyle, "◌"
 	}
+	if m.subRunning(task) && m.subAwaitingApproval(task.ID) {
+		return m.tr("waiting for approval"), warnStyle, "◌"
+	}
 	if task.FollowingUp {
 		return m.tr("replying"), accentStyle, "◌"
 	}

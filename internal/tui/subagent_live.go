@@ -438,7 +438,8 @@ func (m *model) subActivityParts(t agent.BackgroundTask, withLatest bool) []stri
 			parts = append(parts, a.latest)
 		}
 	}
-	if elapsed := taskElapsed(t, m.subNow()); elapsed != "" {
+	// A subagent waiting for an answer does no work: no clock.
+	if elapsed := taskElapsed(t, m.subNow()); elapsed != "" && !m.subAwaitingApproval(t.ID) {
 		parts = append(parts, elapsed)
 	}
 	if u := m.subUsage(t); u.PromptTokens+u.CompletionTokens > 0 {

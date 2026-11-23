@@ -269,8 +269,10 @@ type model struct {
 	irunner *interactiveRunner
 	iactive *interactive
 
-	perms          permRules
-	permDialog     *permDialog
+	perms      permRules
+	permDialog *permDialog
+	// permWait counts the approval requests waiting for the card (perm_waits.go).
+	permWait       *permWait
 	askDialog      *askDialog
 	permissionMode string
 	// permWD is the folder whose permission mode a change saves; empty
@@ -1134,6 +1136,11 @@ func (m *model) Update(msg tea.Msg) (_ tea.Model, statusCmd tea.Cmd) {
 
 	case permRequest:
 		m.receivePermission(msg)
+		m.refreshSubagentRows()
+		return m, nil
+
+	case permWaitMsg:
+		m.refreshSubagentRows()
 		return m, nil
 
 	case permClose:

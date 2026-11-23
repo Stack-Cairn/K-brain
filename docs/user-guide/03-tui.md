@@ -155,6 +155,8 @@ Vim 模式默认关闭，用 `/vim`（或 `/vim on` / `/vim off`）或 `/setting
 
 subagent 面板和 subagent 视图的按键见下文。
 
+subagent 请求批准时，审批卡片标题写明是哪个 subagent（“Subagent · <描述> wants to run this command”）；几个请求同时等待时一次只显示一张卡片，标题后的 `+N pending` 表示后面还有几个。等待批准的 subagent 在对话记录和面板里显示 “waiting for approval”，计时暂停显示。
+
 `/theme` 打开主题选择器（移动光标即预览，Enter 保存），`/theme <名称>` 直接切换配色（内置主题、自定义主题见[外观与状态行](13-appearance.md)），`/density compact|comfortable` 切换布局密度，`/language zh_cn|zh_Hant|en` 切换界面语言。
 
 编辑、写入工具的结果和审批卡片里的差异中，相邻的删除行和新增行逐行配对，配对行里改动的词用更深的底色标出；终端只有 16 色或使用单色主题时改用反色显示，纯文本输出不加任何标记。两行差别太大（共同部分不足四成）时不标出词级改动。

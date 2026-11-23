@@ -32,6 +32,21 @@ func WithRequestObserver(ctx context.Context, observer RequestObserver) context.
 	return context.WithValue(ctx, requestObserverKey{}, observer)
 }
 
+// RequestTaskID is the subagent or background task ctx runs in, innermost
+// first; "" for the main agent.
+func RequestTaskID(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	scope, _ := ctx.Value(requestTaskKey{}).(requestTaskScope)
+	return scope.ID
+}
+
+// WithRequestTask scopes ctx to the task id, as a subagent's requests run.
+func WithRequestTask(ctx context.Context, id string) context.Context {
+	return withRequestTask(ctx, id)
+}
+
 func withRequestTask(ctx context.Context, id string) context.Context {
 	parent, _ := ctx.Value(requestTaskKey{}).(requestTaskScope)
 	return context.WithValue(ctx, requestTaskKey{}, requestTaskScope{ID: id, Parent: parent.ID})
