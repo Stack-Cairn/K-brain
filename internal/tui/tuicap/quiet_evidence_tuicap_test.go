@@ -163,9 +163,9 @@ func TestEvidenceSubagentApproval(t *testing.T) {
 		Replies: []tuicap.Reply{
 			tuicap.Calls(sub("s1", "Audit the changelog"), sub("s2", "Survey the tests")),
 			bash("b1"),
-		// Commands run one at a time, so the second subagent writes a
-		// file: its request waits behind the first one's card.
-		tuicap.Calls(tuicap.ToolCall{ID: "w2", Name: "write", Args: jsonArgs(t, map[string]any{"path": "notes.txt", "content": "tests\n"})}),
+			// Commands run one at a time, so the second subagent writes a
+			// file: its request waits behind the first one's card.
+			tuicap.Calls(tuicap.ToolCall{ID: "w2", Name: "write", Args: jsonArgs(t, map[string]any{"path": "notes.txt", "content": "tests\n"})}),
 			tuicap.Text("listed"), tuicap.Text("listed"),
 			tuicap.Text("Both subagents finished."),
 		},
