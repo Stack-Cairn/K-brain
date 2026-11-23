@@ -41,6 +41,8 @@ var keysChinese = map[string]string{
 	"%s is what Option+%s types unless the terminal sends Option as Meta; for Alt shortcuts see /doctor": "终端没有把 Option 当作 Meta 键时，Option+%[2]s 输入的是 %[1]s；要用 Alt 快捷键请看 /doctor",
 	"Option as Alt": "Option 当作 Alt",
 	"read macOS Option+letter characters as Alt shortcuts": "把 macOS 上 Option+字母输入的字符当作 Alt 快捷键",
+	"Thinking tokens shown · Ctrl+O hides them":            "已显示思考过程 · Ctrl+O 隐藏",
+	"Thinking tokens hidden · Ctrl+O shows them":           "已隐藏思考过程 · Ctrl+O 显示",
 }
 
 var keysTraditionalChinese = map[string]string{
@@ -83,6 +85,8 @@ var keysTraditionalChinese = map[string]string{
 	"%s is what Option+%s types unless the terminal sends Option as Meta; for Alt shortcuts see /doctor": "終端機沒有把 Option 當作 Meta 鍵時，Option+%[2]s 輸入的是 %[1]s；要用 Alt 快捷鍵請看 /doctor",
 	"Option as Alt": "Option 當作 Alt",
 	"read macOS Option+letter characters as Alt shortcuts": "把 macOS 上 Option+字母輸入的字元當作 Alt 快捷鍵",
+	"Thinking tokens shown · Ctrl+O hides them":            "已顯示思考過程 · Ctrl+O 隱藏",
+	"Thinking tokens hidden · Ctrl+O shows them":           "已隱藏思考過程 · Ctrl+O 顯示",
 }
 
 func init() {
