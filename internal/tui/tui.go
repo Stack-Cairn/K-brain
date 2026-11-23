@@ -1414,7 +1414,14 @@ func (m *model) Update(msg tea.Msg) (_ tea.Model, statusCmd tea.Cmd) {
 		return m, nil
 
 	case noticeMsg:
+		// An async result (a /copy confirmation, a background error) lands at
+		// the end of the transcript. Scrolled up, that is out of sight, so it
+		// also shows in the footer for a moment.
+		following := m.wantFollow()
 		m.append(dimStyle.Render(string(msg)))
+		if !following {
+			return m, m.showNotice(string(msg))
+		}
 		return m, nil
 
 	case gitStatusMsg:
