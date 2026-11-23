@@ -241,7 +241,11 @@ func TestLiveSandboxConfinesWrites(t *testing.T) {
 	if out, err := confinedRun(t, p, `echo ok > inside.txt && echo x > /dev/null && cat inside.txt`); err != nil || strings.TrimSpace(out) != "ok" {
 		t.Fatalf("workspace write failed: %q %v", out, err)
 	}
-	if out, err := confinedRun(t, p, `t=$(mktemp) && echo tmp > "$t" && cat "$t" && rm "$t"`); err != nil || strings.TrimSpace(out) != "tmp" {
+	// Name the directory through TMPDIR: a bare mktemp on macOS uses the
+	// per-user confstr directory even when TMPDIR is redirected (as test
+	// runners do), and only TMPDIR, /tmp and /var/tmp are granted. Under a
+	// default environment both name the same directory.
+	if out, err := confinedRun(t, p, `t=$(mktemp "${TMPDIR:-/tmp}/sandbox-probe.XXXXXX") && echo tmp > "$t" && cat "$t" && rm "$t"`); err != nil || strings.TrimSpace(out) != "tmp" {
 		t.Fatalf("temp write failed: %q %v", out, err)
 	}
 	if out, err := confinedRun(t, p, `echo x > `+filepath.Join(outside, "leak.txt")); err == nil {
