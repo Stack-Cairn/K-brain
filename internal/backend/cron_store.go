@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -464,7 +465,11 @@ func (c *cronStore) recordLocked(r CronRunRecord, counted, allowNew bool) error 
 		}
 		keep = append(keep, x)
 	}
-	sort.Slice(keep, func(i, j int) bool { return keep[i].StartedAt < keep[j].StartedAt })
+	// keep was collected newest first; restore insertion order before sorting so
+	// runs started in the same millisecond keep their order instead of flipping
+	// on every prune and listing the older run as the latest.
+	slices.Reverse(keep)
+	sort.SliceStable(keep, func(i, j int) bool { return keep[i].StartedAt < keep[j].StartedAt })
 	c.disk.Runs = keep
 	return c.commitLocked(old)
 }
