@@ -8,12 +8,12 @@
 [1m│[0m [2m  51  [0m[1m-[0m [1m    [0m[1;7mverbose[0m[1m := flags.Bool("[0m[1;7mv1[0m[1m", false, "[0m[1;7mverbose[0m[1m")[0m                    [1m│[0m
 [1m│[0m [2m  51  [0m+     [7masJSON1[0m := flags.Bool("[7mjson1[0m", false, "[7mprint JSON[0m")              [1m│[0m
 [1m│[0m [2m  52  [0m[1m-[0m [1m    [0m[1;7mverbose[0m[1m := flags.Bool("[0m[1;7mv2[0m[1m", false, "[0m[1;7mverbose[0m[1m")[0m                    [1m│[0m
-[1m│[0m [2m⋯ 1-7 / 14 · PgUp/PgDn[0m                                                       [1m│[0m
+[1m│[0m [2m⋯ 1-6 / 23 · PgUp/PgDn[0m                                                       [1m│[0m
 [1m│[0m [1;7m❯ 1  Yes, once[2m (a)[0m [0m                                                          [1m│[0m
-[1m│[0m   2  Yes, always allow Edit(cmd/kn/**)[2m (A)[0m                                   [1m│[0m
+[1m│[0m   2  Yes, always allow changes to cmd/kn/**[2m (A)[0m                              [1m│[0m
 [1m│[0m      [2mthis file[0m[2m · [0m[1m[folder][0m[2m · [0m[2mproject[0m[2m · kept for this project[0m                  [1m│[0m
 [1m│[0m   3  No, and tell the agent why[2m (r)[0m                                          [1m│[0m
-[1m│[0m [2m1-3 or a/A/r · Tab scope · ctrl+e expand · Esc reject[0m                        [1m│[0m
+[1m│[0m [2m1-3 or a/A/r · Tab scope · Esc reject[0m                                        [1m│[0m
 [1m╰[0m[1m──────────────────────────────────────────────────────────────────────────────[0m[1m╯[0m
 
 

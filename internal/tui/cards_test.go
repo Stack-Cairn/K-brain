@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"path/filepath"
 	"reflect"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -113,7 +115,8 @@ func TestPermEditScopesAndPreviewStates(t *testing.T) {
 
 func TestPermPreviewExpandsAndScrolls(t *testing.T) {
 	m := compactCmdModel()
-	m.width, m.height = 80, 30
+	// Tall enough for the folded preview; expanded, it has to scroll.
+	m.width, m.height = 80, 40
 	m.permissionMode = "normal"
 	var diff strings.Builder
 	for i := 1; i <= 40; i++ {
@@ -438,4 +441,59 @@ func TestBusyRowWaitsForThePlanReview(t *testing.T) {
 	if row := ansi.Strip(m.busyRow()); !strings.Contains(row, "Waiting for your plan review") || strings.Contains(row, "Esc to interrupt") {
 		t.Fatalf("busy row = %q", row)
 	}
+}
+
+// A write's card agrees with itself: the scroll position counts the diff
+// rows it scrolls (not the path line above them), a folded preview that would
+// have to scroll anyway scrolls the whole diff, and "always allow" names the
+// files it covers rather than another tool (the rule allows writes and edits).
+func TestWriteCardCountsDiffRowsAndNamesFiles(t *testing.T) {
+	var diff strings.Builder
+	fmt.Fprintf(&diff, "1   keep\n")
+	for i := 2; i <= 4; i++ {
+		fmt.Fprintf(&diff, "%d - old %d\n", i, i)
+	}
+	for i := 2; i <= 13; i++ {
+		fmt.Fprintf(&diff, "%d + new %d\n", i, i)
+	}
+	fmt.Fprintf(&diff, "14   tail\n")
+	pos := regexp.MustCompile(`(\d+)-(\d+) / (\d+) · PgUp/PgDn`)
+	diffRow := regexp.MustCompile(`│ +\d+ +[-+ ] +(keep|old|new|tail)`)
+	for _, h := range []int{24, 30} {
+		m := compactCmdModel()
+		m.width, m.height = 100, h
+		m.permissionMode = "normal"
+		reply := openPerm(m, tools.GateRequest{Tool: "write", Command: filepath.Join(cwd(), "notes.txt"), Preview: &tools.EditPreview{Path: "notes.txt", Diff: diff.String()}})
+		v := ansi.Strip(m.permView())
+		if !strings.Contains(v, "notes.txt  +12 −3") || !strings.Contains(v, "Yes, always allow changes to notes.txt") || strings.Contains(v, "Edit(") {
+			t.Fatalf("height %d: header or label wrong:\n%s", h, v)
+		}
+		p := pos.FindStringSubmatch(v)
+		if p == nil {
+			t.Fatalf("height %d: the preview should scroll:\n%s", h, v)
+		}
+		from, _ := strconv.Atoi(p[1])
+		to, _ := strconv.Atoi(p[2])
+		if rows := len(diffRow.FindAllString(v, -1)); rows != to-from+1 || p[3] != "17" {
+			t.Fatalf("height %d: %q but %d diff rows shown of 17:\n%s", h, p[0], rows, v)
+		}
+		if strings.Contains(v, "more lines") || strings.Contains(v, "+5 lines") || strings.Contains(v, "ctrl+e expand") {
+			t.Fatalf("height %d: a scrolling preview has nothing folded:\n%s", h, v)
+		}
+		m.permKey(keyRunes("a"))
+		<-reply
+	}
+
+	// With room, the preview folds and says how much is folded, with the
+	// card's own key for it.
+	m := compactCmdModel()
+	m.width, m.height = 100, 40
+	m.permissionMode = "normal"
+	reply := openPerm(m, tools.GateRequest{Tool: "write", Command: filepath.Join(cwd(), "notes.txt"), Preview: &tools.EditPreview{Path: "notes.txt", Diff: diff.String()}})
+	v := ansi.Strip(m.permView())
+	if !strings.Contains(v, "+5 lines") || strings.Contains(v, "alt+o") || !strings.Contains(v, "ctrl+e expand") || pos.MatchString(v) {
+		t.Fatalf("folded preview:\n%s", v)
+	}
+	m.permKey(keyRunes("a"))
+	<-reply
 }

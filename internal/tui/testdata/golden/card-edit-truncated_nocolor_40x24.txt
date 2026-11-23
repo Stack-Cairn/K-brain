@@ -5,8 +5,8 @@
 │ the file or the change is too large  │
 │ to preview                           │
 │ ❯ 1  Yes, once (a)                   │
-│   2  Yes, always allow               │
-│      Edit(testdata/**) (A)           │
+│   2  Yes, always allow changes to    │
+│      testdata/** (A)                 │
 │      this file · [folder] · project  │
 │      · kept for this project         │
 │   3  No, and tell the agent why (r)  │

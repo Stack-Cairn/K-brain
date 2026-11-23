@@ -5,10 +5,10 @@
 |   1  + package main                  |
 |   2  +                               |
 |   3  + import "encoding/json"        |
-| ... 1-4 / 9 - PgUp/PgDn              |
+| ... 1-3 / 8 - PgUp/PgDn              |
 | > 1  Yes, once (a)                   |
-|   2  Yes, always allow               |
-|      Edit(cmd/kn/**) (A)             |
+|   2  Yes, always allow changes to    |
+|      cmd/kn/** (A)                   |
 |      this file - folder - project -  |
 |      kept for this project           |
 |   3  No, and tell the agent why (r)  |
