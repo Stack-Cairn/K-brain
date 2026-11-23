@@ -62,6 +62,7 @@ VITE_KBRAIN_TOKEN=<backend-token>
 | GET | `/v1/models` | 当前后端模型路由目录 |
 | POST | `/v1/sandbox/setup` | 在 Windows 上通过 UAC 安装或修复沙箱账户（`sandbox-user`），返回 setup 状态与新的 `run_sandbox`；`capabilities.sandbox_setup` 表示支持 |
 | GET / PUT | `/v1/settings` | 读取脱敏配置 / 原子持久化供应商、模型与默认选择；记忆开关 `memory` 与记忆整理计划 `memoryOrganizer` 也在这里 |
+| POST | `/v1/settings/providers/{id}/models` | 用已保存的供应商（可被请求体里的草稿地址、key、请求头覆盖）向上游拉取模型列表，返回 `{version,provider,models}`；失败时见下文“模型发现失败” |
 | GET | `/v1/usage/stats` | 所有工作区会话的跨会话用量统计（按天、按模型，含连续天数与费用）；`days`、`tz` 与口径见下文，`capabilities.usage_stats` 表示支持 |
 | GET / PUT | `/v1/mcp` | 读取脱敏 MCP 配置 / 原子持久化并 reload stdio/http servers |
 | POST | `/v1/mcp/reload` | 从 K-brain-owned MCP 配置重建 live manager |
@@ -129,6 +130,14 @@ CLI 可用 `-config FILE -session-dir DIR` 指定配置与存储目录；省略�
 设置 PUT 接受 `{defaultProvider?,defaultModel?,providers?,deleteProviders?}`。供应商包含 `id/name/api/baseUrl/models`，`apiKey` 为仅写入字段：省略保留现值，`clearApiKey:true` 明确清除。GET 仅返回 `apiKeyConfigured` 并脱敏 URL。保存成功后才发布新配置；已运行中的回合继续使用原客户端，下一轮在原 Agent 上刷新模型配置，保留任务和历史。已删除模型的下一轮返回错误。同名模型在不同供应商下使用相同元数据；冲突配置会明确拒绝。直接修改配置文件后需重启后端加载；当前设置接口采用最后成功保存的配置，不提供多编辑者 revision 冲突检测。
 
 记忆总开关：GET 返回 `memory:{enabled}`（配置未写时为 `true`），PUT 接受 `memory:{enabled:true|false}`，开关不写入 config.json：关闭时写在配置文件旁的 `<配置文件名>.memory-switch.json`（默认是 `config.json.memory-switch.json`，内容 `{"enabled":false}`；该文件存在但读不出时按关闭处理），开启是默认值，重新开启会删掉这个文件。不带开关的旧版本解析 config.json 时不接受未知字段，也不读这个文件，所以无论开关处于哪种状态都能直接回退，回退后记忆照常开启；再升级回来时恢复之前的开关状态。早期构建写在 config.json 里的 `memory` 仍然有效，下次保存时迁到这个文件。关闭后从下一轮起（已打开的会话也一样）：不再注入 memory.md 与记忆索引；每个会话收到一次提示，说明用户已关闭记忆、之前注入的记忆不再适用，并要求模型不以任何方式（包括写 memory.md 等文件）保存记忆，遇到"记住"类请求时告诉用户记忆已关闭；隐藏提取器不运行；代理拿不到 `remember`、`forget`、`memory_manager`，运行选项里这三个名字的工具策略被忽略而不是报错。已存记忆不变，`/v1/memory/manage` 与记忆整理接口照常可用。TUI、ACP 与 `kn run` 读取同一配置。`/v1/health` 的 `capabilities.memory_switch: 1` 表示后端支持该开关，客户端据此决定是否显示。
+
+模型发现失败：上游没有给出可用的模型列表时返回 HTTP 502，`error` 仍是 `"model discovery failed"`（旧客户端照常显示），另带：
+
+- `errorCode`：`invalid_api_key`（上游 401/403）、`not_found`（上游 404，通常是地址或模型列表路径不对）、`rate_limited`（上游 429）、`unreachable`（没有拿到任何 HTTP 响应：DNS 失败、连接被拒或重置、TLS 失败、15 秒超时）、`upstream_error`（其他上游状态码，或上游 200 但返回的不是可解析的模型列表）。
+- `upstreamStatus`：上游的 HTTP 状态码（整数），只在上游回了错误状态码时出现。
+- `upstreamMessage`：可选，上游 JSON 错误体里的 `error.message`、`error`（字符串）、`message` 或 `detail`，合并空白、最多 200 个字符，去掉供应商 key、请求头值以及形似凭据的词；上游返回 HTML 等非 JSON 内容时不带。
+
+示例：`{"version":"kbrain.agent.v1","error":"model discovery failed","errorCode":"invalid_api_key","upstreamStatus":401,"upstreamMessage":"Incorrect API key provided: [redacted]."}`。请求本身有误时（400 缺少供应商、地址或 key 等；404 供应商不存在）仍是原来只有 `error` 的形状，不带 `errorCode`。旧客户端忽略新增字段。
 
 浏览器设置缓存只保留必要的界面偏好，加载旧缓存时清理其中的供应商和连接凭据。`VITE_KBRAIN_TOKEN` 会进入前端构建产物，应按客户端访问令牌管理；面向多用户的远程部署需要独立的认证与权限设计。
 
