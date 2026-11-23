@@ -35,6 +35,7 @@ const (
 	errBadRequest  errKind = "bad_request"
 	errOutputLimit errKind = "output_limit"
 	errNoProvider  errKind = "not_configured"
+	errStall       errKind = "stall"
 	errOther       errKind = "other"
 )
 
@@ -64,6 +65,10 @@ func classifyError(err error) errInfo {
 	}
 	if _, ok := errors.AsType[*ai.OutputLimitError](err); ok {
 		info.kind = errOutputLimit
+		return info
+	}
+	if _, ok := ai.StreamStall(err); ok {
+		info.kind = errStall
 		return info
 	}
 	if errors.Is(err, ai.ErrNoBaseURL) {
@@ -208,6 +213,7 @@ func (i errInfo) title() string {
 		errBadRequest:  "Request rejected",
 		errOutputLimit: "Reply cut off at the output limit",
 		errNoProvider:  "No model provider configured",
+		errStall:       "No response from the model",
 	}[i.kind]
 	if t == "" {
 		t = "Error"
@@ -232,6 +238,7 @@ func (i errInfo) hint() string {
 		errBadRequest:  "The provider refused the request; /context shows what was sent.",
 		errOutputLimit: "Ask to continue, or raise the model's output limit.",
 		errNoProvider:  "Add the provider's baseUrl and apiKey to config.json, or pick a configured model with /model, then send again.",
+		errStall:       "The provider may be overloaded or the connection stuck: send again, or switch with /model.",
 	}[i.kind]
 }
 
@@ -269,8 +276,12 @@ const errBannerPrefix = "error["
 func (m *model) appendTurnError(err error) {
 	m.status().lastTurnFailed = true
 	info := classifyError(err)
-	if info.kind == errNoProvider {
+	switch info.kind {
+	case errNoProvider:
 		info.cause = m.noProviderCause()
+	case errStall:
+		idle, _ := ai.StreamStall(err)
+		info.cause = m.noResponseText(idle) + "."
 	}
 	m.appendRaw(blockText, errBannerText(info))
 }

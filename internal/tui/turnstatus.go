@@ -122,10 +122,34 @@ func fmtSpan(d time.Duration) string {
 	return fmt.Sprintf("%dh%02dm", int(d.Hours()), int(d.Minutes())%60)
 }
 
+// noResponseText says the provider sent nothing for idle: "No response from
+// <provider> for 2m".
+func (m *model) noResponseText(idle time.Duration) string {
+	name := m.provName
+	if name == "" {
+		name = m.tr("the model")
+	}
+	span := fmtSpan(idle)
+	if idle >= time.Minute && idle%time.Minute == 0 {
+		span = fmt.Sprintf("%dm", int(idle.Minutes()))
+	}
+	return fmt.Sprintf(m.tr("No response from %s for %s"), name, span)
+}
+
 // label is the retry readout: a countdown while the client sleeps, then the
 // attempt it is making.
 func (r *retryState) label(m *model, now time.Time) string {
 	s := m.tr("Retrying…")
+	if r.stall > 0 {
+		s = m.noResponseText(r.stall) + " — " + m.tr("retrying")
+		if left := r.at.Add(r.delay).Sub(now); left >= time.Second {
+			s = m.noResponseText(r.stall) + " — " + m.tr("retrying in") + " " + fmtSpan(left)
+		}
+		if r.max > 0 {
+			s += fmt.Sprintf(" (%d/%d)", r.attempt, r.max)
+		}
+		return s
+	}
 	if left := r.at.Add(r.delay).Sub(now); left >= time.Second {
 		s = m.tr("Retrying in") + " " + fmtSpan(left)
 	}

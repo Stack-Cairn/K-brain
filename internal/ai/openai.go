@@ -731,7 +731,7 @@ func (c *OpenAI) streamOnce(ctx context.Context, body []byte, onText, onThink fu
 	defer idleGuard.close()
 	resp, err := c.postJSONOnce(sctx, "/chat/completions", body, true, nil)
 	if err != nil {
-		return Message{}, Usage{}, err
+		return Message{}, Usage{}, idleGuard.stalled(err)
 	}
 	defer resp.Body.Close()
 

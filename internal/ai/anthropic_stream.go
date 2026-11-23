@@ -15,12 +15,20 @@ type anthropicToolBlock struct {
 }
 
 func (c *Anthropic) Stream(ctx context.Context, req Request, onText, onThink func(string), onToolCall func(id, name, args string)) (Message, Usage, error) {
+	return retryStalled(ctx, c.policy(), streamCallbacks{onText, onThink, onToolCall}, func(cb streamCallbacks) (Message, Usage, error) {
+		return c.streamAttempt(ctx, req, cb.text, cb.think, cb.tool)
+	})
+}
+
+// streamAttempt is one Messages streaming request; Stream retries it when it
+// stalls before any output.
+func (c *Anthropic) streamAttempt(ctx context.Context, req Request, onText, onThink func(string), onToolCall func(id, name, args string)) (Message, Usage, error) {
 	req.Stream = true
 	sctx, idleGuard := newIdleStream(ctx, idleOr(c.StreamIdle), "Anthropic")
 	defer idleGuard.close()
 	resp, err := c.request(sctx, req, true)
 	if err != nil {
-		return Message{}, Usage{}, err
+		return Message{}, Usage{}, idleGuard.stalled(err)
 	}
 	defer resp.Body.Close()
 	msg := Message{Role: "assistant"}

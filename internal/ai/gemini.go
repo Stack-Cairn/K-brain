@@ -153,11 +153,19 @@ func (c *Gemini) Complete(ctx context.Context, req Request) (string, Usage, erro
 }
 
 func (c *Gemini) Stream(ctx context.Context, req Request, onText, onThink func(string), onToolCall func(id, name, args string)) (Message, Usage, error) {
+	return retryStalled(ctx, newRetryPolicy(c.MaxRetries, c.OnRetry), streamCallbacks{onText, onThink, onToolCall}, func(cb streamCallbacks) (Message, Usage, error) {
+		return c.streamAttempt(ctx, req, cb.text, cb.think, cb.tool)
+	})
+}
+
+// streamAttempt is one Gemini streaming request; Stream retries it when it
+// stalls before any output.
+func (c *Gemini) streamAttempt(ctx context.Context, req Request, onText, onThink func(string), onToolCall func(id, name, args string)) (Message, Usage, error) {
 	sctx, idleGuard := newIdleStream(ctx, idleOr(c.StreamIdle), "Gemini")
 	defer idleGuard.close()
 	resp, err := c.do(sctx, req, true)
 	if err != nil {
-		return Message{}, Usage{}, err
+		return Message{}, Usage{}, idleGuard.stalled(err)
 	}
 	defer resp.Body.Close()
 	sse := newSSEReader(idleGuard.wrap(resp.Body))
