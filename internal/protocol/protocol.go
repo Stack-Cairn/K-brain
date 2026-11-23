@@ -182,7 +182,11 @@ type Message struct {
 	Usage        *Usage         `json:"usage,omitempty"`
 	HostedSearch []HostedSearch `json:"hosted_search,omitempty"`
 	StopReason   string         `json:"stop_reason,omitempty"`
-	CreatedAt    *time.Time     `json:"created_at,omitempty"`
+	// Error is the failure that cut an assistant reply short. It appears only
+	// with stop_reason "error" on the partial reply kept when the model stream
+	// failed; content holds what streamed before the failure.
+	Error     string     `json:"error,omitempty"`
+	CreatedAt *time.Time `json:"created_at,omitempty"`
 	// Origin is "background" on a user-role notice the runtime delivered on its
 	// own (a wait result, a process exit, a background task report, a goal
 	// continuation round, the new-context notice, the output-limit continuation
@@ -1000,7 +1004,7 @@ func FromAIMessage(m ai.Message) Message {
 	if left, right, ok := strings.Cut(m.Model, " @ "); ok {
 		model, provider = left, right
 	}
-	out := Message{ID: m.ID, Role: m.Role, ToolCallID: m.ToolCallID, Name: m.Name, Model: model, Provider: provider, Usage: FromAIUsage(m.Usage), HostedSearch: fromAIHostedSearch(m.HostedSearch), StopReason: string(m.StopReason), CreatedAt: m.SentAt, Origin: m.Origin, Authored: m.Role == RoleUser && m.Authored}
+	out := Message{ID: m.ID, Role: m.Role, ToolCallID: m.ToolCallID, Name: m.Name, Model: model, Provider: provider, Usage: FromAIUsage(m.Usage), HostedSearch: fromAIHostedSearch(m.HostedSearch), StopReason: string(m.StopReason), Error: m.Error, CreatedAt: m.SentAt, Origin: m.Origin, Authored: m.Role == RoleUser && m.Authored}
 	if m.Reasoning != "" {
 		out.Content = append(out.Content, ContentBlock{Type: ContentThinking, Text: m.Reasoning})
 	}
@@ -1179,6 +1183,9 @@ func (m Message) ToAIMessage() (ai.Message, error) {
 		out.HostedSearch = append(out.HostedSearch, search)
 	}
 	out.StopReason = ai.StopReason(m.StopReason)
+	if m.Role == RoleAssistant {
+		out.Error = m.Error
+	}
 	if m.Usage != nil {
 		out.Usage = &ai.Usage{PromptTokens: m.Usage.InputTokens, CompletionTokens: m.Usage.OutputTokens, PromptCacheHitTokens: m.Usage.CachedTokens, PromptCacheWriteTokens: m.Usage.CacheWriteTokens}
 	}

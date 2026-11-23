@@ -49,7 +49,7 @@ VITE_KBRAIN_TOKEN=<backend-token>
 | 流顺序 | durable event journal | 单会话单调递增 `seq` | 去重与续传游标 |
 | 用量 | `ai.Usage` | input/output/cache token 计数 | assistant usage |
 
-规范消息角色：`system`, `developer`, `user`, `assistant`, `tool`。内容块：`text`, `thinking`, `image`。工具参数必须为 JSON object；工具结果通过 `tool_call_id` 关联。供应商的 response item、chat chunk、Gemini candidate 留在后端适配边界。
+规范消息角色：`system`, `developer`, `user`, `assistant`, `tool`。内容块：`text`, `thinking`, `image`。assistant 消息可带 `stop_reason`（如 `stop`、`tool_use`、`length`、`cancelled`、`error`）；`stop_reason:"error"` 的部分回复另带 `error`（失败原因，见下文“模型流在中途失败”）。工具参数必须为 JSON object；工具结果通过 `tool_call_id` 关联。供应商的 response item、chat chunk、Gemini candidate 留在后端适配边界。
 
 ## HTTP 接口
 
@@ -178,6 +178,8 @@ CLI 可用 `-config FILE -session-dir DIR` 指定配置与存储目录；省略�
 模型流出的思考在运行结束后保存在会话历史里：有思考的 assistant 消息，`content[]` 以一个 `{type:"thinking",text}` 块开头，内容是该轮通过 `assistant.thinking.delta` 推送的全部思考（Chat Completions 的 `reasoning_content`/`reasoning`/`reasoning_text`、Responses 的推理摘要与 `reasoning_text`、Anthropic 的 thinking、Gemini 的 thought 片段；DeepSeek 搜索的多轮请求合并为一段）。Responses 的多段推理摘要之间以空行分隔，分隔也通过 `assistant.thinking.delta` 推送，实时与历史一致；流里没有推理增量、只有完成的 reasoning 项带摘要时，历史取该摘要。`GET /v1/sessions/{id}` 与 `/history` 都返回这个块，重新打开对话即可显示。思考只用于展示：发给任何供应商的请求都不含它（需要回放的签名思考、加密推理仍走各自的回放通道，请求体不变）。运行结束时的 `assistant.message.created` 不带 `thinking` 块，形状与以前相同：客户端已从增量事件得到整次运行的思考，而该事件只是最后一轮。公开分享仍只含文本与图片。
 
 用户停止运行时，模型已经流出的回复写入会话历史：一条 `stop_reason:"cancelled"` 的 assistant 消息，内容是已推送的文本与思考，不含尚未流完的工具调用。事件流不变，仍以 `run.cancelled` 结束、不另发 `assistant.message.created`（已发布的桌面端会把这类事件并进本地流式副本），客户端从历史读取这条回复。之前几轮已执行的工具调用和结果照常保留，停止时正在执行的工具得到 `stop_reason:"cancelled"` 的结果，历史里不会留下没有结果的调用。还没有任何输出就停止时不写 assistant 消息，历史只多出本轮用户消息。下一轮请求中，这条回复的文本后面附一行 `[response interrupted by the user]`（只在请求里，不写入历史）；只有思考、没有文本的停止回复不发给模型。`stop_reason` 原本就有 `cancelled`（工具结果使用），旧客户端按已有取值处理；旧版后端读到这条消息时当普通 assistant 文本发送。
+
+模型流在中途失败（连接断开、流没有完成事件就结束、供应商在流中返回错误）且已经流出内容时，这部分回复同样写入会话历史：一条 `stop_reason:"error"` 的 assistant 消息，内容是已推送的思考与文本，不含尚未流完的工具调用，另带可选字段 `error`（字符串，与本次 `run.failed` 的 `error` 相同）。它就是这次运行的失败消息：事件流仍是 `assistant.message.created` 后接 `run.failed{state:"failed",error}`，`assistant.message.created` 的消息即这条部分回复（带 `stop_reason:"error"` 与 `error`，按上文不含 `thinking` 块），不再另加一条以错误文本为内容的 assistant 消息。还没有任何输出就失败时与以前相同：写入一条内容为错误文本、`stop_reason:"error"`、不带 `error` 字段的 assistant 消息。下一轮请求中，部分回复的文本后面附一行 `[response interrupted by an error]`，`error` 字段不发给模型；只有思考、没有文本的失败回复不发给模型；不带 `error` 字段的错误消息照旧作为 assistant 文本发送。客户端据 `stop_reason` 区分中断原因（`cancelled` 为用户停止、`error` 为失败），失败原因显示 `error`。旧客户端忽略 `error` 字段，历史里看到的是部分回复而不是错误文本；旧版后端读到这条消息时当普通 assistant 文本发送。后端进程在一轮进行中崩溃时，这一轮尚未保存的内容仍会丢失。
 
 模型交给后台的工作（`wait` 轮询、未设 `isolated` 的 `ManagedProcess` 进程、`background=true` 的子代理）在本轮正常结束后继续运行，结果作为下一轮送回；用户停止运行、关闭或删除会话时它们照常一起结束。后台子代理运行期间会话不算忙：用户可以照常发起并完成新的运行，编辑、分支、压缩与目标续跑也不等它；报告在某一轮进行中送达时插进这一轮，会话空闲时则启动唤醒运行，唤醒运行与用户运行冲突时通知留在队列里，等那一轮结束再送。只有会孤立或干扰子代理的操作要等它结束：切换模型或工作目录（会重建持有子代理的 Agent）和检查点回滚（子代理可能仍在写这些文件）返回 409 `session has a running background subagent`，运行时也不会被闲置回收。后端启动会话运行时，把存储里仍标为 running、却已没有进程在跑的子代理记为 error（`interrupted — k-brain exited before this subagent finished`），与 TUI 一致。后端自己送来的通知——`wait` 结果、进程退出、后台子代理与工作流报告，无论是插进正在进行的一轮，还是作为唤醒运行（`client_request_id` 以 `wake-` 开头）的用户消息——在 `user.message.appended` 和会话历史里带 `origin:"background"`，客户端把它显示为系统通知，而不是用户发的消息；用户自己写的消息不带该字段。这类消息不计为用户输入，不进输入历史，也不附加本轮时间前缀。旧客户端忽略该字段，显示与以前相同；旧版后端读到该字段直接忽略。
 

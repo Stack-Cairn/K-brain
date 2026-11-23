@@ -36,6 +36,11 @@ type Message struct {
 
 	StopReason    StopReason `json:"stop_reason,omitempty"`
 	RawStopReason string     `json:"raw_stop_reason,omitempty"`
+	// Error is the failure that cut an assistant reply short. It is set only on
+	// the partial reply kept when a stream fails (StopReason is
+	// StopReasonError); Content and Reasoning hold what streamed before it.
+	// Display-only: requests carry a short interruption note instead.
+	Error string `json:"error,omitempty"`
 
 	RewoundFrom string `json:"rewound_from,omitempty"`
 }
@@ -114,6 +119,7 @@ type messageWire struct {
 	Model           string           `json:"model,omitempty"`
 	StopReason      StopReason       `json:"stop_reason,omitempty"`
 	RawStopReason   string           `json:"raw_stop_reason,omitempty"`
+	Error           string           `json:"error,omitempty"`
 	RewoundFrom     string           `json:"rewound_from,omitempty"`
 }
 
@@ -127,7 +133,7 @@ func (m Message) MarshalJSON() ([]byte, error) {
 		PromptSnapshots: m.PromptSnapshots,
 		HostedSearch:    m.HostedSearch,
 		Model:           m.Model, RewoundFrom: m.RewoundFrom,
-		StopReason: m.StopReason, RawStopReason: m.RawStopReason,
+		StopReason: m.StopReason, RawStopReason: m.RawStopReason, Error: m.Error,
 	}
 	if len(m.Parts) > 0 {
 		w.Content = m.ContentParts()
@@ -148,7 +154,7 @@ func (m *Message) UnmarshalJSON(data []byte) error {
 	m.Authored, m.Origin, m.SentAt, m.Usage, m.Model, m.RewoundFrom = raw.Authored, raw.Origin, raw.SentAt, raw.Usage, raw.Model, raw.RewoundFrom
 	m.PromptContext = raw.PromptContext
 	m.PromptSnapshots = raw.PromptSnapshots
-	m.StopReason, m.RawStopReason = raw.StopReason, raw.RawStopReason
+	m.StopReason, m.RawStopReason, m.Error = raw.StopReason, raw.RawStopReason, raw.Error
 	if len(raw.Content) == 0 {
 		return nil
 	}

@@ -28,6 +28,9 @@ type cancelServer struct {
 type cancelRound struct {
 	events []string
 	block  bool
+	// drop ends the response after the events without finishing the stream,
+	// the way a dropped connection looks.
+	drop bool
 }
 
 func (s *cancelServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -46,6 +49,9 @@ func (s *cancelServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.(http.Flusher).Flush()
 	if round.block {
 		<-r.Context().Done()
+		return
+	}
+	if round.drop {
 		return
 	}
 	fmt.Fprint(w, "data: [DONE]\n\n")
@@ -165,21 +171,112 @@ func TestCancelBeforeOutputAddsNoReply(t *testing.T) {
 	}
 }
 
-func TestFailedStreamDoesNotKeepPartialReply(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"half\"}}]}\n\n")
-		fmt.Fprint(w, "data: {\"error\":{\"message\":\"upstream failed\"}}\n\n")
-	}))
-	defer srv.Close()
-	ag := New(ai.New(srv.URL, "key"), "model", 100, "system")
-	if _, err := ag.Turn(t.Context(), "hello", Events{}); err == nil || errors.Is(err, context.Canceled) {
+// A stream that drops mid-reply keeps what the user already saw, marked as an
+// error with its failure text; the unfinished tool call is left out, and the
+// next request carries the text with an error note.
+func TestDroppedStreamKeepsPartialReply(t *testing.T) {
+	ag, fixture := newCancelAgent(t, cancelRound{drop: true, events: []string{
+		`{"choices":[{"delta":{"reasoning_content":"weighing it"}}]}`,
+		`{"choices":[{"delta":{"content":"Hello, par"}}]}`,
+		`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call","function":{"name":"write","arguments":"{\"pa"}}]}}]}`,
+	}})
+	var runs int
+	ag.Tools = []tools.Tool{{Def: ai.NewTool("write", "write", `{"type":"object"}`), Run: func(context.Context, json.RawMessage) (string, error) { runs++; return "ok", nil }}}
+	_, err := ag.Turn(t.Context(), "greet me", Events{})
+	if err == nil || errors.Is(err, context.Canceled) {
 		t.Fatalf("err = %v", err)
+	}
+	msgs := ag.MessagesSnapshot()
+	if len(msgs) != 3 || msgs[1].Role != "user" {
+		t.Fatalf("history = %+v", msgs)
+	}
+	reply := msgs[2]
+	if reply.Role != "assistant" || reply.StopReason != ai.StopReasonError || reply.Content != "Hello, par" || reply.Reasoning != "weighing it" || reply.Error != err.Error() {
+		t.Fatalf("failed reply = %+v (err %v)", reply, err)
+	}
+	if len(reply.ToolCalls) != 0 || runs != 0 {
+		t.Fatalf("unfinished tool call kept or run: calls=%+v runs=%d", reply.ToolCalls, runs)
+	}
+	if reply.ID == "" || reply.SentAt == nil || reply.Model != "model @ " {
+		t.Fatalf("failed reply lacks metadata: %+v", reply)
+	}
+
+	if _, err := ag.Turn(t.Context(), "go on", Events{}); err != nil {
+		t.Fatal(err)
+	}
+	next := fixture.request(t, 1)
+	if len(next) != 4 || next[2]["role"] != "assistant" || next[2]["content"] != "Hello, par\n\n[response interrupted by an error]" || next[2]["tool_calls"] != nil || next[2]["error"] != nil {
+		t.Fatalf("next request = %+v", next)
+	}
+	if next[3]["role"] != "user" || next[3]["content"] != "go on" {
+		t.Fatalf("next request tail = %+v", next[3])
+	}
+}
+
+// A provider error after thinking only keeps the thinking for display; the
+// next request leaves it out, so no empty assistant turn is sent.
+func TestFailedStreamAfterThinkingOnlyKeepsItOutOfRequests(t *testing.T) {
+	ag, fixture := newCancelAgent(t, cancelRound{events: []string{
+		`{"choices":[{"delta":{"reasoning_content":"still thinking"}}]}`,
+		`{"error":{"message":"upstream failed"}}`,
+	}})
+	_, err := ag.Turn(t.Context(), "hard question", Events{})
+	if err == nil || !strings.Contains(err.Error(), "upstream failed") {
+		t.Fatalf("err = %v", err)
+	}
+	msgs := ag.MessagesSnapshot()
+	if len(msgs) != 3 || msgs[2].StopReason != ai.StopReasonError || msgs[2].Content != "" || msgs[2].Reasoning != "still thinking" || msgs[2].Error != err.Error() {
+		t.Fatalf("history = %+v", msgs)
+	}
+	if _, err := ag.Turn(t.Context(), "again", Events{}); err != nil {
+		t.Fatal(err)
+	}
+	next := fixture.request(t, 1)
+	if len(next) != 3 || next[1]["content"] != "hard question" || next[2]["content"] != "again" {
+		t.Fatalf("thinking-only reply reached the provider: %+v", next)
+	}
+}
+
+// A failure before any output adds no reply.
+func TestFailedStreamBeforeOutputAddsNoReply(t *testing.T) {
+	ag, _ := newCancelAgent(t, cancelRound{events: []string{`{"error":{"message":"upstream failed"}}`}})
+	if _, err := ag.Turn(t.Context(), "hello", Events{}); err == nil {
+		t.Fatal("turn succeeded")
 	}
 	for _, msg := range ag.MessagesSnapshot() {
 		if msg.Role == "assistant" {
-			t.Fatalf("failed stream entered history: %+v", msg)
+			t.Fatalf("empty failed reply entered history: %+v", msg)
 		}
+	}
+}
+
+// A drop in a later round keeps the finished tool round and the partial reply
+// after it; the next request is a valid sequence.
+func TestDroppedStreamAfterToolsLeavesValidHistory(t *testing.T) {
+	ag, fixture := newCancelAgent(t,
+		cancelRound{events: []string{
+			`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call-1","function":{"name":"quick","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}`,
+		}},
+		cancelRound{drop: true, events: []string{`{"choices":[{"delta":{"content":"The result is"}}]}`}},
+	)
+	ag.Tools = []tools.Tool{{Def: ai.NewTool("quick", "quick", `{"type":"object"}`), Run: func(context.Context, json.RawMessage) (string, error) { return "quick result", nil }}}
+	if _, err := ag.Turn(t.Context(), "inspect", Events{}); err == nil {
+		t.Fatal("turn succeeded")
+	}
+	msgs := ag.MessagesSnapshot()
+	if len(msgs) != 5 || len(msgs[2].ToolCalls) != 1 || msgs[3].Role != "tool" || msgs[4].StopReason != ai.StopReasonError || msgs[4].Content != "The result is" {
+		t.Fatalf("history = %+v", msgs)
+	}
+	if _, err := ag.Turn(t.Context(), "finish", Events{}); err != nil {
+		t.Fatal(err)
+	}
+	next := fixture.request(t, 2)
+	roles := make([]any, len(next))
+	for i, m := range next {
+		roles[i] = m["role"]
+	}
+	if fmt.Sprint(roles) != "[system user assistant tool assistant user]" || next[4]["content"] != "The result is\n\n[response interrupted by an error]" {
+		t.Fatalf("next request = %+v", next)
 	}
 }
 
