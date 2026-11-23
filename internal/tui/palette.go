@@ -826,6 +826,10 @@ func (m *model) paletteView() string {
 	b.WriteString(" " + youStyle.Render(glyphUser) + p.filter + dimStyle.Render("█"))
 	b.WriteString("\n\n")
 
+	// The list is the only part that scrolls: the title, the filter and the
+	// footer stay on screen however many items there are.
+	var rows []string
+	selRow := 0
 	lastCat := ""
 	hintW := 0
 	for _, it := range p.items {
@@ -836,10 +840,9 @@ func (m *model) paletteView() string {
 	for i, it := range p.items {
 		if it.category != lastCat {
 			if lastCat != "" {
-				b.WriteString("\n")
+				rows = append(rows, "")
 			}
-			b.WriteString(dimStyle.Render("  " + m.tr(it.category)))
-			b.WriteString("\n")
+			rows = append(rows, dimStyle.Render("  "+m.tr(it.category)))
 			lastCat = it.category
 		}
 		hint := ""
@@ -858,9 +861,24 @@ func (m *model) paletteView() string {
 		marker := " "
 		if i == p.idx {
 			marker = botStyle.Render(selMark())
+			selRow = len(rows)
 		}
-		b.WriteString(ansi.Truncate(marker+body+"  "+hint, max(m.width, 1), "…"))
-		b.WriteString("\n")
+		rows = append(rows, ansi.Truncate(marker+body+"  "+hint, max(m.width, 1), "…"))
+	}
+	lo, hi := 0, len(rows)
+	// Title, blank, filter, blank above; blank and footer below.
+	if avail := m.height - 6; m.height > 0 && len(rows) > avail {
+		// Two of the rows go to the "more" markers.
+		lo, hi = viewportWindow(len(rows), selRow, max(avail-2, 1))
+	}
+	if lo < hi && lo > 0 {
+		b.WriteString(dimStyle.Render(fmt.Sprintf(m.tr("   ↑ %d more"), lo)) + "\n")
+	}
+	for _, r := range rows[lo:hi] {
+		b.WriteString(r + "\n")
+	}
+	if hi < len(rows) {
+		b.WriteString(dimStyle.Render(fmt.Sprintf(m.tr("   ↓ %d more"), len(rows)-hi)) + "\n")
 	}
 	if len(p.items) == 0 {
 		b.WriteString(dimStyle.Render(m.tr("  (no matches)")))
