@@ -57,8 +57,7 @@ func TestProxiedTransportUsesConfiguredProxy(t *testing.T) {
 
 func TestDirectTransportIgnoresProxyAndEnvironment(t *testing.T) {
 	proxy, hits := fakeProxy(t)
-	t.Setenv("HTTP_PROXY", proxy.URL)
-	t.Setenv("HTTPS_PROXY", proxy.URL)
+	setEnvProxy(t, proxy.URL, proxy.URL, "")
 	if err := Set(proxy.URL); err != nil {
 		t.Fatal(err)
 	}
@@ -236,9 +235,7 @@ func connectProxy(t *testing.T) (*httptest.Server, *atomic.Int32) {
 func TestStandaloneBothTogglesUseEnvironmentProxy(t *testing.T) {
 	httpProxy, httpHits := fakeProxy(t)
 	httpsProxy, httpsHits := connectProxy(t)
-	t.Setenv("HTTP_PROXY", httpProxy.URL)
-	t.Setenv("HTTPS_PROXY", httpsProxy.URL)
-	t.Setenv("NO_PROXY", "")
+	setEnvProxy(t, httpProxy.URL, httpsProxy.URL, "")
 	standaloneForTest(t)
 	for _, useProxy := range []bool{false, true} {
 		resp, err := get(t, useProxy, target)
@@ -259,9 +256,7 @@ func TestStandaloneBothTogglesUseEnvironmentProxy(t *testing.T) {
 
 func TestStandaloneRespectsNoProxy(t *testing.T) {
 	proxy, hits := fakeProxy(t)
-	t.Setenv("HTTP_PROXY", proxy.URL)
-	t.Setenv("HTTPS_PROXY", proxy.URL)
-	t.Setenv("NO_PROXY", "provider.test")
+	setEnvProxy(t, proxy.URL, proxy.URL, "provider.test")
 	standaloneForTest(t)
 	for _, useProxy := range []bool{false, true} {
 		if _, err := get(t, useProxy, target); err == nil {
@@ -276,9 +271,7 @@ func TestStandaloneRespectsNoProxy(t *testing.T) {
 func TestManagedEnvDirectIgnoresEnvironmentProxy(t *testing.T) {
 	envProxy, envHits := fakeProxy(t)
 	appProxy, appHits := fakeProxy(t)
-	t.Setenv("HTTP_PROXY", envProxy.URL)
-	t.Setenv("HTTPS_PROXY", envProxy.URL)
-	t.Setenv("NO_PROXY", "")
+	setEnvProxy(t, envProxy.URL, envProxy.URL, "")
 	for _, value := range []string{"direct", appProxy.URL} {
 		t.Run(value, func(t *testing.T) {
 			t.Setenv(EnvVar, value)
@@ -296,9 +289,7 @@ func TestManagedEnvDirectIgnoresEnvironmentProxy(t *testing.T) {
 func TestSetSwitchesStandaloneToManaged(t *testing.T) {
 	envProxy, envHits := fakeProxy(t)
 	appProxy, appHits := fakeProxy(t)
-	t.Setenv("HTTP_PROXY", envProxy.URL)
-	t.Setenv("HTTPS_PROXY", envProxy.URL)
-	t.Setenv("NO_PROXY", "")
+	setEnvProxy(t, envProxy.URL, envProxy.URL, "")
 	standaloneForTest(t)
 	direct := &http.Client{Transport: Transport(false), Timeout: 10 * time.Second}
 	proxied := &http.Client{Transport: Transport(true), Timeout: 10 * time.Second}
