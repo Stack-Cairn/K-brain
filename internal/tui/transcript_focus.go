@@ -299,8 +299,7 @@ func blockOpen(b *block) bool {
 }
 
 func hasToggle(b *block) bool {
-	spec, ok := blockKinds[b.kind]
-	return ok && spec.toggle != nil
+	return kindToggle(b) != nil
 }
 
 // genericFoldable reports whether b, a kind without a toggle, has anything

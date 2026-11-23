@@ -608,6 +608,7 @@ func (m *model) composerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		raw := m.input.Value()
 		text := strings.TrimSpace(m.expandPasteChips(raw))
+		m.noteTypedPrompt(raw, text)
 		// A line that starts with a file path ("/src/main.go crashes") is a
 		// message, not a command.
 		slashCmd := strings.HasPrefix(text, "/") && !m.slashIsMessage(text)

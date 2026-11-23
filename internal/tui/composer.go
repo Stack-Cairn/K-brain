@@ -13,6 +13,9 @@ import (
 // search overlay, the queue editor and the slash-command MRU. It is created
 // on first use, so models built by hand in tests work without it.
 type composerState struct {
+	// typed maps a prompt sent with its paste chips expanded to how the
+	// composer showed it (user_fold.go).
+	typed      map[string]string
 	undo, redo []composerSnap
 	// before is the composer as the previous key found it, and beforeKind
 	// what that key was; the next key compares against it to see whether the

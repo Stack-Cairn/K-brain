@@ -274,6 +274,18 @@ type blockKindSpec struct {
 	// toggle flips b between its folded and expanded form and reports
 	// whether it has one; nil means the kind does not fold.
 	toggle func(b *block) bool
+	// foldable, when set, says whether this block of the kind has a folded
+	// form for toggle; one that has none folds like a kind without a toggle.
+	foldable func(b *block) bool
+}
+
+// kindToggle is b's kind's toggle, nil when b has no folded form of its own.
+func kindToggle(b *block) func(*block) bool {
+	spec, ok := blockKinds[b.kind]
+	if !ok || spec.toggle == nil || (spec.foldable != nil && !spec.foldable(b)) {
+		return nil
+	}
+	return spec.toggle
 }
 
 // blockKinds is the renderer table, one row per kind that has a spec.
@@ -351,6 +363,9 @@ type block struct {
 	expandKey bool
 	// raw draws a reply as its markdown source (transcript_focus_copy.go).
 	raw bool
+	// typed is a prompt as the composer showed it, its paste chips standing
+	// for the pasted text in text (user_fold.go).
+	typed string
 }
 
 // invalidate drops the block's render cache; call it after changing
@@ -435,8 +450,8 @@ func (b *block) toggle() bool {
 		b.invalidate()
 		return true
 	}
-	spec, ok := blockKinds[b.kind]
-	if !ok || spec.toggle == nil || !spec.toggle(b) {
+	toggle := kindToggle(b)
+	if toggle == nil || !toggle(b) {
 		return false
 	}
 	b.invalidate()
