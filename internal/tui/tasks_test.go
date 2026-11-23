@@ -646,8 +646,12 @@ func TestDockScrollsWithSelection(t *testing.T) {
 }
 
 func TestPanelClickOpensSubagent(t *testing.T) {
-	srv := sseTextServer(t, "ok")
+	// Both subagents must stay running for the whole test: a settled task
+	// reorders the dock (running rows sort first) and changes its row layout,
+	// so a provider that answers at once races every click and wheel below.
+	srv, release := blockingServer(t)
 	defer srv.Close()
+	defer close(release)
 	m := tasksModel(srv.URL)
 	t1 := m.agent.StartBackground("first", "p", agent.SubModel{})
 	defer m.agent.Tasks().Cancel(t1.ID)
