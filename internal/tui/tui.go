@@ -1019,6 +1019,9 @@ func (m *model) Update(msg tea.Msg) (_ tea.Model, statusCmd tea.Cmd) {
 		vp.fn(m)
 		return m, nil
 	}
+	if k, ok := msg.(tea.KeyMsg); ok {
+		msg = literalRun(k)
+	}
 	if handled, cmd := m.appearanceMsg(msg); handled {
 		return m, cmd
 	}

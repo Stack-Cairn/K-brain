@@ -41,3 +41,19 @@ func TestComposerCtrlKCtrlE(t *testing.T) {
 		t.Fatalf("the second request should carry the edited draft: %+v", reqs[1])
 	}
 }
+
+// Text that reaches kn in one write — an input method commit, dictation, a
+// laggy remote session — keeps words that spell key names ("up", "home",
+// "delete") as words instead of acting on them.
+func TestBatchedWordsThatNameKeysAreSentAsTyped(t *testing.T) {
+	s := tuicap.Start(t, tuicap.Options{Width: 100, Height: 30, Replies: []tuicap.Reply{tuicap.Text("noted")}})
+	s.WaitFor("Ask k-brain anything")
+	const text = "a up b x home y 我们 up 吧 delete end"
+	s.Type(text)
+	s.WaitFor(text)
+	s.Press(tuicap.Enter)
+	s.WaitFor("noted")
+	if reqs := s.Requests(); len(reqs) == 0 || !reqs[0].Contains(text) {
+		t.Fatalf("the request should carry the text as typed: %+v", reqs)
+	}
+}
