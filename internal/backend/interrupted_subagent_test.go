@@ -17,11 +17,16 @@ import (
 // a provider/tool that observes cancellation before finishing its own cleanup.
 type interruptedSubagentClient struct {
 	scriptedClient
-	background  bool
-	started     chan struct{}
-	cancelled   chan struct{}
-	release     chan struct{}
-	parentCalls int
+	background bool
+	started    chan struct{}
+	cancelled  chan struct{}
+	release    chan struct{}
+	// parentWaiting closes when the background parent enters its second model
+	// call. The scripted call sequence assumes the cancelled run reaches that
+	// call; cancelling earlier lets the agent stop at the tool boundary, and the
+	// next run would then inherit the blocking second call.
+	parentWaiting chan struct{}
+	parentCalls   int
 }
 
 func (c *interruptedSubagentClient) Clone() ai.Client { return c }
@@ -44,6 +49,7 @@ func (c *interruptedSubagentClient) Stream(ctx context.Context, req ai.Request, 
 		return ai.Message{Role: "assistant", ToolCalls: []ai.ToolCall{tc}, StopReason: ai.StopReasonToolUse}, ai.Usage{}, nil
 	}
 	if call == 2 && c.background {
+		close(c.parentWaiting)
 		<-ctx.Done()
 		return ai.Message{}, ai.Usage{}, ctx.Err()
 	}
@@ -62,7 +68,7 @@ func TestInterruptedSubagentTerminalWaitsForSettlement(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer store.Close()
-			client := &interruptedSubagentClient{background: background, started: make(chan struct{}), cancelled: make(chan struct{}), release: make(chan struct{}), scriptedClient: scriptedClient{response: "next reply"}}
+			client := &interruptedSubagentClient{background: background, started: make(chan struct{}), cancelled: make(chan struct{}), release: make(chan struct{}), parentWaiting: make(chan struct{}), scriptedClient: scriptedClient{response: "next reply"}}
 			var releaseOnce sync.Once
 			release := func() { releaseOnce.Do(func() { close(client.release) }) }
 			defer release()
@@ -85,6 +91,16 @@ func TestInterruptedSubagentTerminalWaitsForSettlement(t *testing.T) {
 			case <-client.started:
 			case <-time.After(5 * time.Second):
 				t.Fatal("child did not start")
+			}
+			if background {
+				// The background child starts concurrently with the parent's next
+				// model call. Cancel only once both are in flight so the run is
+				// interrupted in the same state on every scheduler interleaving.
+				select {
+				case <-client.parentWaiting:
+				case <-time.After(5 * time.Second):
+					t.Fatal("parent did not continue while the background child ran")
+				}
 			}
 			resp := postJSON(t, http.DefaultClient, server.URL+"/v1/sessions/"+sess.ID+"/runs/"+accepted.RunID+"/cancel", map[string]any{}, nil)
 			resp.Body.Close()
