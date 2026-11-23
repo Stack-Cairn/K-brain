@@ -157,7 +157,10 @@ CLI 可用 `-config FILE -session-dir DIR` 指定配置与存储目录；省略�
 - `subagent.started`, `subagent.updated`, `subagent.completed`, `subagent.failed`
 - `trajectory.child.text`, `trajectory.child.thinking`, `trajectory.child.steer`, `trajectory.child.tool_start`, `trajectory.child.tool_end`（子代理自己的转录）
 - `usage.updated`
+- `trajectory.request.started`, `trajectory.request.completed`, `trajectory.transport`, `trajectory.retry`, `trajectory.failover`（模型请求轨迹，见下文）
 - `run.completed`, `run.failed`, `run.cancelled`
+
+模型请求失败、将自动重试时，后端在本次运行的事件流中发 `trajectory.retry`，载荷为 `{request_id,task_id,provider,attempt,max,retries_remaining,delay_ms,error}`：`request_id` 对应该请求的 `trajectory.request.started`；`task_id` 为空字符串表示主对话的请求，否则是发出请求的子代理 id；`provider` 为供应商 id；`attempt` 是刚失败的那次尝试的序号（从 1 开始）；`max` 是这次请求总共允许的尝试次数（含第一次）；`retries_remaining` 是 `max - attempt`，即还会进行的尝试次数（发出该事件时至少为 1）；`delay_ms` 是开始下一次尝试前的等待毫秒数（供应商给出 `Retry-After` 时取其值，否则为退避时间）；`error` 是这次失败的原始错误文本。最后一次尝试失败、不可重试的错误（如 401、400）以及已经开始输出后的失败都不发该事件，而是以 `run.failed` 结束。例：`{"request_id":"run-…-2","task_id":"","provider":"my-provider","attempt":1,"max":8,"retries_remaining":7,"delay_ms":1000,"error":"503 Service Unavailable: …"}`。客户端可据此显示“第 n 次重试，m 秒后”。`retries_remaining` 是新增字段，其余字段与以前相同。
 
 `bash`/`Bash` 命令运行期间，后端以 `tool.status{tool_call_id,status:"running",message}` 推送输出：`message` 是截至此刻的输出尾部快照（最多 4 KiB，尽量从整行开始），客户端整体替换而非拼接；同一调用最多每 500ms 发一次，输出停住后补发最后一份，且全部排在该调用的 `tool.result` 之前。快照只进事件日志，会话历史仍只保存最终的 `tool.result`。不认识该字段的旧客户端可以忽略。
 

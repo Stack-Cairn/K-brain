@@ -180,7 +180,7 @@ func (o *trajectoryObserver) Retry(ctx context.Context, event ai.RetryEvent) {
 	state.mu.Lock()
 	provider := state.Provider
 	state.mu.Unlock()
-	_, _ = o.publish("trajectory.retry", map[string]any{"request_id": state.ID, "task_id": state.TaskID, "provider": provider, "attempt": event.Attempt, "max": event.Max, "delay_ms": event.Delay.Milliseconds(), "error": message}, "")
+	_, _ = o.publish("trajectory.retry", map[string]any{"request_id": state.ID, "task_id": state.TaskID, "provider": provider, "attempt": event.Attempt, "max": event.Max, "retries_remaining": max(event.Max-event.Attempt, 0), "delay_ms": event.Delay.Milliseconds(), "error": message}, "")
 }
 
 func (rt *runtimeSession) trajectoryChildEvents(id string) agent.Events {

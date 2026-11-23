@@ -53,6 +53,10 @@ func TestTrajectoryRecordedRequestsSectionsTransportRetry(t *testing.T) {
 			sectionID = refs[0].(string)
 		case "trajectory.retry":
 			retries++
+			// attempt is the failed attempt and max the total; one attempt remains.
+			if p["request_id"] == "" || p["attempt"] != float64(1) || p["max"] != float64(2) || p["retries_remaining"] != float64(1) || p["delay_ms"] != float64(0) || !strings.Contains(fmt.Sprint(p["error"]), "503") {
+				t.Fatalf("retry payload = %v", p)
+			}
 		case "trajectory.transport":
 			transports++
 			names := fmt.Sprint(p["header_names"])
