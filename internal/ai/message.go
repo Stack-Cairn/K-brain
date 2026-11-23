@@ -45,6 +45,9 @@ type Message struct {
 	// failure, the provider's HTTP status and its own short message.
 	// Display-only, like Error.
 	ErrorDetail *ErrorDetail `json:"error_detail,omitempty"`
+	// CancelReason says why a StopReasonCancelled reply ended when it was not
+	// the user: CancelReasonShutdown. Display-only.
+	CancelReason string `json:"cancel_reason,omitempty"`
 
 	RewoundFrom string `json:"rewound_from,omitempty"`
 }
@@ -125,6 +128,7 @@ type messageWire struct {
 	RawStopReason   string           `json:"raw_stop_reason,omitempty"`
 	Error           string           `json:"error,omitempty"`
 	ErrorDetail     *ErrorDetail     `json:"error_detail,omitempty"`
+	CancelReason    string           `json:"cancel_reason,omitempty"`
 	RewoundFrom     string           `json:"rewound_from,omitempty"`
 }
 
@@ -139,6 +143,7 @@ func (m Message) MarshalJSON() ([]byte, error) {
 		HostedSearch:    m.HostedSearch,
 		Model:           m.Model, RewoundFrom: m.RewoundFrom,
 		StopReason: m.StopReason, RawStopReason: m.RawStopReason, Error: m.Error, ErrorDetail: m.ErrorDetail,
+		CancelReason: m.CancelReason,
 	}
 	if len(m.Parts) > 0 {
 		w.Content = m.ContentParts()
@@ -160,6 +165,7 @@ func (m *Message) UnmarshalJSON(data []byte) error {
 	m.PromptContext = raw.PromptContext
 	m.PromptSnapshots = raw.PromptSnapshots
 	m.StopReason, m.RawStopReason, m.Error, m.ErrorDetail = raw.StopReason, raw.RawStopReason, raw.Error, raw.ErrorDetail
+	m.CancelReason = raw.CancelReason
 	if len(raw.Content) == 0 {
 		return nil
 	}

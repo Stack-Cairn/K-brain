@@ -190,7 +190,11 @@ type Message struct {
 	// stop_reason "error" both on a kept partial reply and on the
 	// "assistant-error-<run>" message saved when nothing streamed.
 	ErrorDetail *ErrorDetail `json:"error_detail,omitempty"`
-	CreatedAt   *time.Time   `json:"created_at,omitempty"`
+	// CancelReason is "shutdown" on a stop_reason "cancelled" reply or tool
+	// result that ended because the backend shut down; it is absent when the
+	// run was stopped.
+	CancelReason string     `json:"cancel_reason,omitempty"`
+	CreatedAt    *time.Time `json:"created_at,omitempty"`
 	// Origin is "background" on a user-role notice the runtime delivered on its
 	// own (a wait result, a process exit, a background task report, a goal
 	// continuation round, the new-context notice, the output-limit continuation
@@ -669,7 +673,10 @@ type RunTerminal struct {
 	// ErrorDetail classifies Error on a failed run when it came from the model
 	// request.
 	ErrorDetail *ErrorDetail `json:"error_detail,omitempty"`
-	Usage       *Usage       `json:"usage,omitempty"`
+	// CancelReason is "shutdown" on a cancelled run that the backend's own
+	// shutdown interrupted; it is absent when the run was stopped.
+	CancelReason string `json:"cancel_reason,omitempty"`
+	Usage        *Usage `json:"usage,omitempty"`
 }
 
 // ErrorDetail is the structured form of a model failure. Kind is one of
@@ -1039,7 +1046,7 @@ func FromAIMessage(m ai.Message) Message {
 	if left, right, ok := strings.Cut(m.Model, " @ "); ok {
 		model, provider = left, right
 	}
-	out := Message{ID: m.ID, Role: m.Role, ToolCallID: m.ToolCallID, Name: m.Name, Model: model, Provider: provider, Usage: FromAIUsage(m.Usage), HostedSearch: fromAIHostedSearch(m.HostedSearch), StopReason: string(m.StopReason), Error: m.Error, ErrorDetail: FromAIErrorDetail(m.ErrorDetail), CreatedAt: m.SentAt, Origin: m.Origin, Authored: m.Role == RoleUser && m.Authored}
+	out := Message{ID: m.ID, Role: m.Role, ToolCallID: m.ToolCallID, Name: m.Name, Model: model, Provider: provider, Usage: FromAIUsage(m.Usage), HostedSearch: fromAIHostedSearch(m.HostedSearch), StopReason: string(m.StopReason), Error: m.Error, ErrorDetail: FromAIErrorDetail(m.ErrorDetail), CancelReason: m.CancelReason, CreatedAt: m.SentAt, Origin: m.Origin, Authored: m.Role == RoleUser && m.Authored}
 	if m.Reasoning != "" {
 		out.Content = append(out.Content, ContentBlock{Type: ContentThinking, Text: m.Reasoning})
 	}
@@ -1221,6 +1228,9 @@ func (m Message) ToAIMessage() (ai.Message, error) {
 	if m.Role == RoleAssistant {
 		out.Error = m.Error
 		out.ErrorDetail = m.ErrorDetail.toAI()
+	}
+	if m.Role == RoleAssistant || m.Role == RoleTool {
+		out.CancelReason = m.CancelReason
 	}
 	if m.Usage != nil {
 		out.Usage = &ai.Usage{PromptTokens: m.Usage.InputTokens, CompletionTokens: m.Usage.OutputTokens, PromptCacheHitTokens: m.Usage.CachedTokens, PromptCacheWriteTokens: m.Usage.CacheWriteTokens}

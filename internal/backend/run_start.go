@@ -164,7 +164,7 @@ func (s *Server) startCanonicalRunWith(ctx context.Context, rt *runtimeSession, 
 		rt.agent.RequestToolFilter = filter
 	}
 	if in.ResumeMessageID != "" {
-		messages := rt.agent.MessagesSnapshot()
+		messages := withoutStoppedMarker(rt.agent.MessagesSnapshot())
 		submitted, _ := user.ToAIMessage()
 		if len(messages) == 0 || messages[len(messages)-1].Role != "user" || messages[len(messages)-1].ID != in.ResumeMessageID || !sameUserContent(messages[len(messages)-1], submitted) {
 			return fail(409, "resume_message_id and content must match the tail user message")
@@ -192,12 +192,12 @@ func (s *Server) startCanonicalRunWith(ctx context.Context, rt *runtimeSession, 
 	// with tools.ErrTurnEnded, which background work the turn started outlives.
 	runCtx, cancelRun := context.WithCancelCause(ctx)
 	cancel := func() { cancelRun(context.Canceled) }
-	rt.runID, rt.runDone, rt.cancel = runID, false, cancel
+	rt.runID, rt.runDone, rt.cancel, rt.interruptRun = runID, false, cancel, cancelRun
 	rt.checkpoint = newCheckpointCapture(s.eventDir, rt.id, runID, in.TurnID)
 	abort := func(err error) (protocol.RunAccepted, int, error) {
 		cancel()
 		rollback()
-		rt.cancel, rt.checkpoint, rt.runDone = nil, nil, true
+		rt.cancel, rt.checkpoint, rt.runDone, rt.interruptRun = nil, nil, true, nil
 		rt.runtimeErr = fmt.Errorf("persist run acceptance: %w", err)
 		return protocol.RunAccepted{}, 500, rt.runtimeErr
 	}

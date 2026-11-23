@@ -23,6 +23,10 @@ func prepareRequestHistory(messages []Message, api, endpoint, model string) []Me
 // was streaming. The stored message keeps exactly what the user saw.
 const cancelledReplyNote = "\n\n[response interrupted by the user]"
 
+// shutdownReplyNote marks, in requests only, a reply cut short because the
+// backend shut down while it was streaming.
+const shutdownReplyNote = "\n\n[response interrupted because the backend stopped]"
+
 // failedReplyNote marks, in requests only, a reply whose stream failed partway.
 const failedReplyNote = "\n\n[response interrupted by an error]"
 
@@ -63,6 +67,8 @@ func interruptionNote(m Message) string {
 		return ""
 	}
 	switch {
+	case m.StopReason == StopReasonCancelled && m.CancelReason == CancelReasonShutdown:
+		return shutdownReplyNote
 	case m.StopReason == StopReasonCancelled:
 		return cancelledReplyNote
 	case m.StopReason == StopReasonError && m.Error != "":

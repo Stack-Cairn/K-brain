@@ -13,6 +13,10 @@ const (
 	StopReasonCancelled StopReason = "cancelled"
 )
 
+// CancelReasonShutdown marks a reply (StopReasonCancelled) that ended because
+// the backend shut down, not because the user stopped it.
+const CancelReasonShutdown = "shutdown"
+
 type OutputLimitError struct {
 	Reason string
 }

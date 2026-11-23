@@ -16,6 +16,11 @@ import (
 
 func review2TailUser(t *testing.T, messages []protocol.Message) protocol.Message {
 	t.Helper()
+	// A run stopped before any reply leaves an empty stop marker after its
+	// prompt; resuming that prompt replaces the marker.
+	if n := len(messages); n > 0 && strings.HasPrefix(messages[n-1].ID, "assistant-stopped-") {
+		messages = messages[:n-1]
+	}
 	if len(messages) == 0 || messages[len(messages)-1].Role != protocol.RoleUser {
 		t.Fatalf("fixture: tail message is not a user message: %+v", messages)
 	}

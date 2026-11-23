@@ -277,3 +277,37 @@ func TestFailedReplyErrorIsStoredButNotSent(t *testing.T) {
 		t.Fatalf("error text reached the request: %s", wire)
 	}
 }
+
+// A reply cut short by a backend shutdown gets its own request note, and the
+// empty marker of a run stopped before any output is left out of requests.
+func TestRequestHistoryRendersShutdownAndStoppedMarkers(t *testing.T) {
+	messages := []Message{
+		{Role: "user", Content: "first"},
+		{Role: "assistant", Content: "partial", StopReason: StopReasonCancelled, CancelReason: CancelReasonShutdown},
+		{Role: "user", Content: "second"},
+		{Role: "assistant", Content: "", StopReason: StopReasonCancelled},
+		{Role: "user", Content: "third"},
+		{Role: "assistant", Content: "", StopReason: StopReasonCancelled, CancelReason: CancelReasonShutdown},
+		{Role: "user", Content: "fourth"},
+	}
+	for _, api := range []string{APIChatCompletions, APIResponses, APIMessages, APIGemini} {
+		out := prepareRequestHistory(messages, api, "https://e.test", "m")
+		if len(out) != len(messages)-2 {
+			t.Fatalf("%s: stopped markers were sent: %+v", api, out)
+		}
+		if out[1].Content != "partial"+shutdownReplyNote || out[1].CancelReason != "" || out[1].StopReason != "" {
+			t.Fatalf("%s: interrupted reply = %+v", api, out[1])
+		}
+		if out[2].Content != "second" || out[3].Content != "third" || out[4].Content != "fourth" {
+			t.Fatalf("%s: order changed: %+v", api, out)
+		}
+	}
+	data, err := json.Marshal(messages[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var loaded Message
+	if err := json.Unmarshal(data, &loaded); err != nil || loaded.CancelReason != CancelReasonShutdown {
+		t.Fatalf("cancel_reason did not round-trip: %s (%v)", data, err)
+	}
+}

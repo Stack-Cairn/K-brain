@@ -79,6 +79,7 @@ func stripAuthored(msgs []Message) []Message {
 		out[i].Model = ""
 		out[i].RewoundFrom = ""
 		out[i].StopReason, out[i].RawStopReason, out[i].Error, out[i].ErrorDetail = "", "", "", nil
+		out[i].CancelReason = ""
 		out[i].HostedSearch = nil
 		out[i].Reasoning = ""
 
