@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/Stack-Cairn/K-brain/internal/agent"
@@ -13,15 +14,22 @@ import (
 	"github.com/Stack-Cairn/K-brain/internal/config"
 )
 
-func compactCmdModel() *model {
-
+// compactCmdServerURL serves the stateless canned completion every
+// compactCmdModel talks to. Hundreds of tests build such a model without a
+// *testing.T to close a server, so one shared server keeps repeated runs
+// (-count=N) from leaking a listener per model and exhausting local ports.
+var compactCmdServerURL = sync.OnceValue(func() string {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"choices":[{"message":{"content":"sim"}}]}`))
 	}))
+	return srv.URL
+})
+
+func compactCmdModel() *model {
 	m := &model{
 		input:   newInput(),
 		mouseOn: true,
-		agent:   agent.New(ai.New(srv.URL, "k"), "kimi-k3-fast", 100, "sys"),
+		agent:   agent.New(ai.New(compactCmdServerURL(), "k"), "kimi-k3-fast", 100, "sys"),
 		cfg: &config.Config{
 			DefaultModel: "kimi-k3-fast",
 			Providers:    map[string]config.Provider{"inference": {BaseURL: "https://x", APIKey: "k"}},

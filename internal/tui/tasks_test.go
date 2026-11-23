@@ -22,12 +22,15 @@ import (
 
 func sseTextServer(t *testing.T, body string) *httptest.Server {
 	t.Helper()
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := json.Marshal(body)
 		w.Header().Set("Content-Type", "text/event-stream")
 		fmt.Fprintf(w, `data: {"choices":[{"delta":{"content":%s},"finish_reason":"stop"}]}`+"\n\n", b)
 		fmt.Fprint(w, "data: [DONE]\n\n")
 	}))
+	// Some callers only take the URL; Close is idempotent for those that defer it.
+	t.Cleanup(srv.Close)
+	return srv
 }
 
 func tasksModel(url string) *model {
