@@ -44,7 +44,7 @@ func startTestChrome(t *testing.T, bin, profile string, args ...string) int {
 	// A fresh profile otherwise asks the OS credential store for its cookie
 	// encryption key: the login Keychain on macOS (which can block on an
 	// access prompt until the test times out) or the desktop keyring on Linux.
-	// The production launcher passes the same flags.
+	// These flags only affect the throwaway test profile.
 	base := []string{"--remote-debugging-port=0", "--user-data-dir=" + profile, "--use-mock-keychain", "--password-store=basic"}
 	cmd := exec.CommandContext(context.Background(), bin, append(base, args...)...)
 	output := &lockedBuffer{}
