@@ -542,7 +542,10 @@ func editDiffRows(oldS, newS string, startLine int) (string, bool) {
 		row(startLine+p+i, "+", l)
 	}
 	if s > 0 {
-		row(startLine+len(o)-1, " ", o[len(o)-1])
+		// One line of trailing context: the first unchanged line after the
+		// change (numbered where it lands, like the added lines), not the
+		// last line of the text.
+		row(startLine+len(n)-s, " ", o[len(o)-s])
 	}
 	out := strings.TrimSuffix(b.String(), "\n")
 	if rows > editDiffMaxLines {

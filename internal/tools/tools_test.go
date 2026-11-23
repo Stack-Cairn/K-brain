@@ -200,6 +200,24 @@ func TestBashToolInteractiveHook(t *testing.T) {
 	}
 }
 
+// The context around a change is the line just before and the line just
+// after it, wherever the change sits in a longer text (the approval card
+// diffs the whole file).
+func TestEditDiffContextIsAdjacentToTheChange(t *testing.T) {
+	old := "one\ntwo\nthree\nfour\nfive\nsix\n"
+	next := "one\ntwo\nTHREE\nfour\nfive\nsix\n"
+	want := "2   two\n3 - three\n3 + THREE\n4   four"
+	if d := editDiff(old, next, 1); d != want {
+		t.Fatalf("diff:\n%s\nwant:\n%s", d, want)
+	}
+	// An insertion keeps the same neighbours.
+	next = "one\ntwo\nthree\nnew\nfour\nfive\nsix\n"
+	want = "3   three\n4 + new\n5   four"
+	if d := editDiff(old, next, 1); d != want {
+		t.Fatalf("insertion diff:\n%s\nwant:\n%s", d, want)
+	}
+}
+
 func TestEditDiffLineNumbers(t *testing.T) {
 	d := editDiff("ctx\nold\ntail", "ctx\nnew\ntail", 10)
 	want := "10   ctx\n11 - old\n11 + new\n12   tail"
