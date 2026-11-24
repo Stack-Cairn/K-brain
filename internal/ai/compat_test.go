@@ -150,11 +150,20 @@ func TestGeminiThinkingSchemaAndToolImages(t *testing.T) {
 		value              any
 	}{
 		{"gemini-2.5-flash", "off", "thinkingBudget", 0},
+		{"gemini-2.5-flash-lite", "max", "thinkingBudget", -1},
 		{"gemini-2.5-pro", "off", "thinkingBudget", 128},
-		{"gemini-3-pro", "max", "thinkingLevel", "high"},
-		{"gemini-3-flash", "off", "thinkingLevel", "minimal"},
+		{"gemini-3-pro", "max", "thinkingLevel", "HIGH"},
+		{"gemini-3-pro-preview", "medium", "thinkingLevel", "HIGH"},
+		{"gemini-3.1-pro-preview", "medium", "thinkingLevel", "MEDIUM"},
+		{"gemini-3-flash", "off", "thinkingLevel", "MINIMAL"},
+		{"gemini-3.8-flash", "off", "thinkingLevel", "LOW"},
+		{"gemini-4-neon", "off", "thinkingLevel", "LOW"},
+		{"gemini-4-neon", "medium", "thinkingLevel", "MEDIUM"},
+		{"gemini-4-neon", "xhigh", "thinkingLevel", "XHIGH"},
+		{"gemini-4-carbon", "xhigh", "thinkingLevel", "HIGH"},
+		{"gemini-pro-latest", "high", "thinkingLevel", "HIGH"},
 	} {
-		t.Run(tc.model, func(t *testing.T) {
+		t.Run(tc.model+"_"+tc.effort, func(t *testing.T) {
 			p := geminiPayload(Request{Model: tc.model, ReasoningEffort: tc.effort, Tools: []Tool{NewTool("read", "read", `{"type":"object","additionalProperties":false}`)}, Messages: []Message{{Role: "assistant"}, {Role: "tool", Name: "read", ToolCallID: "a", Parts: []ContentPart{image}}, {Role: "tool", Name: "read", ToolCallID: "b", Content: "second"}}})
 			thinking := p["generationConfig"].(map[string]any)["thinkingConfig"].(map[string]any)
 			if thinking[tc.key] != tc.value {
@@ -172,6 +181,51 @@ func TestGeminiThinkingSchemaAndToolImages(t *testing.T) {
 	}
 	if strings.Contains(geminiPath("https://example.test/v1", "m", true), "v1beta") {
 		t.Fatal("duplicated version prefix")
+	}
+	if got := geminiPath("https://aiplatform.googleapis.com/v1/publishers/google", "gemini-4-neon", true); got != "/models/gemini-4-neon:streamGenerateContent?alt=sse" {
+		t.Fatalf("vertex path = %q", got)
+	}
+	if got := geminiPath("https://api.site/v1beta/models", "gemini-4-hydrogen", true); got != "/gemini-4-hydrogen:streamGenerateContent?alt=sse" {
+		t.Fatalf("trailing /models path = %q", got)
+	}
+	if got := geminiPath("https://relay.example/publishers/team", "gemini-4-neon", true); !strings.HasPrefix(got, "/v1beta/models/") {
+		t.Fatalf("custom relay path = %q", got)
+	}
+	if isOfficialGeminiEndpoint("https://aiplatform.googleapis.com/v1/publishers/google") {
+		t.Fatal("Vertex AI should not bypass the native-search + function-tools guard")
+	}
+	fullURLClient := NewGeminiWithOptions("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse", "k", true, "", nil)
+	fullURLPayload := fullURLClient.geminiPayloadWithState(Request{Model: "fast", ReasoningEffort: "low", Messages: []Message{{Role: "user", Content: "hi"}}})
+	if got := fullURLPayload["generationConfig"].(map[string]any)["thinkingConfig"].(map[string]any)["thinkingBudget"]; got != 1024 {
+		t.Fatalf("full-URL 2.5 alias thinkingBudget = %v", got)
+	}
+	opaqueRelayClient := NewGeminiWithOptions("https://relay.example/generate", "k", true, "", nil)
+	opaqueRelayPayload := opaqueRelayClient.geminiPayloadWithState(Request{Model: "fast", ReasoningEffort: "low", Messages: []Message{{Role: "user", Content: "hi"}}})
+	if got := opaqueRelayPayload["generationConfig"].(map[string]any)["thinkingConfig"].(map[string]any)["thinkingBudget"]; got != 1024 {
+		t.Fatalf("opaque relay alias thinkingBudget = %v", got)
+	}
+	if _, err := NewGemini("https://aiplatform.googleapis.com/v1/publishers/google", "api-key-only").Models(t.Context()); err == nil {
+		t.Fatal("expected clear error for API-key-only Vertex Express Mode Models()")
+	}
+	vertexCatalogPages := 0
+	vertexCatalogSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		vertexCatalogPages++
+		if r.URL.Path != "/v1beta1/publishers/google/models" {
+			t.Fatalf("vertex catalog path = %q", r.URL.Path)
+		}
+		if vertexCatalogPages == 1 {
+			fmt.Fprint(w, `{"publisherModels":[{"name":"publishers/google/models/gemini-4-neon"}],"nextPageToken":"p2"}`)
+			return
+		}
+		if r.URL.Query().Get("pageToken") != "p2" {
+			t.Fatalf("expected pageToken=p2, got %q", r.URL.RawQuery)
+		}
+		fmt.Fprint(w, `{"publisherModels":[{"name":"publishers/google/models/gemini-4-hydrogen"}]}`)
+	}))
+	defer vertexCatalogSrv.Close()
+	discovered, err := NewGeminiWithOptions(vertexCatalogSrv.URL, "", false, vertexCatalogSrv.URL+"/v1beta1/publishers/google/models", map[string]string{"Authorization": "Bearer token"}).Models(t.Context())
+	if err != nil || len(discovered) != 2 || discovered[0].ID != "gemini-4-neon" || discovered[1].ID != "gemini-4-hydrogen" {
+		t.Fatalf("vertex publisherModels = %+v, err=%v", discovered, err)
 	}
 }
 
