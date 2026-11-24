@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/rand"
@@ -13,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -21,6 +23,8 @@ import (
 	"github.com/Stack-Cairn/K-brain/internal/netproxy"
 	"github.com/gofrs/flock"
 )
+
+var geminiThinkingLevelModel = regexp.MustCompile(`gemini-(?:[3-9]|\d{2,})(?:[.-]|$)|gemini-(?:pro|flash(?:-lite)?)-latest|robotics-er-2`)
 
 // Gemini implements Google's native generateContent API while exposing the
 // same provider-neutral Client interface as the other adapters.
@@ -89,43 +93,84 @@ func (c *Gemini) Models(ctx context.Context) ([]ModelInfo, error) {
 	if endpoint == "" {
 		if c.IsFullURL {
 			endpoint = fullURLModelCatalog(c.BaseURL, "v1beta")
+		} else if isVertexPublisherBaseURL(c.BaseURL) {
+			if !hasHeader(c.Headers, "authorization") {
+				return nil, fmt.Errorf("Vertex AI Express Mode does not expose a model list endpoint; add Gemini model IDs manually")
+			}
+			u, err := url.Parse(c.BaseURL)
+			if err != nil {
+				return nil, err
+			}
+			endpoint = u.Scheme + "://" + u.Host + "/v1beta1/publishers/google/models"
+		} else if strings.HasSuffix(strings.ToLower(strings.TrimRight(c.BaseURL, "/")), "/models") {
+			endpoint = strings.TrimRight(c.BaseURL, "/")
 		} else {
 			endpoint = strings.TrimRight(c.BaseURL, "/") + strings.Split(geminiPath(c.BaseURL, "", false), "/models/")[0] + "/models"
 		}
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, err
+	type geminiModelEntry struct {
+		Name             string `json:"name"`
+		InputTokenLimit  int    `json:"inputTokenLimit"`
+		OutputTokenLimit int    `json:"outputTokenLimit"`
 	}
-	for name, values := range c.Headers {
-		req.Header[name] = append([]string(nil), values...)
-	}
-	if !hasHeader(c.Headers, "x-goog-api-key") {
-		req.Header.Set("x-goog-api-key", c.APIKey)
-	}
-	resp, err := c.HTTP.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, newHTTPError(resp, string(b))
-	}
-	var payload struct {
-		Models []struct {
-			Name             string `json:"name"`
-			InputTokenLimit  int    `json:"inputTokenLimit"`
-			OutputTokenLimit int    `json:"outputTokenLimit"`
-		} `json:"models"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		return nil, err
-	}
-	out := make([]ModelInfo, 0, len(payload.Models))
-	for _, model := range payload.Models {
-		id := strings.TrimPrefix(model.Name, "models/")
-		out = append(out, ModelInfo{ID: id, ContextLength: model.InputTokenLimit, MaxCompletionTokens: model.OutputTokenLimit})
+	var out []ModelInfo
+	pageToken := ""
+	for page := 0; page < 20; page++ {
+		pageURL := endpoint
+		if pageToken != "" {
+			parsed, err := url.Parse(endpoint)
+			if err != nil {
+				return nil, err
+			}
+			q := parsed.Query()
+			q.Set("pageToken", pageToken)
+			parsed.RawQuery = q.Encode()
+			pageURL = parsed.String()
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, pageURL, nil)
+		if err != nil {
+			return nil, err
+		}
+		for name, values := range c.Headers {
+			req.Header[name] = append([]string(nil), values...)
+		}
+		if !hasHeader(c.Headers, "x-goog-api-key") && !hasHeader(c.Headers, "authorization") {
+			req.Header.Set("x-goog-api-key", c.APIKey)
+		}
+		resp, err := c.HTTP.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+			resp.Body.Close()
+			return nil, newHTTPError(resp, string(b))
+		}
+		var payload struct {
+			Models          []geminiModelEntry `json:"models"`
+			PublisherModels []geminiModelEntry `json:"publisherModels"`
+			NextPageToken   string             `json:"nextPageToken"`
+		}
+		err = json.NewDecoder(resp.Body).Decode(&payload)
+		resp.Body.Close()
+		if err != nil {
+			return nil, err
+		}
+		entries := payload.Models
+		if len(entries) == 0 {
+			entries = payload.PublisherModels
+		}
+		for _, model := range entries {
+			id := strings.TrimPrefix(model.Name, "models/")
+			if idx := strings.LastIndex(id, "/models/"); idx >= 0 {
+				id = id[idx+len("/models/"):]
+			}
+			out = append(out, ModelInfo{ID: id, ContextLength: model.InputTokenLimit, MaxCompletionTokens: model.OutputTokenLimit})
+		}
+		if len(payload.PublisherModels) == 0 || payload.NextPageToken == "" {
+			break
+		}
+		pageToken = payload.NextPageToken
 	}
 	return out, nil
 }
@@ -158,6 +203,58 @@ func (c *Gemini) Stream(ctx context.Context, req Request, onText, onThink func(s
 	})
 }
 
+// newGeminiChunkReader yields JSON chunks from either an SSE stream (`data: {...}`)
+// or Vertex AI / Gemini's native JSON-array stream (`[{...}, {...}]`).
+func newGeminiChunkReader(r io.Reader) func() (string, string, bool, error) {
+	br := bufio.NewReader(r)
+	for {
+		b, err := br.Peek(1)
+		if err != nil || (b[0] != ' ' && b[0] != '\t' && b[0] != '\r' && b[0] != '\n') {
+			break
+		}
+		_, _ = br.ReadByte()
+	}
+	if b, err := br.Peek(1); err == nil && b[0] == '[' {
+		lr := &io.LimitedReader{R: br, N: maxSSEEventSize + 1}
+		dec := json.NewDecoder(lr)
+		tok, tokErr := dec.Token()
+		return func() (string, string, bool, error) {
+			if tokErr != nil {
+				return "", "", false, tokErr
+			}
+			if d, ok := tok.(json.Delim); !ok || d != '[' {
+				return "", "", false, nonRetryable{fmt.Errorf("invalid Gemini streaming response: expected JSON array")}
+			}
+			lr.N = maxSSEEventSize + 1
+			if !dec.More() {
+				if _, err := dec.Token(); err != nil {
+					return "", "", false, err
+				}
+				return "", "", false, io.ErrUnexpectedEOF
+			}
+			var raw json.RawMessage
+			if err := dec.Decode(&raw); err != nil {
+				if lr.N <= 0 {
+					return "", "", false, nonRetryable{fmt.Errorf("Gemini JSON stream chunk exceeds %d bytes", maxSSEEventSize)}
+				}
+				return "", "", false, err
+			}
+			if len(raw) > maxSSEEventSize {
+				return "", "", false, nonRetryable{fmt.Errorf("Gemini JSON stream chunk exceeds %d bytes", maxSSEEventSize)}
+			}
+			return string(raw), "", true, nil
+		}
+	}
+	sse := newSSEReader(br)
+	return func() (string, string, bool, error) {
+		event, ok := sse.next()
+		if !ok {
+			return "", "", false, sse.endError("Gemini")
+		}
+		return event.Data, event.Type, true, nil
+	}
+}
+
 // streamAttempt is one Gemini streaming request; Stream retries it when it
 // stalls before any output.
 func (c *Gemini) streamAttempt(ctx context.Context, req Request, onText, onThink func(string), onToolCall func(id, name, args string)) (Message, Usage, error) {
@@ -168,7 +265,7 @@ func (c *Gemini) streamAttempt(ctx context.Context, req Request, onText, onThink
 		return Message{}, Usage{}, idleGuard.stalled(err)
 	}
 	defer resp.Body.Close()
-	sse := newSSEReader(idleGuard.wrap(resp.Body))
+	nextChunk := newGeminiChunkReader(idleGuard.wrap(resp.Body))
 	var msg Message
 	msg.Role = "assistant"
 	var thought thoughtText
@@ -177,13 +274,13 @@ func (c *Gemini) streamAttempt(ctx context.Context, req Request, onText, onThink
 	var usage Usage
 	var calls []ToolCall
 	for {
-		event, ok := sse.next()
+		data, eventType, ok, chunkErr := nextChunk()
 		if !ok {
-			return Message{}, usage, sse.endError("Gemini")
+			return Message{}, usage, idleGuard.stalled(chunkErr)
 		}
-		search.accept(event.Data, event.Type)
+		search.accept(data, eventType)
 		var result geminiResponse
-		if err := decodeStreamEvent(event.Data, &result); err != nil {
+		if err := decodeStreamEvent(data, &result); err != nil {
 			return Message{}, usage, err
 		}
 		if result.Error != nil {
@@ -477,6 +574,9 @@ func (c *Gemini) do(ctx context.Context, req Request, stream bool) (*http.Respon
 			return nonRetryable{parseErr}
 		}
 		q := parsed.Query()
+		if stream && c.IsFullURL && strings.Contains(parsed.Path, ":streamGenerateContent") && q.Get("alt") == "" {
+			q.Set("alt", "sse")
+		}
 		if !hasHeader(c.Headers, "x-goog-api-key") {
 			q.Set("key", c.APIKey)
 		}
@@ -511,14 +611,29 @@ func isOfficialGeminiEndpoint(baseURL string) bool {
 	return err == nil && u.Hostname() == "generativelanguage.googleapis.com"
 }
 
+func isVertexPublisherBaseURL(baseURL string) bool {
+	u, err := url.Parse(strings.TrimRight(baseURL, "/"))
+	if err != nil {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	isVertexHost := host == "aiplatform.googleapis.com" || strings.HasSuffix(host, "-aiplatform.googleapis.com")
+	return isVertexHost && strings.HasSuffix(strings.ToLower(u.Path), "/publishers/google")
+}
+
 func geminiPath(baseURL, model string, stream bool) string {
+	trimmed := strings.TrimRight(baseURL, "/")
 	prefix := "/v1beta"
-	if modelCatalogVersionSuffix.MatchString(strings.TrimRight(baseURL, "/")) {
+	modelsPrefix := "/models/"
+	if strings.HasSuffix(strings.ToLower(trimmed), "/models") {
+		prefix = ""
+		modelsPrefix = "/"
+	} else if modelCatalogVersionSuffix.MatchString(trimmed) || isVertexPublisherBaseURL(trimmed) {
 		prefix = ""
 	}
-	path := prefix + "/models/" + url.PathEscape(model) + ":generateContent"
+	path := prefix + modelsPrefix + url.PathEscape(model) + ":generateContent"
 	if stream {
-		path = prefix + "/models/" + url.PathEscape(model) + ":streamGenerateContent?alt=sse"
+		path = prefix + modelsPrefix + url.PathEscape(model) + ":streamGenerateContent?alt=sse"
 	}
 	return path
 }
@@ -639,18 +754,46 @@ func (c *Gemini) geminiPayloadWithState(req Request) map[string]any {
 		if req.ReasoningEffort != "" {
 			thinking := map[string]any{"includeThoughts": !reasoningDisabled(req.ReasoningEffort)}
 			model := strings.ToLower(req.Model)
-			if strings.Contains(model, "gemini-3") {
-				level := req.ReasoningEffort
-				if reasoningDisabled(level) || level == "minimal" {
-					level = "low"
-					if strings.Contains(model, "flash") {
-						level = "minimal"
+			if c.IsFullURL {
+				if _, after, ok := strings.Cut(strings.ToLower(c.BaseURL), "/models/"); ok {
+					if end := strings.IndexAny(after, ":?/"); end >= 0 {
+						after = after[:end]
+					}
+					if after != "" {
+						model = after
 					}
 				}
-				if level == "xhigh" || level == "max" || (level == "medium" && !strings.Contains(model, "flash")) {
+			}
+			// Gemini 3/4+ and latest aliases require thinkingLevel; keep thinkingBudget for Gemini 2.x and opaque aliases.
+			if geminiThinkingLevelModel.MatchString(model) {
+				level := req.ReasoningEffort
+				supportsMinimal := !strings.Contains(model, "gemini-4") &&
+					(strings.Contains(model, "gemini-3-flash") ||
+						strings.Contains(model, "gemini-3.1-flash") ||
+						strings.Contains(model, "gemini-3.5-flash") ||
+						strings.Contains(model, "gemini-3.6-flash") ||
+						strings.Contains(model, "flash-lite") ||
+						strings.Contains(model, "robotics-er-2"))
+				supportsXHigh := strings.Contains(model, "gemini-4-neon") ||
+					strings.Contains(model, "gemini-4-hydrogen")
+				if reasoningDisabled(level) || level == "minimal" {
+					if supportsMinimal {
+						level = "minimal"
+					} else {
+						level = "low"
+					}
+				}
+				if level == "medium" && (strings.Contains(model, "gemini-3-pro") || strings.Contains(model, "-image")) {
 					level = "high"
 				}
-				thinking["thinkingLevel"] = level
+				if level == "xhigh" || level == "max" {
+					if supportsXHigh {
+						level = "xhigh"
+					} else {
+						level = "high"
+					}
+				}
+				thinking["thinkingLevel"] = strings.ToUpper(level)
 			} else {
 				budget := -1
 				switch req.ReasoningEffort {
