@@ -196,3 +196,31 @@ func TestGeminiPayloadConvertsCanonicalHistory(t *testing.T) {
 		t.Fatalf("encoded payload = %s", encoded)
 	}
 }
+
+func TestGeminiStreamHandlesJSONArrayResponses(t *testing.T) {
+	t.Setenv("K_BRAIN_HOME", t.TempDir())
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, "[{\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"thought\":true,\"text\":\"check\"}]}}]},\n")
+		fmt.Fprint(w, "{\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"hello vertex\"}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":5,\"candidatesTokenCount\":3,\"thoughtsTokenCount\":2}}]")
+	}))
+	defer srv.Close()
+
+	var text, thinking string
+	msg, usage, err := NewGemini(srv.URL+"/v1", "k").Stream(
+		context.Background(),
+		Request{Model: "gemini-4-neon", ReasoningEffort: "low", Messages: []Message{{Role: "user", Content: "hi"}}},
+		func(s string) { text += s },
+		func(s string) { thinking += s },
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if msg.Content != "hello vertex" || text != "hello vertex" || thinking != "check" {
+		t.Fatalf("msg=%+v text=%q thinking=%q", msg, text, thinking)
+	}
+	if usage.PromptTokens != 5 || usage.CompletionTokens != 5 {
+		t.Fatalf("usage=%+v", usage)
+	}
+}

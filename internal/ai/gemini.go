@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/rand"
@@ -202,6 +203,58 @@ func (c *Gemini) Stream(ctx context.Context, req Request, onText, onThink func(s
 	})
 }
 
+// newGeminiChunkReader yields JSON chunks from either an SSE stream (`data: {...}`)
+// or Vertex AI / Gemini's native JSON-array stream (`[{...}, {...}]`).
+func newGeminiChunkReader(r io.Reader) func() (string, string, bool, error) {
+	br := bufio.NewReader(r)
+	for {
+		b, err := br.Peek(1)
+		if err != nil || (b[0] != ' ' && b[0] != '\t' && b[0] != '\r' && b[0] != '\n') {
+			break
+		}
+		_, _ = br.ReadByte()
+	}
+	if b, err := br.Peek(1); err == nil && b[0] == '[' {
+		lr := &io.LimitedReader{R: br, N: maxSSEEventSize + 1}
+		dec := json.NewDecoder(lr)
+		tok, tokErr := dec.Token()
+		return func() (string, string, bool, error) {
+			if tokErr != nil {
+				return "", "", false, tokErr
+			}
+			if d, ok := tok.(json.Delim); !ok || d != '[' {
+				return "", "", false, nonRetryable{fmt.Errorf("invalid Gemini streaming response: expected JSON array")}
+			}
+			lr.N = maxSSEEventSize + 1
+			if !dec.More() {
+				if _, err := dec.Token(); err != nil {
+					return "", "", false, err
+				}
+				return "", "", false, io.ErrUnexpectedEOF
+			}
+			var raw json.RawMessage
+			if err := dec.Decode(&raw); err != nil {
+				if lr.N <= 0 {
+					return "", "", false, nonRetryable{fmt.Errorf("Gemini JSON stream chunk exceeds %d bytes", maxSSEEventSize)}
+				}
+				return "", "", false, err
+			}
+			if len(raw) > maxSSEEventSize {
+				return "", "", false, nonRetryable{fmt.Errorf("Gemini JSON stream chunk exceeds %d bytes", maxSSEEventSize)}
+			}
+			return string(raw), "", true, nil
+		}
+	}
+	sse := newSSEReader(br)
+	return func() (string, string, bool, error) {
+		event, ok := sse.next()
+		if !ok {
+			return "", "", false, sse.endError("Gemini")
+		}
+		return event.Data, event.Type, true, nil
+	}
+}
+
 // streamAttempt is one Gemini streaming request; Stream retries it when it
 // stalls before any output.
 func (c *Gemini) streamAttempt(ctx context.Context, req Request, onText, onThink func(string), onToolCall func(id, name, args string)) (Message, Usage, error) {
@@ -212,7 +265,7 @@ func (c *Gemini) streamAttempt(ctx context.Context, req Request, onText, onThink
 		return Message{}, Usage{}, idleGuard.stalled(err)
 	}
 	defer resp.Body.Close()
-	sse := newSSEReader(idleGuard.wrap(resp.Body))
+	nextChunk := newGeminiChunkReader(idleGuard.wrap(resp.Body))
 	var msg Message
 	msg.Role = "assistant"
 	var thought thoughtText
@@ -221,13 +274,13 @@ func (c *Gemini) streamAttempt(ctx context.Context, req Request, onText, onThink
 	var usage Usage
 	var calls []ToolCall
 	for {
-		event, ok := sse.next()
+		data, eventType, ok, chunkErr := nextChunk()
 		if !ok {
-			return Message{}, usage, sse.endError("Gemini")
+			return Message{}, usage, idleGuard.stalled(chunkErr)
 		}
-		search.accept(event.Data, event.Type)
+		search.accept(data, eventType)
 		var result geminiResponse
-		if err := decodeStreamEvent(event.Data, &result); err != nil {
+		if err := decodeStreamEvent(data, &result); err != nil {
 			return Message{}, usage, err
 		}
 		if result.Error != nil {
@@ -521,6 +574,9 @@ func (c *Gemini) do(ctx context.Context, req Request, stream bool) (*http.Respon
 			return nonRetryable{parseErr}
 		}
 		q := parsed.Query()
+		if stream && c.IsFullURL && strings.Contains(parsed.Path, ":streamGenerateContent") && q.Get("alt") == "" {
+			q.Set("alt", "sse")
+		}
 		if !hasHeader(c.Headers, "x-goog-api-key") {
 			q.Set("key", c.APIKey)
 		}
