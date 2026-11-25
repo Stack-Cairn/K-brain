@@ -125,12 +125,15 @@ func importedCheckpointMetadataPath(eventDir, conversationID, sourceFingerprint 
 	return filepath.Join(eventDir, "checkpoints", conversationID, "legacy-import", hex.EncodeToString(sum[:16])+".json")
 }
 
+// errImportFileConflict: an immutable import file already holds other content.
+var errImportFileConflict = errors.New("legacy checkpoint import conflicts with existing data")
+
 func writeImportFile(path string, data []byte) error {
 	if existing, err := os.ReadFile(path); err == nil {
 		if bytes.Equal(existing, data) {
 			return nil
 		}
-		return errors.New("legacy checkpoint import conflicts with existing data")
+		return errImportFileConflict
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
@@ -157,7 +160,7 @@ func writeImportFile(path string, data []byte) error {
 		if readErr == nil && bytes.Equal(existing, data) {
 			return nil
 		}
-		return errors.New("legacy checkpoint import conflicts with existing data")
+		return errImportFileConflict
 	} else {
 		return err
 	}
@@ -288,7 +291,11 @@ func prepareLegacyCheckpoints(in legacyCheckpointImport, conversationID, sourceF
 	}
 }
 
-func (s *Server) importLegacyCheckpoints(in legacyCheckpointImport, conversationID, sourceID, sourceFingerprint string, records map[uint64]checkpointRecord, partial bool) (checkpointImportResult, error) {
+// importLegacyCheckpoints attaches imported checkpoints to their user turns.
+// Turns at a message sequence below keepBefore are skipped: after an in-place
+// prefix update they were imported earlier and keep their snapshots as they
+// are now.
+func (s *Server) importLegacyCheckpoints(in legacyCheckpointImport, conversationID, sourceID, sourceFingerprint string, records map[uint64]checkpointRecord, partial bool, keepBefore int) (checkpointImportResult, error) {
 	if in.Status == "unresolved" || in.Status == "not_found" {
 		return checkpointImportResult{Status: in.Status, Error: in.Reason}, nil
 	}
@@ -300,7 +307,7 @@ func (s *Server) importLegacyCheckpoints(in legacyCheckpointImport, conversation
 	marker := importedCheckpointMetadataPath(s.eventDir, conversationID, sourceFingerprint)
 	if previous, err := os.ReadFile(marker); err == nil {
 		if !bytes.Equal(previous, metadataBytes) {
-			return checkpointImportResult{}, errors.New("legacy checkpoint import conflicts with existing data")
+			return checkpointImportResult{}, errImportFileConflict
 		}
 		// A completed import must not resurrect snapshots consumed by a later rewind.
 		for _, record := range records {
@@ -316,6 +323,9 @@ func (s *Server) importLegacyCheckpoints(in legacyCheckpointImport, conversation
 		messageSeq, err := s.store.MessageSequence(conversationID, record.TurnID)
 		if err != nil {
 			partial = true
+			continue
+		}
+		if messageSeq < keepBefore {
 			continue
 		}
 		record.TurnSeq = messageSeq

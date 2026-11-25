@@ -130,6 +130,12 @@ type healthCapabilities struct {
 	// "mention_list": workspace files and directories for @ mentions, without
 	// ignored paths, ranked by query and capped with truncated.
 	FilesystemMentionList int `json:"filesystem_mention_list"`
+	// HistoryImportPrefixUpdate is 1 where POST /v1/migrations/liveagent-history
+	// updates an unmodified earlier import of the same source in place when its
+	// messages are a strict prefix of the new request (status "imported" with
+	// updated: true), and every 409 carries errorCode "import_conflict" with a
+	// reason, or errorCode "session_busy" while a turn runs in the session.
+	HistoryImportPrefixUpdate int `json:"history_import_prefix_update"`
 }
 
 // healthRunSandboxV1 describes per-run sandboxing (options.sandbox). Clients
@@ -254,6 +260,7 @@ func (s *Server) health() healthResponse {
 			PluginUIErrors:              1,
 			PluginManifestUnknownFields: 1,
 			FilesystemMentionList:       1,
+			HistoryImportPrefixUpdate:   1,
 		},
 		HostBridge: s.hostBridge.status(),
 	}
