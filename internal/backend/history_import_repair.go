@@ -33,6 +33,8 @@ func historyMetadataWithoutCheckpoint(raw json.RawMessage) ([]byte, error) {
 	return json.Marshal(metadata)
 }
 
+var errHistoryRepairModified = errors.New("checkpoint repair conflicts with existing modified history")
+
 // Only an exact original history request may acquire previously unresolved checkpoints.
 func unresolvedHistoryRepair(in legacyHistoryImportRequest, meta session.Meta) bool {
 	if in.Checkpoint == nil || in.Checkpoint.Status != "available" || meta.ImportSourceID != in.SourceID {
@@ -76,7 +78,7 @@ func (s *Server) claimUnresolvedHistoryRepair(in legacyHistoryImportRequest, mes
 	original, _ := json.Marshal(messages)
 	current, _ := json.Marshal(s.store.RawMessages(in.ConversationID))
 	if !bytes.Equal(original, current) {
-		return errors.New("checkpoint repair conflicts with existing modified history")
+		return errHistoryRepairModified
 	}
 	// The immutable claim prevents a second export from replacing an accepted repair.
 	claim, _ := json.Marshal(map[string]string{"source_id": in.SourceID, "fingerprint": importFingerprint(in)})

@@ -56,6 +56,10 @@ type Meta struct {
 	ImportFingerprint        string `json:"import_fingerprint,omitempty"`
 	ImportMetadata           string `json:"import_metadata,omitempty"`
 	ImportContentFingerprint string `json:"import_content_fingerprint,omitempty"`
+	// ImportRevision is the history revision (messages and compactions) an
+	// import wrote; a different current revision means the session changed in
+	// K-brain after the import. Empty for imports older than this field.
+	ImportRevision string `json:"import_revision,omitempty"`
 }
 
 type Task struct {

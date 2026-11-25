@@ -113,12 +113,13 @@ func (s *Server) importLegacyHistory(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	contentFingerprint := importFingerprint(in)
-	already, err := s.store.ImportHistory(in.ConversationID, in.SourceID, in.SourceFingerprint, contentFingerprint, metadata, in.CWD, in.Model.Model, in.Model.Provider, in.Title, in.CreatedAt, in.UpdatedAt, in.Pinned, in.Shared, in.ShareRedactTool, in.ShareToken, messages, boundary)
+	result, err := s.store.ImportOrUpdateHistory(in.ConversationID, in.SourceID, in.SourceFingerprint, contentFingerprint, metadata, in.CWD, in.Model.Model, in.Model.Provider, in.Title, in.CreatedAt, in.UpdatedAt, in.Pinned, in.Shared, in.ShareRedactTool, in.ShareToken, messages, boundary)
+	already, updated := result.Outcome == session.ImportAlready, result.Outcome == session.ImportUpdated
 	if errors.Is(err, session.ErrHistoryDeleted) {
 		writeJSONError(w, http.StatusGone, err.Error())
 		return
 	}
-	if err != nil && strings.Contains(err.Error(), "conflicts with existing") && !checkpointPartial {
+	if errors.Is(err, session.ErrImportConflict) && !checkpointPartial {
 		meta, _, loadErr := s.store.Load(in.ConversationID)
 		if loadErr == nil && unresolvedHistoryRepair(in, meta) {
 			rt, runtimeErr := s.loadRuntimeByID(in.ConversationID)
@@ -137,17 +138,15 @@ func (s *Server) importLegacyHistory(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if err != nil {
-		if strings.Contains(err.Error(), "conflicts with existing") {
-			writeJSONError(w, http.StatusConflict, err.Error())
-		} else {
-			writeJSONError(w, http.StatusInternalServerError, err.Error())
-		}
+		writeHistoryImportError(w, err)
 		return
 	}
 	checkpointStatus := "unresolved"
 	checkpointReason := "checkpoint export was not supplied"
 	if in.Checkpoint != nil {
-		checkpoint, checkpointErr := s.importLegacyCheckpoints(*in.Checkpoint, in.ConversationID, in.SourceID, in.SourceFingerprint, checkpointRecords, checkpointPartial)
+		// An update leaves the snapshots of the turns it already held alone, so
+		// a file rewind done after the first import is not undone.
+		checkpoint, checkpointErr := s.importLegacyCheckpoints(*in.Checkpoint, in.ConversationID, in.SourceID, in.SourceFingerprint, checkpointRecords, checkpointPartial, result.PreviousMessages)
 		if checkpointErr != nil {
 			if _, ok := checkpointErr.(*checkpointImportValidationError); ok {
 				writeJSONError(w, http.StatusBadRequest, checkpointErr.Error())
@@ -163,5 +162,37 @@ func (s *Server) importLegacyHistory(w http.ResponseWriter, r *http.Request) {
 	if checkpointReason != "" {
 		response["checkpoint_reason"] = checkpointReason
 	}
+	// An in-place prefix update keeps status "imported" for clients that only
+	// accept imported/already_imported, and adds updated: true.
+	if updated {
+		response["updated"] = true
+	}
 	writeJSON(w, http.StatusOK, response)
+}
+
+// Machine-readable codes of a refused history import, sent as errorCode next
+// to the generic error text. Every one keeps HTTP 409, as before they existed.
+const (
+	// historyImportConflict is deterministic: retrying the same request fails
+	// the same way. reason carries a session.ImportConflict* value.
+	historyImportConflict = "import_conflict"
+	// historyImportSessionBusy is transient: a turn runs in the session.
+	historyImportSessionBusy = "session_busy"
+)
+
+func writeHistoryImportError(w http.ResponseWriter, err error) {
+	var conflict *session.ImportConflictError
+	switch {
+	case errors.As(err, &conflict):
+		writeJSON(w, http.StatusConflict, map[string]any{"version": protocol.Version, "error": err.Error(), "errorCode": historyImportConflict, "reason": conflict.Reason})
+	case errors.Is(err, errHistoryRepairModified):
+		writeJSON(w, http.StatusConflict, map[string]any{"version": protocol.Version, "error": err.Error(), "errorCode": historyImportConflict, "reason": session.ImportConflictModifiedAfterImport})
+	case errors.Is(err, errImportFileConflict):
+		// A checkpoint repair for another version of this source was accepted.
+		writeJSON(w, http.StatusConflict, map[string]any{"version": protocol.Version, "error": err.Error(), "errorCode": historyImportConflict, "reason": session.ImportConflictDiverged})
+	case errors.Is(err, session.ErrImportBusy) || errors.Is(err, session.ErrRunElsewhere):
+		writeJSON(w, http.StatusConflict, map[string]any{"version": protocol.Version, "error": err.Error(), "errorCode": historyImportSessionBusy})
+	default:
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+	}
 }

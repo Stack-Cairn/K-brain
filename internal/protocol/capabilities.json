@@ -346,6 +346,15 @@
       "firstRelease": "v0.107.45",
       "evidenceCommit": "pending",
       "missing": "POST /v1/fs rejects action mention_list with 422 \"unsupported filesystem action\" (and an older one rejects the query field with 400): build @ mention candidates from action list, which applies no ignore rules, or keep the desktop's own file index."
+    },
+    {
+      "name": "history_import_prefix_update",
+      "type": "integer",
+      "compare": "eq",
+      "value": 1,
+      "firstRelease": "v0.107.47",
+      "evidenceCommit": "pending",
+      "missing": "POST /v1/migrations/liveagent-history answers 409 whenever an existing import of the same source has a different fingerprint, even when the stored copy is only missing the newest messages, and a 409 has no errorCode or reason; treat every 409 as a permanent conflict for that source version."
     }
   ]
 }

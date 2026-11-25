@@ -815,6 +815,22 @@ MCP 工具可以在 `tools/list` 的 `_meta` 里声明一个界面资源：`_met
 - 只读命令白名单另含：`hostname`（不带参数）、`whoami`、`date`（不带参数或只带 `+格式`）、`Get-Date`、`Get-Process`/`ps`、`Get-FileHash`、任意程序只带 `--version`、`git stash list|show`、`git tag`（不带参数或 `-l/--list`）、`git config --get|--get-all|--get-regexp|--list|-l`、`cd`/`Set-Location`/`pushd`/`popd`，以及 PowerShell 管道里的 `Select-Object`、`Sort-Object`、`Measure-Object`、`Format-Table`、`Format-List`、`Format-Wide`、`Out-String`。
 - 不做只读放行：含 `$` 的变量展开（`echo $OPENAI_API_KEY`、`$env:X`）、PowerShell 非文件驱动器（`Env:`、`Variable:`、`Function:`、`Alias:`、`Cert:`、`HKLM:`、`HKCU:`、`WSMan:`、`Registry::`）、`git -C <目录>`，以及 `cd` 之后再运行的 git——git 读取所在仓库的配置，`core.fsmonitor`、`diff.external` 等配置会运行程序。
 
+### 旧版历史导入的前缀更新（`capabilities.history_import_prefix_update: 1`）
+
+`POST /v1/migrations/liveagent-history` 的请求体不变。同一会话 id 已存在时：
+
+- 来源 id、`source_fingerprint` 与内容指纹（整个请求的哈希）都相同：照旧返回 `status: "already_imported"`，不写入。
+- 来源 id 相同、`source_fingerprint` 变了、会话导入后没有在 K-brain 里改动过，且现存消息是新请求消息的严格前缀（逐条比较 id、角色、正文、附件、推理、工具调用与结果，新请求至少多一条消息）：原地更新。消息与 `active_context` 边界换成新请求的，`import_fingerprint`、内容指纹、`import_metadata` 随之更新，`updated_at` 取新请求的值（不早于原值）。会话 id、标题（仅在原标题为空时取新标题）、置顶、归档、分享与分享令牌、标签、目标、模型、工作目录、用量与已有的文件检查点保持不变；新请求带检查点时只为新增的回合登记，导入后被回滚消耗的旧检查点不会复活。响应仍是 `status: "imported"`（旧客户端只接受 `imported` 和 `already_imported`），另加 `updated: true`：
+
+```json
+{"source_id":"pi-x","backend_id":"pi-x","status":"imported","updated":true,"checkpoint":"unresolved","checkpoint_reason":"checkpoint export was not supplied","fingerprint":"<内容指纹>"}
+```
+
+- 其余情况仍返回 409，错误文本不变，另加 `errorCode: "import_conflict"` 与 `reason`：`different_source`（会话不是从这个来源导入的，包括 K-brain 自己创建的会话）、`modified_after_import`（导入后在 K-brain 里运行过回合、回滚、编辑、截断、压缩或撤销压缩）、`diverged`（现存消息不是新消息的前缀，或新请求更短）、`no_new_messages`（消息相同而指纹或其他导入数据变了）、`fingerprint_unchanged`（消息变多但 `source_fingerprint` 没变，按篡改拒绝）。同一请求重试结果相同。
+- 会话正有回合在运行（本进程或其他进程）时返回 409 与 `errorCode: "session_busy"`、没有 `reason`；这是暂时状态，稍后重试即可。已删除的会话照旧返回 410。
+- "导入后未改动"的依据是导入时记下的历史修订号 `import_revision`（消息与压缩记录的哈希）：之后任何改动消息或压缩记录的操作都会改变它，改标题、置顶、归档、分享、标签、目标和文件检查点则不会。没有这个字段的旧导入按导入留下的形态判断：消息序号连续、没有 K-brain 编辑或回滚过的消息、没有子代理任务、除导入边界外没有压缩记录；这种情况下只截掉末尾消息的回滚看不出来。
+- 旧后端对上述所有不一致都只返回 409，没有 `errorCode`；客户端在能力缺失时把每个 409 当作该来源版本的永久冲突。
+
 ### MCP 配置与运行选择
 
 `PUT /v1/mcp` 的请求体与 GET 相同：`{servers:[{id,name,enabled,transport:"stdio"|"http",command,args,env,cwd,url,headers,auth,timeoutMs,workspaceRoots,policy}],selected}`。`name` 是可选的显示名，只用于 `GET /v1/mcp/tools` 的 `serverLabel`，不影响工具名与策略。
