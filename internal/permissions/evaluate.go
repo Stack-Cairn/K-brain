@@ -284,6 +284,15 @@ func matchPath(pattern, target, root string) bool {
 	if target == "" {
 		return false
 	}
+	for _, t := range systemPathAliases(target, runtime.GOOS) {
+		if matchOnePath(pattern, t, root) {
+			return true
+		}
+	}
+	return false
+}
+
+func matchOnePath(pattern, target, root string) bool {
 	var subject string
 	root = winpath.Simplify(root)
 	if path.IsAbs(pattern) || filepath.IsAbs(filepath.FromSlash(pattern)) {
