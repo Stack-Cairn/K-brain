@@ -1046,22 +1046,6 @@ func (m *Manager) Package(name string) (PackageResult, error) {
 	return PackageResult{Name: name, Target: src, Archive: out}, nil
 }
 
-func (m *Manager) scanExternal(root string) ExternalScan {
-	x := ExternalScan{Tool: filepath.Base(root), RootDir: root}
-	if _, e := os.ReadDir(root); e != nil {
-		return x
-	}
-	x.Exists = true
-	for _, s := range scanRoot(root).Skills {
-		x.Skills = append(x.Skills, ExternalSkill{Name: s.Name, Description: s.Description, BaseDir: filepath.Dir(s.Path), SkillFile: s.Path, Pack: s.Pack})
-	}
-	return x
-}
-func (m *Manager) External() []ExternalScan {
-	home, _ := os.UserHomeDir()
-	return []ExternalScan{m.scanExternal(filepath.Join(home, ".agents", "skills")), m.scanExternal(filepath.Join(home, ".codex", "skills")), m.scanExternal(filepath.Join(home, ".claude", "skills"))}
-}
-
 func (m *Manager) settingsPath() string {
 	return filepath.Join(filepath.Dir(m.root), "skills-settings.json")
 }
